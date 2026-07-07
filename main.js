@@ -726,6 +726,7 @@ async function renderFinanceiro() {
   await finPullMeta(mes);
   finRecompute();
   finUpdateStatus();
+  mpRenderCard('fin-mp', mes); // conferência Mercado Pago (entradas/saídas reais do mês)
 }
 
 // Puxa o gasto de tráfego do Meta (Marketing API) e mantém o subitem "Meta Ads (Facebook)" atualizado.
@@ -1016,6 +1017,35 @@ async function renderFluxo() {
   // Em background (não bloqueiam a UI; falha → mantém manual/placeholder):
   flxAtualizarSaldos(true);              // saldos MP/Pagar.me
   if (cfg.vendasAuto) flxSincronizarVendas(true); // custo das vendidas Shopify
+  mpRenderCard('flx-mp', mes);           // movimentações reais do Mercado Pago
+}
+
+// ── Mercado Pago — movimentações REAIS da conta (entradas Pix, pagamentos, transferências) ──
+// Fonte: /api/mp-movimentos (release_report da API MP). Usado no Fluxo (flx-mp) e no Financeiro (fin-mp).
+async function mpRenderCard(elId, mes) {
+  const el = document.getElementById(elId); if (!el) return;
+  const [Y, M] = mes.split('-').map(Number);
+  const desde = mes + '-01';
+  const hoje = new Date();
+  const ehMesAtual = (Y === hoje.getFullYear() && M === hoje.getMonth() + 1);
+  const ate = ehMesAtual ? hoje.toISOString().slice(0, 10) : mes + '-' + String(new Date(Y, M, 0).getDate()).padStart(2, '0');
+  el.innerHTML = '<div style="font-size:12px;color:var(--text-ter);padding:6px 0">carregando Mercado Pago…</div>';
+  try {
+    const r = await fetch('/api/mp-movimentos?desde=' + desde + '&ate=' + ate + '&t=' + Date.now());
+    const j = await r.json();
+    if (!r.ok || j.erro) { el.innerHTML = '<div style="font-size:12px;color:var(--text-ter)">MP indisponível: ' + (j.erro || r.status) + '</div>'; return; }
+    const linha = (lbl, val, cor) => `<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #f0ede8;font-size:13px">
+        <span style="color:var(--text-sec)">${lbl}</span><span style="font-weight:600;color:${cor || 'inherit'}">${val}</span></div>`;
+    const s = j.saidas || {};
+    el.innerHTML =
+      linha('Entradas (Pix, líquido)', finBRL(j.entradas?.total_liquido || 0) + ' · ' + (j.entradas?.qtd || 0) + 'x', '#16a34a') +
+      linha('Pagamentos feitos pela conta', s.pagamentos?.total == null ? '—' : ('− ' + finBRL(s.pagamentos.total) + ' · ' + s.pagamentos.qtd + 'x'), '#b45309') +
+      linha('Transferências p/ banco (interna)', s.transferencias?.total == null ? '—' : ('− ' + finBRL(s.transferencias.total)), 'var(--text-ter)') +
+      (j.saldo_final != null ? linha('Saldo na conta (fim do extrato)', finBRL(j.saldo_final), 'var(--gold-dark)') : '') +
+      `<div style="font-size:10px;color:var(--text-ter);margin-top:6px">${j.gerando ? '⏳ extrato completo sendo gerado (~2 min) — atualize em instantes' : 'extrato até ' + String(ate).split('-').reverse().slice(0, 2).join('/')} · fonte: ${j.fonte === 'release_report' ? 'extrato MP' : 'pagamentos (parcial)'}</div>`;
+  } catch (e) {
+    el.innerHTML = '<div style="font-size:12px;color:var(--text-ter)">falha ao consultar o Mercado Pago</div>';
+  }
 }
 
 // Busca saldos via API. silencioso=true evita status na carga inicial.
