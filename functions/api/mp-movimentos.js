@@ -80,31 +80,55 @@ export async function onRequestGet({ request, env }) {
   if (!desde || !ate) return J({ erro: 'faltam ?desde= e ?ate=' }, 400);
 
   try {
-    // 1. procura um extrato (release_report) que cubra o período e seja recente
+    // 1. procura um extrato (release_report) que cubra o INÍCIO do período
     const lst = await (await fetch('https://api.mercadopago.com/v1/account/release_report/list', { headers: H })).json();
-    const cobre = (Array.isArray(lst) ? lst : []).filter(f =>
-      f.begin_date && f.end_date &&
-      f.begin_date.slice(0, 10) <= desde && f.end_date.slice(0, 10) >= ate
-    ).sort((a, b) => (b.date_created || '').localeCompare(a.date_created || ''));
-    // fresco = criado depois do fim do período OU nas últimas 6h (período corrente muda ao longo do dia)
     const agora = Date.now();
-    const fresco = cobre.find(f => {
-      const criado = new Date(f.date_created).getTime();
-      const fimPeriodoPassado = ate < new Date(agora).toISOString().slice(0, 10);
-      return fimPeriodoPassado ? true : (agora - criado) < 6 * 3600 * 1000;
-    });
+    const hojeISO = new Date(agora).toISOString().slice(0, 10);
+    const periodoInclusoHoje = ate >= hojeISO;
+    const cobre = (Array.isArray(lst) ? lst : []).filter(f =>
+      f.begin_date && f.end_date && f.begin_date.slice(0, 10) <= desde
+    ).sort((a, b) => (b.end_date || '').localeCompare(a.end_date || ''));
+    const melhor = cobre[0] || null;
+    // completo = o extrato alcança o fim do período; p/ período corrente, "fresco" = termina há <3h
+    const alcancaFim = melhor && melhor.end_date.slice(0, 10) >= ate;
+    const fresco = melhor && (!periodoInclusoHoje ? alcancaFim
+      : (agora - new Date(melhor.end_date).getTime()) < 3 * 3600 * 1000);
 
-    if (fresco) {
-      const csv = await (await fetch('https://api.mercadopago.com/v1/account/release_report/' + encodeURIComponent(fresco.file_name), { headers: H })).text();
-      const parsed = parseReportCSV(csv);
-      if (parsed) return J(Object.assign({ periodo: { desde, ate }, fonte: 'release_report', gerando: false, gerado_em: fresco.date_created }, parsed));
+    // extrato defasado → dispara geração de um novo até AGORA (anti-rajada: só se o último foi criado há >10 min)
+    const criadoHa = melhor ? (agora - new Date(melhor.date_created).getTime()) : Infinity;
+    if (!fresco && criadoHa > 10 * 60 * 1000) {
+      fetch('https://api.mercadopago.com/v1/account/release_report', {
+        method: 'POST', headers: H,
+        body: JSON.stringify({
+          begin_date: desde + 'T03:00:00Z',
+          end_date: (periodoInclusoHoje ? new Date(agora - 60 * 1000) : new Date(new Date(ate + 'T23:59:59-03:00').getTime() + 1000)).toISOString().replace(/\.\d+Z/, 'Z')
+        })
+      }).catch(() => {});
     }
 
-    // 2. não tem extrato pronto → dispara a geração (202, fire-and-forget) e responde com o fallback
-    fetch('https://api.mercadopago.com/v1/account/release_report', {
-      method: 'POST', headers: H,
-      body: JSON.stringify({ begin_date: desde + 'T03:00:00Z', end_date: new Date(new Date(ate + 'T23:59:59-03:00').getTime() + 1000).toISOString().replace(/\.\d+Z/, 'Z') })
-    }).catch(() => {});
+    if (melhor) {
+      const csv = await (await fetch('https://api.mercadopago.com/v1/account/release_report/' + encodeURIComponent(melhor.file_name), { headers: H })).text();
+      const parsed = parseReportCSV(csv);
+      if (parsed) {
+        // extrato termina antes do fim do período → completa as ENTRADAS do trecho descoberto via payments
+        if (!alcancaFim || (periodoInclusoHoje && !fresco)) {
+          const desdeTopo = melhor.end_date;
+          const topo = await entradasViaPayments(H, desdeTopo.slice(0, 10), ate);
+          parsed.entradas.total_liquido = Math.round((parsed.entradas.total_liquido + topo.total_liquido) * 100) / 100;
+          parsed.entradas.qtd += topo.qtd;
+          for (const [d, v] of Object.entries(topo.por_dia)) parsed.entradas.por_dia[d] = (parsed.entradas.por_dia[d] || 0) + v;
+        }
+        return J(Object.assign({
+          periodo: { desde, ate },
+          fonte: fresco ? 'release_report' : 'release_report + Pix recentes',
+          gerando: !fresco,
+          extrato_ate: melhor.end_date,
+          aviso: fresco ? undefined : 'saídas/saldo refletem o extrato até ' + String(melhor.end_date).slice(0, 10) + ' — extrato novo sendo gerado (~2 min)'
+        }, parsed));
+      }
+    }
+
+    // 2. nenhum extrato cobre o período → fallback total via payments (entradas imediatas)
     const entradas = await entradasViaPayments(H, desde, ate);
     return J({ periodo: { desde, ate }, fonte: 'payments_fallback', gerando: true,
       entradas, saidas: { pagamentos: { total: null, qtd: 0, itens: [] }, transferencias: { total: null, qtd: 0 }, por_dia: {} },
