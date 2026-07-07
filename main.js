@@ -1410,8 +1410,30 @@ function flxRecompute() {
       <td style="padding:6px 8px;text-align:right;font-weight:600;color:${corR(row.saldo)}">${finBRL(row.saldo)}${critico ? ' <span style="font-size:9px;color:#d97706">◄ mais baixo</span>' : ''}</td></tr>`;
   }).join('');
   const linhaInicial = `<tr><td style="padding:6px 8px;font-weight:600;color:var(--text-ter)">${ehMesAtual ? 'hoje' : (ehPassado ? 'início' : 'dia 1')}</td><td></td><td></td><td style="padding:6px 8px;text-align:right;font-weight:700">${finBRL(saldoHoje)}</td></tr>`;
-  document.getElementById('flx-proj').innerHTML = dias.length
-    ? `<table style="width:100%;font-size:13px;border-collapse:collapse">${projHead}${linhaInicial}${projRows}</table>`
+
+  // ── REALIZADO: contas já pagas do mês (incl. pagamentos MP auto), acima do "hoje".
+  // Informativas: o dinheiro já saiu e o saldo atual já reflete — por isso não têm coluna de
+  // saldo (evita dupla contagem) e aparecem esmaecidas com ✓.
+  const pagos = lista.filter(p => p.pago && (p.valor || 0) > 0);
+  const pagosPorDia = {};
+  pagos.forEach(p => { pagosPorDia[p.dia] = pagosPorDia[p.dia] || []; pagosPorDia[p.dia].push(p); });
+  const diasPagos = Object.keys(pagosPorDia).map(Number).sort((a, b) => a - b);
+  const realizadoRows = diasPagos.map(d => {
+    const its = pagosPorDia[d];
+    const tot = its.reduce((s, p) => s + (p.valor || 0), 0);
+    return `<tr style="border-top:1px solid #f0ede8;opacity:0.55">
+      <td style="padding:5px 8px;font-weight:600">${dd(d)}</td>
+      <td style="padding:5px 8px;font-size:12px;color:var(--text-sec)">✓ ${its.map(p => p.desc).join(', ')}</td>
+      <td style="padding:5px 8px;text-align:right;color:#b45309">− ${finBRL(tot)}</td>
+      <td style="padding:5px 8px;text-align:right;font-size:10px;color:var(--text-ter)">pago</td></tr>`;
+  }).join('');
+  const realizadoBloco = realizadoRows
+    ? `<tr><td colspan="4" style="padding:6px 8px;font-size:10px;font-weight:700;letter-spacing:0.05em;color:var(--text-ter)">REALIZADO (já saiu do caixa — refletido no saldo)</td></tr>${realizadoRows}
+       <tr><td colspan="4" style="padding:6px 8px;font-size:10px;font-weight:700;letter-spacing:0.05em;color:var(--text-ter);border-top:2px solid var(--border)">PROJETADO (a vencer)</td></tr>`
+    : '';
+
+  document.getElementById('flx-proj').innerHTML = (dias.length || realizadoRows)
+    ? `<table style="width:100%;font-size:13px;border-collapse:collapse">${projHead}${realizadoBloco}${linhaInicial}${projRows}</table>`
     : '<div style="font-size:12px;color:var(--text-ter);padding:8px">Nenhuma conta a vencer nesta janela.</div>';
 
   // ── Composição das saídas restantes por categoria
