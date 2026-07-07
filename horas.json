@@ -1,0 +1,176 @@
+{
+  "periodo": {
+    "desde": "2026-05-17",
+    "ate": "2026-07-01"
+  },
+  "por_hora": [
+    {
+      "hora": "00:00",
+      "gasto": 1054,
+      "compras": 7,
+      "valor": 2800,
+      "roas": 2.66
+    },
+    {
+      "hora": "01:00",
+      "gasto": 508,
+      "compras": 5,
+      "valor": 1853,
+      "roas": 3.65
+    },
+    {
+      "hora": "02:00",
+      "gasto": 270,
+      "compras": 0,
+      "valor": 0,
+      "roas": 0
+    },
+    {
+      "hora": "03:00",
+      "gasto": 212,
+      "compras": 3,
+      "valor": 755,
+      "roas": 3.55
+    },
+    {
+      "hora": "04:00",
+      "gasto": 253,
+      "compras": 1,
+      "valor": 486,
+      "roas": 1.92
+    },
+    {
+      "hora": "05:00",
+      "gasto": 444,
+      "compras": 1,
+      "valor": 164,
+      "roas": 0.37
+    },
+    {
+      "hora": "06:00",
+      "gasto": 1063,
+      "compras": 8,
+      "valor": 2449,
+      "roas": 2.3
+    },
+    {
+      "hora": "07:00",
+      "gasto": 2255,
+      "compras": 16,
+      "valor": 6189,
+      "roas": 2.75
+    },
+    {
+      "hora": "08:00",
+      "gasto": 3364,
+      "compras": 23,
+      "valor": 8099,
+      "roas": 2.41
+    },
+    {
+      "hora": "09:00",
+      "gasto": 3883,
+      "compras": 24,
+      "valor": 8611,
+      "roas": 2.22
+    },
+    {
+      "hora": "10:00",
+      "gasto": 3668,
+      "compras": 31,
+      "valor": 9702,
+      "roas": 2.64
+    },
+    {
+      "hora": "11:00",
+      "gasto": 3244,
+      "compras": 26,
+      "valor": 10336,
+      "roas": 3.19
+    },
+    {
+      "hora": "12:00",
+      "gasto": 2966,
+      "compras": 34,
+      "valor": 12524,
+      "roas": 4.22
+    },
+    {
+      "hora": "13:00",
+      "gasto": 2606,
+      "compras": 30,
+      "valor": 11917,
+      "roas": 4.57
+    },
+    {
+      "hora": "14:00",
+      "gasto": 2282,
+      "compras": 20,
+      "valor": 8483,
+      "roas": 3.72
+    },
+    {
+      "hora": "15:00",
+      "gasto": 2194,
+      "compras": 23,
+      "valor": 8578,
+      "roas": 3.91
+    },
+    {
+      "hora": "16:00",
+      "gasto": 2268,
+      "compras": 23,
+      "valor": 7756,
+      "roas": 3.42
+    },
+    {
+      "hora": "17:00",
+      "gasto": 2337,
+      "compras": 25,
+      "valor": 8441,
+      "roas": 3.61
+    },
+    {
+      "hora": "18:00",
+      "gasto": 2445,
+      "compras": 18,
+      "valor": 7494,
+      "roas": 3.07
+    },
+    {
+      "hora": "19:00",
+      "gasto": 2654,
+      "compras": 16,
+      "valor": 8006,
+      "roas": 3.02
+    },
+    {
+      "hora": "20:00",
+      "gasto": 2823,
+      "compras": 21,
+      "valor": 7045,
+      "roas": 2.5
+    },
+    {
+      "hora": "21:00",
+      "gasto": 3008,
+      "compras": 24,
+      "valor": 8986,
+      "roas": 2.99
+    },
+    {
+      "hora": "22:00",
+      "gasto": 2508,
+      "compras": 21,
+      "valor": 7696,
+      "roas": 3.07
+    },
+    {
+      "hora": "23:00",
+      "gasto": 1666,
+      "compras": 17,
+      "valor": 6258,
+      "roas": 3.76
+    }
+  ]
+}

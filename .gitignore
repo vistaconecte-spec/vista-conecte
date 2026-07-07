@@ -1,0 +1,46 @@
+# Local Netlify folder
+.netlify
+
+# Segredos / credenciais
+.mercadopago-token.json
+.pagarme-token.json
+.shopify-token.json
+.ga4-oauth.json
+*-token.json
+*token*.json
+*token*.txt
+token.txt
+02_CREDENCIAIS.md
+.dev.vars
+.env
+.env.*
+
+# Scripts locais com credencial hardcoded (nunca fazem parte do deploy)
+vista-conecte-scripts-locais/
+get-shopify-token.js
+get-shopify-token-discounts.js
+troca-codigo.js
+theme-api.js
+
+# Dependências
+node_modules/
+
+# Ferramentas locais (Cloudflare/Shopify CLI)
+.wrangler/
+.shopify/
+
+# Sistema
+.DS_Store
+
+# Backups temporários
+*.bak
+*.bak-*
+*.live-*
+*.new
+*.cur
+
+# Lixo de zip / pacotes de instalação já aplicados / backups de sessão
+__MACOSX/
+._*
+_backup-*/
+deploy-fluxo-*/

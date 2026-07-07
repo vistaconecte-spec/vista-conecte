@@ -1,0 +1,20 @@
+name = "Vista Conecte"
+client_id = "d2f803a4142335bed359d7069e2cbd68"
+application_url = "https://vistaconecte.pages.dev/"
+embedded = false
+
+[access_scopes]
+scopes = "read_orders,read_all_orders,read_products,write_products,write_merchant_managed_fulfillment_orders,write_assigned_fulfillment_orders,write_fulfillments,read_themes,write_themes,read_online_store_navigation,write_online_store_navigation,read_publications,write_publications"
+
+[auth]
+redirect_urls = [
+  "https://vistaconecte.pages.dev/api/shopify-callback",
+  "http://localhost:3200/callback"
+]
+
+[webhooks]
+api_version = "2026-04"
+
+[build]
+automatically_update_urls_on_dev = false
+dev_store_url = "7660e4-dd.myshopify.com"

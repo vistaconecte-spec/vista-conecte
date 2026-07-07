@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<!-- build:2026062301-embed -->
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CONECTE — Tráfego & Conversão</title>
+<style>
+  :root{ --navy:#1a2b4a; --gold:#b8923f; --bg:#f4f5f7; --card:#fff; --border:#e6e8ec; --txt:#1a2b4a; --muted:#7a8699; --red:#dc2626; --green:#0f9d58; }
+  *{box-sizing:border-box} body{margin:0;font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;background:var(--bg);color:var(--txt)}
+  .wrap{max-width:1080px;margin:0 auto;padding:18px}
+  h1{font-size:20px;letter-spacing:.18em;font-weight:800;margin:0}
+  .sub{color:var(--muted);font-size:12px;margin:2px 0 16px}
+  .ctrl{display:flex;gap:8px;align-items:center;margin-bottom:14px;flex-wrap:wrap}
+  .ctrl button{border:1px solid var(--border);background:#fff;border-radius:8px;padding:7px 14px;cursor:pointer;font-size:13px;font-weight:600;color:var(--txt)}
+  .ctrl button.on{background:var(--navy);color:#fff;border-color:var(--navy)}
+  .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:16px}
+  .kpi{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:14px}
+  .kpi .l{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+  .kpi .v{font-size:22px;font-weight:800;margin-top:4px}
+  table{width:100%;border-collapse:collapse;background:var(--card);border:1px solid var(--border);border-radius:12px;overflow:hidden;font-size:13px}
+  th,td{padding:9px 10px;text-align:right;border-bottom:1px solid var(--border);white-space:nowrap}
+  th{background:#eef0f3;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);position:sticky;top:0}
+  td:first-child,th:first-child{text-align:left;font-weight:700}
+  tr:last-child td{border-bottom:none}
+  .tbl-wrap{overflow-x:auto;border-radius:12px}
+  .bad{color:var(--red);font-weight:800}
+  .good{color:var(--green);font-weight:700}
+  .alerta{background:#fff1f2;border:1px solid #fecaca;color:#991b1b;border-radius:10px;padding:10px 14px;font-size:13px;margin-bottom:14px;display:none}
+  .bar{height:6px;background:#eef0f3;border-radius:4px;overflow:hidden;min-width:60px;display:inline-block;vertical-align:middle;width:80px}
+  .bar > i{display:block;height:100%;background:var(--gold)}
+  .foot{color:var(--muted);font-size:11px;margin-top:14px}
+  .loading{padding:40px;text-align:center;color:var(--muted)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div id="pagehead">
+    <h1>CONECTE</h1>
+    <div class="sub">Painel de Tráfego & Conversão — Meta × Shopify (vendas reais)</div>
+  </div>
+
+  <div class="ctrl">
+    <span style="font-size:12px;color:var(--muted)">Período:</span>
+    <button data-d="7">7 dias</button>
+    <button data-d="14" class="on">14 dias</button>
+    <button data-d="30">30 dias</button>
+    <button id="reload" style="margin-left:auto">↻ Atualizar</button>
+  </div>
+
+  <div class="alerta" id="alerta"></div>
+
+  <div class="cards" id="kpis"></div>
+
+  <div class="tbl-wrap">
+    <table id="tbl">
+      <thead><tr>
+        <th>Dia</th><th>Gasto Meta</th><th>Cliques</th><th>CTR</th>
+        <th>ROAS Meta</th><th>Pedidos</th><th>Receita</th><th>Ticket</th><th>ROAS real</th>
+      </tr></thead>
+      <tbody><tr><td colspan="9" class="loading">Carregando…</td></tr></tbody>
+    </table>
+  </div>
+
+  <div class="foot" id="foot"></div>
+</div>
+
+<script>
+let dias = 14;
+// Modo embed: dentro do app de gestão (esconde o cabeçalho próprio)
+if(new URLSearchParams(location.search).get('embed')==='1'){
+  const ph=document.getElementById('pagehead'); if(ph) ph.style.display='none';
+  const wp=document.querySelector('.wrap'); if(wp) wp.style.padding='4px';
+}
+const brl = n => 'R$ ' + (n||0).toLocaleString('pt-BR',{maximumFractionDigits:0});
+const med = arr => { const s=[...arr].sort((a,b)=>a-b); const m=Math.floor(s.length/2); return s.length? (s.length%2? s[m] : (s[m-1]+s[m])/2):0; };
+
+async function carregar(){
+  document.querySelector('#tbl tbody').innerHTML = '<tr><td colspan="9" class="loading">Carregando…</td></tr>';
+  document.getElementById('alerta').style.display='none';
+  let d;
+  try { d = await (await fetch('/api/painel-diario?dias='+dias)).json(); }
+  catch(e){ document.querySelector('#tbl tbody').innerHTML='<tr><td colspan="9" class="loading">Erro ao carregar.</td></tr>'; return; }
+  if(d.erro){ document.querySelector('#tbl tbody').innerHTML='<tr><td colspan="9" class="loading">'+d.erro+'</td></tr>'; return; }
+
+  const L = d.linhas || [];
+  const t = d.total || {};
+  // KPIs
+  document.getElementById('kpis').innerHTML = [
+    ['Gasto Meta', brl(t.gasto_meta)],
+    ['Receita (real)', brl(t.receita)],
+    ['Pedidos', t.pedidos],
+    ['ROAS real', (t.roas_real||0).toFixed(2)],
+  ].map(([l,v])=>`<div class="kpi"><div class="l">${l}</div><div class="v">${v}</div></div>`).join('');
+
+  // Baselines pra destacar dias ruins (mediana dos pedidos e do ROAS real)
+  const medPed = med(L.map(x=>x.pedidos));
+  const maxRec = Math.max(1,...L.map(x=>x.receita));
+  const tb = document.querySelector('#tbl tbody');
+  tb.innerHTML = L.map(x=>{
+    const pedBad = medPed>0 && x.pedidos < medPed*0.5;       // pedidos < metade da mediana
+    const roasBad = x.gasto_meta>0 && x.roas_real>0 && x.roas_real < 1.5;
+    return `<tr>
+      <td>${x.dia.slice(8)}/${x.dia.slice(5,7)}</td>
+      <td>${brl(x.gasto_meta)}</td>
+      <td>${x.cliques}</td>
+      <td>${x.ctr? x.ctr.toFixed(2)+'%':'—'}</td>
+      <td class="${x.roas_meta>=3?'good':''}">${x.roas_meta||'—'}</td>
+      <td class="${pedBad?'bad':''}">${x.pedidos}</td>
+      <td><span class="bar"><i style="width:${Math.round(100*x.receita/maxRec)}%"></i></span> ${brl(x.receita)}</td>
+      <td>${x.ticket? brl(x.ticket):'—'}</td>
+      <td class="${roasBad?'bad':(x.roas_real>=3?'good':'')}">${x.roas_real||'—'}</td>
+    </tr>`;
+  }).join('');
+
+  // Alerta automático: último dia fechado muito abaixo da mediana
+  const fechados = L.slice(0,-1); // ignora hoje (parcial)
+  const ult = fechados[fechados.length-1];
+  if(ult && medPed>0 && ult.pedidos < medPed*0.5){
+    const a=document.getElementById('alerta');
+    a.style.display='block';
+    a.innerHTML = `⚠️ <b>${ult.dia.slice(8)}/${ult.dia.slice(5,7)}</b>: ${ult.pedidos} pedidos (mediana do período: ${medPed}). Conversão fora da curva — investigar checkout/pagamento.`;
+  }
+
+  const agora = new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+  document.getElementById('foot').textContent =
+    `Atualizado às ${agora} (recarrega sozinho a cada 10 min). Período ${d.periodo.desde} a ${d.periodo.ate}. ` +
+    (d.meta_ok ? 'Meta: OK. ' : 'Meta: ' + (d.meta_erro||'indisponível') + '. ') +
+    'ROAS real = receita Shopify ÷ gasto Meta (a verdade, não a do pixel).';
+}
+
+document.querySelectorAll('.ctrl button[data-d]').forEach(b=>b.onclick=()=>{
+  document.querySelectorAll('.ctrl button[data-d]').forEach(x=>x.classList.remove('on'));
+  b.classList.add('on'); dias=+b.dataset.d; carregar();
+});
+document.getElementById('reload').onclick=carregar;
+carregar();
+// (A) Auto-refresh a cada 10 minutos enquanto a página estiver aberta
+setInterval(carregar, 600000);
+// Recarrega também ao voltar o foco pra aba (ex: desbloqueou o celular)
+document.addEventListener('visibilitychange', ()=>{ if(!document.hidden) carregar(); });
+</script>
+</body>
+</html>

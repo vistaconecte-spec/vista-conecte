@@ -1,0 +1,532 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CONECTE</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Bodoni+Moda:ital,opsz,wght@0,6..96,700;0,6..96,900&family=Bebas+Neue&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css">
+<link rel="stylesheet" href="style.css?v=2026061103">
+</head>
+<body>
+
+<!-- Modal: confirmação de baixa de estoque por envios detectados -->
+<div id="modal-envios" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9999;display:none;align-items:center;justify-content:center;padding:16px">
+  <div style="background:var(--surface);border-radius:12px;max-width:600px;width:100%;max-height:90vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.3)">
+    <div style="padding:20px 24px 0">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px">
+        <i class="ti ti-truck-delivery" style="font-size:22px;color:var(--gold-dark)"></i>
+        <span style="font-weight:700;font-size:16px">Envios detectados — Baixa de estoque</span>
+      </div>
+      <p style="font-size:13px;color:var(--text-sec);margin:6px 0 16px">Os pedidos abaixo saíram da fila desde o último sync. Confirme para dar baixa automática no estoque.</p>
+    </div>
+    <div style="padding:0 24px">
+      <table style="width:100%;font-size:13px">
+        <thead><tr style="color:var(--text-ter);font-size:11px;text-transform:uppercase">
+          <th style="text-align:left;padding:6px 4px">Modelo</th>
+          <th style="text-align:left;padding:6px 4px">Cor</th>
+          <th style="text-align:center;padding:6px 4px">PP</th>
+          <th style="text-align:center;padding:6px 4px">P</th>
+          <th style="text-align:center;padding:6px 4px">M</th>
+          <th style="text-align:center;padding:6px 4px">G</th>
+          <th style="text-align:center;padding:6px 4px">GG</th>
+          <th style="text-align:center;padding:6px 4px">Total</th>
+        </tr></thead>
+        <tbody id="modal-envios-tbody"></tbody>
+      </table>
+    </div>
+    <div style="padding:16px 24px;display:flex;gap:10px;justify-content:flex-end;border-top:1px solid var(--border);margin-top:12px">
+      <button onclick="ignorarEnvios()" style="background:none;border:1px solid var(--border);border-radius:8px;padding:8px 20px;cursor:pointer;font-size:13px;color:var(--text-sec)">Ignorar</button>
+      <button onclick="confirmarBaixaEstoque()" style="background:var(--gold-dark);border:none;border-radius:8px;padding:8px 20px;cursor:pointer;font-size:13px;font-weight:600;color:#fff">Confirmar baixa no estoque</button>
+    </div>
+  </div>
+</div>
+
+<div class="app">
+  <div class="sidebar-overlay" id="sidebar-overlay" onclick="closeSidebar()"></div>
+  <div class="sidebar" id="sidebar">
+    <div class="brand">
+      <div class="brand-logo-text">CONECTE</div>
+    </div>
+    <div id="sidebar-nav"></div>
+  </div>
+  <div class="main">
+    <div class="topbar">
+      <div>
+        <div style="display:flex;align-items:center;gap:10px">
+          <button class="btn-hamburger" onclick="toggleSidebar()"><i class="ti ti-menu-2"></i></button>
+          <div class="model-title" id="model-title">CONECTE</div>
+          <div class="save-indicator" id="save-ind"><i class="ti ti-cloud-check"></i> Salvo</div>
+        </div>
+        <div class="model-sub" id="model-sub"></div>
+      </div>
+      <div class="topbar-actions" id="topbar-actions">
+        <button id="btn-salvar" class="btn-salvar" onclick="salvarManual()" style="display:none"><i class="ti ti-device-floppy"></i><span class="btn-label"> Salvar</span></button>
+        <button class="btn-outline" onclick="showTab('config')"><i class="ti ti-settings"></i><span class="btn-label"> Configurações</span></button>
+        <button class="btn-primary" onclick="gerarFicha()"><i class="ti ti-file-text"></i><span class="btn-label"> GERAR FICHA</span></button>
+      </div>
+    </div>
+    <div class="tabs" id="tabs-modelo" style="display:none">
+      <div class="tab active" id="tab-btn-producao" onclick="showTab('producao')"><i class="ti ti-chart-bar"></i> PRODUÇÃO</div>
+      <div class="tab" id="tab-btn-arquivos" onclick="showTab('arquivos')"><i class="ti ti-folder"></i> ARQUIVOS</div>
+      <div class="tab" id="tab-btn-config" onclick="showTab('config')"><i class="ti ti-settings"></i> CONFIGURAÇÕES</div>
+    </div>
+    <div class="content">
+      <div id="panel-dashboard" class="tab-panel active">
+        <div id="status-alerts" style="display:none;margin-bottom:12px"></div>
+        <div class="metrics" id="dash-metrics">
+          <div class="metric"><div class="label">PEÇAS EM ABERTO</div><div class="val val-areia" id="dash-m-pedidos">—</div></div>
+          <div class="metric"><div class="label">TOTAL A PRODUZIR</div><div class="val val-escuro" id="dash-m-produzir">—</div></div>
+          <div class="metric"><div class="label">ALERTAS URGENTES</div><div class="val" id="dash-m-alertas" style="color:var(--gold-dark)">—</div></div>
+          <div class="metric" style="cursor:pointer" onclick="verIgnoradosShopify()" title="Ver produtos não reconhecidos pela Shopify">
+            <div class="label">NÃO RECONHECIDOS</div>
+            <div class="val" id="dash-m-ignorados" style="color:#6b7280">—</div>
+          </div>
+        </div>
+        <div class="card" id="card-prontos" style="border-left:3px solid #16a34a">
+          <div class="card-header">
+            <div class="card-title" style="color:#16a34a"><i class="ti ti-truck-delivery"></i> PRONTOS PARA ENVIO</div>
+            <span id="dash-prontos-total" style="font-size:11px;font-weight:700;color:#16a34a"></span>
+          </div>
+          <div id="dash-prontos"></div>
+        </div>
+        <div class="card" id="card-urgentes" style="border-left:3px solid #dc2626">
+          <div class="card-header">
+            <div class="card-title" style="color:#dc2626"><i class="ti ti-alert-triangle"></i> URGENTE — A PRODUZIR</div>
+            <span id="dash-urgentes-total" style="font-size:11px;font-weight:700;color:#dc2626"></span>
+          </div>
+          <div id="dash-urgentes"></div>
+        </div>
+        <div class="card" style="border-left:3px solid #0891b2">
+          <div class="card-header">
+            <div class="card-title" style="color:#0891b2"><i class="ti ti-needle-thread"></i> EM PRODUÇÃO</div>
+            <span id="dash-producao-total" style="font-size:11px;font-weight:700;color:#0891b2"></span>
+          </div>
+          <div id="dash-producao"></div>
+        </div>
+        <div class="card" id="card-corte" style="border-left:3px solid #7C3AED">
+          <div class="card-header">
+            <div class="card-title" style="color:#7C3AED"><i class="ti ti-scissors"></i> EM CORTE</div>
+            <span style="font-size:11px;font-weight:700;color:#7C3AED"><span id="dash-corte-total">0</span> peças</span>
+          </div>
+          <div id="dash-corte-modelos" style="font-size:11px;color:var(--text-ter);margin-bottom:6px"></div>
+          <div id="dash-corte-lista"></div>
+        </div>
+        <div class="card" id="card-costura" style="border-left:3px solid #0891b2">
+          <div class="card-header">
+            <div class="card-title" style="color:#0891b2"><i class="ti ti-needle-thread"></i> EM COSTURA</div>
+            <span style="font-size:11px;font-weight:700;color:#0891b2"><span id="dash-costura-total">0</span> peças</span>
+          </div>
+          <div id="dash-costura-modelos" style="font-size:11px;color:var(--text-ter);margin-bottom:6px"></div>
+          <div id="dash-costura-lista"></div>
+        </div>
+        <div class="card" style="border-left:3px solid #C4A882">
+          <div class="card-header">
+            <div class="card-title" style="color:var(--gold-dark)"><i class="ti ti-shopping-cart"></i> COMPRANDO TECIDO</div>
+            <div style="display:flex;align-items:center;gap:10px">
+              <span id="dash-compra-total" style="font-size:12px;font-weight:700;color:var(--gold-dark)"></span>
+              <button class="btn-primary" style="font-size:11px;padding:5px 12px" onclick="gerarFichaCompraGlobal()"><i class="ti ti-file-invoice"></i> Ficha de Compra</button>
+            </div>
+          </div>
+          <div id="dash-compra"></div>
+        </div>
+        <div class="card" style="border-left:3px solid #7C3AED">
+          <div class="card-header">
+            <div class="card-title" style="color:#7C3AED"><i class="ti ti-scissors"></i> RESUMO DE CONFECÇÃO</div>
+            <button class="btn-primary" style="font-size:11px;padding:5px 12px;background:#7C3AED;border-color:#7C3AED" onclick="gerarFichaConfeccao()"><i class="ti ti-file-invoice"></i> Gerar Ficha</button>
+          </div>
+          <div id="dash-costura" style="font-size:12px;color:var(--text-ter);padding:4px 0"></div>
+        </div>
+        <div class="card">
+          <div class="card-header"><div class="card-title"><i class="ti ti-trending-up"></i> MAIS VENDIDOS</div></div>
+          <div id="dash-mais-vendidos" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px;padding:4px 0"></div>
+        </div>
+        <div class="card">
+          <div class="card-header"><div class="card-title"><i class="ti ti-stack-2"></i> SALDO DE ESTOQUE</div></div>
+          <table><thead><tr><th style="text-align:left">Modelo</th><th style="text-align:left">Cor</th><th>PP</th><th>P</th><th>M</th><th>G</th><th>GG</th><th>Total</th></tr></thead>
+          <tbody id="dash-saldo"></tbody></table>
+        </div>
+      </div>
+      <div id="panel-producao" class="tab-panel">
+        <div class="metrics">
+          <div class="metric"><div class="label">EM ABERTO</div><div class="val val-areia" id="m-aberto">0</div></div>
+          <div class="metric"><div class="label">ESTOQUE</div><div class="val" id="m-estoque">0</div></div>
+          <div class="metric"><div class="label">A PRODUZIR</div><div class="val val-escuro" id="m-produzir">0</div></div>
+          <div class="metric"><div class="label">CUSTO TOTAL</div><div class="val" id="m-custo" style="font-size:15px">R$ 0,00</div></div>
+        </div>
+        <div class="prod-bar">
+          <div class="prod-bar-left" style="flex-direction:column;align-items:flex-start">
+            <div style="display:flex;gap:12px;align-items:flex-end">
+              <div class="ctrl-g"><div class="ctrl-l">STATUS</div><select id="prod-status" onchange="marcarCfgEditado()"><option value="">— Sem status —</option><option>Comprando tecido</option><option>Em corte</option><option>Em costura</option></select></div>
+              <div class="ctrl-g"><div class="ctrl-l">PRAZO</div><input type="date" id="prod-prazo" onchange="marcarCfgEditado()"></div>
+            </div>
+            <div id="conjuntos-linkados" style="display:none;padding:5px 10px;background:#f5f0e8;border-radius:6px;font-size:11px;color:var(--text-sec);line-height:1.5"></div>
+          </div>
+        </div>
+        <div class="sections-3" id="sections-tabelas">
+          <div class="card">
+            <div class="card-header card-header-tabela">
+              <div class="card-title"><i class="ti ti-shopping-bag"></i> PEDIDOS EM ABERTO</div>
+              <span class="shopify-badge"><i class="ti ti-link"></i> SHOPIFY</span>
+            </div>
+            <table><thead id="aberto-thead"><tr><th>Cor</th><th>PP</th><th>P</th><th>M</th><th>G</th><th>GG</th><th>Tot</th></tr></thead>
+            <tbody id="aberto-tbody"></tbody>
+            <tfoot id="aberto-tfoot"><tr class="total-row"><td>Total</td><td id="ab-PP">0</td><td id="ab-P">0</td><td id="ab-M">0</td><td id="ab-G">0</td><td id="ab-GG">0</td><td id="ab-tot">0</td></tr></tfoot></table>
+          </div>
+          <div class="card">
+            <div class="card-header card-header-tabela">
+              <div class="card-title"><i class="ti ti-package"></i> ESTOQUE ATUAL</div>
+              <span id="est-updated" style="font-size:11px;font-weight:600;color:var(--text-sec)">Edite direto</span>
+            </div>
+            <table><thead id="est-thead"><tr><th>Cor</th><th>PP</th><th>P</th><th>M</th><th>G</th><th>GG</th><th>Tot</th></tr></thead>
+            <tbody id="est-tbody"></tbody>
+            <tfoot id="est-tfoot"><tr class="total-row"><td>Total</td><td id="e-PP">0</td><td id="e-P">0</td><td id="e-M">0</td><td id="e-G">0</td><td id="e-GG">0</td><td id="e-tot">0</td></tr></tfoot></table>
+          </div>
+          <div class="card">
+            <div class="card-header card-header-tabela">
+              <div class="card-title"><i class="ti ti-needle-thread"></i> EM PRODUÇÃO</div>
+              <div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap">
+                <span id="prod-updated" style="font-size:10px;font-weight:600;color:var(--text-sec)"></span>
+                <button class="btn-outline" style="font-size:10px;padding:3px 8px" onclick="recalcularProducao()" title="Preenche produção com Aberto − Estoque"><i class="ti ti-refresh"></i> Atualizar</button>
+                <button class="btn-outline" style="font-size:10px;padding:3px 8px;color:#16a34a;border-color:#16a34a" onclick="transferirParaEstoque()" title="Soma Em Produção ao Estoque e zera produção"><i class="ti ti-package-import"></i> → Estoque</button>
+              </div>
+            </div>
+            <table><thead id="prod-thead"><tr><th>Cor</th><th>PP</th><th>P</th><th>M</th><th>G</th><th>GG</th><th>Tot</th></tr></thead>
+            <tbody id="prod-tbody"></tbody>
+            <tfoot id="prod-tfoot"><tr class="total-row"><td>Total</td><td id="p-PP">0</td><td id="p-P">0</td><td id="p-M">0</td><td id="p-G">0</td><td id="p-GG">0</td><td id="p-tot">0</td></tr></tfoot></table>
+          </div>
+        </div>
+        <div class="sections-2" style="margin-bottom:10px">
+          <div class="card">
+            <div class="card-header">
+              <div class="card-title"><i class="ti ti-needle-thread"></i> A PRODUZIR</div>
+              <span id="resumo-aprod-badge" style="font-size:11px;font-weight:700;color:#dc2626"></span>
+            </div>
+            <table>
+              <thead id="resumo-aprod-thead"><tr><th>Cor</th><th>PP</th><th>P</th><th>M</th><th>G</th><th>GG</th><th>Total</th></tr></thead>
+              <tbody id="resumo-aprod-tbody"></tbody>
+              <tfoot id="resumo-aprod-tfoot"><tr class="total-row"><td>Total</td><td id="rp-PP">—</td><td id="rp-P">—</td><td id="rp-M">—</td><td id="rp-G">—</td><td id="rp-GG">—</td><td id="resumo-aprod">—</td></tr></tfoot>
+            </table>
+          </div>
+          <div class="card">
+            <div class="card-header">
+              <div class="card-title"><i class="ti ti-package"></i> SALDO DISPONÍVEL</div>
+              <span id="resumo-saldo-badge" style="font-size:11px;font-weight:700;color:#16a34a"></span>
+            </div>
+            <table>
+              <thead id="resumo-saldo-thead"><tr><th>Cor</th><th>PP</th><th>P</th><th>M</th><th>G</th><th>GG</th><th>Total</th></tr></thead>
+              <tbody id="resumo-saldo-tbody"></tbody>
+              <tfoot id="resumo-saldo-tfoot"><tr class="total-row"><td>Total</td><td id="rs-PP">—</td><td id="rs-P">—</td><td id="rs-M">—</td><td id="rs-G">—</td><td id="rs-GG">—</td><td id="resumo-saldo">—</td></tr></tfoot>
+            </table>
+          </div>
+        </div>
+        <div class="card">
+          <div class="preco-row">
+            <span style="font-size:11px;font-weight:600;color:var(--text-sec);letter-spacing:0.04em"><i class="ti ti-ruler"></i> VALOR DO METRO</span>
+            <div style="display:flex;align-items:center;gap:4px"><span style="font-size:12px;color:var(--text-sec)">R$</span><input class="preco-inp" type="number" min="0" step="0.01" value="28.00" id="preco-m" oninput="atualizarTecido();marcarCfgEditado()"></div>
+            <span style="font-size:10px;color:var(--text-ter);margin-left:auto">mesmo valor para todas as cores</span>
+          </div>
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+            <div style="font-size:10px;font-weight:600;color:var(--text-ter);letter-spacing:0.07em">TECIDO NECESSÁRIO POR COR</div>
+            <button class="btn-primary" style="font-size:12px;padding:7px 14px" onclick="gerarFichaCompra()"><i class="ti ti-file-invoice"></i> Ficha de Compra</button>
+          </div>
+          <div class="tecido-grid" id="tecido-grid"></div>
+        </div>
+      </div>
+      <div id="panel-arquivos" class="tab-panel">
+        <div class="card">
+          <div class="card-header"><div class="card-title"><i class="ti ti-vector-triangle"></i> MOLDE TÉCNICO (DXF)</div></div>
+          <div id="dxf-vazio">
+            <div class="upload-area" ondragover="event.preventDefault();this.classList.add('over')" ondragleave="this.classList.remove('over')" ondrop="handleDrop(event,'dxf')" onclick="document.getElementById('inp-dxf').click()">
+              <i class="ti ti-file-upload"></i>
+              <div class="upload-label">Arraste o arquivo DXF ou clique para importar</div>
+              <div class="upload-sub">Formatos aceitos: .dxf, .plt, .ait</div>
+            </div>
+            <input type="file" id="inp-dxf" accept=".dxf,.plt,.ait" style="display:none" onchange="handleFile(this,'dxf')">
+          </div>
+          <div id="dxf-arquivo" style="display:none">
+            <div class="file-row">
+              <div class="file-info">
+                <div class="file-icon"><i class="ti ti-vector-triangle" style="color:var(--vc-areia-escura)"></i></div>
+                <div><div class="file-name" id="dxf-nome"></div><div class="file-meta" id="dxf-meta"></div></div>
+              </div>
+              <div class="file-actions">
+                <span class="badge">DXF</span>
+                <button class="btn-outline"><i class="ti ti-download"></i> Exportar</button>
+                <button class="btn-del" onclick="removerArq('dxf')"><i class="ti ti-trash"></i></button>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-header"><div class="card-title"><i class="ti ti-pencil"></i> CROQUI TÉCNICO</div></div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+
+            <!-- FRENTE -->
+            <div>
+              <div style="font-size:10px;font-weight:700;color:var(--text-sec);letter-spacing:0.07em;margin-bottom:6px">FRENTE</div>
+              <div id="croqui-frente-vazio">
+                <div class="upload-area" ondragover="event.preventDefault();this.classList.add('over')" ondragleave="this.classList.remove('over')" ondrop="handleDrop(event,'croqui-frente')" onclick="document.getElementById('inp-croqui-frente').click()">
+                  <i class="ti ti-photo-up"></i>
+                  <div class="upload-label">Clique ou arraste</div>
+                  <div class="upload-sub">.jpg, .png</div>
+                </div>
+                <input type="file" id="inp-croqui-frente" accept=".jpg,.jpeg,.png" style="display:none" onchange="handleFile(this,'croqui-frente')">
+              </div>
+              <div id="croqui-frente-arquivo" style="display:none">
+                <div class="file-row">
+                  <div class="file-info">
+                    <div class="file-icon"><i class="ti ti-pencil" style="color:var(--vc-areia-escura)"></i></div>
+                    <div><div class="file-name" id="croqui-frente-nome"></div><div class="file-meta" id="croqui-frente-meta"></div></div>
+                  </div>
+                  <div class="file-actions">
+                    <span class="badge">Frente</span>
+                    <button class="btn-del" onclick="removerArq('croqui-frente')"><i class="ti ti-trash"></i></button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- COSTAS -->
+            <div>
+              <div style="font-size:10px;font-weight:700;color:var(--text-sec);letter-spacing:0.07em;margin-bottom:6px">COSTAS</div>
+              <div id="croqui-costas-vazio">
+                <div class="upload-area" ondragover="event.preventDefault();this.classList.add('over')" ondragleave="this.classList.remove('over')" ondrop="handleDrop(event,'croqui-costas')" onclick="document.getElementById('inp-croqui-costas').click()">
+                  <i class="ti ti-photo-up"></i>
+                  <div class="upload-label">Clique ou arraste</div>
+                  <div class="upload-sub">.jpg, .png</div>
+                </div>
+                <input type="file" id="inp-croqui-costas" accept=".jpg,.jpeg,.png" style="display:none" onchange="handleFile(this,'croqui-costas')">
+              </div>
+              <div id="croqui-costas-arquivo" style="display:none">
+                <div class="file-row">
+                  <div class="file-info">
+                    <div class="file-icon"><i class="ti ti-pencil" style="color:var(--vc-areia-escura)"></i></div>
+                    <div><div class="file-name" id="croqui-costas-nome"></div><div class="file-meta" id="croqui-costas-meta"></div></div>
+                  </div>
+                  <div class="file-actions">
+                    <span class="badge">Costas</span>
+                    <button class="btn-del" onclick="removerArq('croqui-costas')"><i class="ti ti-trash"></i></button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-header"><div class="card-title"><i class="ti ti-file-text"></i> FICHAS GERADAS</div></div>
+          <div id="fichas-lista"><div style="font-size:12px;color:var(--vc-texto-ter);padding:8px">Nenhuma ficha gerada ainda.</div></div>
+        </div>
+      </div>
+      <div id="panel-config" class="tab-panel">
+        <div class="card">
+          <div class="card-header"><div class="card-title"><i class="ti ti-info-circle"></i> INFORMAÇÕES BÁSICAS</div></div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
+            <div class="form-group"><label class="form-label">NOME DO MODELO</label><input type="text" id="cfg-nome" oninput="marcarCfgEditado()"></div>
+            <div class="form-group"><label class="form-label">TECIDO</label><input type="text" id="cfg-tecido" oninput="marcarCfgEditado()"></div>
+            <div class="form-group"><label class="form-label">CONSUMO POR PEÇA (M)</label><input type="number" id="cfg-consumo" step="0.1" oninput="atualizarTecido();marcarCfgEditado()"></div>
+            <div class="form-group"><label class="form-label">COMPONENTES DE CORTE</label><input type="text" id="cfg-componentes" oninput="marcarCfgEditado()"></div>
+          </div>
+          <div class="form-group"><label class="form-label">OBSERVAÇÕES PARA O CORTADOR</label><textarea id="cfg-obs" class="form-textarea" oninput="marcarCfgEditado()"></textarea></div>
+        </div>
+        <div class="card">
+          <div class="card-header"><div class="card-title"><i class="ti ti-palette"></i> CORES DISPONÍVEIS</div></div>
+          <div id="cores-tags" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px"></div>
+          <div style="display:flex;gap:6px">
+            <input type="text" id="nova-cor" placeholder="Nova cor..." style="flex:1;max-width:180px" onkeydown="if(event.key==='Enter')addCor()">
+            <button class="btn-primary" onclick="addCor()"><i class="ti ti-plus"></i> Adicionar</button>
+          </div>
+        </div>
+        <div style="display:flex;justify-content:flex-end;margin-top:4px">
+          <button class="btn-primary" onclick="showTab('producao')"><i class="ti ti-check"></i> CONCLUÍDO</button>
+        </div>
+      </div>
+      <div id="panel-financeiro" class="tab-panel">
+        <div id="fin-gate" style="max-width:380px;margin:48px auto">
+          <div class="card" style="text-align:center;padding:30px 26px">
+            <i class="ti ti-lock" style="font-size:30px;color:var(--gold-dark)"></i>
+            <div style="font-weight:700;font-size:17px;margin:10px 0 2px">Área Financeira</div>
+            <div style="font-size:12px;color:var(--text-sec);margin-bottom:16px">Digite a senha para acessar</div>
+            <input type="password" id="fin-senha" placeholder="Senha" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;font-size:14px" onkeydown="if(event.key==='Enter')finUnlock()">
+            <div id="fin-erro" style="color:#dc2626;font-size:12px;height:16px;margin-top:6px"></div>
+            <button class="btn-primary" style="width:100%;margin-top:6px;padding:10px" onclick="finUnlock()"><i class="ti ti-lock-open"></i> Entrar</button>
+          </div>
+        </div>
+        <div id="fin-content" style="display:none">
+          <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap">
+            <div style="font-weight:700;font-size:18px"><i class="ti ti-report-money"></i> Saúde Financeira</div>
+            <select id="fin-mes" onchange="renderFinanceiro()" style="padding:7px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px"></select>
+            <span id="fin-loading" style="font-size:12px;color:var(--text-ter)"></span>
+            <span id="fin-status" style="font-size:11px;font-weight:600"></span>
+            <button class="btn-outline" style="margin-left:auto;font-size:11px;padding:5px 10px" onclick="finLock()"><i class="ti ti-lock"></i> Sair</button>
+          </div>
+          <div class="metrics" id="fin-metrics"></div>
+          <div class="card">
+            <div class="card-header"><div class="card-title"><i class="ti ti-report-money"></i> DRE DO MÊS</div></div>
+            <div id="fin-dre"></div>
+          </div>
+          <div class="card">
+            <div class="card-header"><div class="card-title"><i class="ti ti-chart-bar"></i> COMPOSIÇÃO DE CUSTOS</div></div>
+            <div id="fin-chart"></div>
+          </div>
+          <div class="card">
+            <div class="card-header"><div class="card-title"><i class="ti ti-adjustments"></i> PARÂMETROS</div><span style="font-size:11px;color:var(--text-ter)">salva automático na nuvem</span></div>
+            <div id="fin-params"></div>
+          </div>
+        </div>
+      </div>
+      <div id="panel-fluxo" class="tab-panel">
+        <div id="flx-gate" style="max-width:380px;margin:48px auto">
+          <div class="card" style="text-align:center;padding:30px 26px">
+            <i class="ti ti-lock" style="font-size:30px;color:var(--gold-dark)"></i>
+            <div style="font-weight:700;font-size:17px;margin:10px 0 2px">Fluxo de Caixa</div>
+            <div style="font-size:12px;color:var(--text-sec);margin-bottom:16px">Digite a senha para acessar</div>
+            <input type="password" id="flx-senha" placeholder="Senha" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;font-size:14px" onkeydown="if(event.key==='Enter')flxUnlock()">
+            <div id="flx-erro" style="color:#dc2626;font-size:12px;height:16px;margin-top:6px"></div>
+            <button class="btn-primary" style="width:100%;margin-top:6px;padding:10px" onclick="flxUnlock()"><i class="ti ti-lock-open"></i> Entrar</button>
+          </div>
+        </div>
+        <div id="flx-content" style="display:none">
+          <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap">
+            <div style="font-weight:700;font-size:18px"><i class="ti ti-cash-banknote"></i> Fluxo de Caixa</div>
+            <select id="flx-mes" onchange="renderFluxo()" style="padding:7px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px"></select>
+            <span style="font-size:11px;color:var(--text-ter)">saldo em conta − contas a vencer (sem contar vendas futuras)</span>
+            <button class="btn-outline" style="margin-left:auto;font-size:11px;padding:5px 10px" onclick="flxLock()"><i class="ti ti-lock"></i> Sair</button>
+          </div>
+          <div class="metrics" id="flx-metrics"></div>
+          <div id="flx-banner" class="card" style="padding:0;margin-bottom:14px;display:none"></div>
+          <div class="flx-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px;align-items:start">
+            <div class="card">
+              <div class="card-header"><div class="card-title"><i class="ti ti-wallet"></i> SALDO NAS CONTAS</div>
+                <button class="btn-outline" style="font-size:10px;padding:4px 8px" onclick="flxAtualizarSaldos(false)"><i class="ti ti-refresh"></i> atualizar</button></div>
+              <div id="flx-saldos"></div>
+              <div id="flx-saldo-status" style="font-size:10px;color:var(--text-ter);margin-top:8px;min-height:12px"></div>
+            </div>
+            <div class="card">
+              <div class="card-header"><div class="card-title"><i class="ti ti-chart-pie"></i> A PAGAR POR CATEGORIA</div></div>
+              <div id="flx-chart"></div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-header"><div class="card-title"><i class="ti ti-calendar-due"></i> PROJEÇÃO DIÁRIA DO CAIXA</div><span style="font-size:11px;color:var(--text-ter)">só dias com vencimento</span></div>
+            <div id="flx-proj"></div>
+          </div>
+          <div class="card" style="border-left:3px solid #1D9E75">
+            <div class="card-header"><div class="card-title" style="color:#1D9E75"><i class="ti ti-shopping-cart"></i> VENDAS × CUSTO DE PRODUÇÃO (Shopify, por semana)</div>
+              <button class="btn-outline" style="font-size:10px;padding:4px 8px" onclick="flxSincronizarVendas(false)"><i class="ti ti-refresh"></i> atualizar vendas</button>
+            </div>
+            <div id="flx-vendas-status" style="font-size:10px;color:var(--text-ter);margin-bottom:8px;min-height:12px"></div>
+            <div id="flx-vendas"></div>
+            <div style="font-size:10px;color:var(--text-ter);margin-top:8px">Cada peça vendida gera o custo de produzi-la (tecido+corte+costura da Precificação + frete do pedido), lançado como conta a pagar no domingo da semana. Custo 0 = ficha do modelo sem custo cadastrado.</div>
+          </div>
+          <div class="card">
+            <div class="card-header"><div class="card-title"><i class="ti ti-list-check"></i> CONTAS A PAGAR DO MÊS</div>
+              <div style="display:flex;gap:6px">
+                <button class="btn-outline" style="font-size:10px;padding:4px 8px" onclick="flxResetRecorrentes()" title="recarrega as recorrentes padrão"><i class="ti ti-reload"></i> recorrentes</button>
+                <button class="btn-primary" style="font-size:10px;padding:4px 8px" onclick="flxPagAdd()"><i class="ti ti-plus"></i> adicionar conta</button>
+              </div>
+            </div>
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:11px;color:var(--text-sec);background:rgba(216,90,48,0.06);border:1px solid rgba(216,90,48,0.18);border-radius:8px;padding:8px 10px;margin-bottom:10px">
+              <i class="ti ti-brand-meta" style="color:#D85A30"></i>
+              <b>Tráfego Meta Ads (fracionado):</b>
+              <label>estimativa do mês R$ <input id="flx-trf-est" type="number" step="0.01" style="width:90px;text-align:right;padding:4px 6px;border:1px solid var(--border);border-radius:5px"></label>
+              <label>cobra a cada R$ <input id="flx-trf-lim" type="number" step="0.01" style="width:70px;text-align:right;padding:4px 6px;border:1px solid var(--border);border-radius:5px"></label>
+              <button class="btn-outline" style="font-size:10px;padding:4px 8px" onclick="flxRecalcTrafego()"><i class="ti ti-refresh"></i> recalcular tráfego</button>
+              <span style="color:var(--text-ter)">gera cobranças de R$ 3.000 distribuídas pelo mês (a Meta debita ao bater o limite)</span>
+            </div>
+            <div style="overflow-x:auto">
+              <table style="width:100%;font-size:12px;border-collapse:collapse">
+                <thead><tr style="color:var(--text-ter);font-size:11px">
+                  <th style="padding:4px;width:32px">pago</th>
+                  <th style="text-align:left;padding:4px 6px">Descrição</th>
+                  <th style="text-align:left;padding:4px 6px">Categoria</th>
+                  <th style="padding:4px 6px">Dia</th>
+                  <th style="text-align:right;padding:4px 6px">Valor</th>
+                  <th style="width:28px"></th>
+                </tr></thead>
+                <tbody id="flx-pag-tbody"></tbody>
+              </table>
+            </div>
+            <div id="flx-pag-rodape" style="font-size:12px;color:var(--text-sec);margin-top:10px;text-align:right"></div>
+          </div>
+        </div>
+      </div>
+      <div id="panel-precos" class="tab-panel">
+        <div id="prc-gate" style="max-width:380px;margin:48px auto">
+          <div class="card" style="text-align:center;padding:30px 26px">
+            <i class="ti ti-lock" style="font-size:30px;color:var(--gold-dark)"></i>
+            <div style="font-weight:700;font-size:17px;margin:10px 0 2px">Precificação</div>
+            <div style="font-size:12px;color:var(--text-sec);margin-bottom:16px">Digite a senha para acessar</div>
+            <input type="password" id="prc-senha" placeholder="Senha" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;font-size:14px" onkeydown="if(event.key==='Enter')precoUnlock()">
+            <div id="prc-erro" style="color:#dc2626;font-size:12px;height:16px;margin-top:6px"></div>
+            <button class="btn-primary" style="width:100%;margin-top:6px;padding:10px" onclick="precoUnlock()"><i class="ti ti-lock-open"></i> Entrar</button>
+          </div>
+        </div>
+        <div id="prc-content" style="display:none">
+          <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap">
+            <div style="font-weight:700;font-size:18px"><i class="ti ti-tag"></i> Precificação</div>
+            <span style="font-size:12px;color:var(--text-sec)">margem de lucro alvo (líquida) — ajuste nos parâmetros</span>
+            <button class="btn-outline" style="margin-left:auto;font-size:11px;padding:5px 10px" onclick="precoLock()"><i class="ti ti-lock"></i> Sair</button>
+          </div>
+          <div class="card">
+            <div class="card-header"><div class="card-title"><i class="ti ti-adjustments"></i> PARÂMETROS GERAIS</div><span style="font-size:11px;color:var(--text-ter)">salva automático na nuvem</span></div>
+            <div id="prc-globais"></div>
+          </div>
+          <div class="card" style="border-left:3px solid #b45309">
+            <div class="card-header"><div class="card-title" style="color:#b45309"><i class="ti ti-alert-triangle"></i> ALERTAS — PRODUTOS ABAIXO DA MARGEM</div></div>
+            <div id="prc-alertas"></div>
+          </div>
+          <div class="card">
+            <div class="card-header"><div class="card-title"><i class="ti ti-list-numbers"></i> CUSTO E PREÇO SUGERIDO POR MODELO</div></div>
+            <div class="prc-scroll">
+              <table class="prc-tbl" style="width:100%;font-size:12px;border-collapse:collapse">
+                <thead><tr style="color:var(--text-ter);font-size:11px;text-align:right">
+                  <th style="text-align:left;padding:6px 8px">Modelo</th>
+                  <th style="padding:6px 8px">Consumo</th>
+                  <th style="padding:6px 8px">R$/m</th>
+                  <th style="padding:6px 8px">Tecido</th>
+                  <th style="padding:6px 8px">Corte</th>
+                  <th style="padding:6px 8px">Costura</th>
+                  <th style="padding:6px 8px">Custo</th>
+                  <th style="padding:6px 8px">Sugerido</th>
+                  <th style="padding:6px 8px">Venda</th>
+                  <th style="padding:6px 8px">Margem</th>
+                  <th style="padding:6px 8px">Lucro</th>
+                </tr></thead>
+                <tbody id="prc-tbody"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div id="panel-trafego" class="tab-panel">
+        <div id="traf-gate" style="max-width:380px;margin:48px auto">
+          <div class="card" style="text-align:center;padding:30px 26px">
+            <i class="ti ti-lock" style="font-size:30px;color:var(--gold-dark)"></i>
+            <div style="font-weight:700;font-size:17px;margin:10px 0 2px">Tráfego &amp; Conversão</div>
+            <div style="font-size:12px;color:var(--text-sec);margin-bottom:16px">Digite a senha para acessar</div>
+            <input type="password" id="traf-senha" placeholder="Senha" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;font-size:14px" onkeydown="if(event.key==='Enter')trafUnlock()">
+            <div id="traf-erro" style="color:#dc2626;font-size:12px;height:16px;margin-top:6px"></div>
+            <button class="btn-primary" style="width:100%;margin-top:6px;padding:10px" onclick="trafUnlock()"><i class="ti ti-lock-open"></i> Entrar</button>
+          </div>
+        </div>
+        <div id="traf-content" style="display:none">
+          <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px;flex-wrap:wrap">
+            <div style="font-weight:700;font-size:18px"><i class="ti ti-chart-line"></i> Tráfego &amp; Conversão</div>
+            <span style="font-size:12px;color:var(--text-sec)">Meta × Shopify — vendas reais</span>
+            <button class="btn-outline" style="margin-left:auto;font-size:11px;padding:5px 10px" onclick="trafLock()"><i class="ti ti-lock"></i> Sair</button>
+          </div>
+          <iframe id="traf-frame" src="about:blank" style="width:100%;height:calc(100vh - 180px);min-height:520px;border:1px solid var(--border);border-radius:12px;background:#fff"></iframe>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+<script src="data.js?v=2026070604"></script>
+<script src="main.js?v=2026070604"></script>
+<script async src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js" onload="initSupabase()"></script>
+</body>
+</html>
