@@ -110,6 +110,14 @@ export async function onRequestGet({ request, env }) {
       const csv = await (await fetch('https://api.mercadopago.com/v1/account/release_report/' + encodeURIComponent(melhor.file_name), { headers: H })).text();
       const parsed = parseReportCSV(csv);
       if (parsed) {
+        // enriquece os pagamentos feitos com a descrição real (até 15 lookups p/ não estourar tempo)
+        for (const it of parsed.saidas.pagamentos.itens.slice(0, 15)) {
+          if (!it.source_id) continue;
+          try {
+            const pd = await (await fetch('https://api.mercadopago.com/v1/payments/' + it.source_id, { headers: H })).json();
+            if (pd && pd.description) it.descricao = pd.description;
+          } catch (e) {}
+        }
         // extrato termina antes do fim do período → completa as ENTRADAS do trecho descoberto via payments
         if (!alcancaFim || (periodoInclusoHoje && !fresco)) {
           const desdeTopo = melhor.end_date;

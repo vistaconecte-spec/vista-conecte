@@ -1034,6 +1034,8 @@ async function mpRenderCard(elId, mes) {
     const r = await fetch('/api/mp-movimentos?desde=' + desde + '&ate=' + ate + '&t=' + Date.now());
     const j = await r.json();
     if (!r.ok || j.erro) { el.innerHTML = '<div style="font-size:12px;color:var(--text-ter)">MP indisponível: ' + (j.erro || r.status) + '</div>'; return; }
+    // no Fluxo, os pagamentos reais feitos pelo MP entram sozinhos na tabela de contas (como pagos)
+    if (elId === 'flx-mp') flxAplicarSaidasMP(j, mes);
     const linha = (lbl, val, cor) => `<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #f0ede8;font-size:13px">
         <span style="color:var(--text-sec)">${lbl}</span><span style="font-weight:600;color:${cor || 'inherit'}">${val}</span></div>`;
     const s = j.saidas || {};
@@ -1045,6 +1047,41 @@ async function mpRenderCard(elId, mes) {
       `<div style="font-size:10px;color:var(--text-ter);margin-top:6px">${j.gerando ? '⏳ extrato completo sendo gerado (~2 min) — atualize em instantes' : 'extrato até ' + String(ate).split('-').reverse().slice(0, 2).join('/')} · fonte: ${j.fonte === 'release_report' ? 'extrato MP' : 'pagamentos (parcial)'}</div>`;
   } catch (e) {
     el.innerHTML = '<div style="font-size:12px;color:var(--text-ter)">falha ao consultar o Mercado Pago</div>';
+  }
+}
+
+// Injeta os PAGAMENTOS REAIS feitos pela conta MP na tabela de contas do mês (auto:'mp', já pagos).
+// Transferências p/ banco (payout) NÃO entram — são internas, não despesa.
+// Anti-duplicação: pula se já existe conta manual no mesmo dia com o mesmo valor (±1%).
+function flxAplicarSaidasMP(j, mes) {
+  const itens = j && j.saidas && j.saidas.pagamentos && Array.isArray(j.saidas.pagamentos.itens) ? j.saidas.pagamentos.itens : null;
+  if (!itens) return; // extrato ainda gerando — mantém o que está
+  const cfg = flxGetConfig();
+  cfg.pag = cfg.pag || {};
+  const manuais = (cfg.pag[mes] || []).filter(p => p.auto !== 'mp');
+  const novos = [];
+  itens.forEach((it, i) => {
+    if (!it || !(it.valor > 0) || !it.dia || !it.dia.startsWith(mes)) return;
+    const dia = parseInt(it.dia.slice(8, 10), 10);
+    // já existe conta LANÇADA À MÃO equivalente (mesmo dia, valor ±1%)? então não duplica.
+    // (itens auto:'vendas' são provisões de custo — natureza diferente, não contam como duplicata)
+    const jaTem = manuais.some(p => !p.auto && p.dia === dia && Math.abs((p.valor || 0) - it.valor) <= it.valor * 0.01);
+    if (jaTem) return;
+    novos.push({
+      id: 'mp-' + mes + '-' + (it.source_id || i),
+      desc: (it.descricao ? it.descricao : 'Pagamento via conta MP') + ' · MP auto',
+      valor: Math.round(it.valor * 100) / 100,
+      dia, cat: 'outros', rec: false, auto: 'mp',
+      pago: true // o dinheiro JÁ saiu — conta no "já pago", não no "a pagar"
+    });
+  });
+  const antes = JSON.stringify((cfg.pag[mes] || []).filter(p => p.auto === 'mp'));
+  if (antes === JSON.stringify(novos)) return; // nada mudou — evita re-render/salvamento à toa
+  cfg.pag[mes] = manuais.concat(novos);
+  flxSalvarPag(cfg);
+  if (modeloAtual === '__fluxo__' && document.getElementById('flx-mes').value === mes) {
+    flxRenderPagamentos(cfg, mes);
+    flxRecompute();
   }
 }
 
