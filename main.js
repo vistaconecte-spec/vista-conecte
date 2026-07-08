@@ -3600,6 +3600,126 @@ renderFicha();
   win.document.close();
 }
 
+function gerarFichaProducaoGeral() {
+  const hoje = new Date().toLocaleDateString('pt-BR');
+
+  // Mesma lógica do card "EM PRODUÇÃO" do dashboard
+  const prodList = [];
+  for (const [key, def] of Object.entries(MODELOS)) {
+    if (CONJUNTO_PECAS[key]) continue;
+    const saved = loadLocal('vc:' + key) || {};
+    if (!['Comprando tecido', 'Em corte', 'Em costura'].includes(saved.status)) continue;
+    const cores = [...new Set([...def.cores, ...(saved.cores || [])])];
+    let total = 0;
+    cores.forEach(cor => {
+      const pv = saved.prod && saved.prod[cor];
+      if (pv) total += pv.reduce((a,b) => (a||0)+(b||0), 0);
+    });
+    if (total > 0) prodList.push({ nome: def.nome, status: saved.status, total });
+  }
+
+  if (prodList.length === 0) {
+    alert('Nenhum modelo em produção no momento.');
+    return;
+  }
+
+  prodList.sort((a,b) => b.total - a.total);
+  const totalGeral = prodList.reduce((s,p) => s + p.total, 0);
+
+  const linhas = prodList.map((p, idx) => `
+    <tr style="background:${idx % 2 === 1 ? '#faf8f5' : '#fff'}">
+      <td style="padding:10px 16px;border-bottom:1px solid #f0ece6;font-weight:700;font-size:14px">${p.nome}</td>
+      <td style="padding:10px 16px;border-bottom:1px solid #f0ece6;text-align:center;font-size:12px;color:#0891b2;font-weight:600">${p.status}</td>
+      <td style="padding:10px 16px;border-bottom:1px solid #f0ece6;text-align:center;font-weight:800;font-size:14px">${p.total}</td>
+    </tr>`).join('');
+
+  const html = `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>Ficha de Produção — ${hoje}</title>
+<style>
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { font-family:Arial,sans-serif; color:#111; background:#fff; font-size:13px; }
+  .header { background:#111; color:#fff; padding:20px 32px 16px; display:flex; justify-content:space-between; align-items:flex-end; }
+  .brand  { font-size:8px; font-weight:700; letter-spacing:0.18em; color:#C4A882; margin-bottom:6px; text-transform:uppercase; }
+  .titulo { font-size:28px; font-weight:900; letter-spacing:0.06em; line-height:1; }
+  .header-meta { text-align:right; font-size:11px; color:#aaa; line-height:2; }
+  .header-meta strong { color:#C4A882; }
+  .resumo { background:#F5F0E8; border-bottom:2px solid #C4A882; padding:14px 32px; display:flex; gap:40px; flex-wrap:wrap; align-items:flex-end; }
+  .rl { font-size:8px; font-weight:800; letter-spacing:0.1em; color:#9a8870; text-transform:uppercase; margin-bottom:2px; }
+  .rv { font-size:13px; font-weight:700; color:#111; }
+  .rv-destaque { font-size:26px; font-weight:900; color:#111; letter-spacing:-0.01em; line-height:1; }
+  .body { padding:24px 32px; }
+  table { width:100%; border-collapse:collapse; }
+  thead tr { background:#F5F0E8; }
+  thead th { padding:8px 16px; text-align:left; font-size:10px; letter-spacing:0.06em; color:#9a8870; font-weight:800; text-transform:uppercase; }
+  thead th:not(:first-child) { text-align:center; }
+  tfoot tr { background:#111; }
+  tfoot td { padding:10px 16px; color:#fff; font-weight:800; }
+  tfoot td:not(:first-child) { text-align:center; color:#C4A882; }
+  .footer { background:#111; color:#666; font-size:8px; padding:8px 32px; display:flex; justify-content:space-between; letter-spacing:0.06em; }
+  .footer span { color:#C4A882; font-weight:700; }
+  .toolbar { position:sticky; top:0; z-index:99; background:#1a1a1a; padding:10px 32px; display:flex; align-items:center; justify-content:flex-end; }
+  .btn-print { background:#C4A882; color:#111; font-weight:800; font-size:13px; border:none; border-radius:4px; padding:8px 22px; cursor:pointer; letter-spacing:0.04em; }
+  .btn-print:hover { background:#d4b892; }
+  @media print {
+    .toolbar { display:none !important; }
+    @page { margin:0; size:A4 portrait; }
+    body { -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+  }
+</style>
+</head>
+<body>
+
+<div class="toolbar no-print">
+  <button class="btn-print" onclick="window.print()">🖨️ Imprimir Ficha</button>
+</div>
+
+<div class="header">
+  <div>
+    <div class="brand">Vista Conecte &nbsp;•&nbsp; Gestão de Confecção</div>
+    <div class="titulo">FICHA DE PRODUÇÃO</div>
+  </div>
+  <div class="header-meta">
+    <div>Data <strong>${hoje}</strong></div>
+    <div>Modelos <strong>${prodList.length}</strong></div>
+  </div>
+</div>
+
+<div class="resumo">
+  <div><div class="rl">Total em Produção</div><div class="rv-destaque">${totalGeral} peças</div></div>
+</div>
+
+<div class="body">
+  <table>
+    <thead><tr>
+      <th>Modelo</th>
+      <th>Status</th>
+      <th>Peças</th>
+    </tr></thead>
+    <tbody>${linhas}</tbody>
+    <tfoot><tr>
+      <td>Total</td>
+      <td></td>
+      <td>${totalGeral}</td>
+    </tr></tfoot>
+  </table>
+</div>
+
+<div class="footer">
+  <div>VISTA CONECTE &nbsp;•&nbsp; FICHA DE PRODUÇÃO</div>
+  <div>Gerado em <span>${hoje}</span></div>
+</div>
+
+</body>
+</html>`;
+
+  const win = window.open('', '_blank');
+  win.document.write(html);
+  win.document.close();
+}
+
 function gerarFichaConfeccao() {
   const hoje = new Date().toLocaleDateString('pt-BR');
 

@@ -102,7 +102,10 @@
         <div class="card" style="border-left:3px solid #0891b2">
           <div class="card-header">
             <div class="card-title" style="color:#0891b2"><i class="ti ti-needle-thread"></i> EM PRODUÇÃO</div>
-            <span id="dash-producao-total" style="font-size:11px;font-weight:700;color:#0891b2"></span>
+            <div style="display:flex;align-items:center;gap:10px">
+              <span id="dash-producao-total" style="font-size:11px;font-weight:700;color:#0891b2"></span>
+              <button class="btn-primary" style="font-size:11px;padding:5px 12px" onclick="gerarFichaProducaoGeral()"><i class="ti ti-file-invoice"></i> Ficha de Produção</button>
+            </div>
           </div>
           <div id="dash-producao"></div>
         </div>

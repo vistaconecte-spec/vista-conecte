@@ -46,7 +46,7 @@ const MODELOS = {
   // ── CASACOS ───────────────────────────────────────────────────────────────
   'casaco-sherpa':{nome:'Casaco Sherpa',tecido:'Sherpa',consumo:1.8,preco:35,componentes:'',obs:'',cores:['Preto'],aberto:{'Preto':[0,0,0,0,0]}},
   'casaco-sherpa-capuz':{nome:'Casaco Sherpa com Capuz',tecido:'Sherpa',consumo:2.0,preco:40,componentes:'',obs:'Preto: pedido manual personalizado',cores:['Telha','Vermelho','Preto'],aberto:{'Telha':[0,0,0,0,0],'Vermelho':[0,0,0,0,0],'Preto':[0,0,0,0,0]}},
-  'casaco-pele-persa':{nome:'Casaco Pele Persa Xadrez',tecido:'Pele Persa',consumo:1.8,preco:40,componentes:'',obs:'',cores:['Azul'],aberto:{'Azul':[0,0,0,0,0]}},
+  'casaco-pele-persa':{nome:'Casaco Pele Persa Xadrez',tecido:'Pele Persa',consumo:1.8,preco:40,componentes:'',obs:'',cores:['Azul','Marrom'],aberto:{'Azul':[0,0,0,0,0],'Marrom':[0,0,0,0,0]}},
   'carneirinho-cropped':{nome:'Carneirinho Cropped',tecido:'Carneirinho',consumo:1.5,preco:35,componentes:'',obs:'',cores:['Off White','Preto'],aberto:{'Off White':[0,0,0,0,0],'Preto':[0,0,0,0,0]}},
   'sherpa-ziper-bolsos':{nome:'Sherpa com Zíper (Casaco Bear)',tecido:'Sherpa',consumo:2.3,preco:20,componentes:'2 Frentes – 2 Costas – 4 Mangas – 1 Gola',obs:'Peça quando for de sherpa será todo duplo',cores:['Off White','Marrom','Preto'],aberto:{'Off White':[0,0,0,0,0],'Marrom':[0,0,0,0,0],'Preto':[0,0,0,0,0]},croquiFrente:'/croqui-sherpa-ziper-frente.jpg',croquiCostas:'/croqui-sherpa-ziper-costas.jpg'},
 
@@ -63,9 +63,11 @@ const MODELOS = {
 
   'cropped-moletom':{nome:'Cropped Moletom',tecido:'Moletom',consumo:0.8,preco:20,componentes:'',obs:'',cores:['Cinza','Preto','Nude','Marrom','Off White','Vermelho'],aberto:{'Cinza':[0,0,0,0,0],'Preto':[0,0,0,0,0],'Nude':[0,0,0,0,0],'Marrom':[0,0,0,0,0],'Off White':[0,0,0,0,0],'Vermelho':[0,0,0,0,0]}},
 
+  'cropped-frente-unica':{nome:'Cropped Frente Única',tecido:'Suplex',consumo:0.6,preco:20,componentes:'',obs:'Consumo/preço estimados (mesmo padrão dos outros croppeds) — ajustar quando tiver dado real.',cores:['Royal','Preto','Militar'],aberto:{'Royal':[0,0,0,0,0],'Preto':[0,0,0,0,0],'Militar':[0,0,0,0,0]}},
+
   // ── SAPATOS ───────────────────────────────────────────────────────────────
   'flat':{nome:'Flat',tecido:'',consumo:0,preco:0,componentes:'',obs:'',revenda:true,tamanhos:['34','35','36','37','38','39','40'],cores:['Preto','Off White'],aberto:{'Preto':[0,0,0,0,0,0,0],'Off White':[0,0,0,0,0,0,0]}},
-  'sandalia-gladiadora':{nome:'Sandália Gladiadora',tecido:'',consumo:0,preco:0,componentes:'',obs:'Calçado / revenda (não produzido na confecção)',revenda:true,tamanhos:['34','35','36','37','38','39','40'],cores:['Preto','Marrom'],aberto:{'Preto':[0,0,0,0,0,0,0],'Marrom':[0,0,0,0,0,0,0]}},
+  'sandalia-gladiadora':{nome:'Sandália Gladiadora',tecido:'',consumo:0,preco:0,componentes:'',obs:'Calçado / revenda (não produzido na confecção)',revenda:true,tamanhos:['34','35','36','37','38','39','40'],cores:['Preto','Marrom','Nude/Marrom'],aberto:{'Preto':[0,0,0,0,0,0,0],'Marrom':[0,0,0,0,0,0,0],'Nude/Marrom':[0,0,0,0,0,0,0]}},
 
   // ── OUTROS ────────────────────────────────────────────────────────────────
   'canguru-amplo':{nome:'Canguru Amplo',tecido:'Moletom',consumo:1.8,preco:30,componentes:'2 Frentes – 1 Costas – 2 Mangas – 1 Capuz – 2 Bolsos',obs:'',cores:['Preto','Off White','Cinza','Marrom','Nude','Telha'],aberto:{'Preto':[0,0,0,0,0],'Off White':[0,0,0,0,0],'Cinza':[0,0,0,0,0],'Marrom':[0,0,0,0,0],'Nude':[0,0,0,0,0],'Telha':[0,0,0,0,0]}},
@@ -79,7 +81,7 @@ const SIDEBAR_ESTRUTURA = [
   {titulo:'VESTIDOS',    modelos:['vestido-frente-unica-longo','vestido-frente-unica-curto','vestido-amplo']},
   {titulo:'CALÇAS',      modelos:['calca-pantalona','calca-basica-moletom','calca-pantalona-viscolycra','calca-flare','calca-peace','calca-bolso-frontal']},
   {titulo:'CASACOS',     modelos:['casaco-sherpa','casaco-sherpa-capuz','casaco-pele-persa','carneirinho-cropped','sherpa-ziper-bolsos']},
-  {titulo:'TOPS',        modelos:['camiseta-oversized','blusa-canelada-simples','blusa-canelada','regata-oversized','regata-canelada','cropped-canelado','cropped-moletom','cropped-peace']},
+  {titulo:'TOPS',        modelos:['camiseta-oversized','blusa-canelada-simples','blusa-canelada','regata-oversized','regata-canelada','cropped-canelado','cropped-moletom','cropped-peace','cropped-frente-unica']},
   {titulo:'SAIAS',       modelos:['saia-midi','mini-saia-canelada']},
   {titulo:'SAPATOS',     modelos:['flat','sandalia-gladiadora']},
   {titulo:'OUTROS',      modelos:['moletom-gola-alta','moletom-ziper-bolsos','canguru-amplo']},

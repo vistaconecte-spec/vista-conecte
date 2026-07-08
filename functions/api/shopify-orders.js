@@ -58,11 +58,14 @@ const PRODUCT_MAP = {
   'Casaco Sherpa com Capuz':                                'casaco-sherpa-capuz',
   'Casaco Sherpa':                                          'casaco-sherpa',
   'Casaco Pele Persa Xadrez':                               'casaco-pele-persa',
+  'Casaco Xadrez':                                          'casaco-pele-persa',
   'Casaco Bear':                                            'sherpa-ziper-bolsos',
   'Carneirinho Cropped':                                    'carneirinho-cropped',
   'Casaco Carneirinho Cropped Feminino':                    'carneirinho-cropped',
   // Tops
   'Cropped Peace':                                          'cropped-peace',
+  'Cropped Frente Única':                                   'cropped-frente-unica',
+  'Cropped Frente Unica':                                   'cropped-frente-unica',
   'Camiseta Oversized':                                     'camiseta-oversized',
   'Blusa Canelada punho dedindo':                           'blusa-canelada',
   'Blusa Canelada punho dedinho':                           'blusa-canelada',
@@ -74,6 +77,8 @@ const PRODUCT_MAP = {
   'Flat':                                                   'flat',
   'Sandália Gladiadora':                                    'sandalia-gladiadora',
   'Sandalia Gladiadora':                                    'sandalia-gladiadora',
+  'Sandália Plataforma':                                    'sandalia-gladiadora',
+  'Sandalia Plataforma':                                    'sandalia-gladiadora',
   // Saias
   'Saia Midi':                                              'saia-midi',
   'Mini Saia Canelada':                                     'mini-saia-canelada',
@@ -225,6 +230,13 @@ function parseLineItem(item, orderName, ignorados) {
   // fulfillable_quantity = 0 → item removido/reembolsado → ignorar
   const qty = item.fulfillable_quantity ?? 0;
   if (qty <= 0) return null;
+
+  // Correção manual — pedido #8406 "Conjunto cozy marrom" chegou sem variant_title (null) no
+  // Shopify, sem como inferir o tamanho automaticamente. Confirmado com a Bárbara: tamanho P.
+  // Cor fixa "Marsala" (única cor cadastrada do conjunto-cozy) para casar com CONJUNTO_PECAS.
+  if (orderName === '#8406' && /conjunto cozy marrom/i.test(item.title)) {
+    return { modelKey: 'conjunto-cozy', color: 'Marsala', sizeIdx: SIZES.indexOf('P'), qty };
+  }
 
   // Ignora linhas customizadas com "Preço unitário" no título (anotações manuais)
   if (/preço unitário/i.test(item.title)) {
