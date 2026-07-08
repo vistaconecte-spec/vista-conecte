@@ -981,6 +981,7 @@ function flxGetConfig() {
   if (cfg.trafegoCfg.impostoPct === undefined) cfg.trafegoCfg.impostoPct = FLX_TRAFEGO_DEFAULT.impostoPct;
   if (cfg.vendasAuto === undefined) cfg.vendasAuto = true; // custo das vendidas puxado da Shopify
   if (!cfg.ignorados || typeof cfg.ignorados !== 'object') cfg.ignorados = {}; // ids removidos pelo × (não voltam nos syncs)
+  if (!cfg.rotulos || typeof cfg.rotulos !== 'object') cfg.rotulos = {}; // identificação manual por source_id (✎) — aplicada em todo lugar
   if (!cfg.vendasIncluir) cfg.vendasIncluir = { tecido: true, corte: true, costura: true, frete: true };
   return cfg;
 }
@@ -1101,10 +1102,15 @@ async function mpRenderCard(elId, mes) {
     if (elId === 'fin-mp') finAplicarMP(j, mes); // DRE do mês corrente importa os pagamentos reais do MP
     const ddmm = iso => String(iso || '').slice(8, 10) + '/' + String(iso || '').slice(5, 7);
     const detHTML = (itens, sinal) => (itens && itens.length)
-      ? itens.slice().sort((a, b) => String(a.dia).localeCompare(String(b.dia))).map(t => `
-          <div style="display:flex;justify-content:space-between;gap:8px;font-size:11px;color:var(--text-sec);padding:1px 0">
-            <span>${t.descricao ? t.descricao : ddmm(t.dia)}${t.descricao ? ' · ' + ddmm(t.dia) : ''}${t.autorizado ? ' (em liquidação)' : ''}</span>
-            <span style="white-space:nowrap;${sinal === '+' ? 'color:#16a34a' : ''}">${sinal === '+' ? '+' : '−'} ${finBRL(t.valor || 0)}</span></div>`).join('')
+      ? itens.slice().sort((a, b) => String(a.dia).localeCompare(String(b.dia))).map(t => {
+          const rot = flxRotulo(t.source_id);
+          const nome = rot || t.descricao || t.origem || '';
+          return `
+          <div style="display:flex;justify-content:space-between;gap:8px;font-size:11px;color:var(--text-sec);padding:1px 0;align-items:center">
+            <span>${nome ? nome + ' · ' : ''}${ddmm(t.dia)}${t.hora ? ' ' + t.hora : ''}${t.autorizado ? ' (em liquidação)' : ''}${rot ? '' : ''}</span>
+            <span style="white-space:nowrap;${sinal === '+' ? 'color:#16a34a' : ''}">${sinal === '+' ? '+' : '−'} ${finBRL(t.valor || 0)}
+              ${t.source_id ? `<button onclick="flxRotular('${t.source_id}','${mes}')" title="identificar/renomear este movimento" style="background:none;border:none;cursor:pointer;color:var(--text-ter);font-size:11px;padding:0 0 0 3px">✎</button>` : ''}</span></div>`;
+        }).join('')
       : '<div style="font-size:11px;color:var(--text-ter)">sem itens no período</div>';
     const linha = (lbl, val, cor, detId, detConteudo) => {
       const clic = detId ? ` onclick="(function(x){x.style.display=x.style.display==='none'?'':'none'})(document.getElementById('${detId}'))" style="cursor:pointer"` : '';
@@ -1354,8 +1360,8 @@ function flxAplicarSaidasMP(j, mes) {
       pago: true // o dinheiro JÁ saiu — conta no "já pago", não no "a pagar"
     });
   };
-  pagtos.forEach((it, i) => addItem(it, i, it.descricao || 'Pagamento via conta MP'));
-  transf.forEach((it, i) => addItem(it, i, 'Pix/transferência enviada (conferir destino)'));
+  pagtos.forEach((it, i) => addItem(it, i, flxRotulo(it.source_id) || it.descricao || 'Pagamento via conta MP'));
+  transf.forEach((it, i) => addItem(it, i, flxRotulo(it.source_id) || 'Pix/transferência enviada (conferir destino)'));
   const ignM = flxIgnorados(cfg, mes);
   const novosFiltrados = novos.filter(p => !ignM.has(p.id));
   const antes = JSON.stringify((cfg.pag[mes] || []).filter(p => p.auto === 'mp'));
@@ -1478,6 +1484,30 @@ function flxPagToggle(i) {
   flxRenderPagamentos(cfg, mes);
   flxRecompute();
 }
+// Rótulo manual de um movimento MP (por source_id) — identificação que a API não fornece.
+function flxRotulo(sid) {
+  if (!sid) return null;
+  const cfg = flxGetConfig();
+  return (cfg.rotulos && cfg.rotulos[String(sid)]) || null;
+}
+function flxRotular(sid, mes) {
+  if (!sid) return;
+  const atual = flxRotulo(sid) || '';
+  const nome = prompt('Identificação deste movimento (ex.: "Álvaro", "Maria Elizete facção"):', atual);
+  if (nome === null) return;
+  const cfg = flxGetConfig();
+  cfg.rotulos = cfg.rotulos || {};
+  if (nome.trim()) cfg.rotulos[String(sid)] = nome.trim(); else delete cfg.rotulos[String(sid)];
+  flxSalvarPag(cfg);
+  // re-aplica em tudo que deriva dos dados MP
+  if (window._flxMP && window._flxMP.mes === mes) {
+    flxAplicarSaidasMP(window._flxMP.dados, mes);
+    flxRecompute();
+  }
+  mpRenderCard('flx-mp', mes);
+  const fin = document.getElementById('fin-mp'); if (fin && fin.innerHTML) mpRenderCard('fin-mp', document.getElementById('fin-mes') ? document.getElementById('fin-mes').value : mes);
+}
+
 // Expande/recolhe os recebimentos individuais de um dia no card REALIZADO
 function flxToggleEntGrupo(grp) {
   let aberto = false;
@@ -1831,9 +1861,11 @@ function flxRecompute() {
       <td style="padding:4px 8px;text-align:right;color:#16a34a;white-space:nowrap;font-weight:600">+ ${finBRL(m.ent)}</td>
       <td style="padding:4px 8px;text-align:right;font-size:10px;color:var(--text-ter)">recebido</td></tr>`);
       m.entItens.slice().sort((a, b) => String(a.hora || '').localeCompare(String(b.hora || ''))).forEach(t => {
+        const rot = flxRotulo(t.source_id);
+        const quem = rot || t.origem || '';
         linhas.push(`<tr data-grp="${grp}" style="display:none;background:rgba(22,163,74,0.04)">
       <td style="padding:3px 8px"></td>
-      <td style="padding:3px 8px 3px 24px;font-size:11px;color:var(--text-ter)">↳ recebido${t.hora ? ' às ' + t.hora : ''}</td>
+      <td style="padding:3px 8px 3px 24px;font-size:11px;color:var(--text-ter)">↳ ${quem ? '<b style="color:var(--text-sec)">' + quem + '</b> · ' : ''}recebido${t.hora ? ' às ' + t.hora : ''}${t.source_id ? ` <button onclick="flxRotular('${t.source_id}','${mes}')" title="identificar" style="background:none;border:none;cursor:pointer;color:var(--text-ter);font-size:11px;padding:0">✎</button>` : ''}</td>
       <td style="padding:3px 8px;text-align:right;color:#16a34a;white-space:nowrap;font-size:11px">+ ${finBRL(t.valor)}</td>
       <td></td></tr>`);
       });

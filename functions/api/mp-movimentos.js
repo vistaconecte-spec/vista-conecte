@@ -151,6 +151,24 @@ export async function onRequestGet({ request, env }) {
             if (pd && pd.description) it.descricao = pd.description;
           } catch (e) {}
         }
+        // identifica as ENTRADAS: venda Shopify (desc CONECTE) × Pix avulso (banco do pagador).
+        // O MP mascara o NOME da pessoa (guest) — pro nome exato, usar o rótulo manual (✎ no painel).
+        for (const it of parsed.entradas.itens.slice(-25)) {
+          if (!it.source_id) continue;
+          try {
+            const pd = await (await fetch('https://api.mercadopago.com/v1/payments/' + it.source_id, { headers: H })).json();
+            if (!pd) continue;
+            if (pd.description === 'CONECTE' || (pd.external_reference || '').length > 15) {
+              it.origem = 'Venda Shopify' + (pd.description && pd.description !== 'CONECTE' ? ' · ' + pd.description : '');
+            } else {
+              const banco = pd.point_of_interaction && pd.point_of_interaction.transaction_data
+                && pd.point_of_interaction.transaction_data.bank_info
+                && pd.point_of_interaction.transaction_data.bank_info.payer
+                && pd.point_of_interaction.transaction_data.bank_info.payer.long_name;
+              it.origem = 'Pix avulso' + (banco ? ' via ' + String(banco).split(' ').slice(0, 2).join(' ') : '');
+            }
+          } catch (e) {}
+        }
         // extrato termina antes do fim do período → completa as ENTRADAS do trecho descoberto via payments
         if (!alcancaFim || (periodoInclusoHoje && !fresco)) {
           const desdeTopo = new Date(horizonte(melhor)).toISOString();
