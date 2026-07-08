@@ -1039,10 +1039,12 @@ async function mpRenderCard(elId, mes) {
     const linha = (lbl, val, cor) => `<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #f0ede8;font-size:13px">
         <span style="color:var(--text-sec)">${lbl}</span><span style="font-weight:600;color:${cor || 'inherit'}">${val}</span></div>`;
     const s = j.saidas || {};
+    const tEnv = s.transferencias?.enviadas, tInt = s.transferencias?.internas;
     el.innerHTML =
-      linha('Entradas (Pix, líquido)', finBRL(j.entradas?.total_liquido || 0) + ' · ' + (j.entradas?.qtd || 0) + 'x', '#16a34a') +
+      linha('Entradas (recebimentos líquidos)', finBRL(j.entradas?.total_liquido || 0) + ' · ' + (j.entradas?.qtd || 0) + 'x', '#16a34a') +
       linha('Pagamentos feitos pela conta', s.pagamentos?.total == null ? '—' : ('− ' + finBRL(s.pagamentos.total) + ' · ' + s.pagamentos.qtd + 'x'), '#b45309') +
-      linha('Transferências p/ banco (interna)', s.transferencias?.total == null ? '—' : ('− ' + finBRL(s.transferencias.total)), 'var(--text-ter)') +
+      linha('Pix/transferências enviadas', tEnv == null ? '—' : ('− ' + finBRL(tEnv)), '#b45309') +
+      linha('Varredura p/ banco próprio (interna)', tInt == null ? '—' : ('− ' + finBRL(tInt)), 'var(--text-ter)') +
       (j.saldo_final != null ? linha('Saldo na conta (fim do extrato)', finBRL(j.saldo_final), 'var(--gold-dark)') : '') +
       `<div style="font-size:10px;color:var(--text-ter);margin-top:6px">${j.gerando ? '⏳ extrato completo sendo gerado (~2 min) — atualize em instantes' : 'extrato até ' + String(ate).split('-').reverse().slice(0, 2).join('/')} · fonte: ${j.fonte === 'release_report' ? 'extrato MP' : 'pagamentos (parcial)'}</div>`;
   } catch (e) {
@@ -1054,13 +1056,16 @@ async function mpRenderCard(elId, mes) {
 // Transferências p/ banco (payout) NÃO entram — são internas, não despesa.
 // Anti-duplicação: pula se já existe conta manual no mesmo dia com o mesmo valor (±1%).
 function flxAplicarSaidasMP(j, mes) {
-  const itens = j && j.saidas && j.saidas.pagamentos && Array.isArray(j.saidas.pagamentos.itens) ? j.saidas.pagamentos.itens : null;
-  if (!itens) return; // extrato ainda gerando — mantém o que está
+  const pagtos = j && j.saidas && j.saidas.pagamentos && Array.isArray(j.saidas.pagamentos.itens) ? j.saidas.pagamentos.itens : null;
+  if (!pagtos) return; // extrato ainda gerando — mantém o que está
+  // Transferências ENVIADAS (não-internas) também são dinheiro saindo — entram p/ classificação.
+  const transf = (j.saidas.transferencias && Array.isArray(j.saidas.transferencias.itens))
+    ? j.saidas.transferencias.itens.filter(t => !t.provavel_interna) : [];
   const cfg = flxGetConfig();
   cfg.pag = cfg.pag || {};
   const manuais = (cfg.pag[mes] || []).filter(p => p.auto !== 'mp');
   const novos = [];
-  itens.forEach((it, i) => {
+  const addItem = (it, i, descBase) => {
     if (!it || !(it.valor > 0) || !it.dia || !it.dia.startsWith(mes)) return;
     const dia = parseInt(it.dia.slice(8, 10), 10);
     // já existe conta LANÇADA À MÃO equivalente (mesmo dia, valor ±1%)? então não duplica.
@@ -1068,13 +1073,15 @@ function flxAplicarSaidasMP(j, mes) {
     const jaTem = manuais.some(p => !p.auto && p.dia === dia && Math.abs((p.valor || 0) - it.valor) <= it.valor * 0.01);
     if (jaTem) return;
     novos.push({
-      id: 'mp-' + mes + '-' + (it.source_id || i),
-      desc: (it.descricao ? it.descricao : 'Pagamento via conta MP') + ' · MP auto',
+      id: 'mp-' + mes + '-' + (it.source_id || descBase + i),
+      desc: descBase + (it.autorizado ? ' (em liquidação)' : '') + ' · MP auto',
       valor: Math.round(it.valor * 100) / 100,
       dia, cat: 'outros', rec: false, auto: 'mp',
       pago: true // o dinheiro JÁ saiu — conta no "já pago", não no "a pagar"
     });
-  });
+  };
+  pagtos.forEach((it, i) => addItem(it, i, it.descricao || 'Pagamento via conta MP'));
+  transf.forEach((it, i) => addItem(it, i, 'Pix/transferência enviada (conferir destino)'));
   const antes = JSON.stringify((cfg.pag[mes] || []).filter(p => p.auto === 'mp'));
   if (antes === JSON.stringify(novos)) return; // nada mudou — evita re-render/salvamento à toa
   cfg.pag[mes] = manuais.concat(novos);
