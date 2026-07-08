@@ -1036,6 +1036,7 @@ async function mpRenderCard(elId, mes) {
     if (!r.ok || j.erro) { el.innerHTML = '<div style="font-size:12px;color:var(--text-ter)">MP indisponível: ' + (j.erro || r.status) + '</div>'; return; }
     // no Fluxo, os pagamentos reais feitos pelo MP entram sozinhos na tabela de contas (como pagos)
     if (elId === 'flx-mp') flxAplicarSaidasMP(j, mes);
+    if (elId === 'fin-mp') finAplicarMP(j, mes); // DRE do mês corrente importa os pagamentos reais do MP
     const linha = (lbl, val, cor) => `<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #f0ede8;font-size:13px">
         <span style="color:var(--text-sec)">${lbl}</span><span style="font-weight:600;color:${cor || 'inherit'}">${val}</span></div>`;
     const s = j.saidas || {};
@@ -1049,6 +1050,64 @@ async function mpRenderCard(elId, mes) {
       `<div style="font-size:10px;color:var(--text-ter);margin-top:6px">${j.gerando ? '⏳ extrato completo sendo gerado (~2 min) — atualize em instantes' : 'extrato até ' + String(ate).split('-').reverse().slice(0, 2).join('/')} · fonte: ${j.fonte === 'release_report' ? 'extrato MP' : 'pagamentos (parcial)'}</div>`;
   } catch (e) {
     el.innerHTML = '<div style="font-size:12px;color:var(--text-ter)">falha ao consultar o Mercado Pago</div>';
+  }
+}
+
+// Importa os pagamentos REAIS do MP para o DRE (subcategorias) do MÊS CORRENTE — assim a
+// "Composição de custos" reflete o que de fato saiu das contas.
+// Regras: (1) só mês corrente (mês fechado = reconciliação manual pelo extrato, não tocamos);
+// (2) pagamentos ao Facebook/Meta ficam FORA (o gasto Meta do mês já entra inteiro via
+//     /api/meta-insights no subitem "Meta Ads (Facebook)" — importar de novo duplicaria);
+// (3) itens marcados "· MP auto" são substituídos a cada sync (idempotente) — os manuais ficam.
+function finAplicarMP(j, mes) {
+  const hoje = new Date();
+  const mesAtual = hoje.getFullYear() + '-' + String(hoje.getMonth() + 1).padStart(2, '0');
+  if (mes !== mesAtual) return;
+  const pag = j && j.saidas && j.saidas.pagamentos;
+  if (!pag || !Array.isArray(pag.itens)) return;
+  const TAG = ' · MP auto';
+  const catDe = d => {
+    const t = (d || '').toLowerCase();
+    if (/facebk|facebook|meta ads/.test(t)) return null; // coberto pelo gasto Meta via API
+    if (/anthropic|wati|apple|claro|google|adobe|microsoft|manus|shopify|certifica/.test(t)) return 'fixos';
+    if (/etiqueta|frete|loggi|correios|l4b|transporte/.test(t)) return 'logistica';
+    return 'outros';
+  };
+  const cfg = finGetConfig();
+  const subs = (cfg.subs && cfg.subs[mes]) ? cfg.subs[mes] : finGetSubs(cfg, mes);
+  Object.keys(subs).forEach(k => { subs[k] = (subs[k] || []).filter(i => !String(i[0]).endsWith(TAG)); });
+  let mudou = false;
+  for (const it of pag.itens) {
+    const c = catDe(it.descricao);
+    if (!c || !(it.valor > 0)) continue;
+    subs[c] = subs[c] || [];
+    subs[c].push([(it.descricao || 'Pagamento via MP') + TAG, Math.round(it.valor * 100) / 100]);
+    mudou = true;
+  }
+  const env = j.saidas.transferencias && j.saidas.transferencias.enviadas;
+  if (env > 0) {
+    subs.outros = subs.outros || [];
+    subs.outros.push(['Pix/transferências enviadas via MP (classificar)' + TAG, Math.round(env * 100) / 100]);
+    mudou = true;
+  }
+  if (!mudou && !Object.values(subs).some(a => (a || []).length)) return;
+  cfg.subs = cfg.subs || {}; cfg.subs[mes] = subs;
+  cfg.subsV = (cfg.subsV && typeof cfg.subsV === 'object') ? cfg.subsV : {}; cfg.subsV[mes] = FIN_SUBS_VERSION;
+  cfg.meses = cfg.meses || {};
+  const c2 = {};
+  CUSTO_DEFS.forEach(([k]) => {
+    c2[k] = (subs[k] && subs[k].length) ? Math.round(finSubsSum(subs[k]) * 100) / 100 : ((cfg.meses[mes] || {})[k] || 0);
+  });
+  cfg.meses[mes] = Object.assign({}, cfg.meses[mes], c2);
+  cfg.meta = (cfg.meta && typeof cfg.meta === 'object') ? cfg.meta : {};
+  cfg.meta[mes] = Object.assign({}, cfg.meta[mes], { atualizado: new Date().toISOString() });
+  cfg.updated_at = new Date().toISOString();
+  saveLocal('vc:financeiro', cfg);
+  salvarNuvem('financeiro', cfg);
+  if (modeloAtual === '__financeiro__' && document.getElementById('fin-mes') && document.getElementById('fin-mes').value === mes) {
+    finBuildParams(cfg, cfg.meses[mes]);
+    finRecompute();
+    finUpdateStatus();
   }
 }
 
