@@ -727,6 +727,7 @@ async function renderFinanceiro() {
   finRecompute();
   finUpdateStatus();
   mpRenderCard('fin-mp', mes); // conferência Mercado Pago (entradas/saídas reais do mês)
+  finAplicarVendas(mes); // custo de produção das vendidas entra como despesa (tecido + facção)
 }
 
 // Puxa o gasto de tráfego do Meta (Marketing API) e mantém o subitem "Meta Ads (Facebook)" atualizado.
@@ -979,6 +980,7 @@ function flxGetConfig() {
   if (!cfg.trafegoCfg) cfg.trafegoCfg = Object.assign({}, FLX_TRAFEGO_DEFAULT);
   if (cfg.trafegoCfg.impostoPct === undefined) cfg.trafegoCfg.impostoPct = FLX_TRAFEGO_DEFAULT.impostoPct;
   if (cfg.vendasAuto === undefined) cfg.vendasAuto = true; // custo das vendidas puxado da Shopify
+  if (!cfg.ignorados || typeof cfg.ignorados !== 'object') cfg.ignorados = {}; // ids removidos pelo × (não voltam nos syncs)
   if (!cfg.vendasIncluir) cfg.vendasIncluir = { tecido: true, corte: true, costura: true, frete: true };
   return cfg;
 }
@@ -1070,6 +1072,7 @@ async function renderFluxo() {
   flxAtualizarSaldos(true);              // saldos MP/Pagar.me
   if (cfg.vendasAuto) flxSincronizarVendas(true); // custo das vendidas Shopify
   mpRenderCard('flx-mp', mes);           // movimentações reais do Mercado Pago
+  flxAtualizarMetaSaldo(mes);            // saldo devedor real da Meta (cache 6h)
 }
 
 // ── Mercado Pago — movimentações REAIS da conta (entradas Pix, pagamentos, transferências) ──
@@ -1087,14 +1090,18 @@ async function mpRenderCard(elId, mes) {
     const j = await r.json();
     if (!r.ok || j.erro) { el.innerHTML = '<div style="font-size:12px;color:var(--text-ter)">MP indisponível: ' + (j.erro || r.status) + '</div>'; return; }
     // no Fluxo, os pagamentos reais feitos pelo MP entram sozinhos na tabela de contas (como pagos)
-    if (elId === 'flx-mp') flxAplicarSaidasMP(j, mes);
+    if (elId === 'flx-mp') {
+      window._flxMP = { mes, dados: j };
+      flxAplicarSaidasMP(j, mes);
+      if (modeloAtual === '__fluxo__' && document.getElementById('flx-mes').value === mes) flxRecompute();
+    }
     if (elId === 'fin-mp') finAplicarMP(j, mes); // DRE do mês corrente importa os pagamentos reais do MP
     const ddmm = iso => String(iso || '').slice(8, 10) + '/' + String(iso || '').slice(5, 7);
-    const detHTML = itens => (itens && itens.length)
+    const detHTML = (itens, sinal) => (itens && itens.length)
       ? itens.slice().sort((a, b) => String(a.dia).localeCompare(String(b.dia))).map(t => `
           <div style="display:flex;justify-content:space-between;gap:8px;font-size:11px;color:var(--text-sec);padding:1px 0">
             <span>${t.descricao ? t.descricao : ddmm(t.dia)}${t.descricao ? ' · ' + ddmm(t.dia) : ''}${t.autorizado ? ' (em liquidação)' : ''}</span>
-            <span style="white-space:nowrap">− ${finBRL(t.valor || 0)}</span></div>`).join('')
+            <span style="white-space:nowrap;${sinal === '+' ? 'color:#16a34a' : ''}">${sinal === '+' ? '+' : '−'} ${finBRL(t.valor || 0)}</span></div>`).join('')
       : '<div style="font-size:11px;color:var(--text-ter)">sem itens no período</div>';
     const linha = (lbl, val, cor, detId, detConteudo) => {
       const clic = detId ? ` onclick="(function(x){x.style.display=x.style.display==='none'?'':'none'})(document.getElementById('${detId}'))" style="cursor:pointer"` : '';
@@ -1108,8 +1115,11 @@ async function mpRenderCard(elId, mes) {
     const s = j.saidas || {};
     const tEnv = s.transferencias?.enviadas, tInt = s.transferencias?.internas;
     const tItens = (s.transferencias && s.transferencias.itens) || [];
+    const entPorDia = Object.entries((j.entradas && j.entradas.por_dia) || {}).sort()
+      .map(([dia, v]) => ({ dia, valor: v }));
     el.innerHTML =
-      linha('Entradas (recebimentos líquidos)', finBRL(j.entradas?.total_liquido || 0) + ' · ' + (j.entradas?.qtd || 0) + 'x', '#16a34a') +
+      linha('Entradas (recebimentos líquidos)', finBRL(j.entradas?.total_liquido || 0) + ' · ' + (j.entradas?.qtd || 0) + 'x', '#16a34a',
+        elId + '-det-ent', detHTML(entPorDia, '+')) +
       linha('Pagamentos feitos pela conta', s.pagamentos?.total == null ? '—' : ('− ' + finBRL(s.pagamentos.total) + ' · ' + s.pagamentos.qtd + 'x'), '#b45309',
         elId + '-det-pag', detHTML(s.pagamentos?.itens)) +
       linha('Pix/transferências enviadas', tEnv == null ? '—' : ('− ' + finBRL(tEnv)), '#b45309',
@@ -1188,17 +1198,82 @@ function finAplicarMP(j, mes) {
   }
 }
 
+// Importa o CUSTO DE PRODUÇÃO das peças vendidas (Shopify × Precificação) como despesa
+// do DRE no MÊS CORRENTE: subitens '· vendas auto' em Tecido e Corte&Costura.
+// Frete NÃO entra aqui — o frete real já chega via pagamentos do extrato (ex.: etiquetafrete
+// · MP auto em Logística); somar o frete do pedido junto contaria em dobro.
+async function finAplicarVendas(mes) {
+  const hoje = new Date();
+  const mesAtual = hoje.getFullYear() + '-' + String(hoje.getMonth() + 1).padStart(2, '0');
+  if (mes !== mesAtual) return; // mês fechado = reconciliação manual
+  const vendas = await flxCarregarVendas(mes);
+  if (!vendas) return;
+  const cfgFlx = flxGetConfig();
+  const { pagamentos } = flxVendasParaPagamentos(vendas, cfgFlx.vendasIncluir);
+  const soma = cat => Math.round(pagamentos.filter(p => p.cat === cat).reduce((s, p) => s + (p.valor || 0), 0) * 100) / 100;
+  const tec = soma('tecido'), fac = soma('faccao');
+  const TAG = ' · vendas auto';
+  const cfg = finGetConfig();
+  const subs = (cfg.subs && cfg.subs[mes]) ? cfg.subs[mes] : finGetSubs(cfg, mes);
+  ['tecido', 'faccao'].forEach(k => { subs[k] = (subs[k] || []).filter(i => !String(i[0]).endsWith(TAG)); });
+  if (tec > 0) { subs.tecido = subs.tecido || []; subs.tecido.push(['Tecido das peças vendidas (Shopify × Precificação)' + TAG, tec]); }
+  if (fac > 0) { subs.faccao = subs.faccao || []; subs.faccao.push(['Corte+costura das peças vendidas (Shopify × Precificação)' + TAG, fac]); }
+  if (!(tec > 0) && !(fac > 0)) return;
+  cfg.subs = cfg.subs || {}; cfg.subs[mes] = subs;
+  cfg.subsV = (cfg.subsV && typeof cfg.subsV === 'object') ? cfg.subsV : {}; cfg.subsV[mes] = FIN_SUBS_VERSION;
+  cfg.meses = cfg.meses || {};
+  const c2 = {};
+  CUSTO_DEFS.forEach(([k]) => {
+    c2[k] = (subs[k] && subs[k].length) ? Math.round(finSubsSum(subs[k]) * 100) / 100 : ((cfg.meses[mes] || {})[k] || 0);
+  });
+  cfg.meses[mes] = Object.assign({}, cfg.meses[mes], c2);
+  cfg.meta = (cfg.meta && typeof cfg.meta === 'object') ? cfg.meta : {};
+  cfg.meta[mes] = Object.assign({}, cfg.meta[mes], { atualizado: new Date().toISOString() });
+  cfg.updated_at = new Date().toISOString();
+  saveLocal('vc:financeiro', cfg);
+  salvarNuvem('financeiro', cfg);
+  if (modeloAtual === '__financeiro__' && document.getElementById('fin-mes') && document.getElementById('fin-mes').value === mes) {
+    finBuildParams(cfg, cfg.meses[mes]);
+    finRecompute();
+    finUpdateStatus();
+  }
+}
+
 // Gera as cobranças provisionadas de tráfego do mês JÁ ABATENDO o que a Meta cobrou de verdade
 // (pagamentos reais via MP categorizados como 'trafego'). Consome as provisões em ordem de dia:
 // remove inteiras enquanto couber e apara a próxima pelo resto — provisão restante = estimativa − real.
 // Determinística (recalculável a cada sync, sem consumir duas vezes).
 function flxTrafegoLiquido(cfg, mes) {
+  const _ign = flxIgnorados(cfg, mes);
+  const _filtra = arr => arr.filter(p => !_ign.has(p.id));
   const tc = cfg.trafegoCfg || FLX_TRAFEGO_DEFAULT;
+  const hoje = new Date();
+  const mesAtual = hoje.getFullYear() + '-' + String(hoje.getMonth() + 1).padStart(2, '0');
+
+  // MÊS CORRENTE: nada de estimativa — entra o SALDO DEVEDOR REAL da conta Meta
+  // (API /api/meta-conta-status, cache 6h em cfg.metaSaldo) + impostos. É o que a Meta
+  // vai cobrar de fato; quando ela cobra (aparece o pagamento no MP), o saldo da API
+  // cai junto — a reconciliação é automática, sem risco de dupla contagem.
+  if (mes === mesAtual && cfg.metaSaldo && typeof cfg.metaSaldo.v === 'number') {
+    if (cfg.metaSaldo.v <= 0) return [];
+    const fator = 1 + ((parseFloat(tc.impostoPct) || 0) / 100);
+    const at = cfg.metaSaldo.at ? new Date(cfg.metaSaldo.at) : null;
+    const selo = at ? ' (API ' + String(at.getDate()).padStart(2, '0') + '/' + String(at.getMonth() + 1).padStart(2, '0') + ' ' + String(at.getHours()).padStart(2, '0') + 'h)' : '';
+    return _filtra([{
+      id: 'trfsaldo',
+      desc: 'Meta Ads — saldo devedor atual + impostos' + selo,
+      valor: Math.round(cfg.metaSaldo.v * fator * 100) / 100,
+      dia: hoje.getDate(), cat: 'trafego', rec: true, pago: false
+    }]);
+  }
+
+  // MESES FUTUROS (planejamento) ou fallback sem dado da API: cronograma estimado,
+  // abatendo o que a Meta já cobrou de verdade no mês (pagamentos MP cat trafego).
   const gerados = flxTrafegoCharges(tc.estimativa, tc.limite, flxDiasNoMes(mes), tc.impostoPct);
   let real = ((cfg.pag && cfg.pag[mes]) || [])
     .filter(p => p.auto === 'mp' && p.cat === 'trafego')
     .reduce((s, p) => s + (p.valor || 0), 0);
-  if (real <= 0) return gerados;
+  if (real <= 0) return _filtra(gerados);
   const out = [];
   for (const g of gerados) {
     if (real <= 0.005) { out.push(g); continue; }
@@ -1209,7 +1284,40 @@ function flxTrafegoLiquido(cfg, mes) {
     }));
     real = 0;
   }
-  return out;
+  return _filtra(out);
+}
+
+// Atualiza o saldo devedor da conta Meta (cache de 6h) e regenera o item de tráfego do mês corrente.
+async function flxAtualizarMetaSaldo(mes, forcar) {
+  const hoje = new Date();
+  const mesAtual = hoje.getFullYear() + '-' + String(hoje.getMonth() + 1).padStart(2, '0');
+  if (mes !== mesAtual) return;
+  let cfg = flxGetConfig();
+  const at = (cfg.metaSaldo && cfg.metaSaldo.at) ? new Date(cfg.metaSaldo.at).getTime() : 0;
+  const fresco = (Date.now() - at) < 6 * 3600 * 1000;
+  if (!fresco || forcar) {
+    try {
+      const r = await fetch('/api/meta-conta-status?t=' + Date.now());
+      const d = await r.json();
+      const bal = parseFloat(d && d.balance);
+      if (!isNaN(bal)) {
+        cfg = flxGetConfig(); // recarrega (outros syncs podem ter salvo nesse meio-tempo)
+        cfg.metaSaldo = { v: Math.round(bal) / 100, at: new Date().toISOString() };
+        saveLocal('vc:fluxo_caixa', cfg);
+      }
+    } catch (e) { /* API indisponível → mantém cache/estimativas */ }
+  }
+  // regenera o item de tráfego do mês corrente com o saldo (cache ou recém-buscado)
+  cfg = flxGetConfig();
+  if (!(cfg.metaSaldo && typeof cfg.metaSaldo.v === 'number')) return;
+  cfg.pag = cfg.pag || {}; cfg.pag[mes] = cfg.pag[mes] || [];
+  const outras = cfg.pag[mes].filter(p => !(p.cat === 'trafego' && p.rec && p.auto !== 'mp'));
+  cfg.pag[mes] = outras.concat(flxTrafegoLiquido(cfg, mes));
+  flxSalvarPag(cfg);
+  if (modeloAtual === '__fluxo__' && document.getElementById('flx-mes') && document.getElementById('flx-mes').value === mes) {
+    flxRenderPagamentos(cfg, mes);
+    flxRecompute();
+  }
 }
 
 // Injeta os PAGAMENTOS REAIS feitos pela conta MP na tabela de contas do mês (auto:'mp', já pagos).
@@ -1244,9 +1352,11 @@ function flxAplicarSaidasMP(j, mes) {
   };
   pagtos.forEach((it, i) => addItem(it, i, it.descricao || 'Pagamento via conta MP'));
   transf.forEach((it, i) => addItem(it, i, 'Pix/transferência enviada (conferir destino)'));
+  const ignM = flxIgnorados(cfg, mes);
+  const novosFiltrados = novos.filter(p => !ignM.has(p.id));
   const antes = JSON.stringify((cfg.pag[mes] || []).filter(p => p.auto === 'mp'));
-  if (antes === JSON.stringify(novos)) return; // nada mudou — evita re-render/salvamento à toa
-  cfg.pag[mes] = manuais.concat(novos);
+  if (antes === JSON.stringify(novosFiltrados)) return; // nada mudou — evita re-render/salvamento à toa
+  cfg.pag[mes] = manuais.concat(novosFiltrados);
   // Reconciliação do tráfego: regenera as provisões abatendo o que a Meta já cobrou de verdade.
   // (preserva itens pontuais manuais de tráfego — só as provisionadas rec são regeradas)
   const semProvisaoTrafego = cfg.pag[mes].filter(p => !(p.rec && p.cat === 'trafego' && p.auto !== 'mp'));
@@ -1360,9 +1470,32 @@ function flxPagToggle(i) {
   flxRenderPagamentos(cfg, mes);
   flxRecompute();
 }
+function flxIgnorados(cfg, mes) {
+  return new Set((cfg.ignorados && cfg.ignorados[mes]) || []);
+}
+// Remove um lançamento direto da projeção (×). O id vai para a lista de ignorados do mês —
+// itens automáticos (vendas/MP/tráfego) NÃO voltam nos próximos syncs. Desfazer: botão "recorrentes".
+function flxProjRemover(id) {
+  const cfg = flxGetConfig();
+  const mes = document.getElementById('flx-mes').value;
+  cfg.ignorados = cfg.ignorados || {};
+  cfg.ignorados[mes] = cfg.ignorados[mes] || [];
+  if (!cfg.ignorados[mes].includes(id)) cfg.ignorados[mes].push(id);
+  cfg.pag[mes] = (cfg.pag[mes] || []).filter(p => p.id !== id);
+  flxSalvarPag(cfg);
+  flxRenderPagamentos(cfg, mes);
+  flxRecompute();
+}
+
 function flxPagDel(i) {
   const cfg = flxGetConfig();
   const mes = document.getElementById('flx-mes').value;
+  const rem = (cfg.pag[mes] || [])[i];
+  if (rem && rem.id) {
+    cfg.ignorados = cfg.ignorados || {};
+    cfg.ignorados[mes] = cfg.ignorados[mes] || [];
+    if (!cfg.ignorados[mes].includes(rem.id)) cfg.ignorados[mes].push(rem.id);
+  }
   (cfg.pag[mes] || []).splice(i, 1);
   flxSalvarPag(cfg);
   flxRenderPagamentos(cfg, mes);
@@ -1418,6 +1551,8 @@ function flxResetRecorrentes() {
   if (!confirm('Recarregar as contas recorrentes padrão neste mês? As contas pontuais que você adicionou são mantidas; as recorrentes voltam ao modelo.')) return;
   const cfg = flxGetConfig();
   const mes = document.getElementById('flx-mes').value;
+  // desfaz também as remoções individuais (×) do mês — restaura tudo ao padrão
+  cfg.ignorados = cfg.ignorados || {}; cfg.ignorados[mes] = [];
   // mantém pontuais E as auto-vendas (que são regeneradas pela sincronização de vendas)
   const preservar = (cfg.pag[mes] || []).filter(p => !p.rec || p.auto === 'vendas');
   cfg.pag[mes] = flxRecorrentesTemplate(mes, cfg.trafegoCfg, cfg.vendasAuto).concat(preservar);
@@ -1438,8 +1573,9 @@ function flxRecalcTrafego() {
   // remove só as cobranças de tráfego recorrentes (mantém tráfego pontual manual, itens MP reais e as demais contas)
   const outras = (cfg.pag[mes] || []).filter(p => !(p.cat === 'trafego' && p.rec && p.auto !== 'mp'));
   cfg.pag[mes] = outras;
-  cfg.pag[mes] = outras.concat(flxTrafegoLiquido(cfg, mes)); // já abate o que a Meta cobrou de verdade
+  cfg.pag[mes] = outras.concat(flxTrafegoLiquido(cfg, mes)); // mês corrente = saldo real Meta; futuros = estimativa
   flxSalvarPag(cfg);
+  flxAtualizarMetaSaldo(mes, true); // força refresh do saldo devedor (ignora cache de 6h)
   flxRenderPagamentos(cfg, mes);
   flxRecompute();
 }
@@ -1533,7 +1669,8 @@ async function flxSincronizarVendas(silencioso) {
   const { pagamentos, naoMapeados } = flxVendasParaPagamentos(vendas, cfg.vendasIncluir);
   cfg.pag = cfg.pag || {};
   const manuais = (cfg.pag[mes] || []).filter(p => p.auto !== 'vendas');
-  cfg.pag[mes] = manuais.concat(pagamentos);
+  const ignV = flxIgnorados(cfg, mes);
+  cfg.pag[mes] = manuais.concat(pagamentos.filter(p => !ignV.has(p.id)));
   saveLocal('vc:fluxo_caixa', cfg);
   // não escreve na nuvem aqui (é derivado das vendas; recalcula sempre) — evita conflito de sync
   if (modeloAtual === '__fluxo__') { flxRenderPagamentos(cfg, mes); flxRecompute(); }
@@ -1621,9 +1758,10 @@ function flxRecompute() {
     // uma conta por linha, com o valor individual à direita; vencidas destacadas
     const contasDia = pend.filter(p => p.diaEfetivo === row.d)
       .sort((a, b) => (b.vencida ? 1 : 0) - (a.vencida ? 1 : 0) || (b.valor || 0) - (a.valor || 0))
-      .map(p => `<div style="display:flex;justify-content:space-between;gap:8px;padding:1px 0">
+      .map(p => `<div style="display:flex;justify-content:space-between;gap:8px;padding:1px 0;align-items:center">
         <span>${p.vencida ? '<span style="color:#dc2626;font-weight:600">⚠ vencida ' + dd(p.dia) + '</span> — ' : ''}${p.desc}</span>
-        <span style="white-space:nowrap;color:var(--text-ter)">− ${finBRL(p.valor || 0)}</span></div>`)
+        <span style="white-space:nowrap;color:var(--text-ter)">− ${finBRL(p.valor || 0)}
+          <button onclick="event.stopPropagation();flxProjRemover('${p.id}')" title="remover este lançamento da projeção (não volta nos syncs)" style="background:none;border:none;cursor:pointer;color:var(--text-ter);font-size:13px;padding:0 0 0 4px;vertical-align:middle">×</button></span></div>`)
       .join('');
     const critico = row.d === diaMenor && menor < saldoHoje;
     return `<tr style="border-top:1px solid #f0ede8;${critico ? 'background:rgba(217,119,6,0.06)' : ''}">
@@ -1638,29 +1776,50 @@ function flxRecompute() {
   // Informativas: o dinheiro já saiu e o saldo atual já reflete — sem coluna de saldo
   // (evita dupla contagem). Uma linha por pagamento; dia na primeira do grupo.
   const pagos = lista.filter(p => p.pago && (p.valor || 0) > 0);
-  const pagosPorDia = {};
-  pagos.forEach(p => { pagosPorDia[p.dia] = pagosPorDia[p.dia] || []; pagosPorDia[p.dia].push(p); });
-  const diasPagos = Object.keys(pagosPorDia).map(Number).sort((a, b) => a - b);
-  const realizadoRows = diasPagos.map(d => {
-    const its = pagosPorDia[d].slice().sort((a, b) => (b.valor || 0) - (a.valor || 0));
-    return its.map((p, i) => `<tr style="${i === 0 ? 'border-top:1px solid #f0ede8;' : ''}">
-      <td style="padding:4px 8px;font-weight:600;color:var(--text-ter)">${i === 0 ? dd(d) : ''}</td>
+  // Entradas reais do MP por dia (do último sync) — dinheiro que ENTROU no caixa
+  const mpEntradas = (window._flxMP && window._flxMP.mes === mes && window._flxMP.dados && window._flxMP.dados.entradas)
+    ? window._flxMP.dados.entradas.por_dia || {} : {};
+  const movPorDia = {};
+  pagos.forEach(p => { movPorDia[p.dia] = movPorDia[p.dia] || { ent: 0, pagos: [] }; movPorDia[p.dia].pagos.push(p); });
+  Object.entries(mpEntradas).forEach(([iso, v]) => {
+    if (!iso.startsWith(mes) || !(v > 0)) return;
+    const d = parseInt(iso.slice(8, 10), 10);
+    movPorDia[d] = movPorDia[d] || { ent: 0, pagos: [] };
+    movPorDia[d].ent += v;
+  });
+  const totalEntradas = Object.values(movPorDia).reduce((s, m) => s + m.ent, 0);
+  const diasMov = Object.keys(movPorDia).map(Number).sort((a, b) => a - b);
+  const realizadoRows = diasMov.map(d => {
+    const m = movPorDia[d];
+    const linhas = [];
+    if (m.ent > 0) linhas.push(`<tr style="border-top:1px solid #f0ede8">
+      <td style="padding:4px 8px;font-weight:600;color:var(--text-ter)">${dd(d)}</td>
+      <td style="padding:4px 8px;font-size:12px;color:var(--text-sec)">↓ Recebimentos Pix/TED (conta MP)</td>
+      <td style="padding:4px 8px;text-align:right;color:#16a34a;white-space:nowrap;font-weight:600">+ ${finBRL(m.ent)}</td>
+      <td style="padding:4px 8px;text-align:right;font-size:10px;color:var(--text-ter)">recebido</td></tr>`);
+    m.pagos.slice().sort((a, b) => (b.valor || 0) - (a.valor || 0)).forEach((p, i) => {
+      const primeiraLinha = linhas.length === 0 && i === 0;
+      linhas.push(`<tr style="${primeiraLinha ? 'border-top:1px solid #f0ede8;' : ''}">
+      <td style="padding:4px 8px;font-weight:600;color:var(--text-ter)">${primeiraLinha ? dd(d) : ''}</td>
       <td style="padding:4px 8px;font-size:12px;color:var(--text-sec)">✓ ${p.desc}</td>
       <td style="padding:4px 8px;text-align:right;color:#b45309;white-space:nowrap">− ${finBRL(p.valor || 0)}</td>
-      <td style="padding:4px 8px;text-align:right;font-size:10px;color:var(--text-ter)">pago</td></tr>`).join('');
+      <td style="padding:4px 8px;text-align:right;font-size:10px;color:var(--text-ter)">pago</td></tr>`);
+    });
+    return linhas.join('');
   }).join('');
   const realEl = document.getElementById('flx-realizado');
   if (realEl) {
     realEl.innerHTML = realizadoRows
       ? `<table style="width:100%;font-size:13px;border-collapse:collapse">
-          <tr style="color:var(--text-ter);font-size:11px"><th style="text-align:left;padding:6px 8px">Dia</th><th style="text-align:left;padding:6px 8px">Pagamento</th><th style="text-align:right;padding:6px 8px">Valor</th><th></th></tr>
+          <tr style="color:var(--text-ter);font-size:11px"><th style="text-align:left;padding:6px 8px">Dia</th><th style="text-align:left;padding:6px 8px">Movimento</th><th style="text-align:right;padding:6px 8px">Valor</th><th></th></tr>
           ${realizadoRows}
-          <tr style="border-top:2px solid var(--border);font-weight:700"><td style="padding:6px 8px"></td><td style="padding:6px 8px">Total já pago no mês</td><td style="padding:6px 8px;text-align:right;color:#b45309">− ${finBRL(jaPago)}</td><td></td></tr>
+          ${totalEntradas > 0 ? `<tr style="border-top:2px solid var(--border);font-weight:700"><td style="padding:6px 8px"></td><td style="padding:6px 8px">Total recebido no mês (MP)</td><td style="padding:6px 8px;text-align:right;color:#16a34a">+ ${finBRL(totalEntradas)}</td><td></td></tr>` : ''}
+          <tr style="${totalEntradas > 0 ? '' : 'border-top:2px solid var(--border);'}font-weight:700"><td style="padding:6px 8px"></td><td style="padding:6px 8px">Total já pago no mês</td><td style="padding:6px 8px;text-align:right;color:#b45309">− ${finBRL(jaPago)}</td><td></td></tr>
         </table>`
-      : '<div style="font-size:12px;color:var(--text-ter);padding:6px 0">Nenhum pagamento realizado neste mês ainda.</div>';
+      : '<div style="font-size:12px;color:var(--text-ter);padding:6px 0">Nenhum movimento realizado neste mês ainda.</div>';
   }
   const realTotEl = document.getElementById('flx-realizado-total');
-  if (realTotEl) realTotEl.textContent = jaPago > 0 ? ('− ' + finBRL(jaPago)) : '';
+  if (realTotEl) realTotEl.textContent = (totalEntradas > 0 || jaPago > 0) ? ('+ ' + finBRL(totalEntradas) + '  ·  − ' + finBRL(jaPago)) : '';
 
   // ── Card PROJETADO (a vencer)
   document.getElementById('flx-proj').innerHTML = dias.length
