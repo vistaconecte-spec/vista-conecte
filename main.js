@@ -1089,15 +1089,33 @@ async function mpRenderCard(elId, mes) {
     // no Fluxo, os pagamentos reais feitos pelo MP entram sozinhos na tabela de contas (como pagos)
     if (elId === 'flx-mp') flxAplicarSaidasMP(j, mes);
     if (elId === 'fin-mp') finAplicarMP(j, mes); // DRE do mês corrente importa os pagamentos reais do MP
-    const linha = (lbl, val, cor) => `<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #f0ede8;font-size:13px">
-        <span style="color:var(--text-sec)">${lbl}</span><span style="font-weight:600;color:${cor || 'inherit'}">${val}</span></div>`;
+    const ddmm = iso => String(iso || '').slice(8, 10) + '/' + String(iso || '').slice(5, 7);
+    const detHTML = itens => (itens && itens.length)
+      ? itens.slice().sort((a, b) => String(a.dia).localeCompare(String(b.dia))).map(t => `
+          <div style="display:flex;justify-content:space-between;gap:8px;font-size:11px;color:var(--text-sec);padding:1px 0">
+            <span>${t.descricao ? t.descricao : ddmm(t.dia)}${t.descricao ? ' · ' + ddmm(t.dia) : ''}${t.autorizado ? ' (em liquidação)' : ''}</span>
+            <span style="white-space:nowrap">− ${finBRL(t.valor || 0)}</span></div>`).join('')
+      : '<div style="font-size:11px;color:var(--text-ter)">sem itens no período</div>';
+    const linha = (lbl, val, cor, detId, detConteudo) => {
+      const clic = detId ? ` onclick="(function(x){x.style.display=x.style.display==='none'?'':'none'})(document.getElementById('${detId}'))" style="cursor:pointer"` : '';
+      return `<div${detId ? clic : ''}>
+        <div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #f0ede8;font-size:13px${detId ? ';cursor:pointer' : ''}">
+          <span style="color:var(--text-sec)">${detId ? '<span style=\"font-size:9px;color:var(--text-ter)\">▸</span> ' : ''}${lbl}</span>
+          <span style="font-weight:600;color:${cor || 'inherit'}">${val}</span></div>
+        ${detId ? `<div id="${detId}" style="display:none;margin:2px 0 6px 12px;padding:4px 8px;border-left:2px solid var(--border)">${detConteudo}</div>` : ''}
+      </div>`;
+    };
     const s = j.saidas || {};
     const tEnv = s.transferencias?.enviadas, tInt = s.transferencias?.internas;
+    const tItens = (s.transferencias && s.transferencias.itens) || [];
     el.innerHTML =
       linha('Entradas (recebimentos líquidos)', finBRL(j.entradas?.total_liquido || 0) + ' · ' + (j.entradas?.qtd || 0) + 'x', '#16a34a') +
-      linha('Pagamentos feitos pela conta', s.pagamentos?.total == null ? '—' : ('− ' + finBRL(s.pagamentos.total) + ' · ' + s.pagamentos.qtd + 'x'), '#b45309') +
-      linha('Pix/transferências enviadas', tEnv == null ? '—' : ('− ' + finBRL(tEnv)), '#b45309') +
-      linha('Varredura p/ banco próprio (interna)', tInt == null ? '—' : ('− ' + finBRL(tInt)), 'var(--text-ter)') +
+      linha('Pagamentos feitos pela conta', s.pagamentos?.total == null ? '—' : ('− ' + finBRL(s.pagamentos.total) + ' · ' + s.pagamentos.qtd + 'x'), '#b45309',
+        elId + '-det-pag', detHTML(s.pagamentos?.itens)) +
+      linha('Pix/transferências enviadas', tEnv == null ? '—' : ('− ' + finBRL(tEnv)), '#b45309',
+        elId + '-det-env', detHTML(tItens.filter(t => !t.provavel_interna))) +
+      linha('Varredura p/ banco próprio (interna)', tInt == null ? '—' : ('− ' + finBRL(tInt)), 'var(--text-ter)',
+        elId + '-det-int', detHTML(tItens.filter(t => t.provavel_interna))) +
       (j.saldo_final != null ? linha('Saldo na conta (fim do extrato)', finBRL(j.saldo_final), 'var(--gold-dark)') : '') +
       `<div style="font-size:10px;color:var(--text-ter);margin-top:6px">${j.gerando ? '⏳ extrato completo sendo gerado (~2 min) — atualize em instantes' : 'extrato até ' + String(ate).split('-').reverse().slice(0, 2).join('/')} · fonte: ${j.fonte === 'release_report' ? 'extrato MP' : 'pagamentos (parcial)'}</div>`;
   } catch (e) {
@@ -1136,11 +1154,18 @@ function finAplicarMP(j, mes) {
     subs[c].push([(it.descricao || 'Pagamento via MP') + TAG, Math.round(it.valor * 100) / 100]);
     mudou = true;
   }
-  const env = j.saidas.transferencias && j.saidas.transferencias.enviadas;
-  if (env > 0) {
+  const envItens = ((j.saidas.transferencias && j.saidas.transferencias.itens) || [])
+    .filter(t => !t.provavel_interna && t.valor > 0 && t.dia && t.dia.startsWith(mes));
+  if (envItens.length) {
     subs.outros = subs.outros || [];
-    subs.outros.push(['Pix/transferências enviadas via MP (classificar)' + TAG, Math.round(env * 100) / 100]);
+    for (const t of envItens) {
+      subs.outros.push(['Pix enviado ' + t.dia.slice(8, 10) + '/' + t.dia.slice(5, 7) + ' (destino a classificar)' + TAG, Math.round(t.valor * 100) / 100]);
+    }
     mudou = true;
+  } else {
+    // fallback: só o total disponível (extrato sem itens) — agrega
+    const env = j.saidas.transferencias && j.saidas.transferencias.enviadas;
+    if (env > 0) { subs.outros = subs.outros || []; subs.outros.push(['Pix/transferências enviadas via MP (classificar)' + TAG, Math.round(env * 100) / 100]); mudou = true; }
   }
   if (!mudou && !Object.values(subs).some(a => (a || []).length)) return;
   cfg.subs = cfg.subs || {}; cfg.subs[mes] = subs;
