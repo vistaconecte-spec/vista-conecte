@@ -592,7 +592,7 @@ function finPopularMeses() {
     o.value = val; o.textContent = nomes[d.getMonth()] + '/' + d.getFullYear();
     sel.appendChild(o);
   }
-  if ([...sel.options].some(o => o.value === '2026-05')) sel.value = '2026-05';
+  // padrão: mês ATUAL (primeira opção) — a saúde financeira abre sempre no mês corrente
 }
 
 function finBuildParams(cfg, custos) {
