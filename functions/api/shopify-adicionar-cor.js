@@ -58,11 +58,15 @@ export async function onRequest(context) {
       price: v.price, inventory_policy: v.inventory_policy, inventory_management: v.inventory_management,
     }));
 
+    // Reaproveita o ID da opção existente (posição 1) — vira "Cor". A "Tamanho" é nova (posição 2).
+    // Enviar as duas como novas causa erro 422 "name of Option is not unique" (Shopify tenta criar
+    // uma 2ª opção "Tamanho" enquanto a original ainda existe).
+    const opcaoExistenteId = p.options[0].id;
     const body = {
       product: {
         id: p.id,
         title: tituloBase,
-        options: [{ name: 'Cor' }, { name: 'Tamanho' }],
+        options: [{ id: opcaoExistenteId, name: 'Cor' }, { name: 'Tamanho' }],
         variants: [...variantesAtualizadas, ...variantesNovas],
       },
     };
