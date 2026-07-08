@@ -750,9 +750,23 @@ async function finPullMeta(mes) {
     const cfgFin = finGetConfig();
     const subs = (cfgFin.subs && cfgFin.subs[mes]) ? cfgFin.subs[mes] : (finGetSubs(cfgFin, mes));
     subs.trafego = subs.trafego || [];
-    const idx = subs.trafego.findIndex(s => /meta ads/i.test(s[0]));
+    const idx = subs.trafego.findIndex(s => /^meta ads/i.test(s[0]));
     if (idx >= 0) subs.trafego[idx][1] = gasto;
     else subs.trafego.unshift(['Meta Ads (Facebook)', gasto]);
+    // Impostos sobre o gasto Meta (PIS/COFINS/ISS): não aparecem no gerenciador, mas saem
+    // do caixa — taxa configurada na caixa de tráfego do Fluxo (padrão 12,15%).
+    const _flxCfg = loadLocal('vc:fluxo_caixa');
+    const pctImp = (_flxCfg && _flxCfg.trafegoCfg && typeof _flxCfg.trafegoCfg.impostoPct === 'number')
+      ? _flxCfg.trafegoCfg.impostoPct : FLX_TRAFEGO_DEFAULT.impostoPct;
+    const idxImp = subs.trafego.findIndex(s => /^impostos s\/ meta ads/i.test(s[0]));
+    if (pctImp > 0) {
+      const rotImp = 'Impostos s/ Meta Ads (' + String(pctImp).replace('.', ',') + '%)';
+      const vImp = Math.round(gasto * pctImp) / 100;
+      if (idxImp >= 0) { subs.trafego[idxImp][0] = rotImp; subs.trafego[idxImp][1] = vImp; }
+      else subs.trafego.splice((idx >= 0 ? idx : 0) + 1, 0, [rotImp, vImp]);
+    } else if (idxImp >= 0) {
+      subs.trafego.splice(idxImp, 1);
+    }
     cfgFin.subs = cfgFin.subs || {};
     cfgFin.subs[mes] = subs;
     cfgFin.subsV = cfgFin.subsV || {};
@@ -841,15 +855,45 @@ function finRecompute() {
     ${lin('= Resultado do mês', resultado, { strong: true, top: true, color: corR(resultado) })}
   </table>`;
 
-  const itens = CUSTO_DEFS.filter(([k]) => k !== 'retirada').map(([k, l, cor]) => [l, custos[k], cor]).filter(i => i[1] > 0).sort((a, b) => b[1] - a[1]);
+  const itens = CUSTO_DEFS.filter(([k]) => k !== 'retirada').map(([k, l, cor]) => [l, custos[k], cor, k]).filter(i => i[1] > 0).sort((a, b) => b[1] - a[1]);
   const maxv = Math.max(...itens.map(i => i[1]), 1);
-  document.getElementById('fin-chart').innerHTML = itens.map(i => `
-    <div style="display:flex;align-items:center;gap:8px;margin:5px 0;font-size:12px">
-      <span style="width:130px;color:var(--text-sec)">${i[0]}</span>
+  const chartRow = i => {
+    const subs = (window._finSubs && window._finSubs[i[3]]) || [];
+    const det = subs.length
+      ? subs.slice().sort((a, b) => (parseFloat(b[1]) || 0) - (parseFloat(a[1]) || 0)).map(sub => `
+          <div style="display:flex;justify-content:space-between;gap:8px;padding:2px 0;font-size:12px;color:var(--text-sec)">
+            <span>${String(sub[0])}</span><span style="white-space:nowrap">${finBRL(parseFloat(sub[1]) || 0)}</span>
+          </div>`).join('')
+      : '<div style="font-size:11px;color:var(--text-ter);padding:2px 0">valor lançado direto (sem subitens) — detalhe nos Parâmetros abaixo</div>';
+    return `
+    <div onclick="finChartToggle('${i[3]}')" title="clique para ver os custos detalhados" style="display:flex;align-items:center;gap:8px;margin:5px 0;font-size:12px;cursor:pointer">
+      <span id="fin-chart-chev-${i[3]}" style="width:10px;color:var(--text-ter);font-size:10px;transition:transform 0.15s">▸</span>
+      <span style="width:130px;color:var(--text-sec)">${i[0]}${subs.length ? ` <span style=\"font-size:10px;color:var(--text-ter)\">(${subs.length})</span>` : ''}</span>
       <div style="flex:1;background:#f0ede8;border-radius:4px;height:16px;overflow:hidden"><div style="height:100%;width:${Math.round(i[1] / maxv * 100)}%;background:${i[2]}"></div></div>
       <span style="width:95px;text-align:right;font-weight:600">${finBRL(i[1])}</span>
       <span style="width:42px;text-align:right;color:var(--text-ter)">${vendas ? Math.round(i[1] / vendas * 100) : 0}%</span>
-    </div>`).join('') || '<div style="font-size:12px;color:var(--text-ter);padding:8px 0">Preencha os custos do mês abaixo para ver a composição.</div>';
+    </div>
+    <div id="fin-chart-det-${i[3]}" style="display:none;margin:0 0 8px 18px;padding:6px 10px;border-left:2px solid ${i[2]};background:rgba(0,0,0,0.02);border-radius:0 6px 6px 0">${det}</div>`;
+  };
+  const totalChart = itens.reduce((s, i) => s + i[1], 0);
+  const linhaTotal = itens.length ? `
+    <div style="display:flex;align-items:center;gap:8px;margin:8px 0 0;padding-top:8px;border-top:2px solid var(--border);font-size:13px;font-weight:700">
+      <span style="width:10px"></span>
+      <span style="width:130px">Total de custos</span>
+      <div style="flex:1"></div>
+      <span style="width:95px;text-align:right">${finBRL(totalChart)}</span>
+      <span style="width:42px;text-align:right;color:var(--text-ter);font-weight:400">${vendas ? Math.round(totalChart / vendas * 100) : 0}%</span>
+    </div>` : '';
+  document.getElementById('fin-chart').innerHTML = (itens.map(chartRow).join('') + linhaTotal) || '<div style="font-size:12px;color:var(--text-ter);padding:8px 0">Preencha os custos do mês abaixo para ver a composição.</div>';
+}
+
+// Expande/recolhe os custos detalhados de uma categoria na Composição de Custos
+function finChartToggle(k) {
+  const el = document.getElementById('fin-chart-det-' + k); if (!el) return;
+  const aberto = el.style.display !== 'none';
+  el.style.display = aberto ? 'none' : '';
+  const chev = document.getElementById('fin-chart-chev-' + k);
+  if (chev) chev.style.transform = aberto ? '' : 'rotate(90deg)';
 }
 
 // ─── ABA FLUXO DE CAIXA (visão prospectiva de solvência) ─────────────────────
@@ -859,30 +903,36 @@ function finRecompute() {
 // SEM projeção de entradas futuras (visão conservadora escolhida em 2026-07-05).
 
 // Config padrão do tráfego (Meta cobra por LIMITE de faturamento, não valor fechado no fim do mês).
-const FLX_TRAFEGO_DEFAULT = { estimativa: 39000, limite: 3000 };
+// impostoPct: a Meta Brasil cobra impostos POR CIMA do gasto do gerenciador (PIS 1,65% +
+// COFINS 7,6% + ISS ~2,9% ≈ 12,15%). Não aparecem no gerenciador, mas saem do caixa —
+// as provisões e o DRE precisam incluí-los. Ajustável na caixa de tráfego do Fluxo.
+const FLX_TRAFEGO_DEFAULT = { estimativa: 39000, limite: 3000, impostoPct: 12.15 };
 
 function flxDiasNoMes(mes) {
   const [Y, M] = mes.split('-').map(Number);
   return new Date(Y, M, 0).getDate();
 }
 
-// Tráfego é FRACIONADO: a Meta debita `limite` (ex.: R$3.000) toda vez que o gasto
-// acumulado bate o teto de cobrança. Dado o gasto mensal estimado, distribui as
-// cobranças de R$`limite` pelos dias do mês assumindo gasto diário ~constante.
-function flxTrafegoCharges(estimativa, limite, diasNoMes) {
+// Tráfego é FRACIONADO: a Meta debita quando o GASTO DO GERENCIADOR acumulado bate o
+// limite (ex.: R$3.000) — mas a COBRANÇA REAL sai com impostos por cima (limite × (1+imposto)).
+// `estimativa` e `limite` são em valores do gerenciador (sem imposto); as provisões saem em
+// valor de caixa (com imposto) — mesma unidade das cobranças reais do extrato MP.
+function flxTrafegoCharges(estimativa, limite, diasNoMes, impostoPct) {
   estimativa = parseFloat(estimativa) || 0;
   limite = parseFloat(limite) || 3000;
+  const fator = 1 + ((parseFloat(impostoPct) || 0) / 100);
   const out = [];
   if (estimativa <= 0 || limite <= 0) return out;
   const diario = estimativa / diasNoMes;
   const n = Math.floor(estimativa / limite);
   const resto = Math.round((estimativa - n * limite) * 100) / 100;
   const rotuloLim = limite.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const sufImposto = fator > 1 ? ' + impostos' : '';
   for (let k = 1; k <= n; k++) {
     const dia = Math.min(diasNoMes, Math.max(1, Math.ceil(k * limite / diario)));
-    out.push({ id: 'trf' + k, desc: 'Meta Ads — cobrança ' + k + ' (R$ ' + rotuloLim + ')', valor: limite, dia, cat: 'trafego', rec: true, pago: false });
+    out.push({ id: 'trf' + k, desc: 'Meta Ads — cobrança ' + k + ' (R$ ' + rotuloLim + sufImposto + ')', valor: Math.round(limite * fator * 100) / 100, dia, cat: 'trafego', rec: true, pago: false });
   }
-  if (resto > 0) out.push({ id: 'trf' + (n + 1), desc: 'Meta Ads — saldo do mês', valor: resto, dia: diasNoMes, cat: 'trafego', rec: true, pago: false });
+  if (resto > 0) out.push({ id: 'trf' + (n + 1), desc: 'Meta Ads — saldo do mês' + sufImposto, valor: Math.round(resto * fator * 100) / 100, dia: diasNoMes, cat: 'trafego', rec: true, pago: false });
   return out;
 }
 
@@ -909,7 +959,7 @@ function flxRecorrentesTemplate(mes, trafegoCfg, vendasAuto) {
   const fixas = base.map((r, i) => ({ id: 'rec' + i, desc: r[0], valor: r[1], dia: r[2], cat: r[3], rec: true, pago: false }));
   const tc = trafegoCfg || FLX_TRAFEGO_DEFAULT;
   const dias = flxDiasNoMes(mes || (new Date().getFullYear() + '-' + String(new Date().getMonth() + 1).padStart(2, '0')));
-  return fixas.concat(flxTrafegoCharges(tc.estimativa, tc.limite, dias));
+  return fixas.concat(flxTrafegoCharges(tc.estimativa, tc.limite, dias, tc.impostoPct));
 }
 
 function flxCatNome(k) {
@@ -927,6 +977,7 @@ function flxGetConfig() {
     pag: {}, updated_at: null
   };
   if (!cfg.trafegoCfg) cfg.trafegoCfg = Object.assign({}, FLX_TRAFEGO_DEFAULT);
+  if (cfg.trafegoCfg.impostoPct === undefined) cfg.trafegoCfg.impostoPct = FLX_TRAFEGO_DEFAULT.impostoPct;
   if (cfg.vendasAuto === undefined) cfg.vendasAuto = true; // custo das vendidas puxado da Shopify
   if (!cfg.vendasIncluir) cfg.vendasIncluir = { tecido: true, corte: true, costura: true, frete: true };
   return cfg;
@@ -1013,6 +1064,7 @@ async function renderFluxo() {
   saveLocal('vc:fluxo_caixa', cfg);
   flxRenderSaldos(cfg);
   flxRenderPagamentos(cfg, mes);
+  flxProjFormInit(mes);
   flxRecompute();
   // Em background (não bloqueiam a UI; falha → mantém manual/placeholder):
   flxAtualizarSaldos(true);              // saldos MP/Pagar.me
@@ -1036,13 +1088,16 @@ async function mpRenderCard(elId, mes) {
     if (!r.ok || j.erro) { el.innerHTML = '<div style="font-size:12px;color:var(--text-ter)">MP indisponível: ' + (j.erro || r.status) + '</div>'; return; }
     // no Fluxo, os pagamentos reais feitos pelo MP entram sozinhos na tabela de contas (como pagos)
     if (elId === 'flx-mp') flxAplicarSaidasMP(j, mes);
+    if (elId === 'fin-mp') finAplicarMP(j, mes); // DRE do mês corrente importa os pagamentos reais do MP
     const linha = (lbl, val, cor) => `<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #f0ede8;font-size:13px">
         <span style="color:var(--text-sec)">${lbl}</span><span style="font-weight:600;color:${cor || 'inherit'}">${val}</span></div>`;
     const s = j.saidas || {};
+    const tEnv = s.transferencias?.enviadas, tInt = s.transferencias?.internas;
     el.innerHTML =
-      linha('Entradas (Pix, líquido)', finBRL(j.entradas?.total_liquido || 0) + ' · ' + (j.entradas?.qtd || 0) + 'x', '#16a34a') +
+      linha('Entradas (recebimentos líquidos)', finBRL(j.entradas?.total_liquido || 0) + ' · ' + (j.entradas?.qtd || 0) + 'x', '#16a34a') +
       linha('Pagamentos feitos pela conta', s.pagamentos?.total == null ? '—' : ('− ' + finBRL(s.pagamentos.total) + ' · ' + s.pagamentos.qtd + 'x'), '#b45309') +
-      linha('Transferências p/ banco (interna)', s.transferencias?.total == null ? '—' : ('− ' + finBRL(s.transferencias.total)), 'var(--text-ter)') +
+      linha('Pix/transferências enviadas', tEnv == null ? '—' : ('− ' + finBRL(tEnv)), '#b45309') +
+      linha('Varredura p/ banco próprio (interna)', tInt == null ? '—' : ('− ' + finBRL(tInt)), 'var(--text-ter)') +
       (j.saldo_final != null ? linha('Saldo na conta (fim do extrato)', finBRL(j.saldo_final), 'var(--gold-dark)') : '') +
       `<div style="font-size:10px;color:var(--text-ter);margin-top:6px">${j.gerando ? '⏳ extrato completo sendo gerado (~2 min) — atualize em instantes' : 'extrato até ' + String(ate).split('-').reverse().slice(0, 2).join('/')} · fonte: ${j.fonte === 'release_report' ? 'extrato MP' : 'pagamentos (parcial)'}</div>`;
   } catch (e) {
@@ -1050,34 +1105,127 @@ async function mpRenderCard(elId, mes) {
   }
 }
 
+// Importa os pagamentos REAIS do MP para o DRE (subcategorias) do MÊS CORRENTE — assim a
+// "Composição de custos" reflete o que de fato saiu das contas.
+// Regras: (1) só mês corrente (mês fechado = reconciliação manual pelo extrato, não tocamos);
+// (2) pagamentos ao Facebook/Meta ficam FORA (o gasto Meta do mês já entra inteiro via
+//     /api/meta-insights no subitem "Meta Ads (Facebook)" — importar de novo duplicaria);
+// (3) itens marcados "· MP auto" são substituídos a cada sync (idempotente) — os manuais ficam.
+function finAplicarMP(j, mes) {
+  const hoje = new Date();
+  const mesAtual = hoje.getFullYear() + '-' + String(hoje.getMonth() + 1).padStart(2, '0');
+  if (mes !== mesAtual) return;
+  const pag = j && j.saidas && j.saidas.pagamentos;
+  if (!pag || !Array.isArray(pag.itens)) return;
+  const TAG = ' · MP auto';
+  const catDe = d => {
+    const t = (d || '').toLowerCase();
+    if (/facebk|facebook|meta ads/.test(t)) return null; // coberto pelo gasto Meta via API
+    if (/anthropic|wati|apple|claro|google|adobe|microsoft|manus|shopify|certifica/.test(t)) return 'fixos';
+    if (/etiqueta|frete|loggi|correios|l4b|transporte/.test(t)) return 'logistica';
+    return 'outros';
+  };
+  const cfg = finGetConfig();
+  const subs = (cfg.subs && cfg.subs[mes]) ? cfg.subs[mes] : finGetSubs(cfg, mes);
+  Object.keys(subs).forEach(k => { subs[k] = (subs[k] || []).filter(i => !String(i[0]).endsWith(TAG)); });
+  let mudou = false;
+  for (const it of pag.itens) {
+    const c = catDe(it.descricao);
+    if (!c || !(it.valor > 0)) continue;
+    subs[c] = subs[c] || [];
+    subs[c].push([(it.descricao || 'Pagamento via MP') + TAG, Math.round(it.valor * 100) / 100]);
+    mudou = true;
+  }
+  const env = j.saidas.transferencias && j.saidas.transferencias.enviadas;
+  if (env > 0) {
+    subs.outros = subs.outros || [];
+    subs.outros.push(['Pix/transferências enviadas via MP (classificar)' + TAG, Math.round(env * 100) / 100]);
+    mudou = true;
+  }
+  if (!mudou && !Object.values(subs).some(a => (a || []).length)) return;
+  cfg.subs = cfg.subs || {}; cfg.subs[mes] = subs;
+  cfg.subsV = (cfg.subsV && typeof cfg.subsV === 'object') ? cfg.subsV : {}; cfg.subsV[mes] = FIN_SUBS_VERSION;
+  cfg.meses = cfg.meses || {};
+  const c2 = {};
+  CUSTO_DEFS.forEach(([k]) => {
+    c2[k] = (subs[k] && subs[k].length) ? Math.round(finSubsSum(subs[k]) * 100) / 100 : ((cfg.meses[mes] || {})[k] || 0);
+  });
+  cfg.meses[mes] = Object.assign({}, cfg.meses[mes], c2);
+  cfg.meta = (cfg.meta && typeof cfg.meta === 'object') ? cfg.meta : {};
+  cfg.meta[mes] = Object.assign({}, cfg.meta[mes], { atualizado: new Date().toISOString() });
+  cfg.updated_at = new Date().toISOString();
+  saveLocal('vc:financeiro', cfg);
+  salvarNuvem('financeiro', cfg);
+  if (modeloAtual === '__financeiro__' && document.getElementById('fin-mes') && document.getElementById('fin-mes').value === mes) {
+    finBuildParams(cfg, cfg.meses[mes]);
+    finRecompute();
+    finUpdateStatus();
+  }
+}
+
+// Gera as cobranças provisionadas de tráfego do mês JÁ ABATENDO o que a Meta cobrou de verdade
+// (pagamentos reais via MP categorizados como 'trafego'). Consome as provisões em ordem de dia:
+// remove inteiras enquanto couber e apara a próxima pelo resto — provisão restante = estimativa − real.
+// Determinística (recalculável a cada sync, sem consumir duas vezes).
+function flxTrafegoLiquido(cfg, mes) {
+  const tc = cfg.trafegoCfg || FLX_TRAFEGO_DEFAULT;
+  const gerados = flxTrafegoCharges(tc.estimativa, tc.limite, flxDiasNoMes(mes), tc.impostoPct);
+  let real = ((cfg.pag && cfg.pag[mes]) || [])
+    .filter(p => p.auto === 'mp' && p.cat === 'trafego')
+    .reduce((s, p) => s + (p.valor || 0), 0);
+  if (real <= 0) return gerados;
+  const out = [];
+  for (const g of gerados) {
+    if (real <= 0.005) { out.push(g); continue; }
+    if (g.valor <= real + 0.005) { real -= g.valor; continue; } // provisão inteira consumida pela cobrança real
+    out.push(Object.assign({}, g, {
+      valor: Math.round((g.valor - real) * 100) / 100,
+      desc: g.desc + ' (abatido o já cobrado)'
+    }));
+    real = 0;
+  }
+  return out;
+}
+
 // Injeta os PAGAMENTOS REAIS feitos pela conta MP na tabela de contas do mês (auto:'mp', já pagos).
-// Transferências p/ banco (payout) NÃO entram — são internas, não despesa.
+// Cobranças da Meta (Facebk*/Facebook) entram como cat 'trafego' e CONSOMEM as provisionadas.
 // Anti-duplicação: pula se já existe conta manual no mesmo dia com o mesmo valor (±1%).
 function flxAplicarSaidasMP(j, mes) {
-  const itens = j && j.saidas && j.saidas.pagamentos && Array.isArray(j.saidas.pagamentos.itens) ? j.saidas.pagamentos.itens : null;
-  if (!itens) return; // extrato ainda gerando — mantém o que está
+  const pagtos = j && j.saidas && j.saidas.pagamentos && Array.isArray(j.saidas.pagamentos.itens) ? j.saidas.pagamentos.itens : null;
+  if (!pagtos) return; // extrato ainda gerando — mantém o que está
+  // Transferências ENVIADAS (não-internas) também são dinheiro saindo — entram p/ classificação.
+  const transf = (j.saidas.transferencias && Array.isArray(j.saidas.transferencias.itens))
+    ? j.saidas.transferencias.itens.filter(t => !t.provavel_interna) : [];
   const cfg = flxGetConfig();
   cfg.pag = cfg.pag || {};
   const manuais = (cfg.pag[mes] || []).filter(p => p.auto !== 'mp');
   const novos = [];
-  itens.forEach((it, i) => {
+  const addItem = (it, i, descBase) => {
     if (!it || !(it.valor > 0) || !it.dia || !it.dia.startsWith(mes)) return;
     const dia = parseInt(it.dia.slice(8, 10), 10);
     // já existe conta LANÇADA À MÃO equivalente (mesmo dia, valor ±1%)? então não duplica.
     // (itens auto:'vendas' são provisões de custo — natureza diferente, não contam como duplicata)
     const jaTem = manuais.some(p => !p.auto && p.dia === dia && Math.abs((p.valor || 0) - it.valor) <= it.valor * 0.01);
     if (jaTem) return;
+    // cobrança da Meta detectada pela descrição → categoria Tráfego (e vai abater as provisionadas)
+    const ehMeta = /facebk|facebook|meta ads/i.test(descBase);
     novos.push({
-      id: 'mp-' + mes + '-' + (it.source_id || i),
-      desc: (it.descricao ? it.descricao : 'Pagamento via conta MP') + ' · MP auto',
+      id: 'mp-' + mes + '-' + (it.source_id || descBase + i),
+      desc: descBase + (it.autorizado ? ' (em liquidação)' : '') + ' · MP auto',
       valor: Math.round(it.valor * 100) / 100,
-      dia, cat: 'outros', rec: false, auto: 'mp',
+      dia, cat: ehMeta ? 'trafego' : 'outros', rec: false, auto: 'mp',
       pago: true // o dinheiro JÁ saiu — conta no "já pago", não no "a pagar"
     });
-  });
+  };
+  pagtos.forEach((it, i) => addItem(it, i, it.descricao || 'Pagamento via conta MP'));
+  transf.forEach((it, i) => addItem(it, i, 'Pix/transferência enviada (conferir destino)'));
   const antes = JSON.stringify((cfg.pag[mes] || []).filter(p => p.auto === 'mp'));
   if (antes === JSON.stringify(novos)) return; // nada mudou — evita re-render/salvamento à toa
   cfg.pag[mes] = manuais.concat(novos);
+  // Reconciliação do tráfego: regenera as provisões abatendo o que a Meta já cobrou de verdade.
+  // (preserva itens pontuais manuais de tráfego — só as provisionadas rec são regeradas)
+  const semProvisaoTrafego = cfg.pag[mes].filter(p => !(p.rec && p.cat === 'trafego' && p.auto !== 'mp'));
+  cfg.pag[mes] = semProvisaoTrafego.concat(flxTrafegoLiquido(cfg, mes));
   flxSalvarPag(cfg);
   if (modeloAtual === '__fluxo__' && document.getElementById('flx-mes').value === mes) {
     flxRenderPagamentos(cfg, mes);
@@ -1152,6 +1300,7 @@ function flxRenderPagamentos(cfg, mes) {
   const tc = cfg.trafegoCfg || FLX_TRAFEGO_DEFAULT;
   const estEl = document.getElementById('flx-trf-est'); if (estEl) estEl.value = tc.estimativa;
   const limEl = document.getElementById('flx-trf-lim'); if (limEl) limEl.value = tc.limite;
+  const impEl = document.getElementById('flx-trf-imp'); if (impEl) impEl.value = (tc.impostoPct !== undefined ? tc.impostoPct : FLX_TRAFEGO_DEFAULT.impostoPct);
   const lista = (cfg.pag && cfg.pag[mes]) || [];
   const ordenada = lista.map((p, i) => ({ p, i })).sort((a, b) => (a.p.dia - b.p.dia) || (b.p.valor - a.p.valor));
   const opCats = CUSTO_DEFS.map(([k, l]) => `<option value="${k}">${l}</option>`).join('');
@@ -1194,6 +1343,41 @@ function flxPagDel(i) {
   flxRenderPagamentos(cfg, mes);
   flxRecompute();
 }
+// Lançamento rápido de pagamento previsto direto no card da Projeção Diária.
+function flxProjFormInit(mes) {
+  const sel = document.getElementById('flx-proj-cat');
+  if (sel && !sel.options.length) {
+    CUSTO_DEFS.forEach(([k, l]) => { const o = document.createElement('option'); o.value = k; o.textContent = l; sel.appendChild(o); });
+    sel.value = 'outros';
+  }
+  const diaEl = document.getElementById('flx-proj-dia');
+  if (diaEl && !diaEl.value) {
+    const hoje = new Date();
+    const mesAtual = hoje.getFullYear() + '-' + String(hoje.getMonth() + 1).padStart(2, '0');
+    diaEl.value = (mes === mesAtual) ? hoje.getDate() : 1;
+  }
+}
+
+function flxProjAdd() {
+  const msg = document.getElementById('flx-proj-add-msg');
+  const desc = (document.getElementById('flx-proj-desc').value || '').trim();
+  const valor = parseFloat(document.getElementById('flx-proj-valor').value) || 0;
+  const dia = Math.min(31, Math.max(1, parseInt(document.getElementById('flx-proj-dia').value) || 0));
+  const cat = document.getElementById('flx-proj-cat').value || 'outros';
+  if (!desc || valor <= 0 || !dia) { if (msg) msg.textContent = 'preencha descrição, dia e valor'; return; }
+  const cfg = flxGetConfig();
+  const mes = document.getElementById('flx-mes').value;
+  cfg.pag = cfg.pag || {}; cfg.pag[mes] = cfg.pag[mes] || [];
+  cfg.pag[mes].push({ id: 'p' + Date.now(), desc, valor: Math.round(valor * 100) / 100, dia, cat, rec: false, pago: false });
+  flxSalvarPag(cfg);
+  flxRenderPagamentos(cfg, mes);
+  flxRecompute();
+  document.getElementById('flx-proj-desc').value = '';
+  document.getElementById('flx-proj-valor').value = '';
+  if (msg) { msg.textContent = '✓ adicionado'; setTimeout(() => { if (msg.textContent === '✓ adicionado') msg.textContent = ''; }, 2500); }
+  document.getElementById('flx-proj-desc').focus();
+}
+
 function flxPagAdd() {
   const cfg = flxGetConfig();
   const mes = document.getElementById('flx-mes').value;
@@ -1223,10 +1407,13 @@ function flxRecalcTrafego() {
   const mes = document.getElementById('flx-mes').value;
   const est = parseFloat(document.getElementById('flx-trf-est').value) || 0;
   const lim = parseFloat(document.getElementById('flx-trf-lim').value) || 3000;
-  cfg.trafegoCfg = { estimativa: est, limite: lim };
-  // remove só as cobranças de tráfego recorrentes (mantém tráfego pontual manual e as demais contas)
-  const outras = (cfg.pag[mes] || []).filter(p => !(p.cat === 'trafego' && p.rec));
-  cfg.pag[mes] = outras.concat(flxTrafegoCharges(est, lim, flxDiasNoMes(mes)));
+  const impEl = document.getElementById('flx-trf-imp');
+  const imp = impEl ? (parseFloat(impEl.value) || 0) : FLX_TRAFEGO_DEFAULT.impostoPct;
+  cfg.trafegoCfg = { estimativa: est, limite: lim, impostoPct: imp };
+  // remove só as cobranças de tráfego recorrentes (mantém tráfego pontual manual, itens MP reais e as demais contas)
+  const outras = (cfg.pag[mes] || []).filter(p => !(p.cat === 'trafego' && p.rec && p.auto !== 'mp'));
+  cfg.pag[mes] = outras;
+  cfg.pag[mes] = outras.concat(flxTrafegoLiquido(cfg, mes)); // já abate o que a Meta cobrou de verdade
   flxSalvarPag(cfg);
   flxRenderPagamentos(cfg, mes);
   flxRecompute();
@@ -1343,8 +1530,13 @@ function flxRecompute() {
   const ultimoDia = new Date(Y, M, 0).getDate();
   const diaInicio = ehMesAtual ? hoje.getDate() : 1;
 
-  // Pagamentos que ainda vão sair (não pagos, com vencimento >= início da janela)
-  const pend = lista.filter(p => !p.pago && p.dia >= diaInicio);
+  // Pagamentos que ainda vão sair = TUDO que não foi pago. Conta VENCIDA (dia < hoje) e não
+  // paga continua devida — entra como se vencesse HOJE, marcada "vencida" (ex.: custo de
+  // produção das vendidas de semanas passadas). Sem isso ela sumia da projeção e subestimava
+  // o que o caixa ainda deve.
+  const pend = lista.filter(p => !p.pago && (p.valor || 0) > 0)
+    .map(p => (p.dia < diaInicio) ? Object.assign({}, p, { diaEfetivo: diaInicio, vencida: true })
+                                  : Object.assign({}, p, { diaEfetivo: p.dia }));
   const aPagar = pend.reduce((s, p) => s + (p.valor || 0), 0);
   const jaPago = lista.filter(p => p.pago).reduce((s, p) => s + (p.valor || 0), 0);
   const totalMes = lista.reduce((s, p) => s + (p.valor || 0), 0);
@@ -1353,7 +1545,7 @@ function flxRecompute() {
   const dias = [];
   let saldo = saldoHoje, menor = saldoHoje, diaMenor = diaInicio;
   for (let d = diaInicio; d <= ultimoDia; d++) {
-    const saidas = pend.filter(p => p.dia === d).reduce((s, p) => s + (p.valor || 0), 0);
+    const saidas = pend.filter(p => p.diaEfetivo === d).reduce((s, p) => s + (p.valor || 0), 0);
     saldo -= saidas;
     if (saldo < menor) { menor = saldo; diaMenor = d; }
     if (saidas > 0) dias.push({ d, saidas, saldo });
@@ -1401,39 +1593,53 @@ function flxRecompute() {
       <th style="text-align:right;padding:6px 8px">Saídas</th>
       <th style="text-align:right;padding:6px 8px">Saldo ${ehPassado ? '' : 'projetado'}</th></tr>`;
   const projRows = dias.map(row => {
-    const contasDia = pend.filter(p => p.dia === row.d).map(p => p.desc).join(', ');
+    // uma conta por linha, com o valor individual à direita; vencidas destacadas
+    const contasDia = pend.filter(p => p.diaEfetivo === row.d)
+      .sort((a, b) => (b.vencida ? 1 : 0) - (a.vencida ? 1 : 0) || (b.valor || 0) - (a.valor || 0))
+      .map(p => `<div style="display:flex;justify-content:space-between;gap:8px;padding:1px 0">
+        <span>${p.vencida ? '<span style="color:#dc2626;font-weight:600">⚠ vencida ' + dd(p.dia) + '</span> — ' : ''}${p.desc}</span>
+        <span style="white-space:nowrap;color:var(--text-ter)">− ${finBRL(p.valor || 0)}</span></div>`)
+      .join('');
     const critico = row.d === diaMenor && menor < saldoHoje;
     return `<tr style="border-top:1px solid #f0ede8;${critico ? 'background:rgba(217,119,6,0.06)' : ''}">
-      <td style="padding:6px 8px;font-weight:600">${dd(row.d)}</td>
+      <td style="padding:6px 8px;font-weight:600;vertical-align:top">${dd(row.d)}</td>
       <td style="padding:6px 8px;font-size:12px;color:var(--text-sec)">${contasDia}</td>
-      <td style="padding:6px 8px;text-align:right;color:#b45309">− ${finBRL(row.saidas)}</td>
-      <td style="padding:6px 8px;text-align:right;font-weight:600;color:${corR(row.saldo)}">${finBRL(row.saldo)}${critico ? ' <span style="font-size:9px;color:#d97706">◄ mais baixo</span>' : ''}</td></tr>`;
+      <td style="padding:6px 8px;text-align:right;color:#b45309;vertical-align:top;white-space:nowrap">− ${finBRL(row.saidas)}</td>
+      <td style="padding:6px 8px;text-align:right;font-weight:600;vertical-align:top;white-space:nowrap;color:${corR(row.saldo)}">${finBRL(row.saldo)}${critico ? ' <span style="font-size:9px;color:#d97706">◄ mais baixo</span>' : ''}</td></tr>`;
   }).join('');
   const linhaInicial = `<tr><td style="padding:6px 8px;font-weight:600;color:var(--text-ter)">${ehMesAtual ? 'hoje' : (ehPassado ? 'início' : 'dia 1')}</td><td></td><td></td><td style="padding:6px 8px;text-align:right;font-weight:700">${finBRL(saldoHoje)}</td></tr>`;
 
-  // ── REALIZADO: contas já pagas do mês (incl. pagamentos MP auto), acima do "hoje".
-  // Informativas: o dinheiro já saiu e o saldo atual já reflete — por isso não têm coluna de
-  // saldo (evita dupla contagem) e aparecem esmaecidas com ✓.
+  // ── Card REALIZADO (separado): contas já pagas do mês (incl. pagamentos MP auto).
+  // Informativas: o dinheiro já saiu e o saldo atual já reflete — sem coluna de saldo
+  // (evita dupla contagem). Uma linha por pagamento; dia na primeira do grupo.
   const pagos = lista.filter(p => p.pago && (p.valor || 0) > 0);
   const pagosPorDia = {};
   pagos.forEach(p => { pagosPorDia[p.dia] = pagosPorDia[p.dia] || []; pagosPorDia[p.dia].push(p); });
   const diasPagos = Object.keys(pagosPorDia).map(Number).sort((a, b) => a - b);
   const realizadoRows = diasPagos.map(d => {
-    const its = pagosPorDia[d];
-    const tot = its.reduce((s, p) => s + (p.valor || 0), 0);
-    return `<tr style="border-top:1px solid #f0ede8;opacity:0.55">
-      <td style="padding:5px 8px;font-weight:600">${dd(d)}</td>
-      <td style="padding:5px 8px;font-size:12px;color:var(--text-sec)">✓ ${its.map(p => p.desc).join(', ')}</td>
-      <td style="padding:5px 8px;text-align:right;color:#b45309">− ${finBRL(tot)}</td>
-      <td style="padding:5px 8px;text-align:right;font-size:10px;color:var(--text-ter)">pago</td></tr>`;
+    const its = pagosPorDia[d].slice().sort((a, b) => (b.valor || 0) - (a.valor || 0));
+    return its.map((p, i) => `<tr style="${i === 0 ? 'border-top:1px solid #f0ede8;' : ''}">
+      <td style="padding:4px 8px;font-weight:600;color:var(--text-ter)">${i === 0 ? dd(d) : ''}</td>
+      <td style="padding:4px 8px;font-size:12px;color:var(--text-sec)">✓ ${p.desc}</td>
+      <td style="padding:4px 8px;text-align:right;color:#b45309;white-space:nowrap">− ${finBRL(p.valor || 0)}</td>
+      <td style="padding:4px 8px;text-align:right;font-size:10px;color:var(--text-ter)">pago</td></tr>`).join('');
   }).join('');
-  const realizadoBloco = realizadoRows
-    ? `<tr><td colspan="4" style="padding:6px 8px;font-size:10px;font-weight:700;letter-spacing:0.05em;color:var(--text-ter)">REALIZADO (já saiu do caixa — refletido no saldo)</td></tr>${realizadoRows}
-       <tr><td colspan="4" style="padding:6px 8px;font-size:10px;font-weight:700;letter-spacing:0.05em;color:var(--text-ter);border-top:2px solid var(--border)">PROJETADO (a vencer)</td></tr>`
-    : '';
+  const realEl = document.getElementById('flx-realizado');
+  if (realEl) {
+    realEl.innerHTML = realizadoRows
+      ? `<table style="width:100%;font-size:13px;border-collapse:collapse">
+          <tr style="color:var(--text-ter);font-size:11px"><th style="text-align:left;padding:6px 8px">Dia</th><th style="text-align:left;padding:6px 8px">Pagamento</th><th style="text-align:right;padding:6px 8px">Valor</th><th></th></tr>
+          ${realizadoRows}
+          <tr style="border-top:2px solid var(--border);font-weight:700"><td style="padding:6px 8px"></td><td style="padding:6px 8px">Total já pago no mês</td><td style="padding:6px 8px;text-align:right;color:#b45309">− ${finBRL(jaPago)}</td><td></td></tr>
+        </table>`
+      : '<div style="font-size:12px;color:var(--text-ter);padding:6px 0">Nenhum pagamento realizado neste mês ainda.</div>';
+  }
+  const realTotEl = document.getElementById('flx-realizado-total');
+  if (realTotEl) realTotEl.textContent = jaPago > 0 ? ('− ' + finBRL(jaPago)) : '';
 
-  document.getElementById('flx-proj').innerHTML = (dias.length || realizadoRows)
-    ? `<table style="width:100%;font-size:13px;border-collapse:collapse">${projHead}${realizadoBloco}${linhaInicial}${projRows}</table>`
+  // ── Card PROJETADO (a vencer)
+  document.getElementById('flx-proj').innerHTML = dias.length
+    ? `<table style="width:100%;font-size:13px;border-collapse:collapse">${projHead}${linhaInicial}${projRows}</table>`
     : '<div style="font-size:12px;color:var(--text-ter);padding:8px">Nenhuma conta a vencer nesta janela.</div>';
 
   // ── Composição das saídas restantes por categoria

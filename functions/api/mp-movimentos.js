@@ -18,8 +18,14 @@ export function parseReportCSV(csv) {
         iDeb = idx('NET_DEBIT_AMOUNT'), iBal = idx('BALANCE_AMOUNT'), iSrc = idx('SOURCE_ID');
   if (iD < 0 || iCred < 0) return null;
   const out = { entradas: { total_liquido: 0, qtd: 0, por_dia: {} },
-                saidas: { pagamentos: { total: 0, qtd: 0, itens: [] }, transferencias: { total: 0, qtd: 0 }, por_dia: {} },
+                saidas: { pagamentos: { total: 0, qtd: 0, itens: [] },
+                          transferencias: { total: 0, qtd: 0, internas: 0, enviadas: 0, itens: [] },
+                          por_dia: {} },
                 saldo_final: null };
+  // Reservas de pagamento por transação: débito consumido sem estorno = pagamento REAL
+  // (cartão/conta em status authorized — ex.: Facebook Ads, Anthropic, Apple em 07/07).
+  const reservas = {};       // source_id -> { net, dia }
+  const pagamentosDiretos = new Set(); // sources que JÁ têm linha 'payment' débito (evita dupla contagem)
   for (const l of L.slice(1)) {
     const c = l.split(';');
     if (c.length < 5) continue;
@@ -27,24 +33,46 @@ export function parseReportCSV(csv) {
     const desc = c[iDesc] || '';
     const cred = parseFloat(c[iCred]) || 0;
     const deb = parseFloat(c[iDeb]) || 0;
-    if (c[iBal] !== undefined && c[iBal] !== '') out.saldo_final = parseFloat(c[iBal]);
-    if (desc === 'payment' && cred > 0) {         // Pix recebido (líquido)
+    const src = c[iSrc] || '';
+    const bal = (c[iBal] !== undefined && c[iBal] !== '') ? parseFloat(c[iBal]) : null;
+    if (bal !== null) out.saldo_final = bal;
+    if (desc === 'payment' && cred > 0) {         // recebimento (Pix/TED, líquido de taxa)
       out.entradas.total_liquido += cred; out.entradas.qtd++;
       out.entradas.por_dia[dia] = (out.entradas.por_dia[dia] || 0) + cred;
-    } else if (desc === 'payment' && deb > 0) {   // pagamento FEITO pela conta (despesa real)
+    } else if (desc === 'payment' && deb > 0) {   // pagamento efetivado pela conta
+      pagamentosDiretos.add(src);
       out.saidas.pagamentos.total += deb; out.saidas.pagamentos.qtd++;
-      out.saidas.pagamentos.itens.push({ dia, valor: deb, source_id: c[iSrc] || null });
+      out.saidas.pagamentos.itens.push({ dia, valor: deb, source_id: src || null });
       out.saidas.por_dia[dia] = (out.saidas.por_dia[dia] || 0) + deb;
-    } else if (desc === 'payout' && deb > 0) {    // transferência p/ conta bancária (interna, não é despesa)
+    } else if (desc === 'reserve_for_payment' && src) {
+      reservas[src] = reservas[src] || { net: 0, dia };
+      reservas[src].net += deb - cred;
+      reservas[src].dia = dia;
+    } else if (desc === 'payout' && deb > 0) {
+      // transferência enviada. Heurística: se zera (ou quase) o saldo → varredura p/ banco próprio
+      // (interna, não é despesa); senão → provável Pix/transferência a TERCEIRO (despesa).
+      const interna = (bal !== null && bal < 1);
       out.saidas.transferencias.total += deb; out.saidas.transferencias.qtd++;
+      if (interna) out.saidas.transferencias.internas += deb;
+      else out.saidas.transferencias.enviadas += deb;
+      out.saidas.transferencias.itens.push({ dia, valor: deb, source_id: src || null, provavel_interna: interna });
       out.saidas.por_dia[dia] = (out.saidas.por_dia[dia] || 0) + deb;
     }
-    // reserve_for_* são movimentos transitórios (crédito+débito se anulam) — ignorados
+  }
+  // reservas consumidas (net > 0) sem 'payment' correspondente = pagamentos autorizados/em liquidação
+  for (const [src, r] of Object.entries(reservas)) {
+    if (r.net > 0.009 && !pagamentosDiretos.has(src)) {
+      out.saidas.pagamentos.total += r.net; out.saidas.pagamentos.qtd++;
+      out.saidas.pagamentos.itens.push({ dia: r.dia, valor: Math.round(r.net * 100) / 100, source_id: src, autorizado: true });
+      out.saidas.por_dia[r.dia] = (out.saidas.por_dia[r.dia] || 0) + r.net;
+    }
   }
   const r2 = v => Math.round(v * 100) / 100;
   out.entradas.total_liquido = r2(out.entradas.total_liquido);
   out.saidas.pagamentos.total = r2(out.saidas.pagamentos.total);
   out.saidas.transferencias.total = r2(out.saidas.transferencias.total);
+  out.saidas.transferencias.internas = r2(out.saidas.transferencias.internas);
+  out.saidas.transferencias.enviadas = r2(out.saidas.transferencias.enviadas);
   return out;
 }
 
