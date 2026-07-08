@@ -727,6 +727,7 @@ async function renderFinanceiro() {
   finRecompute();
   finUpdateStatus();
   mpRenderCard('fin-mp', mes); // conferência Mercado Pago (entradas/saídas reais do mês)
+  finAplicarVendas(mes); // custo de produção das vendidas entra como despesa (tecido + facção)
 }
 
 // Puxa o gasto de tráfego do Meta (Marketing API) e mantém o subitem "Meta Ads (Facebook)" atualizado.
@@ -1177,6 +1178,47 @@ function finAplicarMP(j, mes) {
     if (env > 0) { subs.outros = subs.outros || []; subs.outros.push(['Pix/transferências enviadas via MP (classificar)' + TAG, Math.round(env * 100) / 100]); mudou = true; }
   }
   if (!mudou && !Object.values(subs).some(a => (a || []).length)) return;
+  cfg.subs = cfg.subs || {}; cfg.subs[mes] = subs;
+  cfg.subsV = (cfg.subsV && typeof cfg.subsV === 'object') ? cfg.subsV : {}; cfg.subsV[mes] = FIN_SUBS_VERSION;
+  cfg.meses = cfg.meses || {};
+  const c2 = {};
+  CUSTO_DEFS.forEach(([k]) => {
+    c2[k] = (subs[k] && subs[k].length) ? Math.round(finSubsSum(subs[k]) * 100) / 100 : ((cfg.meses[mes] || {})[k] || 0);
+  });
+  cfg.meses[mes] = Object.assign({}, cfg.meses[mes], c2);
+  cfg.meta = (cfg.meta && typeof cfg.meta === 'object') ? cfg.meta : {};
+  cfg.meta[mes] = Object.assign({}, cfg.meta[mes], { atualizado: new Date().toISOString() });
+  cfg.updated_at = new Date().toISOString();
+  saveLocal('vc:financeiro', cfg);
+  salvarNuvem('financeiro', cfg);
+  if (modeloAtual === '__financeiro__' && document.getElementById('fin-mes') && document.getElementById('fin-mes').value === mes) {
+    finBuildParams(cfg, cfg.meses[mes]);
+    finRecompute();
+    finUpdateStatus();
+  }
+}
+
+// Importa o CUSTO DE PRODUÇÃO das peças vendidas (Shopify × Precificação) como despesa
+// do DRE no MÊS CORRENTE: subitens '· vendas auto' em Tecido e Corte&Costura.
+// Frete NÃO entra aqui — o frete real já chega via pagamentos do extrato (ex.: etiquetafrete
+// · MP auto em Logística); somar o frete do pedido junto contaria em dobro.
+async function finAplicarVendas(mes) {
+  const hoje = new Date();
+  const mesAtual = hoje.getFullYear() + '-' + String(hoje.getMonth() + 1).padStart(2, '0');
+  if (mes !== mesAtual) return; // mês fechado = reconciliação manual
+  const vendas = await flxCarregarVendas(mes);
+  if (!vendas) return;
+  const cfgFlx = flxGetConfig();
+  const { pagamentos } = flxVendasParaPagamentos(vendas, cfgFlx.vendasIncluir);
+  const soma = cat => Math.round(pagamentos.filter(p => p.cat === cat).reduce((s, p) => s + (p.valor || 0), 0) * 100) / 100;
+  const tec = soma('tecido'), fac = soma('faccao');
+  const TAG = ' · vendas auto';
+  const cfg = finGetConfig();
+  const subs = (cfg.subs && cfg.subs[mes]) ? cfg.subs[mes] : finGetSubs(cfg, mes);
+  ['tecido', 'faccao'].forEach(k => { subs[k] = (subs[k] || []).filter(i => !String(i[0]).endsWith(TAG)); });
+  if (tec > 0) { subs.tecido = subs.tecido || []; subs.tecido.push(['Tecido das peças vendidas (Shopify × Precificação)' + TAG, tec]); }
+  if (fac > 0) { subs.faccao = subs.faccao || []; subs.faccao.push(['Corte+costura das peças vendidas (Shopify × Precificação)' + TAG, fac]); }
+  if (!(tec > 0) && !(fac > 0)) return;
   cfg.subs = cfg.subs || {}; cfg.subs[mes] = subs;
   cfg.subsV = (cfg.subsV && typeof cfg.subsV === 'object') ? cfg.subsV : {}; cfg.subsV[mes] = FIN_SUBS_VERSION;
   cfg.meses = cfg.meses || {};
