@@ -1087,14 +1087,18 @@ async function mpRenderCard(elId, mes) {
     const j = await r.json();
     if (!r.ok || j.erro) { el.innerHTML = '<div style="font-size:12px;color:var(--text-ter)">MP indisponível: ' + (j.erro || r.status) + '</div>'; return; }
     // no Fluxo, os pagamentos reais feitos pelo MP entram sozinhos na tabela de contas (como pagos)
-    if (elId === 'flx-mp') flxAplicarSaidasMP(j, mes);
+    if (elId === 'flx-mp') {
+      window._flxMP = { mes, dados: j };
+      flxAplicarSaidasMP(j, mes);
+      if (modeloAtual === '__fluxo__' && document.getElementById('flx-mes').value === mes) flxRecompute();
+    }
     if (elId === 'fin-mp') finAplicarMP(j, mes); // DRE do mês corrente importa os pagamentos reais do MP
     const ddmm = iso => String(iso || '').slice(8, 10) + '/' + String(iso || '').slice(5, 7);
-    const detHTML = itens => (itens && itens.length)
+    const detHTML = (itens, sinal) => (itens && itens.length)
       ? itens.slice().sort((a, b) => String(a.dia).localeCompare(String(b.dia))).map(t => `
           <div style="display:flex;justify-content:space-between;gap:8px;font-size:11px;color:var(--text-sec);padding:1px 0">
             <span>${t.descricao ? t.descricao : ddmm(t.dia)}${t.descricao ? ' · ' + ddmm(t.dia) : ''}${t.autorizado ? ' (em liquidação)' : ''}</span>
-            <span style="white-space:nowrap">− ${finBRL(t.valor || 0)}</span></div>`).join('')
+            <span style="white-space:nowrap;${sinal === '+' ? 'color:#16a34a' : ''}">${sinal === '+' ? '+' : '−'} ${finBRL(t.valor || 0)}</span></div>`).join('')
       : '<div style="font-size:11px;color:var(--text-ter)">sem itens no período</div>';
     const linha = (lbl, val, cor, detId, detConteudo) => {
       const clic = detId ? ` onclick="(function(x){x.style.display=x.style.display==='none'?'':'none'})(document.getElementById('${detId}'))" style="cursor:pointer"` : '';
@@ -1108,8 +1112,11 @@ async function mpRenderCard(elId, mes) {
     const s = j.saidas || {};
     const tEnv = s.transferencias?.enviadas, tInt = s.transferencias?.internas;
     const tItens = (s.transferencias && s.transferencias.itens) || [];
+    const entPorDia = Object.entries((j.entradas && j.entradas.por_dia) || {}).sort()
+      .map(([dia, v]) => ({ dia, valor: v }));
     el.innerHTML =
-      linha('Entradas (recebimentos líquidos)', finBRL(j.entradas?.total_liquido || 0) + ' · ' + (j.entradas?.qtd || 0) + 'x', '#16a34a') +
+      linha('Entradas (recebimentos líquidos)', finBRL(j.entradas?.total_liquido || 0) + ' · ' + (j.entradas?.qtd || 0) + 'x', '#16a34a',
+        elId + '-det-ent', detHTML(entPorDia, '+')) +
       linha('Pagamentos feitos pela conta', s.pagamentos?.total == null ? '—' : ('− ' + finBRL(s.pagamentos.total) + ' · ' + s.pagamentos.qtd + 'x'), '#b45309',
         elId + '-det-pag', detHTML(s.pagamentos?.itens)) +
       linha('Pix/transferências enviadas', tEnv == null ? '—' : ('− ' + finBRL(tEnv)), '#b45309',
@@ -1638,29 +1645,50 @@ function flxRecompute() {
   // Informativas: o dinheiro já saiu e o saldo atual já reflete — sem coluna de saldo
   // (evita dupla contagem). Uma linha por pagamento; dia na primeira do grupo.
   const pagos = lista.filter(p => p.pago && (p.valor || 0) > 0);
-  const pagosPorDia = {};
-  pagos.forEach(p => { pagosPorDia[p.dia] = pagosPorDia[p.dia] || []; pagosPorDia[p.dia].push(p); });
-  const diasPagos = Object.keys(pagosPorDia).map(Number).sort((a, b) => a - b);
-  const realizadoRows = diasPagos.map(d => {
-    const its = pagosPorDia[d].slice().sort((a, b) => (b.valor || 0) - (a.valor || 0));
-    return its.map((p, i) => `<tr style="${i === 0 ? 'border-top:1px solid #f0ede8;' : ''}">
-      <td style="padding:4px 8px;font-weight:600;color:var(--text-ter)">${i === 0 ? dd(d) : ''}</td>
+  // Entradas reais do MP por dia (do último sync) — dinheiro que ENTROU no caixa
+  const mpEntradas = (window._flxMP && window._flxMP.mes === mes && window._flxMP.dados && window._flxMP.dados.entradas)
+    ? window._flxMP.dados.entradas.por_dia || {} : {};
+  const movPorDia = {};
+  pagos.forEach(p => { movPorDia[p.dia] = movPorDia[p.dia] || { ent: 0, pagos: [] }; movPorDia[p.dia].pagos.push(p); });
+  Object.entries(mpEntradas).forEach(([iso, v]) => {
+    if (!iso.startsWith(mes) || !(v > 0)) return;
+    const d = parseInt(iso.slice(8, 10), 10);
+    movPorDia[d] = movPorDia[d] || { ent: 0, pagos: [] };
+    movPorDia[d].ent += v;
+  });
+  const totalEntradas = Object.values(movPorDia).reduce((s, m) => s + m.ent, 0);
+  const diasMov = Object.keys(movPorDia).map(Number).sort((a, b) => a - b);
+  const realizadoRows = diasMov.map(d => {
+    const m = movPorDia[d];
+    const linhas = [];
+    if (m.ent > 0) linhas.push(`<tr style="border-top:1px solid #f0ede8">
+      <td style="padding:4px 8px;font-weight:600;color:var(--text-ter)">${dd(d)}</td>
+      <td style="padding:4px 8px;font-size:12px;color:var(--text-sec)">↓ Recebimentos Pix/TED (conta MP)</td>
+      <td style="padding:4px 8px;text-align:right;color:#16a34a;white-space:nowrap;font-weight:600">+ ${finBRL(m.ent)}</td>
+      <td style="padding:4px 8px;text-align:right;font-size:10px;color:var(--text-ter)">recebido</td></tr>`);
+    m.pagos.slice().sort((a, b) => (b.valor || 0) - (a.valor || 0)).forEach((p, i) => {
+      const primeiraLinha = linhas.length === 0 && i === 0;
+      linhas.push(`<tr style="${primeiraLinha ? 'border-top:1px solid #f0ede8;' : ''}">
+      <td style="padding:4px 8px;font-weight:600;color:var(--text-ter)">${primeiraLinha ? dd(d) : ''}</td>
       <td style="padding:4px 8px;font-size:12px;color:var(--text-sec)">✓ ${p.desc}</td>
       <td style="padding:4px 8px;text-align:right;color:#b45309;white-space:nowrap">− ${finBRL(p.valor || 0)}</td>
-      <td style="padding:4px 8px;text-align:right;font-size:10px;color:var(--text-ter)">pago</td></tr>`).join('');
+      <td style="padding:4px 8px;text-align:right;font-size:10px;color:var(--text-ter)">pago</td></tr>`);
+    });
+    return linhas.join('');
   }).join('');
   const realEl = document.getElementById('flx-realizado');
   if (realEl) {
     realEl.innerHTML = realizadoRows
       ? `<table style="width:100%;font-size:13px;border-collapse:collapse">
-          <tr style="color:var(--text-ter);font-size:11px"><th style="text-align:left;padding:6px 8px">Dia</th><th style="text-align:left;padding:6px 8px">Pagamento</th><th style="text-align:right;padding:6px 8px">Valor</th><th></th></tr>
+          <tr style="color:var(--text-ter);font-size:11px"><th style="text-align:left;padding:6px 8px">Dia</th><th style="text-align:left;padding:6px 8px">Movimento</th><th style="text-align:right;padding:6px 8px">Valor</th><th></th></tr>
           ${realizadoRows}
-          <tr style="border-top:2px solid var(--border);font-weight:700"><td style="padding:6px 8px"></td><td style="padding:6px 8px">Total já pago no mês</td><td style="padding:6px 8px;text-align:right;color:#b45309">− ${finBRL(jaPago)}</td><td></td></tr>
+          ${totalEntradas > 0 ? `<tr style="border-top:2px solid var(--border);font-weight:700"><td style="padding:6px 8px"></td><td style="padding:6px 8px">Total recebido no mês (MP)</td><td style="padding:6px 8px;text-align:right;color:#16a34a">+ ${finBRL(totalEntradas)}</td><td></td></tr>` : ''}
+          <tr style="${totalEntradas > 0 ? '' : 'border-top:2px solid var(--border);'}font-weight:700"><td style="padding:6px 8px"></td><td style="padding:6px 8px">Total já pago no mês</td><td style="padding:6px 8px;text-align:right;color:#b45309">− ${finBRL(jaPago)}</td><td></td></tr>
         </table>`
-      : '<div style="font-size:12px;color:var(--text-ter);padding:6px 0">Nenhum pagamento realizado neste mês ainda.</div>';
+      : '<div style="font-size:12px;color:var(--text-ter);padding:6px 0">Nenhum movimento realizado neste mês ainda.</div>';
   }
   const realTotEl = document.getElementById('flx-realizado-total');
-  if (realTotEl) realTotEl.textContent = jaPago > 0 ? ('− ' + finBRL(jaPago)) : '';
+  if (realTotEl) realTotEl.textContent = (totalEntradas > 0 || jaPago > 0) ? ('+ ' + finBRL(totalEntradas) + '  ·  − ' + finBRL(jaPago)) : '';
 
   // ── Card PROJETADO (a vencer)
   document.getElementById('flx-proj').innerHTML = dias.length
