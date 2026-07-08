@@ -424,10 +424,12 @@
               <div id="flx-mp"></div>
             </div>
           </div>
-          <div class="card">
-            <div class="card-header"><div class="card-title"><i class="ti ti-calendar-due"></i> PROJEÇÃO DIÁRIA DO CAIXA</div><span style="font-size:11px;color:var(--text-ter)">só dias com vencimento</span></div>
-            <div id="flx-proj"></div>
-            <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:10px;padding-top:10px;border-top:1px solid var(--border)">
+          <div class="card" style="border-left:3px solid #6b7280">
+            <div class="card-header"><div class="card-title" style="color:#6b7280"><i class="ti ti-circle-check"></i> REALIZADO — JÁ SAIU DO CAIXA</div><span id="flx-realizado-total" style="font-size:11px;font-weight:700;color:#6b7280"></span></div>
+            <div id="flx-realizado"></div>
+          </div>
+          <div class="card" style="padding:10px 14px">
+            <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
               <span style="font-size:11px;font-weight:600;color:var(--text-ter);white-space:nowrap"><i class="ti ti-plus"></i> pagamento previsto:</span>
               <input id="flx-proj-desc" placeholder="descrição (ex.: boleto tecido)" style="flex:1;min-width:150px;font-size:12px;padding:6px 8px;border:1px solid var(--border);border-radius:6px" onkeydown="if(event.key==='Enter')flxProjAdd()">
               <select id="flx-proj-cat" style="font-size:11px;padding:6px;border:1px solid var(--border);border-radius:6px"></select>
@@ -436,6 +438,10 @@
               <button class="btn-primary" style="font-size:11px;padding:6px 12px" onclick="flxProjAdd()"><i class="ti ti-plus"></i> adicionar</button>
               <span id="flx-proj-add-msg" style="font-size:10px;color:var(--text-ter);min-height:12px"></span>
             </div>
+          </div>
+          <div class="card">
+            <div class="card-header"><div class="card-title"><i class="ti ti-calendar-due"></i> PROJETADO — A VENCER</div><span style="font-size:11px;color:var(--text-ter)">só dias com vencimento</span></div>
+            <div id="flx-proj"></div>
           </div>
           <div class="card" style="border-left:3px solid #1D9E75">
             <div class="card-header"><div class="card-title" style="color:#1D9E75"><i class="ti ti-shopping-cart"></i> VENDAS × CUSTO DE PRODUÇÃO (Shopify, por semana)</div>
@@ -549,8 +555,8 @@
     </div>
   </div>
 </div>
-<script src="data.js?v=2026070711"></script>
-<script src="main.js?v=2026070711"></script>
+<script src="data.js?v=2026070712"></script>
+<script src="main.js?v=2026070712"></script>
 <script async src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js" onload="initSupabase()"></script>
 </body>
 </html>
