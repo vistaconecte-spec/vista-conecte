@@ -979,6 +979,7 @@ function flxGetConfig() {
   if (!cfg.trafegoCfg) cfg.trafegoCfg = Object.assign({}, FLX_TRAFEGO_DEFAULT);
   if (cfg.trafegoCfg.impostoPct === undefined) cfg.trafegoCfg.impostoPct = FLX_TRAFEGO_DEFAULT.impostoPct;
   if (cfg.vendasAuto === undefined) cfg.vendasAuto = true; // custo das vendidas puxado da Shopify
+  if (!cfg.ignorados || typeof cfg.ignorados !== 'object') cfg.ignorados = {}; // ids removidos pelo × (não voltam nos syncs)
   if (!cfg.vendasIncluir) cfg.vendasIncluir = { tecido: true, corte: true, costura: true, frete: true };
   return cfg;
 }
@@ -1201,6 +1202,8 @@ function finAplicarMP(j, mes) {
 // remove inteiras enquanto couber e apara a próxima pelo resto — provisão restante = estimativa − real.
 // Determinística (recalculável a cada sync, sem consumir duas vezes).
 function flxTrafegoLiquido(cfg, mes) {
+  const _ign = flxIgnorados(cfg, mes);
+  const _filtra = arr => arr.filter(p => !_ign.has(p.id));
   const tc = cfg.trafegoCfg || FLX_TRAFEGO_DEFAULT;
   const hoje = new Date();
   const mesAtual = hoje.getFullYear() + '-' + String(hoje.getMonth() + 1).padStart(2, '0');
@@ -1214,12 +1217,12 @@ function flxTrafegoLiquido(cfg, mes) {
     const fator = 1 + ((parseFloat(tc.impostoPct) || 0) / 100);
     const at = cfg.metaSaldo.at ? new Date(cfg.metaSaldo.at) : null;
     const selo = at ? ' (API ' + String(at.getDate()).padStart(2, '0') + '/' + String(at.getMonth() + 1).padStart(2, '0') + ' ' + String(at.getHours()).padStart(2, '0') + 'h)' : '';
-    return [{
+    return _filtra([{
       id: 'trfsaldo',
       desc: 'Meta Ads — saldo devedor atual + impostos' + selo,
       valor: Math.round(cfg.metaSaldo.v * fator * 100) / 100,
       dia: hoje.getDate(), cat: 'trafego', rec: true, pago: false
-    }];
+    }]);
   }
 
   // MESES FUTUROS (planejamento) ou fallback sem dado da API: cronograma estimado,
@@ -1228,7 +1231,7 @@ function flxTrafegoLiquido(cfg, mes) {
   let real = ((cfg.pag && cfg.pag[mes]) || [])
     .filter(p => p.auto === 'mp' && p.cat === 'trafego')
     .reduce((s, p) => s + (p.valor || 0), 0);
-  if (real <= 0) return gerados;
+  if (real <= 0) return _filtra(gerados);
   const out = [];
   for (const g of gerados) {
     if (real <= 0.005) { out.push(g); continue; }
@@ -1239,7 +1242,7 @@ function flxTrafegoLiquido(cfg, mes) {
     }));
     real = 0;
   }
-  return out;
+  return _filtra(out);
 }
 
 // Atualiza o saldo devedor da conta Meta (cache de 6h) e regenera o item de tráfego do mês corrente.
@@ -1307,9 +1310,11 @@ function flxAplicarSaidasMP(j, mes) {
   };
   pagtos.forEach((it, i) => addItem(it, i, it.descricao || 'Pagamento via conta MP'));
   transf.forEach((it, i) => addItem(it, i, 'Pix/transferência enviada (conferir destino)'));
+  const ignM = flxIgnorados(cfg, mes);
+  const novosFiltrados = novos.filter(p => !ignM.has(p.id));
   const antes = JSON.stringify((cfg.pag[mes] || []).filter(p => p.auto === 'mp'));
-  if (antes === JSON.stringify(novos)) return; // nada mudou — evita re-render/salvamento à toa
-  cfg.pag[mes] = manuais.concat(novos);
+  if (antes === JSON.stringify(novosFiltrados)) return; // nada mudou — evita re-render/salvamento à toa
+  cfg.pag[mes] = manuais.concat(novosFiltrados);
   // Reconciliação do tráfego: regenera as provisões abatendo o que a Meta já cobrou de verdade.
   // (preserva itens pontuais manuais de tráfego — só as provisionadas rec são regeradas)
   const semProvisaoTrafego = cfg.pag[mes].filter(p => !(p.rec && p.cat === 'trafego' && p.auto !== 'mp'));
@@ -1423,9 +1428,32 @@ function flxPagToggle(i) {
   flxRenderPagamentos(cfg, mes);
   flxRecompute();
 }
+function flxIgnorados(cfg, mes) {
+  return new Set((cfg.ignorados && cfg.ignorados[mes]) || []);
+}
+// Remove um lançamento direto da projeção (×). O id vai para a lista de ignorados do mês —
+// itens automáticos (vendas/MP/tráfego) NÃO voltam nos próximos syncs. Desfazer: botão "recorrentes".
+function flxProjRemover(id) {
+  const cfg = flxGetConfig();
+  const mes = document.getElementById('flx-mes').value;
+  cfg.ignorados = cfg.ignorados || {};
+  cfg.ignorados[mes] = cfg.ignorados[mes] || [];
+  if (!cfg.ignorados[mes].includes(id)) cfg.ignorados[mes].push(id);
+  cfg.pag[mes] = (cfg.pag[mes] || []).filter(p => p.id !== id);
+  flxSalvarPag(cfg);
+  flxRenderPagamentos(cfg, mes);
+  flxRecompute();
+}
+
 function flxPagDel(i) {
   const cfg = flxGetConfig();
   const mes = document.getElementById('flx-mes').value;
+  const rem = (cfg.pag[mes] || [])[i];
+  if (rem && rem.id) {
+    cfg.ignorados = cfg.ignorados || {};
+    cfg.ignorados[mes] = cfg.ignorados[mes] || [];
+    if (!cfg.ignorados[mes].includes(rem.id)) cfg.ignorados[mes].push(rem.id);
+  }
   (cfg.pag[mes] || []).splice(i, 1);
   flxSalvarPag(cfg);
   flxRenderPagamentos(cfg, mes);
@@ -1481,6 +1509,8 @@ function flxResetRecorrentes() {
   if (!confirm('Recarregar as contas recorrentes padrão neste mês? As contas pontuais que você adicionou são mantidas; as recorrentes voltam ao modelo.')) return;
   const cfg = flxGetConfig();
   const mes = document.getElementById('flx-mes').value;
+  // desfaz também as remoções individuais (×) do mês — restaura tudo ao padrão
+  cfg.ignorados = cfg.ignorados || {}; cfg.ignorados[mes] = [];
   // mantém pontuais E as auto-vendas (que são regeneradas pela sincronização de vendas)
   const preservar = (cfg.pag[mes] || []).filter(p => !p.rec || p.auto === 'vendas');
   cfg.pag[mes] = flxRecorrentesTemplate(mes, cfg.trafegoCfg, cfg.vendasAuto).concat(preservar);
@@ -1597,7 +1627,8 @@ async function flxSincronizarVendas(silencioso) {
   const { pagamentos, naoMapeados } = flxVendasParaPagamentos(vendas, cfg.vendasIncluir);
   cfg.pag = cfg.pag || {};
   const manuais = (cfg.pag[mes] || []).filter(p => p.auto !== 'vendas');
-  cfg.pag[mes] = manuais.concat(pagamentos);
+  const ignV = flxIgnorados(cfg, mes);
+  cfg.pag[mes] = manuais.concat(pagamentos.filter(p => !ignV.has(p.id)));
   saveLocal('vc:fluxo_caixa', cfg);
   // não escreve na nuvem aqui (é derivado das vendas; recalcula sempre) — evita conflito de sync
   if (modeloAtual === '__fluxo__') { flxRenderPagamentos(cfg, mes); flxRecompute(); }
@@ -1685,9 +1716,10 @@ function flxRecompute() {
     // uma conta por linha, com o valor individual à direita; vencidas destacadas
     const contasDia = pend.filter(p => p.diaEfetivo === row.d)
       .sort((a, b) => (b.vencida ? 1 : 0) - (a.vencida ? 1 : 0) || (b.valor || 0) - (a.valor || 0))
-      .map(p => `<div style="display:flex;justify-content:space-between;gap:8px;padding:1px 0">
+      .map(p => `<div style="display:flex;justify-content:space-between;gap:8px;padding:1px 0;align-items:center">
         <span>${p.vencida ? '<span style="color:#dc2626;font-weight:600">⚠ vencida ' + dd(p.dia) + '</span> — ' : ''}${p.desc}</span>
-        <span style="white-space:nowrap;color:var(--text-ter)">− ${finBRL(p.valor || 0)}</span></div>`)
+        <span style="white-space:nowrap;color:var(--text-ter)">− ${finBRL(p.valor || 0)}
+          <button onclick="event.stopPropagation();flxProjRemover('${p.id}')" title="remover este lançamento da projeção (não volta nos syncs)" style="background:none;border:none;cursor:pointer;color:var(--text-ter);font-size:13px;padding:0 0 0 4px;vertical-align:middle">×</button></span></div>`)
       .join('');
     const critico = row.d === diaMenor && menor < saldoHoje;
     return `<tr style="border-top:1px solid #f0ede8;${critico ? 'background:rgba(217,119,6,0.06)' : ''}">
