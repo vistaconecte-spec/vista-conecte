@@ -58,33 +58,54 @@ export async function onRequest(context) {
       price: v.price, inventory_policy: v.inventory_policy, inventory_management: v.inventory_management,
     }));
 
-    // Reaproveita o ID da opção existente (posição 1) — vira "Cor". A "Tamanho" é nova (posição 2).
-    // Enviar as duas como novas causa erro 422 "name of Option is not unique" (Shopify tenta criar
-    // uma 2ª opção "Tamanho" enquanto a original ainda existe).
     const opcaoExistenteId = p.options[0].id;
-    const body = {
-      product: {
-        id: p.id,
-        title: tituloBase,
-        options: [{ id: opcaoExistenteId, name: 'Cor' }, { name: 'Tamanho' }],
-        variants: [...variantesAtualizadas, ...variantesNovas],
-      },
-    };
 
     let resultado = 'dry-run (nada alterado)';
+    let passo1 = null, passo2 = null;
     if (confirmar) {
-      const put = await fetch(api(`products/${id}.json`), {
-        method: 'PUT', headers: { ...sh, 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+      // Passo 1: só renomeia a opção existente (Tamanho→Cor) e atualiza os valores das variantes
+      // existentes (option1 passa a ser a cor atual). Sem mexer em mais nada — isolado, sem
+      // ambiguidade de nome, pra evitar o erro 422 "name of Option is not unique".
+      const put1 = await fetch(api(`products/${id}.json`), {
+        method: 'PUT', headers: { ...sh, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          product: {
+            id: p.id,
+            options: [{ id: opcaoExistenteId, name: 'Cor' }],
+            variants: variantesAtualizadas.map(v => ({ id: v.id, option1: v.option1 })),
+          },
+        }),
       });
-      const j = await put.json();
-      resultado = put.ok ? 'aplicado' : `falha ${put.status}: ${JSON.stringify(j).slice(0, 400)}`;
+      const j1 = await put1.json();
+      passo1 = put1.ok ? 'ok' : `falha ${put1.status}: ${JSON.stringify(j1).slice(0, 400)}`;
+
+      if (put1.ok) {
+        // Passo 2: agora "Tamanho" não existe mais (foi renomeada) — adiciona ela como opção nova
+        // (posição 2), reposiciona option2 nas variantes existentes e cria as variantes da cor nova.
+        const put2 = await fetch(api(`products/${id}.json`), {
+          method: 'PUT', headers: { ...sh, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            product: {
+              id: p.id,
+              title: tituloBase,
+              options: [{ id: opcaoExistenteId, name: 'Cor' }, { name: 'Tamanho' }],
+              variants: [...variantesAtualizadas, ...variantesNovas],
+            },
+          }),
+        });
+        const j2 = await put2.json();
+        passo2 = put2.ok ? 'ok' : `falha ${put2.status}: ${JSON.stringify(j2).slice(0, 400)}`;
+        resultado = put2.ok ? 'aplicado' : 'falhou no passo 2 (passo 1 já foi feito — produto ficou com só 1 cor, conferir manualmente)';
+      } else {
+        resultado = 'falhou no passo 1 (nada foi alterado)';
+      }
     }
 
     return new Response(JSON.stringify({
       produto_id: id, titulo_atual: tituloAtual, titulo_novo: tituloBase,
       cor_atual_detectada: corAtual, cor_nova: corNova,
       variantes_existentes: variantesAtualizadas.length, variantes_novas: variantesNovas.length,
-      preco_usado: modelo.price, modo: confirmar ? 'APLICAR' : 'dry-run', resultado,
+      preco_usado: modelo.price, modo: confirmar ? 'APLICAR' : 'dry-run', resultado, passo1, passo2,
     }, null, 2), { headers: H });
   } catch (e) {
     return new Response(JSON.stringify({ erro: e.message }), { status: 500, headers: H });
