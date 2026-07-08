@@ -1478,6 +1478,17 @@ function flxPagToggle(i) {
   flxRenderPagamentos(cfg, mes);
   flxRecompute();
 }
+// Expande/recolhe os recebimentos individuais de um dia no card REALIZADO
+function flxToggleEntGrupo(grp) {
+  let aberto = false;
+  document.querySelectorAll('tr[data-grp="' + grp + '"]').forEach(tr => {
+    aberto = tr.style.display === 'none';
+    tr.style.display = aberto ? '' : 'none';
+  });
+  const ch = document.getElementById('chev-' + grp);
+  if (ch) ch.style.transform = aberto ? 'rotate(90deg)' : '';
+}
+
 function flxIgnorados(cfg, mes) {
   return new Set((cfg.ignorados && cfg.ignorados[mes]) || []);
 }
@@ -1812,12 +1823,19 @@ function flxRecompute() {
     const m = movPorDia[d];
     const linhas = [];
     if (m.entItens && m.entItens.length) {
-      m.entItens.slice().sort((a, b) => String(a.hora || '').localeCompare(String(b.hora || ''))).forEach((t, ix) => {
-        linhas.push(`<tr style="${ix === 0 ? 'border-top:1px solid #f0ede8;' : ''}">
-      <td style="padding:4px 8px;font-weight:600;color:var(--text-ter)">${ix === 0 ? dd(d) : ''}</td>
-      <td style="padding:4px 8px;font-size:12px;color:var(--text-sec)">↓ Pix/TED recebido${t.hora ? ' às ' + t.hora : ''} (conta MP)</td>
-      <td style="padding:4px 8px;text-align:right;color:#16a34a;white-space:nowrap;font-weight:600">+ ${finBRL(t.valor)}</td>
+      // agrupado: uma linha por dia com a soma; clique expande os recebimentos individuais
+      const grp = 'entgrp-' + mes.replace(/-/g, '') + '-' + d;
+      linhas.push(`<tr style="border-top:1px solid #f0ede8;cursor:pointer" onclick="flxToggleEntGrupo('${grp}')" title="clique para ver os recebimentos individuais">
+      <td style="padding:4px 8px;font-weight:600;color:var(--text-ter)">${dd(d)}</td>
+      <td style="padding:4px 8px;font-size:12px;color:var(--text-sec)"><span id="chev-${grp}" style="display:inline-block;font-size:9px;color:var(--text-ter);transition:transform 0.15s">▸</span> Recebimentos Pix/TED (conta MP) · ${m.entItens.length}x</td>
+      <td style="padding:4px 8px;text-align:right;color:#16a34a;white-space:nowrap;font-weight:600">+ ${finBRL(m.ent)}</td>
       <td style="padding:4px 8px;text-align:right;font-size:10px;color:var(--text-ter)">recebido</td></tr>`);
+      m.entItens.slice().sort((a, b) => String(a.hora || '').localeCompare(String(b.hora || ''))).forEach(t => {
+        linhas.push(`<tr data-grp="${grp}" style="display:none;background:rgba(22,163,74,0.04)">
+      <td style="padding:3px 8px"></td>
+      <td style="padding:3px 8px 3px 24px;font-size:11px;color:var(--text-ter)">↳ recebido${t.hora ? ' às ' + t.hora : ''}</td>
+      <td style="padding:3px 8px;text-align:right;color:#16a34a;white-space:nowrap;font-size:11px">+ ${finBRL(t.valor)}</td>
+      <td></td></tr>`);
       });
     } else if (m.ent > 0) linhas.push(`<tr style="border-top:1px solid #f0ede8">
       <td style="padding:4px 8px;font-weight:600;color:var(--text-ter)">${dd(d)}</td>
