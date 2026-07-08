@@ -1,8 +1,8 @@
 /**
  * Cloudflare Pages Function: /api/shopify-adicionar-cor
  * Adiciona uma cor nova a um produto que ainda NÃO foi unificado (só tem opção "Tamanho").
- * Transforma o produto em Cor+Tamanho, mantendo a cor atual (inferida do título) e criando
- * as variantes da cor nova com o mesmo preço/política de estoque das variantes existentes.
+ * Usa a API GraphQL (productOptionsCreate) — a REST não suporta bem adicionar um eixo de
+ * opção novo a um produto já existente (testado: dá erro de nome/variante duplicada).
  *
  * Dry-run (padrão):
  *   ?id=8122604191853&cor=Preto&novoTitulo=Conjunto Cozy
@@ -24,11 +24,16 @@ export async function onRequest(context) {
   const confirmar = qs.get('confirmar') === '1' || qs.get('apply') === '1';
   if (!id || !corNova) return new Response(JSON.stringify({ erro: 'informe ?id= e ?cor=' }), { status: 400, headers: H });
 
-  const sh = { 'X-Shopify-Access-Token': token };
-  const api = (path) => `https://${store}/admin/api/${API_VERSION}/${path}`;
+  const sh = { 'X-Shopify-Access-Token': token, 'Content-Type': 'application/json' };
+  const restApi = (path) => `https://${store}/admin/api/${API_VERSION}/${path}`;
+  const gqlApi = () => `https://${store}/admin/api/${API_VERSION}/graphql.json`;
+  const gql = async (query, variables) => {
+    const r = await fetch(gqlApi(), { method: 'POST', headers: sh, body: JSON.stringify({ query, variables }) });
+    return { ok: r.ok, status: r.status, json: await r.json() };
+  };
 
   try {
-    const r = await fetch(api(`products/${id}.json`), { headers: sh });
+    const r = await fetch(restApi(`products/${id}.json`), { headers: sh });
     if (!r.ok) return new Response(JSON.stringify({ erro: `Shopify ${r.status} ao buscar produto` }), { status: 502, headers: H });
     const { product: p } = await r.json();
 
@@ -46,66 +51,74 @@ export async function onRequest(context) {
       return new Response(JSON.stringify({ erro: 'não consegui inferir a cor atual do título — passe ?novoTitulo= com o prefixo exato', tituloAtual }), { status: 400, headers: H });
     }
 
-    // Variantes existentes: option1 (tamanho) vira option2; option1 passa a ser a cor atual.
-    const variantesAtualizadas = (p.variants || []).map(v => ({
-      id: v.id, option1: corAtual, option2: v.option1,
-    }));
-
-    // Variantes novas: mesma faixa de tamanho, mesmo preço/política da 1ª variante existente.
     const modelo = (p.variants || [])[0] || {};
-    const variantesNovas = (p.variants || []).map(v => ({
-      option1: corNova, option2: v.option1,
-      price: v.price, inventory_policy: v.inventory_policy, inventory_management: v.inventory_management,
-    }));
-
-    const opcaoExistenteId = p.options[0].id;
+    const gid = `gid://shopify/Product/${id}`;
 
     let resultado = 'dry-run (nada alterado)';
-    let passo1 = null, passo2 = null;
+    let passoOpcao = null, passoPreco = null, passoTitulo = null;
     if (confirmar) {
-      // Passo 1: só renomeia a opção existente (Tamanho→Cor) e atualiza os valores das variantes
-      // existentes (option1 passa a ser a cor atual). Sem mexer em mais nada — isolado, sem
-      // ambiguidade de nome, pra evitar o erro 422 "name of Option is not unique".
-      const put1 = await fetch(api(`products/${id}.json`), {
-        method: 'PUT', headers: { ...sh, 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          product: {
-            id: p.id,
-            options: [{ id: opcaoExistenteId, name: 'Cor' }],
-            variants: variantesAtualizadas, // já diferenciadas por option2 (tamanho), evita duplicata
-          },
-        }),
+      // Passo 1 — GraphQL productOptionsCreate: adiciona a opção "Cor" (Marsala + Preto).
+      // variantStrategy CREATE: as variantes existentes viram "Marsala" (1º valor) e o Shopify
+      // cria sozinho as variantes novas de "Preto" pra cada tamanho já existente.
+      const MUT_OPCAO = `
+        mutation AddCor($productId: ID!, $options: [OptionCreateInput!]!) {
+          productOptionsCreate(productId: $productId, options: $options, variantStrategy: CREATE) {
+            product {
+              id
+              options { id name position values }
+              variants(first: 50) { nodes { id title price selectedOptions { name value } } }
+            }
+            userErrors { field message }
+          }
+        }`;
+      const respOpcao = await gql(MUT_OPCAO, {
+        productId: gid,
+        options: [{ name: 'Cor', values: [{ name: corAtual }, { name: corNova }] }],
       });
-      const j1 = await put1.json();
-      passo1 = put1.ok ? 'ok' : `falha ${put1.status}: ${JSON.stringify(j1).slice(0, 400)}`;
+      const dataOpcao = respOpcao.json?.data?.productOptionsCreate;
+      const errosOpcao = [...(respOpcao.json?.errors || []), ...(dataOpcao?.userErrors || [])];
+      passoOpcao = errosOpcao.length ? `falha: ${JSON.stringify(errosOpcao).slice(0, 400)}` : 'ok';
 
-      if (put1.ok) {
-        // Passo 2: agora "Tamanho" não existe mais (foi renomeada) — adiciona ela como opção nova
-        // (posição 2), reposiciona option2 nas variantes existentes e cria as variantes da cor nova.
-        const put2 = await fetch(api(`products/${id}.json`), {
-          method: 'PUT', headers: { ...sh, 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            product: {
-              id: p.id,
-              title: tituloBase,
-              options: [{ id: opcaoExistenteId, name: 'Cor' }, { name: 'Tamanho' }],
-              variants: [...variantesAtualizadas, ...variantesNovas],
-            },
-          }),
+      if (!errosOpcao.length) {
+        const variantesNovas = (dataOpcao.product.variants.nodes || [])
+          .filter(v => v.selectedOptions.some(o => o.name === 'Cor' && o.value === corNova));
+
+        // Passo 2 — ajusta preço/política das variantes novas (Preto) pra igualar as existentes
+        // (o Shopify não copia preço/estoque automaticamente ao criar via variantStrategy CREATE).
+        const MUT_PRECO = `
+          mutation FixPreco($productId: ID!, $variants: [ProductVariantsBulkInput!]!) {
+            productVariantsBulkUpdate(productId: $productId, variants: $variants) {
+              productVariants { id price }
+              userErrors { field message }
+            }
+          }`;
+        const respPreco = await gql(MUT_PRECO, {
+          productId: gid,
+          variants: variantesNovas.map(v => ({ id: v.id, price: modelo.price })),
         });
-        const j2 = await put2.json();
-        passo2 = put2.ok ? 'ok' : `falha ${put2.status}: ${JSON.stringify(j2).slice(0, 400)}`;
-        resultado = put2.ok ? 'aplicado' : 'falhou no passo 2 (passo 1 já foi feito — produto ficou com só 1 cor, conferir manualmente)';
+        const dataPreco = respPreco.json?.data?.productVariantsBulkUpdate;
+        const errosPreco = [...(respPreco.json?.errors || []), ...(dataPreco?.userErrors || [])];
+        passoPreco = errosPreco.length ? `falha: ${JSON.stringify(errosPreco).slice(0, 400)}` : `ok (${variantesNovas.length} variantes)`;
+
+        // Passo 3 — renomeia o título (REST, simples, sem mexer em variantes/opções).
+        if (tituloBase !== tituloAtual) {
+          const putTitulo = await fetch(restApi(`products/${id}.json`), {
+            method: 'PUT', headers: sh, body: JSON.stringify({ product: { id: p.id, title: tituloBase } }),
+          });
+          passoTitulo = putTitulo.ok ? 'ok' : `falha ${putTitulo.status}`;
+        } else passoTitulo = 'não precisou (título igual)';
+
+        resultado = (!errosPreco.length) ? 'aplicado' : 'opção criada, mas preço das variantes novas falhou — conferir manualmente';
       } else {
-        resultado = 'falhou no passo 1 (nada foi alterado)';
+        resultado = 'falhou ao criar a opção (nada foi alterado)';
       }
     }
 
     return new Response(JSON.stringify({
       produto_id: id, titulo_atual: tituloAtual, titulo_novo: tituloBase,
       cor_atual_detectada: corAtual, cor_nova: corNova,
-      variantes_existentes: variantesAtualizadas.length, variantes_novas: variantesNovas.length,
-      preco_usado: modelo.price, modo: confirmar ? 'APLICAR' : 'dry-run', resultado, passo1, passo2,
+      preco_usado: modelo.price, modo: confirmar ? 'APLICAR' : 'dry-run', resultado,
+      passo_opcao: passoOpcao, passo_preco: passoPreco, passo_titulo: passoTitulo,
     }, null, 2), { headers: H });
   } catch (e) {
     return new Response(JSON.stringify({ erro: e.message }), { status: 500, headers: H });
