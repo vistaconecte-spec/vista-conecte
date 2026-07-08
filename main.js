@@ -726,6 +726,7 @@ async function renderFinanceiro() {
   await finPullMeta(mes);
   finRecompute();
   finUpdateStatus();
+  mpRenderCard('fin-mp', mes); // conferência Mercado Pago (entradas/saídas reais do mês)
 }
 
 // Puxa o gasto de tráfego do Meta (Marketing API) e mantém o subitem "Meta Ads (Facebook)" atualizado.
@@ -1016,6 +1017,72 @@ async function renderFluxo() {
   // Em background (não bloqueiam a UI; falha → mantém manual/placeholder):
   flxAtualizarSaldos(true);              // saldos MP/Pagar.me
   if (cfg.vendasAuto) flxSincronizarVendas(true); // custo das vendidas Shopify
+  mpRenderCard('flx-mp', mes);           // movimentações reais do Mercado Pago
+}
+
+// ── Mercado Pago — movimentações REAIS da conta (entradas Pix, pagamentos, transferências) ──
+// Fonte: /api/mp-movimentos (release_report da API MP). Usado no Fluxo (flx-mp) e no Financeiro (fin-mp).
+async function mpRenderCard(elId, mes) {
+  const el = document.getElementById(elId); if (!el) return;
+  const [Y, M] = mes.split('-').map(Number);
+  const desde = mes + '-01';
+  const hoje = new Date();
+  const ehMesAtual = (Y === hoje.getFullYear() && M === hoje.getMonth() + 1);
+  const ate = ehMesAtual ? hoje.toISOString().slice(0, 10) : mes + '-' + String(new Date(Y, M, 0).getDate()).padStart(2, '0');
+  el.innerHTML = '<div style="font-size:12px;color:var(--text-ter);padding:6px 0">carregando Mercado Pago…</div>';
+  try {
+    const r = await fetch('/api/mp-movimentos?desde=' + desde + '&ate=' + ate + '&t=' + Date.now());
+    const j = await r.json();
+    if (!r.ok || j.erro) { el.innerHTML = '<div style="font-size:12px;color:var(--text-ter)">MP indisponível: ' + (j.erro || r.status) + '</div>'; return; }
+    // no Fluxo, os pagamentos reais feitos pelo MP entram sozinhos na tabela de contas (como pagos)
+    if (elId === 'flx-mp') flxAplicarSaidasMP(j, mes);
+    const linha = (lbl, val, cor) => `<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #f0ede8;font-size:13px">
+        <span style="color:var(--text-sec)">${lbl}</span><span style="font-weight:600;color:${cor || 'inherit'}">${val}</span></div>`;
+    const s = j.saidas || {};
+    el.innerHTML =
+      linha('Entradas (Pix, líquido)', finBRL(j.entradas?.total_liquido || 0) + ' · ' + (j.entradas?.qtd || 0) + 'x', '#16a34a') +
+      linha('Pagamentos feitos pela conta', s.pagamentos?.total == null ? '—' : ('− ' + finBRL(s.pagamentos.total) + ' · ' + s.pagamentos.qtd + 'x'), '#b45309') +
+      linha('Transferências p/ banco (interna)', s.transferencias?.total == null ? '—' : ('− ' + finBRL(s.transferencias.total)), 'var(--text-ter)') +
+      (j.saldo_final != null ? linha('Saldo na conta (fim do extrato)', finBRL(j.saldo_final), 'var(--gold-dark)') : '') +
+      `<div style="font-size:10px;color:var(--text-ter);margin-top:6px">${j.gerando ? '⏳ extrato completo sendo gerado (~2 min) — atualize em instantes' : 'extrato até ' + String(ate).split('-').reverse().slice(0, 2).join('/')} · fonte: ${j.fonte === 'release_report' ? 'extrato MP' : 'pagamentos (parcial)'}</div>`;
+  } catch (e) {
+    el.innerHTML = '<div style="font-size:12px;color:var(--text-ter)">falha ao consultar o Mercado Pago</div>';
+  }
+}
+
+// Injeta os PAGAMENTOS REAIS feitos pela conta MP na tabela de contas do mês (auto:'mp', já pagos).
+// Transferências p/ banco (payout) NÃO entram — são internas, não despesa.
+// Anti-duplicação: pula se já existe conta manual no mesmo dia com o mesmo valor (±1%).
+function flxAplicarSaidasMP(j, mes) {
+  const itens = j && j.saidas && j.saidas.pagamentos && Array.isArray(j.saidas.pagamentos.itens) ? j.saidas.pagamentos.itens : null;
+  if (!itens) return; // extrato ainda gerando — mantém o que está
+  const cfg = flxGetConfig();
+  cfg.pag = cfg.pag || {};
+  const manuais = (cfg.pag[mes] || []).filter(p => p.auto !== 'mp');
+  const novos = [];
+  itens.forEach((it, i) => {
+    if (!it || !(it.valor > 0) || !it.dia || !it.dia.startsWith(mes)) return;
+    const dia = parseInt(it.dia.slice(8, 10), 10);
+    // já existe conta LANÇADA À MÃO equivalente (mesmo dia, valor ±1%)? então não duplica.
+    // (itens auto:'vendas' são provisões de custo — natureza diferente, não contam como duplicata)
+    const jaTem = manuais.some(p => !p.auto && p.dia === dia && Math.abs((p.valor || 0) - it.valor) <= it.valor * 0.01);
+    if (jaTem) return;
+    novos.push({
+      id: 'mp-' + mes + '-' + (it.source_id || i),
+      desc: (it.descricao ? it.descricao : 'Pagamento via conta MP') + ' · MP auto',
+      valor: Math.round(it.valor * 100) / 100,
+      dia, cat: 'outros', rec: false, auto: 'mp',
+      pago: true // o dinheiro JÁ saiu — conta no "já pago", não no "a pagar"
+    });
+  });
+  const antes = JSON.stringify((cfg.pag[mes] || []).filter(p => p.auto === 'mp'));
+  if (antes === JSON.stringify(novos)) return; // nada mudou — evita re-render/salvamento à toa
+  cfg.pag[mes] = manuais.concat(novos);
+  flxSalvarPag(cfg);
+  if (modeloAtual === '__fluxo__' && document.getElementById('flx-mes').value === mes) {
+    flxRenderPagamentos(cfg, mes);
+    flxRecompute();
+  }
 }
 
 // Busca saldos via API. silencioso=true evita status na carga inicial.
@@ -1343,8 +1410,30 @@ function flxRecompute() {
       <td style="padding:6px 8px;text-align:right;font-weight:600;color:${corR(row.saldo)}">${finBRL(row.saldo)}${critico ? ' <span style="font-size:9px;color:#d97706">◄ mais baixo</span>' : ''}</td></tr>`;
   }).join('');
   const linhaInicial = `<tr><td style="padding:6px 8px;font-weight:600;color:var(--text-ter)">${ehMesAtual ? 'hoje' : (ehPassado ? 'início' : 'dia 1')}</td><td></td><td></td><td style="padding:6px 8px;text-align:right;font-weight:700">${finBRL(saldoHoje)}</td></tr>`;
-  document.getElementById('flx-proj').innerHTML = dias.length
-    ? `<table style="width:100%;font-size:13px;border-collapse:collapse">${projHead}${linhaInicial}${projRows}</table>`
+
+  // ── REALIZADO: contas já pagas do mês (incl. pagamentos MP auto), acima do "hoje".
+  // Informativas: o dinheiro já saiu e o saldo atual já reflete — por isso não têm coluna de
+  // saldo (evita dupla contagem) e aparecem esmaecidas com ✓.
+  const pagos = lista.filter(p => p.pago && (p.valor || 0) > 0);
+  const pagosPorDia = {};
+  pagos.forEach(p => { pagosPorDia[p.dia] = pagosPorDia[p.dia] || []; pagosPorDia[p.dia].push(p); });
+  const diasPagos = Object.keys(pagosPorDia).map(Number).sort((a, b) => a - b);
+  const realizadoRows = diasPagos.map(d => {
+    const its = pagosPorDia[d];
+    const tot = its.reduce((s, p) => s + (p.valor || 0), 0);
+    return `<tr style="border-top:1px solid #f0ede8;opacity:0.55">
+      <td style="padding:5px 8px;font-weight:600">${dd(d)}</td>
+      <td style="padding:5px 8px;font-size:12px;color:var(--text-sec)">✓ ${its.map(p => p.desc).join(', ')}</td>
+      <td style="padding:5px 8px;text-align:right;color:#b45309">− ${finBRL(tot)}</td>
+      <td style="padding:5px 8px;text-align:right;font-size:10px;color:var(--text-ter)">pago</td></tr>`;
+  }).join('');
+  const realizadoBloco = realizadoRows
+    ? `<tr><td colspan="4" style="padding:6px 8px;font-size:10px;font-weight:700;letter-spacing:0.05em;color:var(--text-ter)">REALIZADO (já saiu do caixa — refletido no saldo)</td></tr>${realizadoRows}
+       <tr><td colspan="4" style="padding:6px 8px;font-size:10px;font-weight:700;letter-spacing:0.05em;color:var(--text-ter);border-top:2px solid var(--border)">PROJETADO (a vencer)</td></tr>`
+    : '';
+
+  document.getElementById('flx-proj').innerHTML = (dias.length || realizadoRows)
+    ? `<table style="width:100%;font-size:13px;border-collapse:collapse">${projHead}${realizadoBloco}${linhaInicial}${projRows}</table>`
     : '<div style="font-size:12px;color:var(--text-ter);padding:8px">Nenhuma conta a vencer nesta janela.</div>';
 
   // ── Composição das saídas restantes por categoria

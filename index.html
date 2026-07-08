@@ -375,6 +375,12 @@
             <div class="card-header"><div class="card-title"><i class="ti ti-chart-bar"></i> COMPOSIÇÃO DE CUSTOS</div></div>
             <div id="fin-chart"></div>
           </div>
+          <div class="card" style="border-left:3px solid #009EE3">
+            <div class="card-header"><div class="card-title" style="color:#009EE3"><i class="ti ti-building-bank"></i> CONFERÊNCIA MERCADO PAGO (conta real)</div>
+              <button class="btn-outline" style="font-size:10px;padding:4px 8px" onclick="mpRenderCard('fin-mp', document.getElementById('fin-mes').value)"><i class="ti ti-refresh"></i> atualizar</button></div>
+            <div id="fin-mp"></div>
+            <div style="font-size:10px;color:var(--text-ter);margin-top:6px">Movimentos reais da conta MP no mês — use para bater o fechamento (transferência p/ banco é interna, não é despesa).</div>
+          </div>
           <div class="card">
             <div class="card-header"><div class="card-title"><i class="ti ti-adjustments"></i> PARÂMETROS</div><span style="font-size:11px;color:var(--text-ter)">salva automático na nuvem</span></div>
             <div id="fin-params"></div>
@@ -411,6 +417,11 @@
             <div class="card">
               <div class="card-header"><div class="card-title"><i class="ti ti-chart-pie"></i> A PAGAR POR CATEGORIA</div></div>
               <div id="flx-chart"></div>
+            </div>
+            <div class="card" style="border-left:3px solid #009EE3">
+              <div class="card-header"><div class="card-title" style="color:#009EE3"><i class="ti ti-building-bank"></i> MERCADO PAGO — REAL (MÊS)</div>
+                <button class="btn-outline" style="font-size:10px;padding:4px 8px" onclick="mpRenderCard('flx-mp', document.getElementById('flx-mes').value)"><i class="ti ti-refresh"></i> atualizar</button></div>
+              <div id="flx-mp"></div>
             </div>
           </div>
           <div class="card">
@@ -528,8 +539,8 @@
     </div>
   </div>
 </div>
-<script src="data.js?v=2026070604"></script>
-<script src="main.js?v=2026070604"></script>
+<script src="data.js?v=2026070703"></script>
+<script src="main.js?v=2026070703"></script>
 <script async src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js" onload="initSupabase()"></script>
 </body>
 </html>
