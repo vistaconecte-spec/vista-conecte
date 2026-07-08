@@ -855,15 +855,45 @@ function finRecompute() {
     ${lin('= Resultado do mês', resultado, { strong: true, top: true, color: corR(resultado) })}
   </table>`;
 
-  const itens = CUSTO_DEFS.filter(([k]) => k !== 'retirada').map(([k, l, cor]) => [l, custos[k], cor]).filter(i => i[1] > 0).sort((a, b) => b[1] - a[1]);
+  const itens = CUSTO_DEFS.filter(([k]) => k !== 'retirada').map(([k, l, cor]) => [l, custos[k], cor, k]).filter(i => i[1] > 0).sort((a, b) => b[1] - a[1]);
   const maxv = Math.max(...itens.map(i => i[1]), 1);
-  document.getElementById('fin-chart').innerHTML = itens.map(i => `
-    <div style="display:flex;align-items:center;gap:8px;margin:5px 0;font-size:12px">
-      <span style="width:130px;color:var(--text-sec)">${i[0]}</span>
+  const chartRow = i => {
+    const subs = (window._finSubs && window._finSubs[i[3]]) || [];
+    const det = subs.length
+      ? subs.slice().sort((a, b) => (parseFloat(b[1]) || 0) - (parseFloat(a[1]) || 0)).map(sub => `
+          <div style="display:flex;justify-content:space-between;gap:8px;padding:2px 0;font-size:12px;color:var(--text-sec)">
+            <span>${String(sub[0])}</span><span style="white-space:nowrap">${finBRL(parseFloat(sub[1]) || 0)}</span>
+          </div>`).join('')
+      : '<div style="font-size:11px;color:var(--text-ter);padding:2px 0">valor lançado direto (sem subitens) — detalhe nos Parâmetros abaixo</div>';
+    return `
+    <div onclick="finChartToggle('${i[3]}')" title="clique para ver os custos detalhados" style="display:flex;align-items:center;gap:8px;margin:5px 0;font-size:12px;cursor:pointer">
+      <span id="fin-chart-chev-${i[3]}" style="width:10px;color:var(--text-ter);font-size:10px;transition:transform 0.15s">▸</span>
+      <span style="width:130px;color:var(--text-sec)">${i[0]}${subs.length ? ` <span style=\"font-size:10px;color:var(--text-ter)\">(${subs.length})</span>` : ''}</span>
       <div style="flex:1;background:#f0ede8;border-radius:4px;height:16px;overflow:hidden"><div style="height:100%;width:${Math.round(i[1] / maxv * 100)}%;background:${i[2]}"></div></div>
       <span style="width:95px;text-align:right;font-weight:600">${finBRL(i[1])}</span>
       <span style="width:42px;text-align:right;color:var(--text-ter)">${vendas ? Math.round(i[1] / vendas * 100) : 0}%</span>
-    </div>`).join('') || '<div style="font-size:12px;color:var(--text-ter);padding:8px 0">Preencha os custos do mês abaixo para ver a composição.</div>';
+    </div>
+    <div id="fin-chart-det-${i[3]}" style="display:none;margin:0 0 8px 18px;padding:6px 10px;border-left:2px solid ${i[2]};background:rgba(0,0,0,0.02);border-radius:0 6px 6px 0">${det}</div>`;
+  };
+  const totalChart = itens.reduce((s, i) => s + i[1], 0);
+  const linhaTotal = itens.length ? `
+    <div style="display:flex;align-items:center;gap:8px;margin:8px 0 0;padding-top:8px;border-top:2px solid var(--border);font-size:13px;font-weight:700">
+      <span style="width:10px"></span>
+      <span style="width:130px">Total de custos</span>
+      <div style="flex:1"></div>
+      <span style="width:95px;text-align:right">${finBRL(totalChart)}</span>
+      <span style="width:42px;text-align:right;color:var(--text-ter);font-weight:400">${vendas ? Math.round(totalChart / vendas * 100) : 0}%</span>
+    </div>` : '';
+  document.getElementById('fin-chart').innerHTML = (itens.map(chartRow).join('') + linhaTotal) || '<div style="font-size:12px;color:var(--text-ter);padding:8px 0">Preencha os custos do mês abaixo para ver a composição.</div>';
+}
+
+// Expande/recolhe os custos detalhados de uma categoria na Composição de Custos
+function finChartToggle(k) {
+  const el = document.getElementById('fin-chart-det-' + k); if (!el) return;
+  const aberto = el.style.display !== 'none';
+  el.style.display = aberto ? 'none' : '';
+  const chev = document.getElementById('fin-chart-chev-' + k);
+  if (chev) chev.style.transform = aberto ? '' : 'rotate(90deg)';
 }
 
 // ─── ABA FLUXO DE CAIXA (visão prospectiva de solvência) ─────────────────────
