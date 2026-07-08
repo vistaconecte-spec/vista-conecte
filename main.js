@@ -1052,8 +1052,32 @@ async function mpRenderCard(elId, mes) {
   }
 }
 
+// Gera as cobranças provisionadas de tráfego do mês JÁ ABATENDO o que a Meta cobrou de verdade
+// (pagamentos reais via MP categorizados como 'trafego'). Consome as provisões em ordem de dia:
+// remove inteiras enquanto couber e apara a próxima pelo resto — provisão restante = estimativa − real.
+// Determinística (recalculável a cada sync, sem consumir duas vezes).
+function flxTrafegoLiquido(cfg, mes) {
+  const tc = cfg.trafegoCfg || FLX_TRAFEGO_DEFAULT;
+  const gerados = flxTrafegoCharges(tc.estimativa, tc.limite, flxDiasNoMes(mes));
+  let real = ((cfg.pag && cfg.pag[mes]) || [])
+    .filter(p => p.auto === 'mp' && p.cat === 'trafego')
+    .reduce((s, p) => s + (p.valor || 0), 0);
+  if (real <= 0) return gerados;
+  const out = [];
+  for (const g of gerados) {
+    if (real <= 0.005) { out.push(g); continue; }
+    if (g.valor <= real + 0.005) { real -= g.valor; continue; } // provisão inteira consumida pela cobrança real
+    out.push(Object.assign({}, g, {
+      valor: Math.round((g.valor - real) * 100) / 100,
+      desc: g.desc + ' (abatido o já cobrado)'
+    }));
+    real = 0;
+  }
+  return out;
+}
+
 // Injeta os PAGAMENTOS REAIS feitos pela conta MP na tabela de contas do mês (auto:'mp', já pagos).
-// Transferências p/ banco (payout) NÃO entram — são internas, não despesa.
+// Cobranças da Meta (Facebk*/Facebook) entram como cat 'trafego' e CONSOMEM as provisionadas.
 // Anti-duplicação: pula se já existe conta manual no mesmo dia com o mesmo valor (±1%).
 function flxAplicarSaidasMP(j, mes) {
   const pagtos = j && j.saidas && j.saidas.pagamentos && Array.isArray(j.saidas.pagamentos.itens) ? j.saidas.pagamentos.itens : null;
@@ -1072,11 +1096,13 @@ function flxAplicarSaidasMP(j, mes) {
     // (itens auto:'vendas' são provisões de custo — natureza diferente, não contam como duplicata)
     const jaTem = manuais.some(p => !p.auto && p.dia === dia && Math.abs((p.valor || 0) - it.valor) <= it.valor * 0.01);
     if (jaTem) return;
+    // cobrança da Meta detectada pela descrição → categoria Tráfego (e vai abater as provisionadas)
+    const ehMeta = /facebk|facebook|meta ads/i.test(descBase);
     novos.push({
       id: 'mp-' + mes + '-' + (it.source_id || descBase + i),
       desc: descBase + (it.autorizado ? ' (em liquidação)' : '') + ' · MP auto',
       valor: Math.round(it.valor * 100) / 100,
-      dia, cat: 'outros', rec: false, auto: 'mp',
+      dia, cat: ehMeta ? 'trafego' : 'outros', rec: false, auto: 'mp',
       pago: true // o dinheiro JÁ saiu — conta no "já pago", não no "a pagar"
     });
   };
@@ -1085,6 +1111,10 @@ function flxAplicarSaidasMP(j, mes) {
   const antes = JSON.stringify((cfg.pag[mes] || []).filter(p => p.auto === 'mp'));
   if (antes === JSON.stringify(novos)) return; // nada mudou — evita re-render/salvamento à toa
   cfg.pag[mes] = manuais.concat(novos);
+  // Reconciliação do tráfego: regenera as provisões abatendo o que a Meta já cobrou de verdade.
+  // (preserva itens pontuais manuais de tráfego — só as provisionadas rec são regeradas)
+  const semProvisaoTrafego = cfg.pag[mes].filter(p => !(p.rec && p.cat === 'trafego' && p.auto !== 'mp'));
+  cfg.pag[mes] = semProvisaoTrafego.concat(flxTrafegoLiquido(cfg, mes));
   flxSalvarPag(cfg);
   if (modeloAtual === '__fluxo__' && document.getElementById('flx-mes').value === mes) {
     flxRenderPagamentos(cfg, mes);
@@ -1231,9 +1261,10 @@ function flxRecalcTrafego() {
   const est = parseFloat(document.getElementById('flx-trf-est').value) || 0;
   const lim = parseFloat(document.getElementById('flx-trf-lim').value) || 3000;
   cfg.trafegoCfg = { estimativa: est, limite: lim };
-  // remove só as cobranças de tráfego recorrentes (mantém tráfego pontual manual e as demais contas)
-  const outras = (cfg.pag[mes] || []).filter(p => !(p.cat === 'trafego' && p.rec));
-  cfg.pag[mes] = outras.concat(flxTrafegoCharges(est, lim, flxDiasNoMes(mes)));
+  // remove só as cobranças de tráfego recorrentes (mantém tráfego pontual manual, itens MP reais e as demais contas)
+  const outras = (cfg.pag[mes] || []).filter(p => !(p.cat === 'trafego' && p.rec && p.auto !== 'mp'));
+  cfg.pag[mes] = outras;
+  cfg.pag[mes] = outras.concat(flxTrafegoLiquido(cfg, mes)); // já abate o que a Meta cobrou de verdade
   flxSalvarPag(cfg);
   flxRenderPagamentos(cfg, mes);
   flxRecompute();
