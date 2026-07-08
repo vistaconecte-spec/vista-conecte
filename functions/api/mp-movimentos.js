@@ -113,14 +113,16 @@ export async function onRequestGet({ request, env }) {
     const agora = Date.now();
     const hojeISO = new Date(agora).toISOString().slice(0, 10);
     const periodoInclusoHoje = ate >= hojeISO;
+    // horizonte real dos dados = min(end_date, date_created) — end_date pode estar no futuro
+    const horizonte = f => Math.min(new Date(f.end_date).getTime(), new Date(f.date_created).getTime());
     const cobre = (Array.isArray(lst) ? lst : []).filter(f =>
-      f.begin_date && f.end_date && f.begin_date.slice(0, 10) <= desde
-    ).sort((a, b) => (b.end_date || '').localeCompare(a.end_date || ''));
+      f.begin_date && f.end_date && f.date_created && f.begin_date.slice(0, 10) <= desde
+    ).sort((a, b) => horizonte(b) - horizonte(a));
     const melhor = cobre[0] || null;
-    // completo = o extrato alcança o fim do período; p/ período corrente, "fresco" = termina há <3h
-    const alcancaFim = melhor && melhor.end_date.slice(0, 10) >= ate;
+    // completo = o horizonte alcança o fim do período; p/ período corrente, "fresco" = horizonte <1h
+    const alcancaFim = melhor && new Date(horizonte(melhor)).toISOString().slice(0, 10) > ate;
     const fresco = melhor && (!periodoInclusoHoje ? alcancaFim
-      : (agora - new Date(melhor.end_date).getTime()) < 3 * 3600 * 1000);
+      : (agora - horizonte(melhor)) < 1 * 3600 * 1000);
 
     // extrato defasado → dispara geração de um novo até AGORA (anti-rajada: só se o último foi criado há >10 min)
     const criadoHa = melhor ? (agora - new Date(melhor.date_created).getTime()) : Infinity;
@@ -148,7 +150,7 @@ export async function onRequestGet({ request, env }) {
         }
         // extrato termina antes do fim do período → completa as ENTRADAS do trecho descoberto via payments
         if (!alcancaFim || (periodoInclusoHoje && !fresco)) {
-          const desdeTopo = melhor.end_date;
+          const desdeTopo = new Date(horizonte(melhor)).toISOString();
           const topo = await entradasViaPayments(H, desdeTopo.slice(0, 10), ate);
           parsed.entradas.total_liquido = Math.round((parsed.entradas.total_liquido + topo.total_liquido) * 100) / 100;
           parsed.entradas.qtd += topo.qtd;
@@ -158,8 +160,8 @@ export async function onRequestGet({ request, env }) {
           periodo: { desde, ate },
           fonte: fresco ? 'release_report' : 'release_report + Pix recentes',
           gerando: !fresco,
-          extrato_ate: melhor.end_date,
-          aviso: fresco ? undefined : 'saídas/saldo refletem o extrato até ' + String(melhor.end_date).slice(0, 10) + ' — extrato novo sendo gerado (~2 min)'
+          extrato_ate: new Date(horizonte(melhor)).toISOString(),
+          aviso: fresco ? undefined : 'saídas/saldo refletem o extrato até ' + new Date(horizonte(melhor)).toISOString().slice(11, 16) + ' UTC — extrato novo sendo gerado (~2 min)'
         }, parsed));
       }
     }

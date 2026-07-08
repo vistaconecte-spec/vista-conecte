@@ -1089,6 +1089,9 @@ async function mpRenderCard(elId, mes) {
     const r = await fetch('/api/mp-movimentos?desde=' + desde + '&ate=' + ate + '&t=' + Date.now());
     const j = await r.json();
     if (!r.ok || j.erro) { el.innerHTML = '<div style="font-size:12px;color:var(--text-ter)">MP indisponível: ' + (j.erro || r.status) + '</div>'; return; }
+    if (j.gerando && !window._mpCardRetry) {
+      window._mpCardRetry = setTimeout(() => { window._mpCardRetry = null; const el2 = document.getElementById(elId); if (el2) mpRenderCard(elId, mes); }, 150000);
+    }
     // no Fluxo, os pagamentos reais feitos pelo MP entram sozinhos na tabela de contas (como pagos)
     if (elId === 'flx-mp') {
       window._flxMP = { mes, dados: j };
@@ -1378,6 +1381,10 @@ async function flxAtualizarSaldos(silencioso) {
     try {
       const r = await fetch(url + '?t=' + Date.now());
       const d = await r.json();
+      // extrato novo sendo gerado → re-puxa sozinho em ~2,5 min (uma vez) p/ trocar estimativa pelo exato
+      if (d && d.gerando && !window._flxSaldoRetry) {
+        window._flxSaldoRetry = setTimeout(() => { window._flxSaldoRetry = null; if (modeloAtual === '__fluxo__') flxAtualizarSaldos(true); }, 150000);
+      }
       if (d && typeof d.disponivel === 'number') {
         cfg.saldos[chave] = { v: Math.round(d.disponivel * 100) / 100, at: new Date().toISOString(), auto: true };
         return true;

@@ -48,13 +48,18 @@ export async function onRequestGet({ env }) {
   const H = { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' };
   try {
     const lst = await (await fetch('https://api.mercadopago.com/v1/account/release_report/list', { headers: H })).json();
+    // HORIZONTE REAL dos dados = min(end_date, date_created): um extrato pode ser pedido com
+    // fim no FUTURO (ex.: até 23:59 de hoje), mas os dados só vão até o momento da geração.
+    // Confiar no end_date congelava o saldo o dia inteiro (bug corrigido 08/07).
+    const horizonte = f => Math.min(new Date(f.end_date).getTime(), new Date(f.date_created).getTime());
     const maisRecente = (Array.isArray(lst) ? lst : [])
-      .sort((a, b) => (b.end_date || '').localeCompare(a.end_date || ''))[0] || null;
+      .filter(f => f.end_date && f.date_created)
+      .sort((a, b) => horizonte(b) - horizonte(a))[0] || null;
 
     const agora = Date.now();
-    // frescor = o EXTRATO TERMINA há menos de 3h (não a data de criação!)
-    const fimExtrato = maisRecente ? new Date(maisRecente.end_date).getTime() : 0;
-    const fresco = maisRecente && (agora - fimExtrato) < 3 * 3600 * 1000;
+    // frescor = o horizonte de dados tem menos de 1h
+    const fimExtrato = maisRecente ? horizonte(maisRecente) : 0;
+    const fresco = maisRecente && (agora - fimExtrato) < 1 * 3600 * 1000;
     // evita disparar gerações em rajada: só regenera se o extrato mais recente foi CRIADO há >10 min
     const criadoHa = maisRecente ? (agora - new Date(maisRecente.date_created).getTime()) : Infinity;
 
@@ -72,16 +77,17 @@ export async function onRequestGet({ env }) {
       const csv = await (await fetch('https://api.mercadopago.com/v1/account/release_report/' + encodeURIComponent(maisRecente.file_name), { headers: H })).text();
       const saldoBase = saldoDoCSV(csv);
       if (saldoBase !== null) {
+        const refISO = new Date(fimExtrato).toISOString();
         if (fresco) {
-          return J({ disponivel: saldoBase, atualizado: new Date().toISOString(), referencia: maisRecente.end_date, fonte: 'release_report', gerando: false });
+          return J({ disponivel: saldoBase, atualizado: new Date().toISOString(), referencia: refISO, fonte: 'release_report', gerando: false });
         }
-        // extrato velho → estimativa intradiária: saldo do extrato + Pix recebidos depois do fim dele
-        const entradas = await entradasDesde(H, maisRecente.end_date);
+        // extrato defasado → estimativa intradiária: saldo do extrato + Pix recebidos DEPOIS do horizonte real
+        const entradas = await entradasDesde(H, refISO);
         return J({
           disponivel: Math.round((saldoBase + entradas) * 100) / 100,
           atualizado: new Date().toISOString(),
-          referencia: maisRecente.end_date,
-          fonte: 'estimativa (extrato ' + String(maisRecente.end_date).slice(0, 10) + ' + Pix de hoje)',
+          referencia: refISO,
+          fonte: 'estimativa (extrato até ' + refISO.slice(11, 16) + ' UTC + Pix desde então)',
           gerando: true
         });
       }
