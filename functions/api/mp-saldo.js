@@ -16,9 +16,12 @@ function saldoDoCSV(csv) {
   const L = csv.trim().split('\n');
   const head = (L[0] || '').split(';');
   const iBal = head.indexOf('BALANCE_AMOUNT');
+  const iD = head.indexOf('DATE');
   if (iBal < 0) return null;
   for (let i = L.length - 1; i > 0; i--) {
     const c = L[i].split(';');
+    // pula a linha de TOTAIS no rodapé (sem DATE) — o saldo dela vem 0.00 e mascarava o real
+    if (!c[iD]) continue;
     if (c[iBal] !== undefined && c[iBal] !== '') { const v = parseFloat(c[iBal]); if (!isNaN(v)) return v; }
   }
   return null;

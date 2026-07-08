@@ -35,7 +35,8 @@ export function parseReportCSV(csv) {
     const deb = parseFloat(c[iDeb]) || 0;
     const src = c[iSrc] || '';
     const bal = (c[iBal] !== undefined && c[iBal] !== '') ? parseFloat(c[iBal]) : null;
-    if (bal !== null) out.saldo_final = bal;
+    // linha de TOTAIS no rodapé (sem DATE) tem saldo 0.00 — não é o saldo da conta
+    if (bal !== null && c[iD]) out.saldo_final = bal;
     if (desc === 'payment' && cred > 0) {         // recebimento (Pix/TED, líquido de taxa)
       out.entradas.total_liquido += cred; out.entradas.qtd++;
       out.entradas.por_dia[dia] = (out.entradas.por_dia[dia] || 0) + cred;
