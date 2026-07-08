@@ -1070,6 +1070,7 @@ async function renderFluxo() {
   flxAtualizarSaldos(true);              // saldos MP/Pagar.me
   if (cfg.vendasAuto) flxSincronizarVendas(true); // custo das vendidas Shopify
   mpRenderCard('flx-mp', mes);           // movimentações reais do Mercado Pago
+  flxAtualizarMetaSaldo(mes);            // saldo devedor real da Meta (cache 6h)
 }
 
 // ── Mercado Pago — movimentações REAIS da conta (entradas Pix, pagamentos, transferências) ──
@@ -1201,6 +1202,28 @@ function finAplicarMP(j, mes) {
 // Determinística (recalculável a cada sync, sem consumir duas vezes).
 function flxTrafegoLiquido(cfg, mes) {
   const tc = cfg.trafegoCfg || FLX_TRAFEGO_DEFAULT;
+  const hoje = new Date();
+  const mesAtual = hoje.getFullYear() + '-' + String(hoje.getMonth() + 1).padStart(2, '0');
+
+  // MÊS CORRENTE: nada de estimativa — entra o SALDO DEVEDOR REAL da conta Meta
+  // (API /api/meta-conta-status, cache 6h em cfg.metaSaldo) + impostos. É o que a Meta
+  // vai cobrar de fato; quando ela cobra (aparece o pagamento no MP), o saldo da API
+  // cai junto — a reconciliação é automática, sem risco de dupla contagem.
+  if (mes === mesAtual && cfg.metaSaldo && typeof cfg.metaSaldo.v === 'number') {
+    if (cfg.metaSaldo.v <= 0) return [];
+    const fator = 1 + ((parseFloat(tc.impostoPct) || 0) / 100);
+    const at = cfg.metaSaldo.at ? new Date(cfg.metaSaldo.at) : null;
+    const selo = at ? ' (API ' + String(at.getDate()).padStart(2, '0') + '/' + String(at.getMonth() + 1).padStart(2, '0') + ' ' + String(at.getHours()).padStart(2, '0') + 'h)' : '';
+    return [{
+      id: 'trfsaldo',
+      desc: 'Meta Ads — saldo devedor atual + impostos' + selo,
+      valor: Math.round(cfg.metaSaldo.v * fator * 100) / 100,
+      dia: hoje.getDate(), cat: 'trafego', rec: true, pago: false
+    }];
+  }
+
+  // MESES FUTUROS (planejamento) ou fallback sem dado da API: cronograma estimado,
+  // abatendo o que a Meta já cobrou de verdade no mês (pagamentos MP cat trafego).
   const gerados = flxTrafegoCharges(tc.estimativa, tc.limite, flxDiasNoMes(mes), tc.impostoPct);
   let real = ((cfg.pag && cfg.pag[mes]) || [])
     .filter(p => p.auto === 'mp' && p.cat === 'trafego')
@@ -1217,6 +1240,39 @@ function flxTrafegoLiquido(cfg, mes) {
     real = 0;
   }
   return out;
+}
+
+// Atualiza o saldo devedor da conta Meta (cache de 6h) e regenera o item de tráfego do mês corrente.
+async function flxAtualizarMetaSaldo(mes, forcar) {
+  const hoje = new Date();
+  const mesAtual = hoje.getFullYear() + '-' + String(hoje.getMonth() + 1).padStart(2, '0');
+  if (mes !== mesAtual) return;
+  let cfg = flxGetConfig();
+  const at = (cfg.metaSaldo && cfg.metaSaldo.at) ? new Date(cfg.metaSaldo.at).getTime() : 0;
+  const fresco = (Date.now() - at) < 6 * 3600 * 1000;
+  if (!fresco || forcar) {
+    try {
+      const r = await fetch('/api/meta-conta-status?t=' + Date.now());
+      const d = await r.json();
+      const bal = parseFloat(d && d.balance);
+      if (!isNaN(bal)) {
+        cfg = flxGetConfig(); // recarrega (outros syncs podem ter salvo nesse meio-tempo)
+        cfg.metaSaldo = { v: Math.round(bal) / 100, at: new Date().toISOString() };
+        saveLocal('vc:fluxo_caixa', cfg);
+      }
+    } catch (e) { /* API indisponível → mantém cache/estimativas */ }
+  }
+  // regenera o item de tráfego do mês corrente com o saldo (cache ou recém-buscado)
+  cfg = flxGetConfig();
+  if (!(cfg.metaSaldo && typeof cfg.metaSaldo.v === 'number')) return;
+  cfg.pag = cfg.pag || {}; cfg.pag[mes] = cfg.pag[mes] || [];
+  const outras = cfg.pag[mes].filter(p => !(p.cat === 'trafego' && p.rec && p.auto !== 'mp'));
+  cfg.pag[mes] = outras.concat(flxTrafegoLiquido(cfg, mes));
+  flxSalvarPag(cfg);
+  if (modeloAtual === '__fluxo__' && document.getElementById('flx-mes') && document.getElementById('flx-mes').value === mes) {
+    flxRenderPagamentos(cfg, mes);
+    flxRecompute();
+  }
 }
 
 // Injeta os PAGAMENTOS REAIS feitos pela conta MP na tabela de contas do mês (auto:'mp', já pagos).
@@ -1445,8 +1501,9 @@ function flxRecalcTrafego() {
   // remove só as cobranças de tráfego recorrentes (mantém tráfego pontual manual, itens MP reais e as demais contas)
   const outras = (cfg.pag[mes] || []).filter(p => !(p.cat === 'trafego' && p.rec && p.auto !== 'mp'));
   cfg.pag[mes] = outras;
-  cfg.pag[mes] = outras.concat(flxTrafegoLiquido(cfg, mes)); // já abate o que a Meta cobrou de verdade
+  cfg.pag[mes] = outras.concat(flxTrafegoLiquido(cfg, mes)); // mês corrente = saldo real Meta; futuros = estimativa
   flxSalvarPag(cfg);
+  flxAtualizarMetaSaldo(mes, true); // força refresh do saldo devedor (ignora cache de 6h)
   flxRenderPagamentos(cfg, mes);
   flxRecompute();
 }
