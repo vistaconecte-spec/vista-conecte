@@ -1381,8 +1381,13 @@ function flxRecompute() {
   const ultimoDia = new Date(Y, M, 0).getDate();
   const diaInicio = ehMesAtual ? hoje.getDate() : 1;
 
-  // Pagamentos que ainda vão sair (não pagos, com vencimento >= início da janela)
-  const pend = lista.filter(p => !p.pago && p.dia >= diaInicio);
+  // Pagamentos que ainda vão sair = TUDO que não foi pago. Conta VENCIDA (dia < hoje) e não
+  // paga continua devida — entra como se vencesse HOJE, marcada "vencida" (ex.: custo de
+  // produção das vendidas de semanas passadas). Sem isso ela sumia da projeção e subestimava
+  // o que o caixa ainda deve.
+  const pend = lista.filter(p => !p.pago && (p.valor || 0) > 0)
+    .map(p => (p.dia < diaInicio) ? Object.assign({}, p, { diaEfetivo: diaInicio, vencida: true })
+                                  : Object.assign({}, p, { diaEfetivo: p.dia }));
   const aPagar = pend.reduce((s, p) => s + (p.valor || 0), 0);
   const jaPago = lista.filter(p => p.pago).reduce((s, p) => s + (p.valor || 0), 0);
   const totalMes = lista.reduce((s, p) => s + (p.valor || 0), 0);
@@ -1391,7 +1396,7 @@ function flxRecompute() {
   const dias = [];
   let saldo = saldoHoje, menor = saldoHoje, diaMenor = diaInicio;
   for (let d = diaInicio; d <= ultimoDia; d++) {
-    const saidas = pend.filter(p => p.dia === d).reduce((s, p) => s + (p.valor || 0), 0);
+    const saidas = pend.filter(p => p.diaEfetivo === d).reduce((s, p) => s + (p.valor || 0), 0);
     saldo -= saidas;
     if (saldo < menor) { menor = saldo; diaMenor = d; }
     if (saidas > 0) dias.push({ d, saidas, saldo });
@@ -1439,9 +1444,12 @@ function flxRecompute() {
       <th style="text-align:right;padding:6px 8px">Saídas</th>
       <th style="text-align:right;padding:6px 8px">Saldo ${ehPassado ? '' : 'projetado'}</th></tr>`;
   const projRows = dias.map(row => {
-    // uma conta por linha, com o valor individual à direita
-    const contasDia = pend.filter(p => p.dia === row.d)
-      .map(p => `<div style="display:flex;justify-content:space-between;gap:8px;padding:1px 0"><span>${p.desc}</span><span style="white-space:nowrap;color:var(--text-ter)">− ${finBRL(p.valor || 0)}</span></div>`)
+    // uma conta por linha, com o valor individual à direita; vencidas destacadas
+    const contasDia = pend.filter(p => p.diaEfetivo === row.d)
+      .sort((a, b) => (b.vencida ? 1 : 0) - (a.vencida ? 1 : 0) || (b.valor || 0) - (a.valor || 0))
+      .map(p => `<div style="display:flex;justify-content:space-between;gap:8px;padding:1px 0">
+        <span>${p.vencida ? '<span style="color:#dc2626;font-weight:600">⚠ vencida ' + dd(p.dia) + '</span> — ' : ''}${p.desc}</span>
+        <span style="white-space:nowrap;color:var(--text-ter)">− ${finBRL(p.valor || 0)}</span></div>`)
       .join('');
     const critico = row.d === diaMenor && menor < saldoHoje;
     return `<tr style="border-top:1px solid #f0ede8;${critico ? 'background:rgba(217,119,6,0.06)' : ''}">
