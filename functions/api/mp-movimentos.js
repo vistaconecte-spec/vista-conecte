@@ -17,7 +17,7 @@ export function parseReportCSV(csv) {
   const iD = idx('DATE'), iDesc = idx('DESCRIPTION'), iCred = idx('NET_CREDIT_AMOUNT'),
         iDeb = idx('NET_DEBIT_AMOUNT'), iBal = idx('BALANCE_AMOUNT'), iSrc = idx('SOURCE_ID');
   if (iD < 0 || iCred < 0) return null;
-  const out = { entradas: { total_liquido: 0, qtd: 0, por_dia: {} },
+  const out = { entradas: { total_liquido: 0, qtd: 0, por_dia: {}, itens: [] },
                 saidas: { pagamentos: { total: 0, qtd: 0, itens: [] },
                           transferencias: { total: 0, qtd: 0, internas: 0, enviadas: 0, itens: [] },
                           por_dia: {} },
@@ -40,6 +40,7 @@ export function parseReportCSV(csv) {
     if (desc === 'payment' && cred > 0) {         // recebimento (Pix/TED, líquido de taxa)
       out.entradas.total_liquido += cred; out.entradas.qtd++;
       out.entradas.por_dia[dia] = (out.entradas.por_dia[dia] || 0) + cred;
+      out.entradas.itens.push({ dia, hora: (c[iD] || '').slice(11, 16), valor: cred, source_id: src || null });
     } else if (desc === 'payment' && deb > 0) {   // pagamento efetivado pela conta
       pagamentosDiretos.add(src);
       out.saidas.pagamentos.total += deb; out.saidas.pagamentos.qtd++;
@@ -79,7 +80,7 @@ export function parseReportCSV(csv) {
 
 // Fallback imediato: entradas via payments/search (aprovados no período)
 async function entradasViaPayments(H, desde, ate) {
-  const out = { total_liquido: 0, qtd: 0, por_dia: {} };
+  const out = { total_liquido: 0, qtd: 0, por_dia: {}, itens: [] };
   let offset = 0;
   for (let p = 0; p < 20; p++) {
     const u = `https://api.mercadopago.com/v1/payments/search?range=date_approved&begin_date=${desde}T00:00:00.000-03:00&end_date=${ate}T23:59:59.999-03:00&status=approved&limit=50&offset=${offset}`;
@@ -92,6 +93,7 @@ async function entradasViaPayments(H, desde, ate) {
       const dia = (pay.date_approved || '').slice(0, 10);
       out.total_liquido += liq; out.qtd++;
       out.por_dia[dia] = (out.por_dia[dia] || 0) + liq;
+      out.itens.push({ dia, hora: (pay.date_approved || '').slice(11, 16), valor: Math.round(liq * 100) / 100, source_id: String(pay.id || '') });
     }
     offset += 50;
     if (!d.paging || offset >= d.paging.total) break;
@@ -156,6 +158,7 @@ export async function onRequestGet({ request, env }) {
           parsed.entradas.total_liquido = Math.round((parsed.entradas.total_liquido + topo.total_liquido) * 100) / 100;
           parsed.entradas.qtd += topo.qtd;
           for (const [d, v] of Object.entries(topo.por_dia)) parsed.entradas.por_dia[d] = (parsed.entradas.por_dia[d] || 0) + v;
+          parsed.entradas.itens = (parsed.entradas.itens || []).concat(topo.itens || []);
         }
         return J(Object.assign({
           periodo: { desde, ate },
