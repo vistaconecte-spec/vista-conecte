@@ -1064,6 +1064,7 @@ async function renderFluxo() {
   saveLocal('vc:fluxo_caixa', cfg);
   flxRenderSaldos(cfg);
   flxRenderPagamentos(cfg, mes);
+  flxProjFormInit(mes);
   flxRecompute();
   // Em background (não bloqueiam a UI; falha → mantém manual/placeholder):
   flxAtualizarSaldos(true);              // saldos MP/Pagar.me
@@ -1342,6 +1343,41 @@ function flxPagDel(i) {
   flxRenderPagamentos(cfg, mes);
   flxRecompute();
 }
+// Lançamento rápido de pagamento previsto direto no card da Projeção Diária.
+function flxProjFormInit(mes) {
+  const sel = document.getElementById('flx-proj-cat');
+  if (sel && !sel.options.length) {
+    CUSTO_DEFS.forEach(([k, l]) => { const o = document.createElement('option'); o.value = k; o.textContent = l; sel.appendChild(o); });
+    sel.value = 'outros';
+  }
+  const diaEl = document.getElementById('flx-proj-dia');
+  if (diaEl && !diaEl.value) {
+    const hoje = new Date();
+    const mesAtual = hoje.getFullYear() + '-' + String(hoje.getMonth() + 1).padStart(2, '0');
+    diaEl.value = (mes === mesAtual) ? hoje.getDate() : 1;
+  }
+}
+
+function flxProjAdd() {
+  const msg = document.getElementById('flx-proj-add-msg');
+  const desc = (document.getElementById('flx-proj-desc').value || '').trim();
+  const valor = parseFloat(document.getElementById('flx-proj-valor').value) || 0;
+  const dia = Math.min(31, Math.max(1, parseInt(document.getElementById('flx-proj-dia').value) || 0));
+  const cat = document.getElementById('flx-proj-cat').value || 'outros';
+  if (!desc || valor <= 0 || !dia) { if (msg) msg.textContent = 'preencha descrição, dia e valor'; return; }
+  const cfg = flxGetConfig();
+  const mes = document.getElementById('flx-mes').value;
+  cfg.pag = cfg.pag || {}; cfg.pag[mes] = cfg.pag[mes] || [];
+  cfg.pag[mes].push({ id: 'p' + Date.now(), desc, valor: Math.round(valor * 100) / 100, dia, cat, rec: false, pago: false });
+  flxSalvarPag(cfg);
+  flxRenderPagamentos(cfg, mes);
+  flxRecompute();
+  document.getElementById('flx-proj-desc').value = '';
+  document.getElementById('flx-proj-valor').value = '';
+  if (msg) { msg.textContent = '✓ adicionado'; setTimeout(() => { if (msg.textContent === '✓ adicionado') msg.textContent = ''; }, 2500); }
+  document.getElementById('flx-proj-desc').focus();
+}
+
 function flxPagAdd() {
   const cfg = flxGetConfig();
   const mes = document.getElementById('flx-mes').value;
