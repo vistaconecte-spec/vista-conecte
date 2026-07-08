@@ -750,9 +750,23 @@ async function finPullMeta(mes) {
     const cfgFin = finGetConfig();
     const subs = (cfgFin.subs && cfgFin.subs[mes]) ? cfgFin.subs[mes] : (finGetSubs(cfgFin, mes));
     subs.trafego = subs.trafego || [];
-    const idx = subs.trafego.findIndex(s => /meta ads/i.test(s[0]));
+    const idx = subs.trafego.findIndex(s => /^meta ads/i.test(s[0]));
     if (idx >= 0) subs.trafego[idx][1] = gasto;
     else subs.trafego.unshift(['Meta Ads (Facebook)', gasto]);
+    // Impostos sobre o gasto Meta (PIS/COFINS/ISS): não aparecem no gerenciador, mas saem
+    // do caixa — taxa configurada na caixa de tráfego do Fluxo (padrão 12,15%).
+    const _flxCfg = loadLocal('vc:fluxo_caixa');
+    const pctImp = (_flxCfg && _flxCfg.trafegoCfg && typeof _flxCfg.trafegoCfg.impostoPct === 'number')
+      ? _flxCfg.trafegoCfg.impostoPct : FLX_TRAFEGO_DEFAULT.impostoPct;
+    const idxImp = subs.trafego.findIndex(s => /^impostos s\/ meta ads/i.test(s[0]));
+    if (pctImp > 0) {
+      const rotImp = 'Impostos s/ Meta Ads (' + String(pctImp).replace('.', ',') + '%)';
+      const vImp = Math.round(gasto * pctImp) / 100;
+      if (idxImp >= 0) { subs.trafego[idxImp][0] = rotImp; subs.trafego[idxImp][1] = vImp; }
+      else subs.trafego.splice((idx >= 0 ? idx : 0) + 1, 0, [rotImp, vImp]);
+    } else if (idxImp >= 0) {
+      subs.trafego.splice(idxImp, 1);
+    }
     cfgFin.subs = cfgFin.subs || {};
     cfgFin.subs[mes] = subs;
     cfgFin.subsV = cfgFin.subsV || {};
@@ -859,30 +873,36 @@ function finRecompute() {
 // SEM projeção de entradas futuras (visão conservadora escolhida em 2026-07-05).
 
 // Config padrão do tráfego (Meta cobra por LIMITE de faturamento, não valor fechado no fim do mês).
-const FLX_TRAFEGO_DEFAULT = { estimativa: 39000, limite: 3000 };
+// impostoPct: a Meta Brasil cobra impostos POR CIMA do gasto do gerenciador (PIS 1,65% +
+// COFINS 7,6% + ISS ~2,9% ≈ 12,15%). Não aparecem no gerenciador, mas saem do caixa —
+// as provisões e o DRE precisam incluí-los. Ajustável na caixa de tráfego do Fluxo.
+const FLX_TRAFEGO_DEFAULT = { estimativa: 39000, limite: 3000, impostoPct: 12.15 };
 
 function flxDiasNoMes(mes) {
   const [Y, M] = mes.split('-').map(Number);
   return new Date(Y, M, 0).getDate();
 }
 
-// Tráfego é FRACIONADO: a Meta debita `limite` (ex.: R$3.000) toda vez que o gasto
-// acumulado bate o teto de cobrança. Dado o gasto mensal estimado, distribui as
-// cobranças de R$`limite` pelos dias do mês assumindo gasto diário ~constante.
-function flxTrafegoCharges(estimativa, limite, diasNoMes) {
+// Tráfego é FRACIONADO: a Meta debita quando o GASTO DO GERENCIADOR acumulado bate o
+// limite (ex.: R$3.000) — mas a COBRANÇA REAL sai com impostos por cima (limite × (1+imposto)).
+// `estimativa` e `limite` são em valores do gerenciador (sem imposto); as provisões saem em
+// valor de caixa (com imposto) — mesma unidade das cobranças reais do extrato MP.
+function flxTrafegoCharges(estimativa, limite, diasNoMes, impostoPct) {
   estimativa = parseFloat(estimativa) || 0;
   limite = parseFloat(limite) || 3000;
+  const fator = 1 + ((parseFloat(impostoPct) || 0) / 100);
   const out = [];
   if (estimativa <= 0 || limite <= 0) return out;
   const diario = estimativa / diasNoMes;
   const n = Math.floor(estimativa / limite);
   const resto = Math.round((estimativa - n * limite) * 100) / 100;
   const rotuloLim = limite.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const sufImposto = fator > 1 ? ' + impostos' : '';
   for (let k = 1; k <= n; k++) {
     const dia = Math.min(diasNoMes, Math.max(1, Math.ceil(k * limite / diario)));
-    out.push({ id: 'trf' + k, desc: 'Meta Ads — cobrança ' + k + ' (R$ ' + rotuloLim + ')', valor: limite, dia, cat: 'trafego', rec: true, pago: false });
+    out.push({ id: 'trf' + k, desc: 'Meta Ads — cobrança ' + k + ' (R$ ' + rotuloLim + sufImposto + ')', valor: Math.round(limite * fator * 100) / 100, dia, cat: 'trafego', rec: true, pago: false });
   }
-  if (resto > 0) out.push({ id: 'trf' + (n + 1), desc: 'Meta Ads — saldo do mês', valor: resto, dia: diasNoMes, cat: 'trafego', rec: true, pago: false });
+  if (resto > 0) out.push({ id: 'trf' + (n + 1), desc: 'Meta Ads — saldo do mês' + sufImposto, valor: Math.round(resto * fator * 100) / 100, dia: diasNoMes, cat: 'trafego', rec: true, pago: false });
   return out;
 }
 
@@ -909,7 +929,7 @@ function flxRecorrentesTemplate(mes, trafegoCfg, vendasAuto) {
   const fixas = base.map((r, i) => ({ id: 'rec' + i, desc: r[0], valor: r[1], dia: r[2], cat: r[3], rec: true, pago: false }));
   const tc = trafegoCfg || FLX_TRAFEGO_DEFAULT;
   const dias = flxDiasNoMes(mes || (new Date().getFullYear() + '-' + String(new Date().getMonth() + 1).padStart(2, '0')));
-  return fixas.concat(flxTrafegoCharges(tc.estimativa, tc.limite, dias));
+  return fixas.concat(flxTrafegoCharges(tc.estimativa, tc.limite, dias, tc.impostoPct));
 }
 
 function flxCatNome(k) {
@@ -927,6 +947,7 @@ function flxGetConfig() {
     pag: {}, updated_at: null
   };
   if (!cfg.trafegoCfg) cfg.trafegoCfg = Object.assign({}, FLX_TRAFEGO_DEFAULT);
+  if (cfg.trafegoCfg.impostoPct === undefined) cfg.trafegoCfg.impostoPct = FLX_TRAFEGO_DEFAULT.impostoPct;
   if (cfg.vendasAuto === undefined) cfg.vendasAuto = true; // custo das vendidas puxado da Shopify
   if (!cfg.vendasIncluir) cfg.vendasIncluir = { tecido: true, corte: true, costura: true, frete: true };
   return cfg;
@@ -1117,7 +1138,7 @@ function finAplicarMP(j, mes) {
 // Determinística (recalculável a cada sync, sem consumir duas vezes).
 function flxTrafegoLiquido(cfg, mes) {
   const tc = cfg.trafegoCfg || FLX_TRAFEGO_DEFAULT;
-  const gerados = flxTrafegoCharges(tc.estimativa, tc.limite, flxDiasNoMes(mes));
+  const gerados = flxTrafegoCharges(tc.estimativa, tc.limite, flxDiasNoMes(mes), tc.impostoPct);
   let real = ((cfg.pag && cfg.pag[mes]) || [])
     .filter(p => p.auto === 'mp' && p.cat === 'trafego')
     .reduce((s, p) => s + (p.valor || 0), 0);
@@ -1248,6 +1269,7 @@ function flxRenderPagamentos(cfg, mes) {
   const tc = cfg.trafegoCfg || FLX_TRAFEGO_DEFAULT;
   const estEl = document.getElementById('flx-trf-est'); if (estEl) estEl.value = tc.estimativa;
   const limEl = document.getElementById('flx-trf-lim'); if (limEl) limEl.value = tc.limite;
+  const impEl = document.getElementById('flx-trf-imp'); if (impEl) impEl.value = (tc.impostoPct !== undefined ? tc.impostoPct : FLX_TRAFEGO_DEFAULT.impostoPct);
   const lista = (cfg.pag && cfg.pag[mes]) || [];
   const ordenada = lista.map((p, i) => ({ p, i })).sort((a, b) => (a.p.dia - b.p.dia) || (b.p.valor - a.p.valor));
   const opCats = CUSTO_DEFS.map(([k, l]) => `<option value="${k}">${l}</option>`).join('');
@@ -1319,7 +1341,9 @@ function flxRecalcTrafego() {
   const mes = document.getElementById('flx-mes').value;
   const est = parseFloat(document.getElementById('flx-trf-est').value) || 0;
   const lim = parseFloat(document.getElementById('flx-trf-lim').value) || 3000;
-  cfg.trafegoCfg = { estimativa: est, limite: lim };
+  const impEl = document.getElementById('flx-trf-imp');
+  const imp = impEl ? (parseFloat(impEl.value) || 0) : FLX_TRAFEGO_DEFAULT.impostoPct;
+  cfg.trafegoCfg = { estimativa: est, limite: lim, impostoPct: imp };
   // remove só as cobranças de tráfego recorrentes (mantém tráfego pontual manual, itens MP reais e as demais contas)
   const outras = (cfg.pag[mes] || []).filter(p => !(p.cat === 'trafego' && p.rec && p.auto !== 'mp'));
   cfg.pag[mes] = outras;
