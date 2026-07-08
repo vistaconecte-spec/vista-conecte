@@ -72,7 +72,7 @@ export async function onRequest(context) {
           product: {
             id: p.id,
             options: [{ id: opcaoExistenteId, name: 'Cor' }],
-            variants: variantesAtualizadas.map(v => ({ id: v.id, option1: v.option1 })),
+            variants: variantesAtualizadas, // já diferenciadas por option2 (tamanho), evita duplicata
           },
         }),
       });
