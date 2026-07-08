@@ -1439,13 +1439,16 @@ function flxRecompute() {
       <th style="text-align:right;padding:6px 8px">Saídas</th>
       <th style="text-align:right;padding:6px 8px">Saldo ${ehPassado ? '' : 'projetado'}</th></tr>`;
   const projRows = dias.map(row => {
-    const contasDia = pend.filter(p => p.dia === row.d).map(p => p.desc).join(', ');
+    // uma conta por linha, com o valor individual à direita
+    const contasDia = pend.filter(p => p.dia === row.d)
+      .map(p => `<div style="display:flex;justify-content:space-between;gap:8px;padding:1px 0"><span>${p.desc}</span><span style="white-space:nowrap;color:var(--text-ter)">− ${finBRL(p.valor || 0)}</span></div>`)
+      .join('');
     const critico = row.d === diaMenor && menor < saldoHoje;
     return `<tr style="border-top:1px solid #f0ede8;${critico ? 'background:rgba(217,119,6,0.06)' : ''}">
-      <td style="padding:6px 8px;font-weight:600">${dd(row.d)}</td>
+      <td style="padding:6px 8px;font-weight:600;vertical-align:top">${dd(row.d)}</td>
       <td style="padding:6px 8px;font-size:12px;color:var(--text-sec)">${contasDia}</td>
-      <td style="padding:6px 8px;text-align:right;color:#b45309">− ${finBRL(row.saidas)}</td>
-      <td style="padding:6px 8px;text-align:right;font-weight:600;color:${corR(row.saldo)}">${finBRL(row.saldo)}${critico ? ' <span style="font-size:9px;color:#d97706">◄ mais baixo</span>' : ''}</td></tr>`;
+      <td style="padding:6px 8px;text-align:right;color:#b45309;vertical-align:top;white-space:nowrap">− ${finBRL(row.saidas)}</td>
+      <td style="padding:6px 8px;text-align:right;font-weight:600;vertical-align:top;white-space:nowrap;color:${corR(row.saldo)}">${finBRL(row.saldo)}${critico ? ' <span style="font-size:9px;color:#d97706">◄ mais baixo</span>' : ''}</td></tr>`;
   }).join('');
   const linhaInicial = `<tr><td style="padding:6px 8px;font-weight:600;color:var(--text-ter)">${ehMesAtual ? 'hoje' : (ehPassado ? 'início' : 'dia 1')}</td><td></td><td></td><td style="padding:6px 8px;text-align:right;font-weight:700">${finBRL(saldoHoje)}</td></tr>`;
 
@@ -1456,14 +1459,14 @@ function flxRecompute() {
   const pagosPorDia = {};
   pagos.forEach(p => { pagosPorDia[p.dia] = pagosPorDia[p.dia] || []; pagosPorDia[p.dia].push(p); });
   const diasPagos = Object.keys(pagosPorDia).map(Number).sort((a, b) => a - b);
+  // uma linha por pagamento (dia aparece só na primeira do grupo)
   const realizadoRows = diasPagos.map(d => {
-    const its = pagosPorDia[d];
-    const tot = its.reduce((s, p) => s + (p.valor || 0), 0);
-    return `<tr style="border-top:1px solid #f0ede8;opacity:0.55">
-      <td style="padding:5px 8px;font-weight:600">${dd(d)}</td>
-      <td style="padding:5px 8px;font-size:12px;color:var(--text-sec)">✓ ${its.map(p => p.desc).join(', ')}</td>
-      <td style="padding:5px 8px;text-align:right;color:#b45309">− ${finBRL(tot)}</td>
-      <td style="padding:5px 8px;text-align:right;font-size:10px;color:var(--text-ter)">pago</td></tr>`;
+    const its = pagosPorDia[d].slice().sort((a, b) => (b.valor || 0) - (a.valor || 0));
+    return its.map((p, i) => `<tr style="${i === 0 ? 'border-top:1px solid #f0ede8;' : ''}opacity:0.55">
+      <td style="padding:4px 8px;font-weight:600">${i === 0 ? dd(d) : ''}</td>
+      <td style="padding:4px 8px;font-size:12px;color:var(--text-sec)">✓ ${p.desc}</td>
+      <td style="padding:4px 8px;text-align:right;color:#b45309;white-space:nowrap">− ${finBRL(p.valor || 0)}</td>
+      <td style="padding:4px 8px;text-align:right;font-size:10px;color:var(--text-ter)">pago</td></tr>`).join('');
   }).join('');
   const realizadoBloco = realizadoRows
     ? `<tr><td colspan="4" style="padding:6px 8px;font-size:10px;font-weight:700;letter-spacing:0.05em;color:var(--text-ter)">REALIZADO (já saiu do caixa — refletido no saldo)</td></tr>${realizadoRows}
