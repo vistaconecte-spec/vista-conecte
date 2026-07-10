@@ -27,22 +27,30 @@ function saldoDoCSV(csv) {
   return null;
 }
 
-// Pix líquidos aprovados desde `desdeISO` até agora (imediato, sem esperar extrato)
-async function entradasDesde(H, desdeISO) {
-  let total = 0, offset = 0;
+// Movimentos aprovados desde `desdeISO` (imediato, sem esperar extrato), SEPARADOS por direção:
+// collector = nós → entrada (líquida); nós como pagador → saída (pagamento feito).
+// (antes somava tudo como entrada — pagamento feito inflava a estimativa)
+const CONTA_MP_ID = '3013574234'; // conta CONECTE (vistaconecte@gmail.com)
+async function movimentosDesde(H, desdeISO) {
+  let ent = 0, sai = 0, offset = 0;
   for (let p = 0; p < 10; p++) {
     const u = `https://api.mercadopago.com/v1/payments/search?range=date_approved&begin_date=${encodeURIComponent(desdeISO)}&end_date=${encodeURIComponent(new Date().toISOString())}&status=approved&limit=50&offset=${offset}`;
     const r = await fetch(u, { headers: H });
     if (!r.ok) break;
     const d = await r.json();
     for (const pay of (d.results || [])) {
-      total += (typeof pay.transaction_details?.net_received_amount === 'number')
-        ? pay.transaction_details.net_received_amount : (pay.transaction_amount || 0);
+      const somos = String(pay.collector_id || (pay.collector && pay.collector.id) || '') === CONTA_MP_ID;
+      if (somos) {
+        ent += (typeof pay.transaction_details?.net_received_amount === 'number')
+          ? pay.transaction_details.net_received_amount : (pay.transaction_amount || 0);
+      } else {
+        sai += (pay.transaction_amount || 0);
+      }
     }
     offset += 50;
     if (!d.paging || offset >= d.paging.total) break;
   }
-  return Math.round(total * 100) / 100;
+  return { ent: Math.round(ent * 100) / 100, sai: Math.round(sai * 100) / 100 };
 }
 
 export async function onRequestGet({ env }) {
@@ -62,11 +70,11 @@ export async function onRequestGet({ env }) {
     const agora = Date.now();
     // frescor = o horizonte de dados tem menos de 1h
     const fimExtrato = maisRecente ? horizonte(maisRecente) : 0;
-    const fresco = maisRecente && (agora - fimExtrato) < 1 * 3600 * 1000;
+    const fresco = maisRecente && (agora - fimExtrato) < 15 * 60 * 1000; // quase-tempo-real: exato com ≤15 min
     // evita disparar gerações em rajada: só regenera se o extrato mais recente foi CRIADO há >10 min
     const criadoHa = maisRecente ? (agora - new Date(maisRecente.date_created).getTime()) : Infinity;
 
-    if (!fresco && criadoHa > 10 * 60 * 1000) {
+    if (!fresco && criadoHa > 4 * 60 * 1000) {
       fetch('https://api.mercadopago.com/v1/account/release_report', {
         method: 'POST', headers: H,
         body: JSON.stringify({
@@ -84,13 +92,14 @@ export async function onRequestGet({ env }) {
         if (fresco) {
           return J({ disponivel: saldoBase, atualizado: new Date().toISOString(), referencia: refISO, fonte: 'release_report', gerando: false });
         }
-        // extrato defasado → estimativa intradiária: saldo do extrato + Pix recebidos DEPOIS do horizonte real
-        const entradas = await entradasDesde(H, refISO);
+        // extrato defasado → estimativa direcional: saldo + entradas − pagamentos feitos desde o
+        // horizonte (payouts/transferências continuam invisíveis até o próximo extrato)
+        const mov = await movimentosDesde(H, refISO);
         return J({
-          disponivel: Math.round((saldoBase + entradas) * 100) / 100,
+          disponivel: Math.round((saldoBase + mov.ent - mov.sai) * 100) / 100,
           atualizado: new Date().toISOString(),
           referencia: refISO,
-          fonte: 'estimativa (extrato até ' + refISO.slice(11, 16) + ' UTC + Pix desde então)',
+          fonte: 'estimativa (extrato ' + refISO.slice(11, 16) + 'Z + movimentos desde então)',
           gerando: true
         });
       }

@@ -1074,6 +1074,7 @@ async function renderFluxo() {
   if (cfg.vendasAuto) flxSincronizarVendas(true); // custo das vendidas Shopify
   mpRenderCard('flx-mp', mes);           // movimentações reais do Mercado Pago
   flxAtualizarMetaSaldo(mes);            // saldo devedor real da Meta (cache 6h)
+  flxIniciarPollSaldos();                // quase-tempo-real: saldo re-puxado a cada 3 min com a aba aberta
 }
 
 // ── Mercado Pago — movimentações REAIS da conta (entradas Pix, pagamentos, transferências) ──
@@ -1376,6 +1377,22 @@ function flxAplicarSaidasMP(j, mes) {
     flxRenderPagamentos(cfg, mes);
     flxRecompute();
   }
+}
+
+// Polling de saldos enquanto a aba Fluxo estiver aberta e visível (quase-tempo-real).
+// A cada 3 min: saldos MP/Pagar.me; a cada 2 ciclos (6 min): card MP + tabela (movimentações).
+function flxIniciarPollSaldos() {
+  if (window._flxPoll) return;
+  let ciclo = 0;
+  window._flxPoll = setInterval(() => {
+    if (modeloAtual !== '__fluxo__' || document.hidden) return;
+    ciclo++;
+    flxAtualizarSaldos(true);
+    if (ciclo % 2 === 0) {
+      const mes = document.getElementById('flx-mes') && document.getElementById('flx-mes').value;
+      if (mes) mpRenderCard('flx-mp', mes);
+    }
+  }, 180000);
 }
 
 // Busca saldos via API. silencioso=true evita status na carga inicial.

@@ -125,11 +125,11 @@ export async function onRequestGet({ request, env }) {
     // completo = o horizonte alcança o fim do período; p/ período corrente, "fresco" = horizonte <1h
     const alcancaFim = melhor && new Date(horizonte(melhor)).toISOString().slice(0, 10) > ate;
     const fresco = melhor && (!periodoInclusoHoje ? alcancaFim
-      : (agora - horizonte(melhor)) < 1 * 3600 * 1000);
+      : (agora - horizonte(melhor)) < 15 * 60 * 1000);
 
     // extrato defasado → dispara geração de um novo até AGORA (anti-rajada: só se o último foi criado há >10 min)
     const criadoHa = melhor ? (agora - new Date(melhor.date_created).getTime()) : Infinity;
-    if (!fresco && criadoHa > 10 * 60 * 1000) {
+    if (!fresco && criadoHa > 4 * 60 * 1000) {
       fetch('https://api.mercadopago.com/v1/account/release_report', {
         method: 'POST', headers: H,
         body: JSON.stringify({
