@@ -10,6 +10,16 @@ const J = (o, s = 200) => new Response(JSON.stringify(o), {
   status: s, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }
 });
 
+// O MP rotula ERRADO o fuso de date_created dos extratos (dígitos em UTC com sufixo -04:00 →
+// parse fica ~4h no futuro e congelava o frescor). Interpretação robusta: o MENOR entre o parse
+// normal e os dígitos-como-UTC, nunca no futuro.
+function criadoEm(str) {
+  const p1 = new Date(str).getTime();
+  const p2 = new Date(String(str).replace(/\.\d+/, '').replace(/[+-]\d{2}:?\d{2}$/, 'Z')).getTime();
+  const t = Math.min(isNaN(p1) ? Infinity : p1, isNaN(p2) ? Infinity : p2);
+  return Math.min(t, Date.now());
+}
+
 export function parseReportCSV(csv) {
   const L = csv.trim().split('\n');
   const head = (L[0] || '').split(';');
@@ -117,7 +127,7 @@ export async function onRequestGet({ request, env }) {
     const hojeISO = new Date(agora).toISOString().slice(0, 10);
     const periodoInclusoHoje = ate >= hojeISO;
     // horizonte real dos dados = min(end_date, date_created) — end_date pode estar no futuro
-    const horizonte = f => Math.min(new Date(f.end_date).getTime(), new Date(f.date_created).getTime());
+    const horizonte = f => Math.min(new Date(f.end_date).getTime(), criadoEm(f.date_created));
     const cobre = (Array.isArray(lst) ? lst : []).filter(f =>
       f.begin_date && f.end_date && f.date_created && f.begin_date.slice(0, 10) <= desde
     ).sort((a, b) => horizonte(b) - horizonte(a));
@@ -128,7 +138,7 @@ export async function onRequestGet({ request, env }) {
       : (agora - horizonte(melhor)) < 15 * 60 * 1000);
 
     // extrato defasado → dispara geração de um novo até AGORA (anti-rajada: só se o último foi criado há >10 min)
-    const criadoHa = melhor ? (agora - new Date(melhor.date_created).getTime()) : Infinity;
+    const criadoHa = melhor ? (agora - criadoEm(melhor.date_created)) : Infinity;
     if (!fresco && criadoHa > 4 * 60 * 1000) {
       fetch('https://api.mercadopago.com/v1/account/release_report', {
         method: 'POST', headers: H,
