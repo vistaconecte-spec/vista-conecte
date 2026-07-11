@@ -10,6 +10,16 @@ const J = (o, s = 200) => new Response(JSON.stringify(o), {
   status: s, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }
 });
 
+// O MP rotula ERRADO o fuso de date_created dos extratos (dígitos em UTC com sufixo -04:00 →
+// parse fica ~4h no futuro e congelava o frescor). Interpretação robusta: o MENOR entre o parse
+// normal e os dígitos-como-UTC, nunca no futuro.
+function criadoEm(str) {
+  const p1 = new Date(str).getTime();
+  const p2 = new Date(String(str).replace(/\.\d+/, '').replace(/[+-]\d{2}:?\d{2}$/, 'Z')).getTime();
+  const t = Math.min(isNaN(p1) ? Infinity : p1, isNaN(p2) ? Infinity : p2);
+  return Math.min(t, Date.now());
+}
+
 export function parseReportCSV(csv) {
   const L = csv.trim().split('\n');
   const head = (L[0] || '').split(';');
@@ -17,7 +27,7 @@ export function parseReportCSV(csv) {
   const iD = idx('DATE'), iDesc = idx('DESCRIPTION'), iCred = idx('NET_CREDIT_AMOUNT'),
         iDeb = idx('NET_DEBIT_AMOUNT'), iBal = idx('BALANCE_AMOUNT'), iSrc = idx('SOURCE_ID');
   if (iD < 0 || iCred < 0) return null;
-  const out = { entradas: { total_liquido: 0, qtd: 0, por_dia: {} },
+  const out = { entradas: { total_liquido: 0, qtd: 0, por_dia: {}, itens: [] },
                 saidas: { pagamentos: { total: 0, qtd: 0, itens: [] },
                           transferencias: { total: 0, qtd: 0, internas: 0, enviadas: 0, itens: [] },
                           por_dia: {} },
@@ -35,10 +45,12 @@ export function parseReportCSV(csv) {
     const deb = parseFloat(c[iDeb]) || 0;
     const src = c[iSrc] || '';
     const bal = (c[iBal] !== undefined && c[iBal] !== '') ? parseFloat(c[iBal]) : null;
-    if (bal !== null) out.saldo_final = bal;
+    // linha de TOTAIS no rodapé (sem DATE) tem saldo 0.00 — não é o saldo da conta
+    if (bal !== null && c[iD]) out.saldo_final = bal;
     if (desc === 'payment' && cred > 0) {         // recebimento (Pix/TED, líquido de taxa)
       out.entradas.total_liquido += cred; out.entradas.qtd++;
       out.entradas.por_dia[dia] = (out.entradas.por_dia[dia] || 0) + cred;
+      out.entradas.itens.push({ dia, hora: (c[iD] || '').slice(11, 16), valor: cred, source_id: src || null });
     } else if (desc === 'payment' && deb > 0) {   // pagamento efetivado pela conta
       pagamentosDiretos.add(src);
       out.saidas.pagamentos.total += deb; out.saidas.pagamentos.qtd++;
@@ -78,7 +90,7 @@ export function parseReportCSV(csv) {
 
 // Fallback imediato: entradas via payments/search (aprovados no período)
 async function entradasViaPayments(H, desde, ate) {
-  const out = { total_liquido: 0, qtd: 0, por_dia: {} };
+  const out = { total_liquido: 0, qtd: 0, por_dia: {}, itens: [] };
   let offset = 0;
   for (let p = 0; p < 20; p++) {
     const u = `https://api.mercadopago.com/v1/payments/search?range=date_approved&begin_date=${desde}T00:00:00.000-03:00&end_date=${ate}T23:59:59.999-03:00&status=approved&limit=50&offset=${offset}`;
@@ -91,6 +103,7 @@ async function entradasViaPayments(H, desde, ate) {
       const dia = (pay.date_approved || '').slice(0, 10);
       out.total_liquido += liq; out.qtd++;
       out.por_dia[dia] = (out.por_dia[dia] || 0) + liq;
+      out.itens.push({ dia, hora: (pay.date_approved || '').slice(11, 16), valor: Math.round(liq * 100) / 100, source_id: String(pay.id || '') });
     }
     offset += 50;
     if (!d.paging || offset >= d.paging.total) break;
@@ -113,18 +126,20 @@ export async function onRequestGet({ request, env }) {
     const agora = Date.now();
     const hojeISO = new Date(agora).toISOString().slice(0, 10);
     const periodoInclusoHoje = ate >= hojeISO;
+    // horizonte real dos dados = min(end_date, date_created) — end_date pode estar no futuro
+    const horizonte = f => Math.min(new Date(f.end_date).getTime(), criadoEm(f.date_created));
     const cobre = (Array.isArray(lst) ? lst : []).filter(f =>
-      f.begin_date && f.end_date && f.begin_date.slice(0, 10) <= desde
-    ).sort((a, b) => (b.end_date || '').localeCompare(a.end_date || ''));
+      f.begin_date && f.end_date && f.date_created && f.begin_date.slice(0, 10) <= desde
+    ).sort((a, b) => horizonte(b) - horizonte(a));
     const melhor = cobre[0] || null;
-    // completo = o extrato alcança o fim do período; p/ período corrente, "fresco" = termina há <3h
-    const alcancaFim = melhor && melhor.end_date.slice(0, 10) >= ate;
+    // completo = o horizonte alcança o fim do período; p/ período corrente, "fresco" = horizonte <1h
+    const alcancaFim = melhor && new Date(horizonte(melhor)).toISOString().slice(0, 10) > ate;
     const fresco = melhor && (!periodoInclusoHoje ? alcancaFim
-      : (agora - new Date(melhor.end_date).getTime()) < 3 * 3600 * 1000);
+      : (agora - horizonte(melhor)) < 15 * 60 * 1000);
 
     // extrato defasado → dispara geração de um novo até AGORA (anti-rajada: só se o último foi criado há >10 min)
-    const criadoHa = melhor ? (agora - new Date(melhor.date_created).getTime()) : Infinity;
-    if (!fresco && criadoHa > 10 * 60 * 1000) {
+    const criadoHa = melhor ? (agora - criadoEm(melhor.date_created)) : Infinity;
+    if (!fresco && criadoHa > 4 * 60 * 1000) {
       fetch('https://api.mercadopago.com/v1/account/release_report', {
         method: 'POST', headers: H,
         body: JSON.stringify({
@@ -146,20 +161,39 @@ export async function onRequestGet({ request, env }) {
             if (pd && pd.description) it.descricao = pd.description;
           } catch (e) {}
         }
+        // identifica as ENTRADAS: venda Shopify (desc CONECTE) × Pix avulso (banco do pagador).
+        // O MP mascara o NOME da pessoa (guest) — pro nome exato, usar o rótulo manual (✎ no painel).
+        for (const it of parsed.entradas.itens.slice(-25)) {
+          if (!it.source_id) continue;
+          try {
+            const pd = await (await fetch('https://api.mercadopago.com/v1/payments/' + it.source_id, { headers: H })).json();
+            if (!pd) continue;
+            if (pd.description === 'CONECTE' || (pd.external_reference || '').length > 15) {
+              it.origem = 'Venda Shopify' + (pd.description && pd.description !== 'CONECTE' ? ' · ' + pd.description : '');
+            } else {
+              const banco = pd.point_of_interaction && pd.point_of_interaction.transaction_data
+                && pd.point_of_interaction.transaction_data.bank_info
+                && pd.point_of_interaction.transaction_data.bank_info.payer
+                && pd.point_of_interaction.transaction_data.bank_info.payer.long_name;
+              it.origem = 'Pix avulso' + (banco ? ' via ' + String(banco).split(' ').slice(0, 2).join(' ') : '');
+            }
+          } catch (e) {}
+        }
         // extrato termina antes do fim do período → completa as ENTRADAS do trecho descoberto via payments
         if (!alcancaFim || (periodoInclusoHoje && !fresco)) {
-          const desdeTopo = melhor.end_date;
+          const desdeTopo = new Date(horizonte(melhor)).toISOString();
           const topo = await entradasViaPayments(H, desdeTopo.slice(0, 10), ate);
           parsed.entradas.total_liquido = Math.round((parsed.entradas.total_liquido + topo.total_liquido) * 100) / 100;
           parsed.entradas.qtd += topo.qtd;
           for (const [d, v] of Object.entries(topo.por_dia)) parsed.entradas.por_dia[d] = (parsed.entradas.por_dia[d] || 0) + v;
+          parsed.entradas.itens = (parsed.entradas.itens || []).concat(topo.itens || []);
         }
         return J(Object.assign({
           periodo: { desde, ate },
           fonte: fresco ? 'release_report' : 'release_report + Pix recentes',
           gerando: !fresco,
-          extrato_ate: melhor.end_date,
-          aviso: fresco ? undefined : 'saídas/saldo refletem o extrato até ' + String(melhor.end_date).slice(0, 10) + ' — extrato novo sendo gerado (~2 min)'
+          extrato_ate: new Date(horizonte(melhor)).toISOString(),
+          aviso: fresco ? undefined : 'saídas/saldo refletem o extrato até ' + new Date(horizonte(melhor)).toISOString().slice(11, 16) + ' UTC — extrato novo sendo gerado (~2 min)'
         }, parsed));
       }
     }

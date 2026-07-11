@@ -592,7 +592,7 @@ function finPopularMeses() {
     o.value = val; o.textContent = nomes[d.getMonth()] + '/' + d.getFullYear();
     sel.appendChild(o);
   }
-  if ([...sel.options].some(o => o.value === '2026-05')) sel.value = '2026-05';
+  // padrão: mês ATUAL (primeira opção) — a saúde financeira abre sempre no mês corrente
 }
 
 function finBuildParams(cfg, custos) {
@@ -981,6 +981,7 @@ function flxGetConfig() {
   if (cfg.trafegoCfg.impostoPct === undefined) cfg.trafegoCfg.impostoPct = FLX_TRAFEGO_DEFAULT.impostoPct;
   if (cfg.vendasAuto === undefined) cfg.vendasAuto = true; // custo das vendidas puxado da Shopify
   if (!cfg.ignorados || typeof cfg.ignorados !== 'object') cfg.ignorados = {}; // ids removidos pelo × (não voltam nos syncs)
+  if (!cfg.rotulos || typeof cfg.rotulos !== 'object') cfg.rotulos = {}; // identificação manual por source_id (✎) — aplicada em todo lugar
   if (!cfg.vendasIncluir) cfg.vendasIncluir = { tecido: true, corte: true, costura: true, frete: true };
   return cfg;
 }
@@ -1073,6 +1074,7 @@ async function renderFluxo() {
   if (cfg.vendasAuto) flxSincronizarVendas(true); // custo das vendidas Shopify
   mpRenderCard('flx-mp', mes);           // movimentações reais do Mercado Pago
   flxAtualizarMetaSaldo(mes);            // saldo devedor real da Meta (cache 6h)
+  flxIniciarPollSaldos();                // quase-tempo-real: saldo re-puxado a cada 3 min com a aba aberta
 }
 
 // ── Mercado Pago — movimentações REAIS da conta (entradas Pix, pagamentos, transferências) ──
@@ -1089,6 +1091,9 @@ async function mpRenderCard(elId, mes) {
     const r = await fetch('/api/mp-movimentos?desde=' + desde + '&ate=' + ate + '&t=' + Date.now());
     const j = await r.json();
     if (!r.ok || j.erro) { el.innerHTML = '<div style="font-size:12px;color:var(--text-ter)">MP indisponível: ' + (j.erro || r.status) + '</div>'; return; }
+    if (j.gerando && !window._mpCardRetry) {
+      window._mpCardRetry = setTimeout(() => { window._mpCardRetry = null; const el2 = document.getElementById(elId); if (el2) mpRenderCard(elId, mes); }, 150000);
+    }
     // no Fluxo, os pagamentos reais feitos pelo MP entram sozinhos na tabela de contas (como pagos)
     if (elId === 'flx-mp') {
       window._flxMP = { mes, dados: j };
@@ -1098,10 +1103,15 @@ async function mpRenderCard(elId, mes) {
     if (elId === 'fin-mp') finAplicarMP(j, mes); // DRE do mês corrente importa os pagamentos reais do MP
     const ddmm = iso => String(iso || '').slice(8, 10) + '/' + String(iso || '').slice(5, 7);
     const detHTML = (itens, sinal) => (itens && itens.length)
-      ? itens.slice().sort((a, b) => String(a.dia).localeCompare(String(b.dia))).map(t => `
-          <div style="display:flex;justify-content:space-between;gap:8px;font-size:11px;color:var(--text-sec);padding:1px 0">
-            <span>${t.descricao ? t.descricao : ddmm(t.dia)}${t.descricao ? ' · ' + ddmm(t.dia) : ''}${t.autorizado ? ' (em liquidação)' : ''}</span>
-            <span style="white-space:nowrap;${sinal === '+' ? 'color:#16a34a' : ''}">${sinal === '+' ? '+' : '−'} ${finBRL(t.valor || 0)}</span></div>`).join('')
+      ? itens.slice().sort((a, b) => String(a.dia).localeCompare(String(b.dia))).map(t => {
+          const rot = flxRotulo(t.source_id);
+          const nome = rot || t.descricao || t.origem || '';
+          return `
+          <div style="display:flex;justify-content:space-between;gap:8px;font-size:11px;color:var(--text-sec);padding:1px 0;align-items:center">
+            <span>${nome ? nome + ' · ' : ''}${ddmm(t.dia)}${t.hora ? ' ' + t.hora : ''}${t.autorizado ? ' (em liquidação)' : ''}${rot ? '' : ''}</span>
+            <span style="white-space:nowrap;${sinal === '+' ? 'color:#16a34a' : ''}">${sinal === '+' ? '+' : '−'} ${finBRL(t.valor || 0)}
+              ${t.source_id ? `<button onclick="flxRotular('${t.source_id}','${mes}')" title="identificar/renomear este movimento" style="background:none;border:none;cursor:pointer;color:var(--text-ter);font-size:11px;padding:0 0 0 3px">✎</button>` : ''}</span></div>`;
+        }).join('')
       : '<div style="font-size:11px;color:var(--text-ter)">sem itens no período</div>';
     const linha = (lbl, val, cor, detId, detConteudo) => {
       const clic = detId ? ` onclick="(function(x){x.style.display=x.style.display==='none'?'':'none'})(document.getElementById('${detId}'))" style="cursor:pointer"` : '';
@@ -1115,8 +1125,9 @@ async function mpRenderCard(elId, mes) {
     const s = j.saidas || {};
     const tEnv = s.transferencias?.enviadas, tInt = s.transferencias?.internas;
     const tItens = (s.transferencias && s.transferencias.itens) || [];
-    const entPorDia = Object.entries((j.entradas && j.entradas.por_dia) || {}).sort()
-      .map(([dia, v]) => ({ dia, valor: v }));
+    const entPorDia = (j.entradas && j.entradas.itens && j.entradas.itens.length)
+      ? j.entradas.itens.map(t => ({ dia: t.dia, valor: t.valor, descricao: 'recebido' + (t.hora ? ' ' + t.hora : '') }))
+      : Object.entries((j.entradas && j.entradas.por_dia) || {}).sort().map(([dia, v]) => ({ dia, valor: v }));
     el.innerHTML =
       linha('Entradas (recebimentos líquidos)', finBRL(j.entradas?.total_liquido || 0) + ' · ' + (j.entradas?.qtd || 0) + 'x', '#16a34a',
         elId + '-det-ent', detHTML(entPorDia, '+')) +
@@ -1350,8 +1361,8 @@ function flxAplicarSaidasMP(j, mes) {
       pago: true // o dinheiro JÁ saiu — conta no "já pago", não no "a pagar"
     });
   };
-  pagtos.forEach((it, i) => addItem(it, i, it.descricao || 'Pagamento via conta MP'));
-  transf.forEach((it, i) => addItem(it, i, 'Pix/transferência enviada (conferir destino)'));
+  pagtos.forEach((it, i) => addItem(it, i, flxRotulo(it.source_id) || it.descricao || 'Pagamento via conta MP'));
+  transf.forEach((it, i) => addItem(it, i, flxRotulo(it.source_id) || 'Pix/transferência enviada (conferir destino)'));
   const ignM = flxIgnorados(cfg, mes);
   const novosFiltrados = novos.filter(p => !ignM.has(p.id));
   const antes = JSON.stringify((cfg.pag[mes] || []).filter(p => p.auto === 'mp'));
@@ -1368,6 +1379,22 @@ function flxAplicarSaidasMP(j, mes) {
   }
 }
 
+// Polling de saldos enquanto a aba Fluxo estiver aberta e visível (quase-tempo-real).
+// A cada 3 min: saldos MP/Pagar.me; a cada 2 ciclos (6 min): card MP + tabela (movimentações).
+function flxIniciarPollSaldos() {
+  if (window._flxPoll) return;
+  let ciclo = 0;
+  window._flxPoll = setInterval(() => {
+    if (modeloAtual !== '__fluxo__' || document.hidden) return;
+    ciclo++;
+    flxAtualizarSaldos(true);
+    if (ciclo % 2 === 0) {
+      const mes = document.getElementById('flx-mes') && document.getElementById('flx-mes').value;
+      if (mes) mpRenderCard('flx-mp', mes);
+    }
+  }, 180000);
+}
+
 // Busca saldos via API. silencioso=true evita status na carga inicial.
 async function flxAtualizarSaldos(silencioso) {
   const cfg = flxGetConfig();
@@ -1378,6 +1405,10 @@ async function flxAtualizarSaldos(silencioso) {
     try {
       const r = await fetch(url + '?t=' + Date.now());
       const d = await r.json();
+      // extrato novo sendo gerado → re-puxa sozinho em ~2,5 min (uma vez) p/ trocar estimativa pelo exato
+      if (d && d.gerando && !window._flxSaldoRetry) {
+        window._flxSaldoRetry = setTimeout(() => { window._flxSaldoRetry = null; if (modeloAtual === '__fluxo__') flxAtualizarSaldos(true); }, 150000);
+      }
       if (d && typeof d.disponivel === 'number') {
         cfg.saldos[chave] = { v: Math.round(d.disponivel * 100) / 100, at: new Date().toISOString(), auto: true };
         return true;
@@ -1470,6 +1501,41 @@ function flxPagToggle(i) {
   flxRenderPagamentos(cfg, mes);
   flxRecompute();
 }
+// Rótulo manual de um movimento MP (por source_id) — identificação que a API não fornece.
+function flxRotulo(sid) {
+  if (!sid) return null;
+  const cfg = flxGetConfig();
+  return (cfg.rotulos && cfg.rotulos[String(sid)]) || null;
+}
+function flxRotular(sid, mes) {
+  if (!sid) return;
+  const atual = flxRotulo(sid) || '';
+  const nome = prompt('Identificação deste movimento (ex.: "Álvaro", "Maria Elizete facção"):', atual);
+  if (nome === null) return;
+  const cfg = flxGetConfig();
+  cfg.rotulos = cfg.rotulos || {};
+  if (nome.trim()) cfg.rotulos[String(sid)] = nome.trim(); else delete cfg.rotulos[String(sid)];
+  flxSalvarPag(cfg);
+  // re-aplica em tudo que deriva dos dados MP
+  if (window._flxMP && window._flxMP.mes === mes) {
+    flxAplicarSaidasMP(window._flxMP.dados, mes);
+    flxRecompute();
+  }
+  mpRenderCard('flx-mp', mes);
+  const fin = document.getElementById('fin-mp'); if (fin && fin.innerHTML) mpRenderCard('fin-mp', document.getElementById('fin-mes') ? document.getElementById('fin-mes').value : mes);
+}
+
+// Expande/recolhe os recebimentos individuais de um dia no card REALIZADO
+function flxToggleEntGrupo(grp) {
+  let aberto = false;
+  document.querySelectorAll('tr[data-grp="' + grp + '"]').forEach(tr => {
+    aberto = tr.style.display === 'none';
+    tr.style.display = aberto ? '' : 'none';
+  });
+  const ch = document.getElementById('chev-' + grp);
+  if (ch) ch.style.transform = aberto ? 'rotate(90deg)' : '';
+}
+
 function flxIgnorados(cfg, mes) {
   return new Set((cfg.ignorados && cfg.ignorados[mes]) || []);
 }
@@ -1777,28 +1843,56 @@ function flxRecompute() {
   // (evita dupla contagem). Uma linha por pagamento; dia na primeira do grupo.
   const pagos = lista.filter(p => p.pago && (p.valor || 0) > 0);
   // Entradas reais do MP por dia (do último sync) — dinheiro que ENTROU no caixa
-  const mpEntradas = (window._flxMP && window._flxMP.mes === mes && window._flxMP.dados && window._flxMP.dados.entradas)
-    ? window._flxMP.dados.entradas.por_dia || {} : {};
+  const mpDados = (window._flxMP && window._flxMP.mes === mes && window._flxMP.dados && window._flxMP.dados.entradas)
+    ? window._flxMP.dados.entradas : null;
   const movPorDia = {};
-  pagos.forEach(p => { movPorDia[p.dia] = movPorDia[p.dia] || { ent: 0, pagos: [] }; movPorDia[p.dia].pagos.push(p); });
-  Object.entries(mpEntradas).forEach(([iso, v]) => {
-    if (!iso.startsWith(mes) || !(v > 0)) return;
-    const d = parseInt(iso.slice(8, 10), 10);
-    movPorDia[d] = movPorDia[d] || { ent: 0, pagos: [] };
-    movPorDia[d].ent += v;
-  });
+  pagos.forEach(p => { movPorDia[p.dia] = movPorDia[p.dia] || { ent: 0, entItens: [], pagos: [] }; movPorDia[p.dia].pagos.push(p); });
+  if (mpDados && Array.isArray(mpDados.itens) && mpDados.itens.length) {
+    // uma linha por recebimento (hora + valor) — cada Pix/TED visível individualmente
+    mpDados.itens.forEach(t => {
+      if (!t.dia || !t.dia.startsWith(mes) || !(t.valor > 0)) return;
+      const d = parseInt(t.dia.slice(8, 10), 10);
+      movPorDia[d] = movPorDia[d] || { ent: 0, entItens: [], pagos: [] };
+      movPorDia[d].ent += t.valor;
+      movPorDia[d].entItens.push(t);
+    });
+  } else if (mpDados) {
+    Object.entries(mpDados.por_dia || {}).forEach(([iso, v]) => {
+      if (!iso.startsWith(mes) || !(v > 0)) return;
+      const d = parseInt(iso.slice(8, 10), 10);
+      movPorDia[d] = movPorDia[d] || { ent: 0, entItens: [], pagos: [] };
+      movPorDia[d].ent += v;
+    });
+  }
   const totalEntradas = Object.values(movPorDia).reduce((s, m) => s + m.ent, 0);
   const diasMov = Object.keys(movPorDia).map(Number).sort((a, b) => a - b);
   const realizadoRows = diasMov.map(d => {
     const m = movPorDia[d];
     const linhas = [];
-    if (m.ent > 0) linhas.push(`<tr style="border-top:1px solid #f0ede8">
+    if (m.entItens && m.entItens.length) {
+      // agrupado: uma linha por dia com a soma; clique expande os recebimentos individuais
+      const grp = 'entgrp-' + mes.replace(/-/g, '') + '-' + d;
+      linhas.push(`<tr style="border-top:1px solid #f0ede8;cursor:pointer" onclick="flxToggleEntGrupo('${grp}')" title="clique para ver os recebimentos individuais">
+      <td style="padding:4px 8px;font-weight:600;color:var(--text-ter)">${dd(d)}</td>
+      <td style="padding:4px 8px;font-size:12px;color:var(--text-sec)"><span id="chev-${grp}" style="display:inline-block;font-size:9px;color:var(--text-ter);transition:transform 0.15s">▸</span> Recebimentos Pix/TED (conta MP) · ${m.entItens.length}x</td>
+      <td style="padding:4px 8px;text-align:right;color:#16a34a;white-space:nowrap;font-weight:600">+ ${finBRL(m.ent)}</td>
+      <td style="padding:4px 8px;text-align:right;font-size:10px;color:var(--text-ter)">recebido</td></tr>`);
+      m.entItens.slice().sort((a, b) => String(a.hora || '').localeCompare(String(b.hora || ''))).forEach(t => {
+        const rot = flxRotulo(t.source_id);
+        const quem = rot || t.origem || '';
+        linhas.push(`<tr data-grp="${grp}" style="display:none;background:rgba(22,163,74,0.04)">
+      <td style="padding:3px 8px"></td>
+      <td style="padding:3px 8px 3px 24px;font-size:11px;color:var(--text-ter)">↳ ${quem ? '<b style="color:var(--text-sec)">' + quem + '</b> · ' : ''}recebido${t.hora ? ' às ' + t.hora : ''}${t.source_id ? ` <button onclick="flxRotular('${t.source_id}','${mes}')" title="identificar" style="background:none;border:none;cursor:pointer;color:var(--text-ter);font-size:11px;padding:0">✎</button>` : ''}</td>
+      <td style="padding:3px 8px;text-align:right;color:#16a34a;white-space:nowrap;font-size:11px">+ ${finBRL(t.valor)}</td>
+      <td></td></tr>`);
+      });
+    } else if (m.ent > 0) linhas.push(`<tr style="border-top:1px solid #f0ede8">
       <td style="padding:4px 8px;font-weight:600;color:var(--text-ter)">${dd(d)}</td>
       <td style="padding:4px 8px;font-size:12px;color:var(--text-sec)">↓ Recebimentos Pix/TED (conta MP)</td>
       <td style="padding:4px 8px;text-align:right;color:#16a34a;white-space:nowrap;font-weight:600">+ ${finBRL(m.ent)}</td>
       <td style="padding:4px 8px;text-align:right;font-size:10px;color:var(--text-ter)">recebido</td></tr>`);
     m.pagos.slice().sort((a, b) => (b.valor || 0) - (a.valor || 0)).forEach((p, i) => {
-      const primeiraLinha = linhas.length === 0 && i === 0;
+      const primeiraLinha = linhas.length === 0;
       linhas.push(`<tr style="${primeiraLinha ? 'border-top:1px solid #f0ede8;' : ''}">
       <td style="padding:4px 8px;font-weight:600;color:var(--text-ter)">${primeiraLinha ? dd(d) : ''}</td>
       <td style="padding:4px 8px;font-size:12px;color:var(--text-sec)">✓ ${p.desc}</td>
