@@ -65,7 +65,7 @@ export async function onRequest(context) {
       if (coresNovas.length > 0) {
         const MUT_OPCAO = `
           mutation AddCores($productId: ID!, $optionId: ID!, $optionValuesToAdd: [OptionValueCreateInput!]!) {
-            productOptionUpdate(productId: $productId, option: { id: $optionId }, optionValuesToAdd: $optionValuesToAdd, variantStrategy: CREATE) {
+            productOptionUpdate(productId: $productId, option: { id: $optionId }, optionValuesToAdd: $optionValuesToAdd, variantStrategy: MANAGE) {
               product { id variants(first: 100) { nodes { id selectedOptions { name value } } } }
               userErrors { field message }
             }
