@@ -19,7 +19,7 @@ export async function onRequest(context) {
   try {
     const achados = [];
     // sem filtro de status → traz active + draft + archived
-    const campos = 'id,title,status,options,variants,images' + (comHtml ? ',body_html' : '');
+    const campos = 'id,title,handle,status,options,variants,images' + (comHtml ? ',body_html' : '');
     let url = `https://${store}/admin/api/${API_VERSION}/products.json?limit=250&fields=${campos}`;
     while (url) {
       const res = await fetch(url, { headers: { 'X-Shopify-Access-Token': token } });
@@ -52,7 +52,7 @@ export async function onRequest(context) {
           porCor[c] = (porCor[c] || 0) + (v.estoque || 0);
         }
         achados.push({
-          id: p.id, title: p.title, status: p.status,
+          id: p.id, title: p.title, handle: p.handle, status: p.status,
           opcoes: (p.options || []).map(o => ({ nome: o.name, valores: o.values })),
           total_variantes: variantes.length,
           estoque_por_cor: porCor,
