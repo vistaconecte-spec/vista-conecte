@@ -366,6 +366,13 @@ function buildSidebar() {
   trfItem.onclick = () => abrirTrafego(trfItem);
   nav.appendChild(trfItem);
 
+  // Botão Atendimento — SAC/Troca/Devolução/Vendas (mesma senha do Financeiro)
+  const atdItem = document.createElement('div');
+  atdItem.className = 'nav-item nav-dashboard' + (modeloAtual === '__atendimento__' ? ' active' : '');
+  atdItem.innerHTML = '<i class="ti ti-headset"></i> ATENDIMENTO';
+  atdItem.onclick = () => abrirAtendimento(atdItem);
+  nav.appendChild(atdItem);
+
   // Título de seção: separa as ferramentas (acima) do catálogo de modelos (abaixo)
   const confTitle = document.createElement('div');
   confTitle.className = 'sidebar-section';
@@ -578,6 +585,285 @@ function trafLock() {
   sessionStorage.removeItem('fin-ok');
   document.getElementById('traf-gate').style.display = '';
   document.getElementById('traf-content').style.display = 'none';
+}
+
+// ── Atendimento — SAC / Troca / Devolução / Vendas (mesma senha do Financeiro) ──
+function abrirAtendimento(item) {
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  if (item) item.classList.add('active');
+  if (!['__dashboard__', '__financeiro__', '__precos__', '__trafego__', '__fluxo__', '__atendimento__'].includes(modeloAtual) && (estEditado || prodEditado || cfgEditado)) {
+    clearTimeout(saveTimer); salvarModelo();
+  }
+  estEditado = false; prodEditado = false; cfgEditado = false; esconderBtnSalvar();
+  modeloAtual = '__atendimento__';
+  location.hash = 'atendimento';
+  document.getElementById('model-title').innerHTML = '<span style="font-family:\'Bebas Neue\',\'Arial Narrow\',sans-serif;font-weight:400;font-size:26px;letter-spacing:0.1em">ATENDIMENTO</span>';
+  document.getElementById('model-sub').textContent = '';
+  document.getElementById('topbar-actions').style.display = 'none';
+  document.getElementById('tabs-modelo').style.display = 'none';
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  document.getElementById('panel-atendimento').classList.add('active');
+  document.body.classList.remove('precos-mode');
+  const ok = sessionStorage.getItem('fin-ok') === '1';
+  document.getElementById('atd-gate').style.display = ok ? 'none' : '';
+  document.getElementById('atd-content').style.display = ok ? '' : 'none';
+  if (ok) atdShowSub('sac'); else setTimeout(() => document.getElementById('atd-senha')?.focus(), 60);
+  closeSidebar();
+}
+async function atdUnlock() {
+  const v = document.getElementById('atd-senha').value;
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(v));
+  const hex = [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, '0')).join('');
+  if (hex === FIN_HASH) {
+    sessionStorage.setItem('fin-ok', '1');
+    document.getElementById('atd-erro').textContent = '';
+    document.getElementById('atd-senha').value = '';
+    document.getElementById('atd-gate').style.display = 'none';
+    document.getElementById('atd-content').style.display = '';
+    atdShowSub('sac');
+  } else {
+    document.getElementById('atd-erro').textContent = 'Senha incorreta';
+  }
+}
+function atdLock() {
+  sessionStorage.removeItem('fin-ok');
+  document.getElementById('atd-gate').style.display = '';
+  document.getElementById('atd-content').style.display = 'none';
+}
+
+// Alterna entre as 4 sub-seções (pílulas) dentro do painel Atendimento
+function atdShowSub(sub) {
+  ['sac', 'retorno', 'estorno', 'vendas'].forEach(s => {
+    document.getElementById('atd-sub-' + s).style.display = (s === sub) ? '' : 'none';
+    const pill = document.getElementById('atd-pill-' + s);
+    if (pill) pill.classList.toggle('active', s === sub);
+  });
+  if (sub === 'sac') sacRender();
+  else if (sub === 'retorno') retRender();
+  else if (sub === 'estorno') estRender();
+  else if (sub === 'vendas') atdVendasRender();
+}
+
+// ── SAC ──────────────────────────────────────────────────────────────────────
+function sacGetConfig() {
+  return loadLocal('vc:sac') || { tickets: [], updated_at: null };
+}
+function sacSalvar(cfg) {
+  cfg.updated_at = new Date().toISOString();
+  saveLocal('vc:sac', cfg);
+  clearTimeout(window._sacSaveTimer);
+  window._sacSaveTimer = setTimeout(() => salvarNuvem('sac', cfg), 900);
+}
+function sacAdd() {
+  const pedido  = (document.getElementById('sac-pedido').value || '').trim();
+  const motivo  = (document.getElementById('sac-motivo').value || '').trim();
+  const rastreio = (document.getElementById('sac-rastreio').value || '').trim();
+  if (!pedido || !motivo) { alert('Preencha ao menos o nº do pedido e o motivo.'); return; }
+  const cfg = sacGetConfig();
+  cfg.tickets.push({ id: 'sac' + Date.now(), pedido, motivo, rastreio, status: 'pendente', criado_em: new Date().toISOString() });
+  sacSalvar(cfg);
+  sacRender();
+  document.getElementById('sac-pedido').value = '';
+  document.getElementById('sac-motivo').value = '';
+  document.getElementById('sac-rastreio').value = '';
+  document.getElementById('sac-pedido').focus();
+}
+function sacToggle(id) {
+  const cfg = sacGetConfig();
+  const t = cfg.tickets.find(x => x.id === id); if (!t) return;
+  t.status = (t.status === 'resolvido') ? 'pendente' : 'resolvido';
+  t.resolvido_em = (t.status === 'resolvido') ? new Date().toISOString() : null;
+  sacSalvar(cfg);
+  sacRender();
+}
+function sacEdit(id, campo, val) {
+  const cfg = sacGetConfig();
+  const t = cfg.tickets.find(x => x.id === id); if (!t) return;
+  t[campo] = val;
+  sacSalvar(cfg);
+}
+function sacDel(id) {
+  if (!confirm('Excluir esse ticket de SAC?')) return;
+  const cfg = sacGetConfig();
+  cfg.tickets = cfg.tickets.filter(x => x.id !== id);
+  sacSalvar(cfg);
+  sacRender();
+}
+function sacRender() {
+  const cfg = sacGetConfig();
+  const mostrarResolvidos = document.getElementById('sac-mostrar-resolvidos')?.checked;
+  const lista = cfg.tickets
+    .filter(t => mostrarResolvidos || t.status !== 'resolvido')
+    .sort((a, b) => (b.criado_em || '').localeCompare(a.criado_em || ''));
+  const rows = lista.map(t => `
+    <tr style="${t.status === 'resolvido' ? 'opacity:0.5' : ''}">
+      <td style="padding:4px"><input type="checkbox" ${t.status === 'resolvido' ? 'checked' : ''} onchange="sacToggle('${t.id}')" title="marcar como resolvido"></td>
+      <td style="padding:4px;font-weight:700;white-space:nowrap">${t.pedido}</td>
+      <td style="padding:4px"><input value="${(t.motivo || '').replace(/"/g, '&quot;')}" oninput="sacEdit('${t.id}','motivo',this.value)" style="width:100%;min-width:180px;font-size:12px;padding:4px 6px;border:1px solid var(--border);border-radius:5px;${t.status === 'resolvido' ? 'text-decoration:line-through' : ''}"></td>
+      <td style="padding:4px"><input value="${(t.rastreio || '').replace(/"/g, '&quot;')}" oninput="sacEdit('${t.id}','rastreio',this.value)" style="width:130px;font-size:12px;padding:4px 6px;border:1px solid var(--border);border-radius:5px"></td>
+      <td style="padding:4px;text-align:center"><button onclick="sacDel('${t.id}')" title="excluir" style="background:none;border:none;cursor:pointer;color:var(--text-ter);font-size:15px">×</button></td>
+    </tr>`).join('');
+  document.getElementById('sac-tbody').innerHTML = rows ||
+    '<tr><td colspan="5" style="text-align:center;color:var(--text-ter);font-size:12px;padding:12px">Nenhum ticket ' + (mostrarResolvidos ? '' : 'pendente') + '.</td></tr>';
+  const total = cfg.tickets.filter(t => t.status !== 'resolvido').length;
+  const totalEl = document.getElementById('sac-total-pendentes');
+  if (totalEl) totalEl.textContent = total + ' pendente' + (total === 1 ? '' : 's');
+}
+
+// ── Retorno (Troca) ───────────────────────────────────────────────────────────
+function retGetConfig() {
+  return loadLocal('vc:retorno') || { itens: [], updated_at: null };
+}
+function retSalvar(cfg) {
+  cfg.updated_at = new Date().toISOString();
+  saveLocal('vc:retorno', cfg);
+  clearTimeout(window._retSaveTimer);
+  window._retSaveTimer = setTimeout(() => salvarNuvem('retorno', cfg), 900);
+}
+function retAdd() {
+  const cliente  = (document.getElementById('ret-cliente').value || '').trim();
+  const data     = (document.getElementById('ret-data').value || '').trim();
+  const produtos = (document.getElementById('ret-produtos').value || '').trim();
+  const obs      = (document.getElementById('ret-obs').value || '').trim();
+  const codigo   = (document.getElementById('ret-codigo').value || '').trim();
+  if (!cliente || !produtos) { alert('Preencha ao menos o cliente e os produtos.'); return; }
+  const cfg = retGetConfig();
+  cfg.itens.push({ id: 'ret' + Date.now(), cliente, data, produtos, obs, codigo_reenvio: codigo, status: 'pendente', criado_em: new Date().toISOString() });
+  retSalvar(cfg);
+  retRender();
+  ['ret-cliente', 'ret-data', 'ret-produtos', 'ret-obs', 'ret-codigo'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('ret-cliente').focus();
+}
+function retToggle(id) {
+  const cfg = retGetConfig();
+  const t = cfg.itens.find(x => x.id === id); if (!t) return;
+  t.status = (t.status === 'resolvido') ? 'pendente' : 'resolvido';
+  retSalvar(cfg);
+  retRender();
+}
+function retEdit(id, campo, val) {
+  const cfg = retGetConfig();
+  const t = cfg.itens.find(x => x.id === id); if (!t) return;
+  t[campo] = val;
+  retSalvar(cfg);
+}
+function retDel(id) {
+  if (!confirm('Excluir esse registro de troca?')) return;
+  const cfg = retGetConfig();
+  cfg.itens = cfg.itens.filter(x => x.id !== id);
+  retSalvar(cfg);
+  retRender();
+}
+function retRender() {
+  const cfg = retGetConfig();
+  const mostrarResolvidos = document.getElementById('ret-mostrar-resolvidos')?.checked;
+  const lista = cfg.itens
+    .filter(t => mostrarResolvidos || t.status !== 'resolvido')
+    .sort((a, b) => (b.criado_em || '').localeCompare(a.criado_em || ''));
+  const rows = lista.map(t => `
+    <tr style="${t.status === 'resolvido' ? 'opacity:0.5' : ''}">
+      <td style="padding:4px"><input type="checkbox" ${t.status === 'resolvido' ? 'checked' : ''} onchange="retToggle('${t.id}')" title="marcar como resolvido"></td>
+      <td style="padding:4px"><input value="${(t.cliente || '').replace(/"/g, '&quot;')}" oninput="retEdit('${t.id}','cliente',this.value)" style="width:150px;font-size:12px;padding:4px 6px;border:1px solid var(--border);border-radius:5px;${t.status === 'resolvido' ? 'text-decoration:line-through' : ''}"></td>
+      <td style="padding:4px;white-space:nowrap">${t.data || ''}</td>
+      <td style="padding:4px"><input value="${(t.produtos || '').replace(/"/g, '&quot;')}" oninput="retEdit('${t.id}','produtos',this.value)" style="width:100%;min-width:180px;font-size:12px;padding:4px 6px;border:1px solid var(--border);border-radius:5px"></td>
+      <td style="padding:4px"><input value="${(t.obs || '').replace(/"/g, '&quot;')}" oninput="retEdit('${t.id}','obs',this.value)" style="width:120px;font-size:12px;padding:4px 6px;border:1px solid var(--border);border-radius:5px"></td>
+      <td style="padding:4px"><input value="${(t.codigo_reenvio || '').replace(/"/g, '&quot;')}" oninput="retEdit('${t.id}','codigo_reenvio',this.value)" style="width:130px;font-size:12px;padding:4px 6px;border:1px solid var(--border);border-radius:5px"></td>
+      <td style="padding:4px;text-align:center"><button onclick="retDel('${t.id}')" title="excluir" style="background:none;border:none;cursor:pointer;color:var(--text-ter);font-size:15px">×</button></td>
+    </tr>`).join('');
+  document.getElementById('ret-tbody').innerHTML = rows ||
+    '<tr><td colspan="7" style="text-align:center;color:var(--text-ter);font-size:12px;padding:12px">Nenhum registro ' + (mostrarResolvidos ? '' : 'pendente') + '.</td></tr>';
+  const total = cfg.itens.filter(t => t.status !== 'resolvido').length;
+  const totalEl = document.getElementById('ret-total-pendentes');
+  if (totalEl) totalEl.textContent = total + ' pendente' + (total === 1 ? '' : 's');
+}
+
+// ── Estorno (Devolução) ───────────────────────────────────────────────────────
+function estGetConfig() {
+  return loadLocal('vc:estorno') || { itens: [], updated_at: null };
+}
+function estSalvar(cfg) {
+  cfg.updated_at = new Date().toISOString();
+  saveLocal('vc:estorno', cfg);
+  clearTimeout(window._estSaveTimer);
+  window._estSaveTimer = setTimeout(() => salvarNuvem('estorno', cfg), 900);
+}
+function estAdd() {
+  const cliente = (document.getElementById('est-cliente').value || '').trim();
+  const pecas   = (document.getElementById('est-pecas').value || '').trim();
+  const valor   = parseFloat((document.getElementById('est-valor').value || '0').replace(',', '.')) || 0;
+  const codigo  = (document.getElementById('est-codigo').value || '').trim();
+  const data    = (document.getElementById('est-data').value || '').trim();
+  const motivo  = (document.getElementById('est-motivo').value || '').trim();
+  if (!cliente || !pecas) { alert('Preencha ao menos o cliente e as peças.'); return; }
+  const cfg = estGetConfig();
+  cfg.itens.push({ id: 'est' + Date.now(), cliente, pecas, valor, codigo_devolucao: codigo, data, motivo, criado_em: new Date().toISOString() });
+  estSalvar(cfg);
+  estRender();
+  ['est-cliente', 'est-pecas', 'est-valor', 'est-codigo', 'est-data', 'est-motivo'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('est-cliente').focus();
+}
+function estEdit(id, campo, val) {
+  const cfg = estGetConfig();
+  const t = cfg.itens.find(x => x.id === id); if (!t) return;
+  t[campo] = (campo === 'valor') ? (parseFloat(String(val).replace(',', '.')) || 0) : val;
+  estSalvar(cfg);
+  estRender();
+}
+function estDel(id) {
+  if (!confirm('Excluir esse registro de devolução?')) return;
+  const cfg = estGetConfig();
+  cfg.itens = cfg.itens.filter(x => x.id !== id);
+  estSalvar(cfg);
+  estRender();
+}
+function estRender() {
+  const cfg = estGetConfig();
+  const lista = [...cfg.itens].sort((a, b) => (b.criado_em || '').localeCompare(a.criado_em || ''));
+  const rows = lista.map(t => `
+    <tr>
+      <td style="padding:4px"><input value="${(t.cliente || '').replace(/"/g, '&quot;')}" oninput="estEdit('${t.id}','cliente',this.value)" style="width:150px;font-size:12px;padding:4px 6px;border:1px solid var(--border);border-radius:5px"></td>
+      <td style="padding:4px"><input value="${(t.pecas || '').replace(/"/g, '&quot;')}" oninput="estEdit('${t.id}','pecas',this.value)" style="width:100%;min-width:200px;font-size:12px;padding:4px 6px;border:1px solid var(--border);border-radius:5px"></td>
+      <td style="padding:4px"><input type="number" step="0.01" value="${t.valor}" oninput="estEdit('${t.id}','valor',this.value)" style="width:90px;text-align:right;font-size:12px;padding:4px 6px;border:1px solid var(--border);border-radius:5px"></td>
+      <td style="padding:4px"><input value="${(t.codigo_devolucao || '').replace(/"/g, '&quot;')}" oninput="estEdit('${t.id}','codigo_devolucao',this.value)" style="width:130px;font-size:12px;padding:4px 6px;border:1px solid var(--border);border-radius:5px"></td>
+      <td style="padding:4px;white-space:nowrap">${t.data || ''}</td>
+      <td style="padding:4px"><input value="${(t.motivo || '').replace(/"/g, '&quot;')}" oninput="estEdit('${t.id}','motivo',this.value)" style="width:140px;font-size:12px;padding:4px 6px;border:1px solid var(--border);border-radius:5px"></td>
+      <td style="padding:4px;text-align:center"><button onclick="estDel('${t.id}')" title="excluir" style="background:none;border:none;cursor:pointer;color:var(--text-ter);font-size:15px">×</button></td>
+    </tr>`).join('');
+  document.getElementById('est-tbody').innerHTML = rows ||
+    '<tr><td colspan="7" style="text-align:center;color:var(--text-ter);font-size:12px;padding:12px">Nenhum registro de devolução.</td></tr>';
+  const total = cfg.itens.reduce((s, t) => s + (t.valor || 0), 0);
+  const totalEl = document.getElementById('est-total-valor');
+  if (totalEl) totalEl.textContent = 'R$ ' + total.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+// ── Vendas (automático — puxa da Shopify) ─────────────────────────────────────
+async function atdVendasRender() {
+  const el = document.getElementById('atd-vendas-tbody');
+  const statusEl = document.getElementById('atd-vendas-status');
+  if (!el) return;
+  const hoje = new Date();
+  const mes = hoje.getFullYear() + '-' + String(hoje.getMonth() + 1).padStart(2, '0');
+  if (statusEl) statusEl.textContent = 'carregando...';
+  try {
+    const res = await fetch(`/api/shopify-vendas-diario?mes=${mes}`);
+    const data = await res.json();
+    const dias = [...(data.dias || [])].sort((a, b) => b.dia.localeCompare(a.dia));
+    const rows = dias.map(d => `
+      <tr>
+        <td style="padding:5px 8px">${d.dia.split('-').reverse().join('/')}</td>
+        <td style="padding:5px 8px;text-align:center">${d.pedidos}</td>
+        <td style="padding:5px 8px;text-align:center">${d.pecas}</td>
+        <td style="padding:5px 8px;text-align:right">R$ ${(d.reais || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
+        <td style="padding:5px 8px;text-align:right;color:var(--text-ter)">R$ ${(d.desconto || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
+      </tr>`).join('');
+    el.innerHTML = rows || '<tr><td colspan="5" style="text-align:center;color:var(--text-ter);font-size:12px;padding:12px">Sem vendas no mês.</td></tr>';
+    const totalPedidos = dias.reduce((s, d) => s + d.pedidos, 0);
+    const totalReais = dias.reduce((s, d) => s + (d.reais || 0), 0);
+    if (statusEl) statusEl.textContent = `${totalPedidos} pedidos · R$ ${totalReais.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} no mês`;
+  } catch (e) {
+    if (statusEl) statusEl.textContent = 'erro ao carregar vendas';
+    el.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#dc2626;font-size:12px;padding:12px">Erro ao carregar vendas da Shopify.</td></tr>';
+  }
 }
 
 function finPopularMeses() {
@@ -1018,7 +1304,7 @@ function flxPopularMeses() {
 function abrirFluxo(item) {
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   if (item) item.classList.add('active');
-  if (!['__dashboard__', '__financeiro__', '__precos__', '__trafego__', '__fluxo__'].includes(modeloAtual) && (estEditado || prodEditado || cfgEditado)) {
+  if (!['__dashboard__', '__financeiro__', '__precos__', '__trafego__', '__fluxo__', '__atendimento__'].includes(modeloAtual) && (estEditado || prodEditado || cfgEditado)) {
     clearTimeout(saveTimer); salvarModelo();
   }
   estEditado = false; prodEditado = false; cfgEditado = false; esconderBtnSalvar();
@@ -4790,7 +5076,7 @@ function agendarVerificacaoEnvios() {
 
 // 1. Monta sidebar e restaura tela pelo hash da URL (ou abre dashboard)
 const _hashKey = location.hash.replace('#', '');
-const _ESPECIAIS = { precos: '__precos__', financeiro: '__financeiro__', trafego: '__trafego__', fluxo: '__fluxo__' };
+const _ESPECIAIS = { precos: '__precos__', financeiro: '__financeiro__', trafego: '__trafego__', fluxo: '__fluxo__', atendimento: '__atendimento__' };
 modeloAtual = _ESPECIAIS[_hashKey] || ((_hashKey && MODELOS[_hashKey]) ? _hashKey : '__dashboard__');
 buildSidebar();
 
@@ -4802,6 +5088,8 @@ if (modeloAtual === '__precos__') {
   abrirTrafego(null); // restaura a aba Tráfego após F5
 } else if (modeloAtual === '__fluxo__') {
   abrirFluxo(null); // restaura a aba Fluxo de Caixa após F5
+} else if (modeloAtual === '__atendimento__') {
+  abrirAtendimento(null); // restaura a aba Atendimento após F5
 } else if (modeloAtual === '__dashboard__') {
   document.getElementById('tabs-modelo').style.display = 'none';
 } else {
@@ -4817,6 +5105,7 @@ const _renderInicial = () => {
   else if (modeloAtual === '__financeiro__') { if (sessionStorage.getItem('fin-ok') === '1') renderFinanceiro(); }
   else if (modeloAtual === '__trafego__') { if (sessionStorage.getItem('fin-ok') === '1') trafCarregarFrame(); }
   else if (modeloAtual === '__fluxo__') { if (sessionStorage.getItem('fin-ok') === '1') renderFluxo(); }
+  else if (modeloAtual === '__atendimento__') { if (sessionStorage.getItem('fin-ok') === '1') atdShowSub('sac'); }
   else renderModelo(modeloAtual);
 };
 carregarTodosNuvem().then(() => carregarPedidosShopify()).then(() => {

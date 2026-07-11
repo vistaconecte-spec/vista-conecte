@@ -552,11 +552,134 @@
           <iframe id="traf-frame" src="about:blank" style="width:100%;height:calc(100vh - 180px);min-height:520px;border:1px solid var(--border);border-radius:12px;background:#fff"></iframe>
         </div>
       </div>
+      <div id="panel-atendimento" class="tab-panel">
+        <div id="atd-gate" style="max-width:380px;margin:48px auto">
+          <div class="card" style="text-align:center;padding:30px 26px">
+            <i class="ti ti-lock" style="font-size:30px;color:var(--gold-dark)"></i>
+            <div style="font-weight:700;font-size:17px;margin:10px 0 2px">Atendimento</div>
+            <div style="font-size:12px;color:var(--text-sec);margin-bottom:16px">Digite a senha para acessar</div>
+            <input type="password" id="atd-senha" placeholder="Senha" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;font-size:14px" onkeydown="if(event.key==='Enter')atdUnlock()">
+            <div id="atd-erro" style="color:#dc2626;font-size:12px;height:16px;margin-top:6px"></div>
+            <button class="btn-primary" style="width:100%;margin-top:6px;padding:10px" onclick="atdUnlock()"><i class="ti ti-lock-open"></i> Entrar</button>
+          </div>
+        </div>
+        <div id="atd-content" style="display:none">
+          <style>
+            .atd-pill { display:inline-flex; align-items:center; gap:6px; padding:8px 16px; border-radius:20px; border:1px solid var(--border); background:#fff; font-size:12px; font-weight:600; color:var(--text-sec); cursor:pointer; }
+            .atd-pill.active { background:#111; color:#fff; border-color:#111; }
+          </style>
+          <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap">
+            <div style="font-weight:700;font-size:18px"><i class="ti ti-headset"></i> Atendimento</div>
+            <span style="font-size:12px;color:var(--text-sec)">SAC · Troca · Devolução · Vendas</span>
+            <button class="btn-outline" style="margin-left:auto;font-size:11px;padding:5px 10px" onclick="atdLock()"><i class="ti ti-lock"></i> Sair</button>
+          </div>
+          <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">
+            <div id="atd-pill-sac" class="atd-pill" onclick="atdShowSub('sac')"><i class="ti ti-headset"></i> SAC</div>
+            <div id="atd-pill-retorno" class="atd-pill" onclick="atdShowSub('retorno')"><i class="ti ti-replace"></i> Troca</div>
+            <div id="atd-pill-estorno" class="atd-pill" onclick="atdShowSub('estorno')"><i class="ti ti-receipt-refund"></i> Devolução</div>
+            <div id="atd-pill-vendas" class="atd-pill" onclick="atdShowSub('vendas')"><i class="ti ti-shopping-cart"></i> Vendas</div>
+          </div>
+
+          <!-- SAC -->
+          <div id="atd-sub-sac">
+            <div class="card" style="padding:14px 16px;margin-bottom:14px">
+              <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+                <input id="sac-pedido" placeholder="Nº do pedido" style="width:110px;font-size:12px;padding:7px 10px;border:1px solid var(--border);border-radius:6px" onkeydown="if(event.key==='Enter')document.getElementById('sac-motivo').focus()">
+                <input id="sac-motivo" placeholder="Motivo / o que aconteceu" style="flex:1;min-width:200px;font-size:12px;padding:7px 10px;border:1px solid var(--border);border-radius:6px" onkeydown="if(event.key==='Enter')sacAdd()">
+                <input id="sac-rastreio" placeholder="Rastreio (opcional)" style="width:150px;font-size:12px;padding:7px 10px;border:1px solid var(--border);border-radius:6px" onkeydown="if(event.key==='Enter')sacAdd()">
+                <button class="btn-primary" style="font-size:12px;padding:7px 14px" onclick="sacAdd()"><i class="ti ti-plus"></i> Adicionar</button>
+              </div>
+            </div>
+            <div class="card">
+              <div class="card-header">
+                <div class="card-title"><i class="ti ti-list-check"></i> Tickets</div>
+                <div style="display:flex;align-items:center;gap:10px;font-size:11px;color:var(--text-sec)">
+                  <span id="sac-total-pendentes"></span>
+                  <label style="display:flex;align-items:center;gap:4px;cursor:pointer"><input type="checkbox" id="sac-mostrar-resolvidos" onchange="sacRender()"> mostrar resolvidos</label>
+                </div>
+              </div>
+              <table style="width:100%;font-size:12px">
+                <thead><tr style="color:var(--text-ter);font-size:11px;text-transform:uppercase"><th style="padding:4px;width:32px">ok</th><th style="text-align:left;padding:4px">Pedido</th><th style="text-align:left;padding:4px">Motivo</th><th style="text-align:left;padding:4px">Rastreio</th><th style="width:28px"></th></tr></thead>
+                <tbody id="sac-tbody"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- TROCA / RETORNO -->
+          <div id="atd-sub-retorno" style="display:none">
+            <div class="card" style="padding:14px 16px;margin-bottom:14px">
+              <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+                <input id="ret-cliente" placeholder="Cliente" style="width:180px;font-size:12px;padding:7px 10px;border:1px solid var(--border);border-radius:6px">
+                <input id="ret-data" placeholder="Data (ex.: 10/07)" style="width:110px;font-size:12px;padding:7px 10px;border:1px solid var(--border);border-radius:6px">
+                <input id="ret-produtos" placeholder="Produtos" style="flex:1;min-width:180px;font-size:12px;padding:7px 10px;border:1px solid var(--border);border-radius:6px">
+                <input id="ret-obs" placeholder="OBS (opcional)" style="width:140px;font-size:12px;padding:7px 10px;border:1px solid var(--border);border-radius:6px">
+                <input id="ret-codigo" placeholder="Código de reenvio (opcional)" style="width:160px;font-size:12px;padding:7px 10px;border:1px solid var(--border);border-radius:6px" onkeydown="if(event.key==='Enter')retAdd()">
+                <button class="btn-primary" style="font-size:12px;padding:7px 14px" onclick="retAdd()"><i class="ti ti-plus"></i> Adicionar</button>
+              </div>
+            </div>
+            <div class="card">
+              <div class="card-header">
+                <div class="card-title"><i class="ti ti-replace"></i> Trocas / Reenvios</div>
+                <div style="display:flex;align-items:center;gap:10px;font-size:11px;color:var(--text-sec)">
+                  <span id="ret-total-pendentes"></span>
+                  <label style="display:flex;align-items:center;gap:4px;cursor:pointer"><input type="checkbox" id="ret-mostrar-resolvidos" onchange="retRender()"> mostrar resolvidos</label>
+                </div>
+              </div>
+              <table style="width:100%;font-size:12px">
+                <thead><tr style="color:var(--text-ter);font-size:11px;text-transform:uppercase"><th style="padding:4px;width:32px">ok</th><th style="text-align:left;padding:4px">Cliente</th><th style="text-align:left;padding:4px">Data</th><th style="text-align:left;padding:4px">Produtos</th><th style="text-align:left;padding:4px">OBS</th><th style="text-align:left;padding:4px">Cód. reenvio</th><th style="width:28px"></th></tr></thead>
+                <tbody id="ret-tbody"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- DEVOLUÇÃO / ESTORNO -->
+          <div id="atd-sub-estorno" style="display:none">
+            <div class="card" style="padding:14px 16px;margin-bottom:14px">
+              <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+                <input id="est-cliente" placeholder="Cliente" style="width:160px;font-size:12px;padding:7px 10px;border:1px solid var(--border);border-radius:6px">
+                <input id="est-pecas" placeholder="Peças" style="flex:1;min-width:180px;font-size:12px;padding:7px 10px;border:1px solid var(--border);border-radius:6px">
+                <input id="est-valor" type="number" step="0.01" placeholder="Valor R$" style="width:100px;font-size:12px;padding:7px 10px;border:1px solid var(--border);border-radius:6px">
+                <input id="est-codigo" placeholder="Cód. devolução" style="width:140px;font-size:12px;padding:7px 10px;border:1px solid var(--border);border-radius:6px">
+                <input id="est-data" placeholder="Data (ex.: 03/08)" style="width:110px;font-size:12px;padding:7px 10px;border:1px solid var(--border);border-radius:6px">
+                <input id="est-motivo" placeholder="Motivo" style="width:150px;font-size:12px;padding:7px 10px;border:1px solid var(--border);border-radius:6px" onkeydown="if(event.key==='Enter')estAdd()">
+                <button class="btn-primary" style="font-size:12px;padding:7px 14px" onclick="estAdd()"><i class="ti ti-plus"></i> Adicionar</button>
+              </div>
+            </div>
+            <div class="card">
+              <div class="card-header">
+                <div class="card-title"><i class="ti ti-receipt-refund"></i> Devoluções</div>
+                <span id="est-total-valor" style="font-size:12px;font-weight:700;color:var(--gold-dark)"></span>
+              </div>
+              <table style="width:100%;font-size:12px">
+                <thead><tr style="color:var(--text-ter);font-size:11px;text-transform:uppercase"><th style="text-align:left;padding:4px">Cliente</th><th style="text-align:left;padding:4px">Peças</th><th style="text-align:right;padding:4px">Valor</th><th style="text-align:left;padding:4px">Cód. devolução</th><th style="text-align:left;padding:4px">Data</th><th style="text-align:left;padding:4px">Motivo</th><th style="width:28px"></th></tr></thead>
+                <tbody id="est-tbody"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- VENDAS -->
+          <div id="atd-sub-vendas" style="display:none">
+            <div class="card">
+              <div class="card-header">
+                <div class="card-title"><i class="ti ti-shopping-cart"></i> Vendas do mês (Shopify)</div>
+                <div style="display:flex;align-items:center;gap:10px">
+                  <span id="atd-vendas-status" style="font-size:11px;color:var(--text-sec)"></span>
+                  <button class="btn-outline" style="font-size:10px;padding:4px 8px" onclick="atdVendasRender()"><i class="ti ti-refresh"></i> atualizar</button>
+                </div>
+              </div>
+              <table style="width:100%;font-size:12px">
+                <thead><tr style="color:var(--text-ter);font-size:11px;text-transform:uppercase"><th style="text-align:left;padding:5px 8px">Data</th><th style="padding:5px 8px">Pedidos</th><th style="padding:5px 8px">Peças</th><th style="text-align:right;padding:5px 8px">Receita</th><th style="text-align:right;padding:5px 8px">Desconto</th></tr></thead>
+                <tbody id="atd-vendas-tbody"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 </div>
-<script src="data.js?v=2026070724"></script>
-<script src="main.js?v=2026070724"></script>
+<script src="data.js?v=2026070725"></script>
+<script src="main.js?v=2026070725"></script>
 <script async src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js" onload="initSupabase()"></script>
 </body>
 </html>
