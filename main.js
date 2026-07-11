@@ -633,7 +633,7 @@ function atdLock() {
 
 // Alterna entre as 4 sub-seções (pílulas) dentro do painel Atendimento
 function atdShowSub(sub) {
-  ['sac', 'retorno', 'estorno', 'vendas'].forEach(s => {
+  ['sac', 'retorno', 'estorno'].forEach(s => {
     document.getElementById('atd-sub-' + s).style.display = (s === sub) ? '' : 'none';
     const pill = document.getElementById('atd-pill-' + s);
     if (pill) pill.classList.toggle('active', s === sub);
@@ -641,7 +641,6 @@ function atdShowSub(sub) {
   if (sub === 'sac') sacRender();
   else if (sub === 'retorno') retRender();
   else if (sub === 'estorno') estRender();
-  else if (sub === 'vendas') atdVendasRender();
 }
 
 // ── SAC ──────────────────────────────────────────────────────────────────────
@@ -834,36 +833,6 @@ function estRender() {
   const total = cfg.itens.reduce((s, t) => s + (t.valor || 0), 0);
   const totalEl = document.getElementById('est-total-valor');
   if (totalEl) totalEl.textContent = 'R$ ' + total.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-}
-
-// ── Vendas (automático — puxa da Shopify) ─────────────────────────────────────
-async function atdVendasRender() {
-  const el = document.getElementById('atd-vendas-tbody');
-  const statusEl = document.getElementById('atd-vendas-status');
-  if (!el) return;
-  const hoje = new Date();
-  const mes = hoje.getFullYear() + '-' + String(hoje.getMonth() + 1).padStart(2, '0');
-  if (statusEl) statusEl.textContent = 'carregando...';
-  try {
-    const res = await fetch(`/api/shopify-vendas-diario?mes=${mes}`);
-    const data = await res.json();
-    const dias = [...(data.dias || [])].sort((a, b) => b.dia.localeCompare(a.dia));
-    const rows = dias.map(d => `
-      <tr>
-        <td style="padding:5px 8px">${d.dia.split('-').reverse().join('/')}</td>
-        <td style="padding:5px 8px;text-align:center">${d.pedidos}</td>
-        <td style="padding:5px 8px;text-align:center">${d.pecas}</td>
-        <td style="padding:5px 8px;text-align:right">R$ ${(d.reais || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
-        <td style="padding:5px 8px;text-align:right;color:var(--text-ter)">R$ ${(d.desconto || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
-      </tr>`).join('');
-    el.innerHTML = rows || '<tr><td colspan="5" style="text-align:center;color:var(--text-ter);font-size:12px;padding:12px">Sem vendas no mês.</td></tr>';
-    const totalPedidos = dias.reduce((s, d) => s + d.pedidos, 0);
-    const totalReais = dias.reduce((s, d) => s + (d.reais || 0), 0);
-    if (statusEl) statusEl.textContent = `${totalPedidos} pedidos · R$ ${totalReais.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} no mês`;
-  } catch (e) {
-    if (statusEl) statusEl.textContent = 'erro ao carregar vendas';
-    el.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#dc2626;font-size:12px;padding:12px">Erro ao carregar vendas da Shopify.</td></tr>';
-  }
 }
 
 function finPopularMeses() {

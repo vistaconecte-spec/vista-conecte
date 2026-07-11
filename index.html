@@ -577,7 +577,6 @@
             <div id="atd-pill-sac" class="atd-pill" onclick="atdShowSub('sac')"><i class="ti ti-headset"></i> SAC</div>
             <div id="atd-pill-retorno" class="atd-pill" onclick="atdShowSub('retorno')"><i class="ti ti-replace"></i> Troca</div>
             <div id="atd-pill-estorno" class="atd-pill" onclick="atdShowSub('estorno')"><i class="ti ti-receipt-refund"></i> Devolução</div>
-            <div id="atd-pill-vendas" class="atd-pill" onclick="atdShowSub('vendas')"><i class="ti ti-shopping-cart"></i> Vendas</div>
           </div>
 
           <!-- SAC -->
@@ -663,30 +662,13 @@
               </table>
             </div>
           </div>
-
-          <!-- VENDAS -->
-          <div id="atd-sub-vendas" style="display:none">
-            <div class="card">
-              <div class="card-header">
-                <div class="card-title"><i class="ti ti-shopping-cart"></i> Vendas do mês (Shopify)</div>
-                <div style="display:flex;align-items:center;gap:10px">
-                  <span id="atd-vendas-status" style="font-size:11px;color:var(--text-sec)"></span>
-                  <button class="btn-outline" style="font-size:10px;padding:4px 8px" onclick="atdVendasRender()"><i class="ti ti-refresh"></i> atualizar</button>
-                </div>
-              </div>
-              <table style="width:100%;font-size:12px">
-                <thead><tr style="color:var(--text-ter);font-size:11px;text-transform:uppercase"><th style="text-align:left;padding:5px 8px">Data</th><th style="padding:5px 8px">Pedidos</th><th style="padding:5px 8px">Peças</th><th style="text-align:right;padding:5px 8px">Receita</th><th style="text-align:right;padding:5px 8px">Desconto</th></tr></thead>
-                <tbody id="atd-vendas-tbody"></tbody>
-              </table>
-            </div>
-          </div>
         </div>
       </div>
     </div>
   </div>
 </div>
-<script src="data.js?v=2026070725"></script>
-<script src="main.js?v=2026070725"></script>
+<script src="data.js?v=2026070726"></script>
+<script src="main.js?v=2026070726"></script>
 <script async src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js" onload="initSupabase()"></script>
 </body>
 </html>
