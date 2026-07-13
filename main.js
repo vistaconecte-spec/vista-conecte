@@ -777,12 +777,12 @@ function sacRender() {
   };
   const rows = lista.map(t => `
     <tr style="${t.status === 'resolvido' ? 'opacity:0.5' : ''}">
-      <td style="padding:4px"><input type="checkbox" ${t.status === 'resolvido' ? 'checked' : ''} onchange="sacToggle('${t.id}')" title="marcar como resolvido"></td>
-      <td style="padding:4px;font-weight:700;white-space:nowrap">${t.pedido}${t.cliente ? `<div style="font-weight:400;font-size:11px;color:var(--text-ter)">${t.cliente}</div>` : ''}</td>
-      <td style="padding:4px"><input value="${(t.motivo || '').replace(/"/g, '&quot;')}" oninput="sacEdit('${t.id}','motivo',this.value)" style="width:100%;min-width:180px;font-size:12px;padding:4px 6px;border:1px solid var(--border);border-radius:5px;${t.status === 'resolvido' ? 'text-decoration:line-through' : ''}"></td>
-      <td style="padding:4px;font-size:12px;color:var(--text-sec);min-width:200px">${itensTexto(t)}</td>
-      <td style="padding:4px"><input value="${(t.rastreio || '').replace(/"/g, '&quot;')}" oninput="sacEdit('${t.id}','rastreio',this.value)" style="width:130px;font-size:12px;padding:4px 6px;border:1px solid var(--border);border-radius:5px"></td>
-      <td style="padding:4px;text-align:center"><button onclick="sacDel('${t.id}')" title="excluir" style="background:none;border:none;cursor:pointer;color:var(--text-ter);font-size:15px">×</button></td>
+      <td style="padding:4px;text-align:center;vertical-align:middle"><input type="checkbox" ${t.status === 'resolvido' ? 'checked' : ''} onchange="sacToggle('${t.id}')" title="marcar como resolvido"></td>
+      <td style="padding:4px;font-weight:700;white-space:nowrap;text-align:center;vertical-align:middle">${t.pedido}${t.cliente ? `<div style="font-weight:400;font-size:11px;color:var(--text-ter)">${t.cliente}</div>` : ''}</td>
+      <td style="padding:4px;vertical-align:middle"><input value="${(t.motivo || '').replace(/"/g, '&quot;')}" oninput="sacEdit('${t.id}','motivo',this.value)" style="width:100%;min-width:180px;font-size:12px;padding:4px 6px;border:1px solid var(--border);border-radius:5px;${t.status === 'resolvido' ? 'text-decoration:line-through' : ''}"></td>
+      <td style="padding:4px;font-size:12px;color:var(--text-sec);min-width:200px;vertical-align:middle">${itensTexto(t)}</td>
+      <td style="padding:4px;vertical-align:middle"><input value="${(t.rastreio || '').replace(/"/g, '&quot;')}" oninput="sacEdit('${t.id}','rastreio',this.value)" style="width:130px;font-size:12px;padding:4px 6px;border:1px solid var(--border);border-radius:5px"></td>
+      <td style="padding:4px;text-align:center;vertical-align:middle"><button onclick="sacDel('${t.id}')" title="excluir" style="background:none;border:none;cursor:pointer;color:var(--text-ter);font-size:15px">×</button></td>
     </tr>`).join('');
   document.getElementById('sac-tbody').innerHTML = rows ||
     '<tr><td colspan="6" style="text-align:center;color:var(--text-ter);font-size:12px;padding:12px">Nenhum ticket ' + (mostrarResolvidos ? '' : 'pendente') + '.</td></tr>';
