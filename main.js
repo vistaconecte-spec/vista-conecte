@@ -662,7 +662,12 @@ function sacBuscarPedido() {
       const d = await res.json();
       if (document.getElementById('sac-pedido').value.trim() !== numero) return; // digitou algo novo enquanto buscava
       if (!d.encontrado) { preview.innerHTML = '<span style="color:var(--text-ter)">Pedido não encontrado.</span>'; return; }
-      const itensHtml = (d.itens || []).map(i => `${i.qtd}× ${i.titulo}${i.variante ? ' (' + i.variante + ')' : ''}`).join(', ');
+      window._sacItensAtuais = d.itens || []; // usado pelo checkbox de "faltando"
+      const itensHtml = (d.itens || []).map((i, idx) => `
+        <label style="display:flex;align-items:center;gap:5px;cursor:pointer;padding:2px 0">
+          <input type="checkbox" onchange="sacFaltanteToggle()" data-sac-faltante="${idx}">
+          ${i.qtd}× ${i.titulo}${i.variante ? ' (' + i.variante + ')' : ''}
+        </label>`).join('');
       const statusCor = d.cancelado ? '#dc2626' : (d.status_financeiro === 'paid' ? '#16a34a' : '#b45309');
       preview.innerHTML = `
         <div style="display:flex;flex-wrap:wrap;gap:6px 16px;align-items:baseline">
@@ -672,7 +677,8 @@ function sacBuscarPedido() {
           <span style="color:var(--text-ter)">${d.status_envio === 'fulfilled' ? 'enviado' : d.status_envio === 'partial' ? 'parcialmente enviado' : 'não enviado'}</span>
           ${d.rastreio ? `<span style="color:var(--text-ter)">rastreio: ${d.rastreio}</span>` : ''}
         </div>
-        <div style="margin-top:4px;color:var(--text-sec)">${itensHtml || '(sem itens)'}</div>`;
+        <div style="margin-top:4px">${itensHtml || '<span style="color:var(--text-ter)">(sem itens)</span>'}</div>
+        ${(d.itens || []).length ? '<div style="font-size:11px;color:var(--text-ter);margin-top:2px">marque as peças que estão faltando pra preencher o motivo sozinho</div>' : ''}`;
       // Preenche o rastreio automaticamente se o campo ainda estiver vazio
       const rastreioEl = document.getElementById('sac-rastreio');
       if (d.rastreio && rastreioEl && !rastreioEl.value) rastreioEl.value = d.rastreio;
@@ -680,6 +686,18 @@ function sacBuscarPedido() {
       preview.innerHTML = '<span style="color:#dc2626">Erro ao buscar pedido.</span>';
     }
   }, 500);
+}
+
+// Monta o Motivo sozinho a partir das peças marcadas como faltando na prévia do pedido.
+function sacFaltanteToggle() {
+  const marcados = Array.from(document.querySelectorAll('[data-sac-faltante]:checked'))
+    .map(el => window._sacItensAtuais[parseInt(el.dataset.sacFaltante)])
+    .filter(Boolean);
+  const motivoEl = document.getElementById('sac-motivo');
+  if (!motivoEl) return;
+  if (marcados.length === 0) { motivoEl.value = ''; return; }
+  const lista = marcados.map(i => `${i.titulo}${i.variante ? ' (' + i.variante + ')' : ''}`).join(', ');
+  motivoEl.value = 'Faltando: ' + lista;
 }
 function sacSalvar(cfg) {
   cfg.updated_at = new Date().toISOString();
