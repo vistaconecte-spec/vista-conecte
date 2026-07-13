@@ -30,14 +30,15 @@ function saldoDoCSV(csv) {
 // Movimentos aprovados desde `desdeISO` (imediato, sem esperar extrato), SEPARADOS por direção:
 // collector = nós → entrada (líquida); nós como pagador → saída (pagamento feito).
 // (antes somava tudo como entrada — pagamento feito inflava a estimativa)
-// O MP rotula ERRADO o fuso de date_created dos extratos (dígitos em UTC com sufixo -04:00 →
-// parse fica ~4h no futuro e congelava o frescor). Interpretação robusta: o MENOR entre o parse
-// normal e os dígitos-como-UTC, nunca no futuro.
+// O MP às vezes rotula ERRADO o fuso de date_created dos extratos (dígitos em UTC com sufixo
+// -04:00 → parse fica ~4h no futuro e congelava o frescor). Correção CONDICIONAL: se o parse
+// normal for confiável (não cai no futuro), usa-o direto; só quando cai no futuro reinterpreta
+// os dígitos como UTC. Assim, se o MP passar a rotular certo, o timestamp não é corrompido.
 function criadoEm(str) {
   const p1 = new Date(str).getTime();
+  if (!isNaN(p1) && p1 <= Date.now()) return p1;
   const p2 = new Date(String(str).replace(/\.\d+/, '').replace(/[+-]\d{2}:?\d{2}$/, 'Z')).getTime();
-  const t = Math.min(isNaN(p1) ? Infinity : p1, isNaN(p2) ? Infinity : p2);
-  return Math.min(t, Date.now());
+  return Math.min(isNaN(p1) ? Infinity : p1, isNaN(p2) ? Infinity : p2, Date.now());
 }
 
 const CONTA_MP_ID = '3013574234'; // conta CONECTE (vistaconecte@gmail.com)
