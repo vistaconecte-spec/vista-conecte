@@ -647,6 +647,40 @@ function atdShowSub(sub) {
 function sacGetConfig() {
   return loadLocal('vc:sac') || { tickets: [], updated_at: null };
 }
+
+// Busca o pedido na Shopify (debounced) e mostra cliente/itens/status assim que digita o número.
+function sacBuscarPedido() {
+  const numero = (document.getElementById('sac-pedido').value || '').trim();
+  const preview = document.getElementById('sac-pedido-preview');
+  clearTimeout(window._sacBuscaTimer);
+  if (!numero) { preview.style.display = 'none'; preview.innerHTML = ''; return; }
+  window._sacBuscaTimer = setTimeout(async () => {
+    preview.style.display = '';
+    preview.innerHTML = 'buscando pedido...';
+    try {
+      const res = await fetch(`/api/shopify-pedido-lookup?numero=${encodeURIComponent(numero)}`);
+      const d = await res.json();
+      if (document.getElementById('sac-pedido').value.trim() !== numero) return; // digitou algo novo enquanto buscava
+      if (!d.encontrado) { preview.innerHTML = '<span style="color:var(--text-ter)">Pedido não encontrado.</span>'; return; }
+      const itensHtml = (d.itens || []).map(i => `${i.qtd}× ${i.titulo}${i.variante ? ' (' + i.variante + ')' : ''}`).join(', ');
+      const statusCor = d.cancelado ? '#dc2626' : (d.status_financeiro === 'paid' ? '#16a34a' : '#b45309');
+      preview.innerHTML = `
+        <div style="display:flex;flex-wrap:wrap;gap:6px 16px;align-items:baseline">
+          <strong>${d.numero}</strong>
+          <span>${d.cliente || '(sem nome)'}</span>
+          <span style="color:${statusCor};font-weight:600">${d.cancelado ? 'cancelado' : d.status_financeiro}</span>
+          <span style="color:var(--text-ter)">${d.status_envio === 'fulfilled' ? 'enviado' : d.status_envio === 'partial' ? 'parcialmente enviado' : 'não enviado'}</span>
+          ${d.rastreio ? `<span style="color:var(--text-ter)">rastreio: ${d.rastreio}</span>` : ''}
+        </div>
+        <div style="margin-top:4px;color:var(--text-sec)">${itensHtml || '(sem itens)'}</div>`;
+      // Preenche o rastreio automaticamente se o campo ainda estiver vazio
+      const rastreioEl = document.getElementById('sac-rastreio');
+      if (d.rastreio && rastreioEl && !rastreioEl.value) rastreioEl.value = d.rastreio;
+    } catch (e) {
+      preview.innerHTML = '<span style="color:#dc2626">Erro ao buscar pedido.</span>';
+    }
+  }, 500);
+}
 function sacSalvar(cfg) {
   cfg.updated_at = new Date().toISOString();
   saveLocal('vc:sac', cfg);

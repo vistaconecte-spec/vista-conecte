@@ -583,11 +583,12 @@
           <div id="atd-sub-sac">
             <div class="card" style="padding:14px 16px;margin-bottom:14px">
               <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-                <input id="sac-pedido" placeholder="Nº do pedido" style="width:110px;font-size:12px;padding:7px 10px;border:1px solid var(--border);border-radius:6px" onkeydown="if(event.key==='Enter')document.getElementById('sac-motivo').focus()">
+                <input id="sac-pedido" placeholder="Nº do pedido" style="width:110px;font-size:12px;padding:7px 10px;border:1px solid var(--border);border-radius:6px" oninput="sacBuscarPedido()" onkeydown="if(event.key==='Enter')document.getElementById('sac-motivo').focus()">
                 <input id="sac-motivo" placeholder="Motivo / o que aconteceu" style="flex:1;min-width:200px;font-size:12px;padding:7px 10px;border:1px solid var(--border);border-radius:6px" onkeydown="if(event.key==='Enter')sacAdd()">
                 <input id="sac-rastreio" placeholder="Rastreio (opcional)" style="width:150px;font-size:12px;padding:7px 10px;border:1px solid var(--border);border-radius:6px" onkeydown="if(event.key==='Enter')sacAdd()">
                 <button class="btn-primary" style="font-size:12px;padding:7px 14px" onclick="sacAdd()"><i class="ti ti-plus"></i> Adicionar</button>
               </div>
+              <div id="sac-pedido-preview" style="display:none;margin-top:10px;padding:10px 12px;background:#f5f0e8;border-radius:8px;font-size:12px"></div>
             </div>
             <div class="card">
               <div class="card-header">
@@ -667,8 +668,8 @@
     </div>
   </div>
 </div>
-<script src="data.js?v=2026070726"></script>
-<script src="main.js?v=2026070726"></script>
+<script src="data.js?v=2026071301"></script>
+<script src="main.js?v=2026071301"></script>
 <script async src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js" onload="initSupabase()"></script>
 </body>
 </html>
