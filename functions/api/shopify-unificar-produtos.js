@@ -63,6 +63,19 @@ export async function onRequest(context) {
 
     if (confirmar) {
       if (coresNovas.length > 0) {
+        // Busca o linkedMetafieldValue de cada cor nova (a opção Cor é vinculada ao metafield
+        // shopify.color-pattern — não aceita valor solto em texto, precisa do metaobject).
+        const QUERY_OPCOES = `
+          query($id: ID!) {
+            product(id: $id) {
+              options { id name optionValues { name linkedMetafieldValue } }
+            }
+          }`;
+        const respOrigemOpcoes = await gql(QUERY_OPCOES, { id: `gid://shopify/Product/${idOrigem}` });
+        const corOpOrigemGql = (respOrigemOpcoes.json?.data?.product?.options || []).find(o => o.name === corOpOrigem.name);
+        const linkedPorNome = {};
+        (corOpOrigemGql?.optionValues || []).forEach(v => { linkedPorNome[v.name] = v.linkedMetafieldValue; });
+
         const MUT_OPCAO = `
           mutation AddCores($productId: ID!, $optionId: ID!, $optionValuesToAdd: [OptionValueCreateInput!]!) {
             productOptionUpdate(productId: $productId, option: { id: $optionId }, optionValuesToAdd: $optionValuesToAdd, variantStrategy: MANAGE) {
@@ -72,8 +85,8 @@ export async function onRequest(context) {
           }`;
         const respOpcao = await gql(MUT_OPCAO, {
           productId: gid,
-          optionId: corOpDestino.id ? `gid://shopify/ProductOption/${corOpDestino.id}` : null,
-          optionValuesToAdd: coresNovas.map(c => ({ name: c })),
+          optionId: `gid://shopify/ProductOption/${corOpDestino.id}`,
+          optionValuesToAdd: coresNovas.map(c => ({ name: c, linkedMetafieldValue: linkedPorNome[c] || null })),
         });
         const dataOpcao = respOpcao.json?.data?.productOptionUpdate;
         const errosOpcao = [...(respOpcao.json?.errors || []), ...(dataOpcao?.userErrors || [])];
