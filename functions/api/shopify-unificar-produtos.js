@@ -61,21 +61,23 @@ export async function onRequest(context) {
     let passoOpcao = null, passoPreco = null, passoTitulo = null, passoRedirect = null, passoArquivar = null;
     let resultado = 'dry-run (nada alterado)';
 
+    // Busca o linkedMetafieldValue de cada cor nova (a opção Cor é vinculada ao metafield
+    // shopify.color-pattern — não aceita valor solto em texto, precisa do metaobject).
+    // Roda também no dry-run (só leitura) pra dar pra conferir o payload antes de aplicar.
+    const QUERY_OPCOES = `
+      query($id: ID!) {
+        product(id: $id) {
+          options { id name optionValues { name linkedMetafieldValue } }
+        }
+      }`;
+    const respOrigemOpcoes = await gql(QUERY_OPCOES, { id: `gid://shopify/Product/${idOrigem}` });
+    const corOpOrigemGql = (respOrigemOpcoes.json?.data?.product?.options || []).find(o => o.name === corOpOrigem.name);
+    const linkedPorNome = {};
+    (corOpOrigemGql?.optionValues || []).forEach(v => { linkedPorNome[v.name] = v.linkedMetafieldValue; });
+    const payloadOptionValuesToAdd = coresNovas.map(c => ({ name: c, linkedMetafieldValue: linkedPorNome[c] || null }));
+
     if (confirmar) {
       if (coresNovas.length > 0) {
-        // Busca o linkedMetafieldValue de cada cor nova (a opção Cor é vinculada ao metafield
-        // shopify.color-pattern — não aceita valor solto em texto, precisa do metaobject).
-        const QUERY_OPCOES = `
-          query($id: ID!) {
-            product(id: $id) {
-              options { id name optionValues { name linkedMetafieldValue } }
-            }
-          }`;
-        const respOrigemOpcoes = await gql(QUERY_OPCOES, { id: `gid://shopify/Product/${idOrigem}` });
-        const corOpOrigemGql = (respOrigemOpcoes.json?.data?.product?.options || []).find(o => o.name === corOpOrigem.name);
-        const linkedPorNome = {};
-        (corOpOrigemGql?.optionValues || []).forEach(v => { linkedPorNome[v.name] = v.linkedMetafieldValue; });
-
         const MUT_OPCAO = `
           mutation AddCores($productId: ID!, $optionId: ID!, $optionValuesToAdd: [OptionValueCreateInput!]!) {
             productOptionUpdate(productId: $productId, option: { id: $optionId }, optionValuesToAdd: $optionValuesToAdd, variantStrategy: MANAGE) {
@@ -86,7 +88,7 @@ export async function onRequest(context) {
         const respOpcao = await gql(MUT_OPCAO, {
           productId: gid,
           optionId: `gid://shopify/ProductOption/${corOpDestino.id}`,
-          optionValuesToAdd: coresNovas.map(c => ({ name: c, linkedMetafieldValue: linkedPorNome[c] || null })),
+          optionValuesToAdd: payloadOptionValuesToAdd,
         });
         const dataOpcao = respOpcao.json?.data?.productOptionUpdate;
         const errosOpcao = [...(respOpcao.json?.errors || []), ...(dataOpcao?.userErrors || [])];
@@ -160,6 +162,8 @@ export async function onRequest(context) {
       destino: { id: idDestino, titulo_atual: destino.title, handle: destino.handle, cores_atuais: corOpDestino.values },
       origem: { id: idOrigem, titulo: origem.title, handle: origem.handle, cores: corOpOrigem.values },
       cores_a_adicionar: coresNovas, novo_titulo: novoTitulo || destino.title,
+      debug_payload_optionValuesToAdd: payloadOptionValuesToAdd,
+      debug_query_origem_erro: respOrigemOpcoes.json?.errors || null,
       modo: confirmar ? 'APLICAR' : 'dry-run', resultado,
       passo_opcao: passoOpcao, passo_preco: passoPreco, passo_titulo: passoTitulo, passo_redirect: passoRedirect, passo_arquivar: passoArquivar,
     }, null, 2), { headers: H });
