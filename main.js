@@ -640,7 +640,7 @@ function atdShowSub(sub) {
   });
   if (sub === 'sac') sacRender();
   else if (sub === 'retorno') retRender();
-  else if (sub === 'estorno') estRender();
+  else if (sub === 'estorno') { estRender(); estSincronizarShopify(); }
 }
 
 // ── SAC ──────────────────────────────────────────────────────────────────────
@@ -898,6 +898,40 @@ function estDel(id) {
   cfg.itens = cfg.itens.filter(x => x.id !== id);
   estSalvar(cfg);
   estRender();
+}
+
+// Puxa da Shopify as devoluções solicitadas (ainda não processadas) e adiciona as que
+// ainda não estão na lista (não sobrescreve o que já foi editado manualmente).
+async function estSincronizarShopify() {
+  const statusEl = document.getElementById('est-sync-status');
+  if (statusEl) statusEl.textContent = 'buscando devoluções na Shopify...';
+  try {
+    const res = await fetch('/api/shopify-devolucoes-pendentes');
+    const d = await res.json();
+    if (!d.devolucoes) { if (statusEl) statusEl.textContent = 'erro ao buscar devoluções da Shopify'; return; }
+    const cfg = estGetConfig();
+    const existentes = new Set(cfg.itens.map(t => t.shopify_id).filter(Boolean));
+    let novos = 0;
+    d.devolucoes.forEach(dv => {
+      if (existentes.has(dv.id)) return; // já importado antes — não duplica nem sobrescreve
+      cfg.itens.push({
+        id: 'est' + Date.now() + Math.random().toString(36).slice(2, 6),
+        shopify_id: dv.id,
+        cliente: dv.cliente || '',
+        pecas: `${dv.peca} — pedido ${dv.pedido}`,
+        valor: dv.valor || 0,
+        codigo_devolucao: dv.codigo_devolucao || '',
+        data: dv.data ? new Date(dv.data).toLocaleDateString('pt-BR') : '',
+        motivo: dv.motivo + (dv.motivo_nota ? ' — ' + dv.motivo_nota : ''),
+        criado_em: new Date().toISOString(),
+      });
+      novos++;
+    });
+    if (novos > 0) { estSalvar(cfg); estRender(); }
+    if (statusEl) statusEl.textContent = novos > 0 ? `${novos} devolução${novos > 1 ? 'ões' : ''} nova${novos > 1 ? 's' : ''} importada${novos > 1 ? 's' : ''} da Shopify` : 'sincronizado — nenhuma devolução nova';
+  } catch (e) {
+    if (statusEl) statusEl.textContent = 'erro ao buscar devoluções da Shopify';
+  }
 }
 function estRender() {
   const cfg = estGetConfig();

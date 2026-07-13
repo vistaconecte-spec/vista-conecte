@@ -655,7 +655,11 @@
             <div class="card">
               <div class="card-header">
                 <div class="card-title"><i class="ti ti-receipt-refund"></i> Devoluções</div>
-                <span id="est-total-valor" style="font-size:12px;font-weight:700;color:var(--gold-dark)"></span>
+                <div style="display:flex;align-items:center;gap:10px">
+                  <span id="est-sync-status" style="font-size:10px;color:var(--text-ter)"></span>
+                  <button class="btn-outline" style="font-size:10px;padding:4px 8px" onclick="estSincronizarShopify()"><i class="ti ti-refresh"></i> Shopify</button>
+                  <span id="est-total-valor" style="font-size:12px;font-weight:700;color:var(--gold-dark)"></span>
+                </div>
               </div>
               <table style="width:100%;font-size:12px">
                 <thead><tr style="color:var(--text-ter);font-size:11px;text-transform:uppercase"><th style="text-align:left;padding:4px">Cliente</th><th style="text-align:left;padding:4px">Peças</th><th style="text-align:right;padding:4px">Valor</th><th style="text-align:left;padding:4px">Cód. devolução</th><th style="text-align:left;padding:4px">Data</th><th style="text-align:left;padding:4px">Motivo</th><th style="width:28px"></th></tr></thead>
@@ -668,8 +672,8 @@
     </div>
   </div>
 </div>
-<script src="data.js?v=2026071304"></script>
-<script src="main.js?v=2026071304"></script>
+<script src="data.js?v=2026071305"></script>
+<script src="main.js?v=2026071305"></script>
 <script async src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js" onload="initSupabase()"></script>
 </body>
 </html>
