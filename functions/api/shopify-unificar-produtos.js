@@ -74,7 +74,11 @@ export async function onRequest(context) {
     const corOpOrigemGql = (respOrigemOpcoes.json?.data?.product?.options || []).find(o => o.name === corOpOrigem.name);
     const linkedPorNome = {};
     (corOpOrigemGql?.optionValues || []).forEach(v => { linkedPorNome[v.name] = v.linkedMetafieldValue; });
-    const payloadOptionValuesToAdd = coresNovas.map(c => ({ name: c, linkedMetafieldValue: linkedPorNome[c] || null }));
+    // Quando a cor é vinculada ao metafield, manda só linkedMetafieldValue (sem "name" —
+    // o nome de exibição vem do metaobject; mandar os dois juntos causa erro "linked and nonlinked").
+    const payloadOptionValuesToAdd = coresNovas.map(c => linkedPorNome[c]
+      ? { linkedMetafieldValue: linkedPorNome[c] }
+      : { name: c });
 
     if (confirmar) {
       if (coresNovas.length > 0) {
