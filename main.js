@@ -693,13 +693,37 @@ function sacAdd() {
   const rastreio = (document.getElementById('sac-rastreio').value || '').trim();
   if (!pedido || !motivo) { alert('Preencha ao menos o nº do pedido e o motivo.'); return; }
   const cfg = sacGetConfig();
-  cfg.tickets.push({ id: 'sac' + Date.now(), pedido, motivo, rastreio, status: 'pendente', criado_em: new Date().toISOString() });
+  const novo = { id: 'sac' + Date.now(), pedido, motivo, rastreio, status: 'pendente', criado_em: new Date().toISOString() };
+  cfg.tickets.push(novo);
   sacSalvar(cfg);
   sacRender();
+  sacCarregarItens(novo.id, pedido); // busca itens/cliente em segundo plano
   document.getElementById('sac-pedido').value = '';
   document.getElementById('sac-motivo').value = '';
   document.getElementById('sac-rastreio').value = '';
+  document.getElementById('sac-pedido-preview').style.display = 'none';
   document.getElementById('sac-pedido').focus();
+}
+
+// Busca cliente/itens do pedido na Shopify e grava no ticket (uma vez só — fica salvo).
+const _sacBuscandoItens = new Set();
+async function sacCarregarItens(id, pedido) {
+  if (_sacBuscandoItens.has(id)) return;
+  _sacBuscandoItens.add(id);
+  try {
+    const res = await fetch(`/api/shopify-pedido-lookup?numero=${encodeURIComponent(pedido)}`);
+    const d = await res.json();
+    const cfg = sacGetConfig();
+    const t = cfg.tickets.find(x => x.id === id); if (!t) return;
+    t.cliente = d.encontrado ? (d.cliente || null) : null;
+    t.itens = d.encontrado ? (d.itens || []) : [];
+    t.itens_busca_em = new Date().toISOString();
+    sacSalvar(cfg);
+    sacRender();
+  } catch (e) {
+  } finally {
+    _sacBuscandoItens.delete(id);
+  }
 }
 function sacToggle(id) {
   const cfg = sacGetConfig();
@@ -728,19 +752,27 @@ function sacRender() {
   const lista = cfg.tickets
     .filter(t => mostrarResolvidos || t.status !== 'resolvido')
     .sort((a, b) => (b.criado_em || '').localeCompare(a.criado_em || ''));
+  const itensTexto = t => {
+    if (t.itens === undefined) return '<span style="color:var(--text-ter)">carregando…</span>';
+    if (!t.itens || !t.itens.length) return '<span style="color:var(--text-ter)">—</span>';
+    return t.itens.map(i => `${i.qtd}× ${i.titulo}${i.variante ? ' (' + i.variante + ')' : ''}`).join(', ');
+  };
   const rows = lista.map(t => `
     <tr style="${t.status === 'resolvido' ? 'opacity:0.5' : ''}">
       <td style="padding:4px"><input type="checkbox" ${t.status === 'resolvido' ? 'checked' : ''} onchange="sacToggle('${t.id}')" title="marcar como resolvido"></td>
-      <td style="padding:4px;font-weight:700;white-space:nowrap">${t.pedido}</td>
+      <td style="padding:4px;font-weight:700;white-space:nowrap">${t.pedido}${t.cliente ? `<div style="font-weight:400;font-size:11px;color:var(--text-ter)">${t.cliente}</div>` : ''}</td>
       <td style="padding:4px"><input value="${(t.motivo || '').replace(/"/g, '&quot;')}" oninput="sacEdit('${t.id}','motivo',this.value)" style="width:100%;min-width:180px;font-size:12px;padding:4px 6px;border:1px solid var(--border);border-radius:5px;${t.status === 'resolvido' ? 'text-decoration:line-through' : ''}"></td>
+      <td style="padding:4px;font-size:12px;color:var(--text-sec);min-width:200px">${itensTexto(t)}</td>
       <td style="padding:4px"><input value="${(t.rastreio || '').replace(/"/g, '&quot;')}" oninput="sacEdit('${t.id}','rastreio',this.value)" style="width:130px;font-size:12px;padding:4px 6px;border:1px solid var(--border);border-radius:5px"></td>
       <td style="padding:4px;text-align:center"><button onclick="sacDel('${t.id}')" title="excluir" style="background:none;border:none;cursor:pointer;color:var(--text-ter);font-size:15px">×</button></td>
     </tr>`).join('');
   document.getElementById('sac-tbody').innerHTML = rows ||
-    '<tr><td colspan="5" style="text-align:center;color:var(--text-ter);font-size:12px;padding:12px">Nenhum ticket ' + (mostrarResolvidos ? '' : 'pendente') + '.</td></tr>';
+    '<tr><td colspan="6" style="text-align:center;color:var(--text-ter);font-size:12px;padding:12px">Nenhum ticket ' + (mostrarResolvidos ? '' : 'pendente') + '.</td></tr>';
   const total = cfg.tickets.filter(t => t.status !== 'resolvido').length;
   const totalEl = document.getElementById('sac-total-pendentes');
   if (totalEl) totalEl.textContent = total + ' pendente' + (total === 1 ? '' : 's');
+  // Busca itens em segundo plano pros tickets que ainda não têm (ex.: criados antes dessa função existir)
+  lista.filter(t => t.itens === undefined).forEach(t => sacCarregarItens(t.id, t.pedido));
 }
 
 // ── Retorno (Troca) ───────────────────────────────────────────────────────────
