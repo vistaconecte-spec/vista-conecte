@@ -871,19 +871,19 @@ function estSalvar(cfg) {
   window._estSaveTimer = setTimeout(() => salvarNuvem('estorno', cfg), 900);
 }
 function estAdd() {
-  const cliente = (document.getElementById('est-cliente').value || '').trim();
-  const pecas   = (document.getElementById('est-pecas').value || '').trim();
-  const valor   = parseFloat((document.getElementById('est-valor').value || '0').replace(',', '.')) || 0;
-  const codigo  = (document.getElementById('est-codigo').value || '').trim();
-  const data    = (document.getElementById('est-data').value || '').trim();
-  const motivo  = (document.getElementById('est-motivo').value || '').trim();
+  const cliente = (document.getElementById('atd-est-cliente').value || '').trim();
+  const pecas   = (document.getElementById('atd-est-pecas').value || '').trim();
+  const valor   = parseFloat((document.getElementById('atd-est-valor').value || '0').replace(',', '.')) || 0;
+  const codigo  = (document.getElementById('atd-est-codigo').value || '').trim();
+  const data    = (document.getElementById('atd-est-data').value || '').trim();
+  const motivo  = (document.getElementById('atd-est-motivo').value || '').trim();
   if (!cliente || !pecas) { alert('Preencha ao menos o cliente e as peças.'); return; }
   const cfg = estGetConfig();
   cfg.itens.push({ id: 'est' + Date.now(), cliente, pecas, valor, codigo_devolucao: codigo, data, motivo, criado_em: new Date().toISOString() });
   estSalvar(cfg);
   estRender();
-  ['est-cliente', 'est-pecas', 'est-valor', 'est-codigo', 'est-data', 'est-motivo'].forEach(id => document.getElementById(id).value = '');
-  document.getElementById('est-cliente').focus();
+  ['atd-est-cliente', 'atd-est-pecas', 'atd-est-valor', 'atd-est-codigo', 'atd-est-data', 'atd-est-motivo'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('atd-est-cliente').focus();
 }
 function estEdit(id, campo, val) {
   const cfg = estGetConfig();
@@ -903,7 +903,7 @@ function estDel(id) {
 // Puxa da Shopify as devoluções solicitadas (ainda não processadas) e adiciona as que
 // ainda não estão na lista (não sobrescreve o que já foi editado manualmente).
 async function estSincronizarShopify() {
-  const statusEl = document.getElementById('est-sync-status');
+  const statusEl = document.getElementById('atd-est-sync-status');
   if (statusEl) statusEl.textContent = 'buscando devoluções na Shopify...';
   try {
     const res = await fetch('/api/shopify-devolucoes-pendentes');
@@ -946,10 +946,10 @@ function estRender() {
       <td style="padding:4px"><input value="${(t.motivo || '').replace(/"/g, '&quot;')}" oninput="estEdit('${t.id}','motivo',this.value)" style="width:140px;font-size:12px;padding:4px 6px;border:1px solid var(--border);border-radius:5px"></td>
       <td style="padding:4px;text-align:center"><button onclick="estDel('${t.id}')" title="excluir" style="background:none;border:none;cursor:pointer;color:var(--text-ter);font-size:15px">×</button></td>
     </tr>`).join('');
-  document.getElementById('est-tbody').innerHTML = rows ||
+  document.getElementById('atd-est-tbody').innerHTML = rows ||
     '<tr><td colspan="7" style="text-align:center;color:var(--text-ter);font-size:12px;padding:12px">Nenhum registro de devolução.</td></tr>';
   const total = cfg.itens.reduce((s, t) => s + (t.valor || 0), 0);
-  const totalEl = document.getElementById('est-total-valor');
+  const totalEl = document.getElementById('atd-est-total-valor');
   if (totalEl) totalEl.textContent = 'R$ ' + total.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
