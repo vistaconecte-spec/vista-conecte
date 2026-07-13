@@ -20,7 +20,12 @@ export async function onRequest(context) {
       method: 'POST',
       headers: { 'X-Shopify-Access-Token': token, 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        query: `query($tipo: String!) { __type(name: $tipo) { name kind enumValues { name description } inputFields { name type { name kind ofType { name } } } } }`,
+        query: `query($tipo: String!) { __type(name: $tipo) {
+          name kind
+          enumValues { name description }
+          inputFields { name type { name kind ofType { name } } }
+          fields { name description args { name type { name kind ofType { name } } } type { name kind ofType { name kind ofType { name } } } }
+        } }`,
         variables: { tipo },
       }),
     });
