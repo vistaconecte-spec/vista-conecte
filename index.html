@@ -598,10 +598,12 @@
                   <label style="display:flex;align-items:center;gap:4px;cursor:pointer"><input type="checkbox" id="sac-mostrar-resolvidos" onchange="sacRender()"> mostrar resolvidos</label>
                 </div>
               </div>
-              <table style="width:100%;font-size:12px">
+              <div style="overflow-x:auto">
+              <table style="width:100%;font-size:12px;min-width:600px">
                 <thead><tr style="color:var(--text-ter);font-size:11px;text-transform:uppercase"><th style="padding:4px;width:32px">ok</th><th style="text-align:left;padding:4px">Pedido</th><th style="text-align:left;padding:4px">Motivo</th><th style="text-align:left;padding:4px">Itens</th><th style="text-align:left;padding:4px">Rastreio</th><th style="width:28px"></th></tr></thead>
                 <tbody id="sac-tbody"></tbody>
               </table>
+              </div>
             </div>
             <div class="card" style="margin-top:14px">
               <div class="card-header">
@@ -634,10 +636,12 @@
                   <label style="display:flex;align-items:center;gap:4px;cursor:pointer"><input type="checkbox" id="ret-mostrar-resolvidos" onchange="retRender()"> mostrar resolvidos</label>
                 </div>
               </div>
-              <table style="width:100%;font-size:12px">
+              <div style="overflow-x:auto">
+              <table style="width:100%;font-size:12px;min-width:700px">
                 <thead><tr style="color:var(--text-ter);font-size:11px;text-transform:uppercase"><th style="padding:4px;width:32px">ok</th><th style="text-align:left;padding:4px">Cliente</th><th style="text-align:left;padding:4px">Data</th><th style="text-align:left;padding:4px">Produtos</th><th style="text-align:left;padding:4px">OBS</th><th style="text-align:left;padding:4px">Cód. reenvio</th><th style="width:28px"></th></tr></thead>
                 <tbody id="ret-tbody"></tbody>
               </table>
+              </div>
             </div>
           </div>
 
@@ -663,10 +667,12 @@
                   <span id="atd-est-total-valor" style="font-size:12px;font-weight:700;color:var(--gold-dark)"></span>
                 </div>
               </div>
-              <table style="width:100%;font-size:12px">
+              <div style="overflow-x:auto">
+              <table style="width:100%;font-size:12px;min-width:700px">
                 <thead><tr style="color:var(--text-ter);font-size:11px;text-transform:uppercase"><th style="text-align:left;padding:4px">Cliente</th><th style="text-align:left;padding:4px">Peças</th><th style="text-align:right;padding:4px">Valor</th><th style="text-align:left;padding:4px">Cód. devolução</th><th style="text-align:left;padding:4px">Data</th><th style="text-align:left;padding:4px">Motivo</th><th style="width:28px"></th></tr></thead>
                 <tbody id="atd-est-tbody"></tbody>
               </table>
+              </div>
             </div>
           </div>
         </div>
@@ -674,8 +680,8 @@
     </div>
   </div>
 </div>
-<script src="data.js?v=2026071308"></script>
-<script src="main.js?v=2026071308"></script>
+<script src="data.js?v=2026071309"></script>
+<script src="main.js?v=2026071309"></script>
 <script async src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js" onload="initSupabase()"></script>
 </body>
 </html>
