@@ -603,7 +603,7 @@ function abrirAtendimento(item) {
   document.getElementById('tabs-modelo').style.display = 'none';
   document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
   document.getElementById('panel-atendimento').classList.add('active');
-  document.body.classList.remove('precos-mode');
+  document.body.classList.add('precos-mode'); // esconde menu lateral p/ tela ampliada, igual Precificação
   const ok = sessionStorage.getItem('fin-ok') === '1';
   document.getElementById('atd-gate').style.display = ok ? 'none' : '';
   document.getElementById('atd-content').style.display = ok ? '' : 'none';
