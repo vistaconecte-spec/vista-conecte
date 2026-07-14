@@ -688,15 +688,15 @@ function sacBuscarPedido() {
   }, 500);
 }
 
-// Monta "Itens faltando" (coluna Expedição) a partir das peças marcadas na prévia do pedido.
+// Monta "Informação da expedição" a partir das peças marcadas como faltando na prévia do pedido.
 function sacFaltanteToggle() {
   const marcados = Array.from(document.querySelectorAll('[data-sac-faltante]:checked'))
     .map(el => window._sacItensAtuais[parseInt(el.dataset.sacFaltante)])
     .filter(Boolean);
-  const faltantesEl = document.getElementById('sac-itens-faltantes');
-  if (!faltantesEl) return;
-  if (marcados.length === 0) { faltantesEl.value = ''; return; }
-  faltantesEl.value = marcados.map(i => `${i.titulo}${i.variante ? ' (' + i.variante + ')' : ''}`).join(', ');
+  const infoEl = document.getElementById('sac-info-expedicao');
+  if (!infoEl) return;
+  if (marcados.length === 0) { infoEl.value = ''; return; }
+  infoEl.value = 'Faltando: ' + marcados.map(i => `${i.titulo}${i.variante ? ' (' + i.variante + ')' : ''}`).join(', ');
 }
 function sacSalvar(cfg) {
   cfg.updated_at = new Date().toISOString();
@@ -708,19 +708,18 @@ function sacAdd() {
   const pedido = (document.getElementById('sac-pedido').value || '').trim();
   const caso = (document.getElementById('sac-caso').value || '').trim();
   const infoExpedicao = (document.getElementById('sac-info-expedicao').value || '').trim();
-  const itensFaltantes = (document.getElementById('sac-itens-faltantes').value || '').trim();
   const rastreio = (document.getElementById('sac-rastreio').value || '').trim();
   if (!pedido || !caso) { alert('Preencha ao menos o nº do pedido e a informação do caso.'); return; }
   const cfg = sacGetConfig();
   const novo = {
-    id: 'sac' + Date.now(), pedido, caso, info_expedicao: infoExpedicao, itens_faltantes: itensFaltantes,
+    id: 'sac' + Date.now(), pedido, caso, info_expedicao: infoExpedicao,
     rastreio, status: 'pendente', criado_em: new Date().toISOString(),
   };
   cfg.tickets.push(novo);
   sacSalvar(cfg);
   sacRender();
   sacCarregarItens(novo.id, pedido); // busca itens/cliente em segundo plano
-  ['sac-pedido', 'sac-caso', 'sac-info-expedicao', 'sac-itens-faltantes', 'sac-rastreio'].forEach(id => document.getElementById(id).value = '');
+  ['sac-pedido', 'sac-caso', 'sac-info-expedicao', 'sac-rastreio'].forEach(id => document.getElementById(id).value = '');
   document.getElementById('sac-pedido-preview').style.display = 'none';
   document.getElementById('sac-pedido').focus();
 }
@@ -782,13 +781,12 @@ function sacRender() {
       <td style="padding:4px;text-align:center;vertical-align:middle"><input type="checkbox" ${t.status === 'resolvido' ? 'checked' : ''} onchange="sacToggle('${t.id}')" title="marcar como resolvido"></td>
       <td style="padding:4px;width:100px;max-width:100px;font-weight:700;white-space:nowrap;text-align:left;vertical-align:middle" title="Itens do pedido: ${esc(itensPlano(t))}">${t.pedido}${t.cliente ? `<div style="font-weight:400;font-size:11px;color:var(--text-ter);overflow:hidden;text-overflow:ellipsis">${t.cliente}</div>` : ''}</td>
       <td style="padding:4px;vertical-align:middle"><input value="${esc(t.caso !== undefined ? t.caso : t.motivo)}" oninput="sacEdit('${t.id}','caso',this.value)" style="width:100%;min-width:180px;font-size:12px;padding:4px 6px;border:1px solid var(--border);border-radius:5px;${t.status === 'resolvido' ? 'text-decoration:line-through' : ''}"></td>
-      <td style="padding:4px;vertical-align:middle"><input value="${esc(t.info_expedicao)}" oninput="sacEdit('${t.id}','info_expedicao',this.value)" style="width:100%;min-width:150px;font-size:12px;padding:4px 6px;border:1px solid var(--border);border-radius:5px"></td>
-      <td style="padding:4px;vertical-align:middle"><input value="${esc(t.itens_faltantes)}" oninput="sacEdit('${t.id}','itens_faltantes',this.value)" style="width:100%;min-width:190px;font-size:12px;padding:4px 6px;border:1px solid var(--border);border-radius:5px"></td>
+      <td style="padding:4px;vertical-align:middle"><input value="${esc(t.info_expedicao || t.itens_faltantes)}" oninput="sacEdit('${t.id}','info_expedicao',this.value)" style="width:100%;min-width:220px;font-size:12px;padding:4px 6px;border:1px solid var(--border);border-radius:5px"></td>
       <td style="padding:4px;vertical-align:middle"><input value="${esc(t.rastreio)}" oninput="sacEdit('${t.id}','rastreio',this.value)" style="width:130px;font-size:12px;padding:4px 6px;border:1px solid var(--border);border-radius:5px"></td>
       <td style="padding:4px;text-align:center;vertical-align:middle"><button onclick="sacDel('${t.id}')" title="excluir" style="background:none;border:none;cursor:pointer;color:var(--text-ter);font-size:15px">×</button></td>
     </tr>`).join('');
   document.getElementById('sac-tbody').innerHTML = rows ||
-    '<tr><td colspan="7" style="text-align:center;color:var(--text-ter);font-size:12px;padding:12px">Nenhum ticket ' + (mostrarResolvidos ? '' : 'pendente') + '.</td></tr>';
+    '<tr><td colspan="6" style="text-align:center;color:var(--text-ter);font-size:12px;padding:12px">Nenhum ticket ' + (mostrarResolvidos ? '' : 'pendente') + '.</td></tr>';
   const total = cfg.tickets.filter(t => t.status !== 'resolvido').length;
   const totalEl = document.getElementById('sac-total-pendentes');
   if (totalEl) totalEl.textContent = total + ' pendente' + (total === 1 ? '' : 's');

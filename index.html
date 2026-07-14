@@ -590,8 +590,7 @@
                 </div>
                 <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding:8px 10px;background:#eef3f2;border-radius:8px">
                   <span style="font-size:9px;font-weight:800;letter-spacing:0.08em;color:#5a8a80;text-transform:uppercase;width:100%">Expedição</span>
-                  <input id="sac-info-expedicao" placeholder="Informação da expedição" style="width:180px;font-size:12px;padding:7px 10px;border:1px solid var(--border);border-radius:6px">
-                  <input id="sac-itens-faltantes" placeholder="Itens faltando" style="width:220px;font-size:12px;padding:7px 10px;border:1px solid var(--border);border-radius:6px">
+                  <input id="sac-info-expedicao" placeholder="Informação da expedição (ou marque os itens faltando acima)" style="width:320px;font-size:12px;padding:7px 10px;border:1px solid var(--border);border-radius:6px">
                   <input id="sac-rastreio" placeholder="Rastreio (opcional)" style="width:150px;font-size:12px;padding:7px 10px;border:1px solid var(--border);border-radius:6px" onkeydown="if(event.key==='Enter')sacAdd()">
                 </div>
                 <button class="btn-primary" style="font-size:12px;padding:7px 14px;align-self:center" onclick="sacAdd()"><i class="ti ti-plus"></i> Adicionar</button>
@@ -607,20 +606,19 @@
                 </div>
               </div>
               <div style="overflow-x:auto">
-              <table style="width:100%;font-size:12px;min-width:1000px;table-layout:fixed">
-                <colgroup><col style="width:32px"><col style="width:110px"><col style="width:220px"><col style="width:180px"><col style="width:220px"><col style="width:130px"><col style="width:28px"></colgroup>
+              <table style="width:100%;font-size:12px;min-width:900px;table-layout:fixed">
+                <colgroup><col style="width:32px"><col style="width:110px"><col style="width:260px"><col style="width:340px"><col style="width:130px"><col style="width:28px"></colgroup>
                 <thead>
                   <tr style="color:var(--text-ter);font-size:10px;text-transform:uppercase">
                     <th></th>
                     <th colspan="2" style="text-align:left;padding:4px 4px 2px;color:#9a8870;border-bottom:2px solid #C4A882">SAC</th>
-                    <th colspan="4" style="text-align:left;padding:4px 4px 2px;color:#5a8a80;border-bottom:2px solid #7fb0a3">Expedição</th>
+                    <th colspan="3" style="text-align:left;padding:4px 4px 2px;color:#5a8a80;border-bottom:2px solid #7fb0a3">Expedição</th>
                   </tr>
                   <tr style="color:var(--text-ter);font-size:11px;text-transform:uppercase">
                     <th style="padding:4px">ok</th>
                     <th style="text-align:left;padding:4px">Pedido</th>
                     <th style="text-align:left;padding:4px">Caso</th>
                     <th style="text-align:left;padding:4px">Info expedição</th>
-                    <th style="text-align:left;padding:4px">Itens faltando</th>
                     <th style="text-align:center;padding:4px">Rastreio</th>
                     <th></th>
                   </tr>
@@ -704,8 +702,8 @@
     </div>
   </div>
 </div>
-<script src="data.js?v=2026071316"></script>
-<script src="main.js?v=2026071316"></script>
+<script src="data.js?v=2026071317"></script>
+<script src="main.js?v=2026071317"></script>
 <script async src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js" onload="initSupabase()"></script>
 </body>
 </html>
