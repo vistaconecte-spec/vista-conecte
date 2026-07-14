@@ -628,6 +628,8 @@
               <div class="card-header">
                 <div class="card-title"><i class="ti ti-replace"></i> Trocas / Reenvios</div>
                 <div style="display:flex;align-items:center;gap:10px;font-size:11px;color:var(--text-sec)">
+                  <span id="atd-ret-sync-status"></span>
+                  <button class="btn-outline" style="font-size:10px;padding:4px 8px" onclick="retSincronizarShopify()"><i class="ti ti-refresh"></i> Shopify</button>
                   <span id="ret-total-pendentes"></span>
                   <label style="display:flex;align-items:center;gap:4px;cursor:pointer"><input type="checkbox" id="ret-mostrar-resolvidos" onchange="retRender()"> mostrar resolvidos</label>
                 </div>
@@ -672,8 +674,8 @@
     </div>
   </div>
 </div>
-<script src="data.js?v=2026071306"></script>
-<script src="main.js?v=2026071306"></script>
+<script src="data.js?v=2026071307"></script>
+<script src="main.js?v=2026071307"></script>
 <script async src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js" onload="initSupabase()"></script>
 </body>
 </html>

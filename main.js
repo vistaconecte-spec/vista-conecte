@@ -639,7 +639,7 @@ function atdShowSub(sub) {
     if (pill) pill.classList.toggle('active', s === sub);
   });
   if (sub === 'sac') sacRender();
-  else if (sub === 'retorno') retRender();
+  else if (sub === 'retorno') { retRender(); retSincronizarShopify(); }
   else if (sub === 'estorno') { estRender(); estSincronizarShopify(); }
 }
 
@@ -836,6 +836,40 @@ function retDel(id) {
   cfg.itens = cfg.itens.filter(x => x.id !== id);
   retSalvar(cfg);
   retRender();
+}
+
+// Puxa da Shopify as trocas solicitadas (devolução com exchangeLineItems — cliente pediu
+// outra peça em vez do dinheiro) e adiciona as que ainda não estão na lista.
+async function retSincronizarShopify() {
+  const statusEl = document.getElementById('atd-ret-sync-status');
+  if (statusEl) statusEl.textContent = 'buscando trocas na Shopify...';
+  try {
+    const res = await fetch('/api/shopify-devolucoes-pendentes');
+    const d = await res.json();
+    if (!d.trocas) { if (statusEl) statusEl.textContent = 'erro ao buscar trocas da Shopify'; return; }
+    const cfg = retGetConfig();
+    const existentes = new Set(cfg.itens.map(t => t.shopify_id).filter(Boolean));
+    let novos = 0;
+    d.trocas.forEach(tr => {
+      if (existentes.has(tr.id)) return; // já importado antes — não duplica nem sobrescreve
+      cfg.itens.push({
+        id: 'ret' + Date.now() + Math.random().toString(36).slice(2, 6),
+        shopify_id: tr.id,
+        cliente: tr.cliente || '',
+        data: tr.data ? new Date(tr.data).toLocaleDateString('pt-BR') : '',
+        produtos: `${tr.produtos} → troca por ${tr.troca_por}`,
+        obs: `Pedido ${tr.pedido}${tr.motivo ? ' — ' + tr.motivo : ''}`,
+        codigo_reenvio: '',
+        status: 'pendente',
+        criado_em: new Date().toISOString(),
+      });
+      novos++;
+    });
+    if (novos > 0) { retSalvar(cfg); retRender(); }
+    if (statusEl) statusEl.textContent = novos > 0 ? `${novos} troca${novos > 1 ? 's' : ''} nova${novos > 1 ? 's' : ''} importada${novos > 1 ? 's' : ''} da Shopify` : 'sincronizado — nenhuma troca nova';
+  } catch (e) {
+    if (statusEl) statusEl.textContent = 'erro ao buscar trocas da Shopify';
+  }
 }
 function retRender() {
   const cfg = retGetConfig();
