@@ -662,12 +662,7 @@ function sacBuscarPedido() {
       const d = await res.json();
       if (document.getElementById('sac-pedido').value.trim() !== numero) return; // digitou algo novo enquanto buscava
       if (!d.encontrado) { preview.innerHTML = '<span style="color:var(--text-ter)">Pedido não encontrado.</span>'; return; }
-      window._sacItensAtuais = d.itens || []; // usado pelo checkbox de "faltando"
-      const itensHtml = (d.itens || []).map((i, idx) => `
-        <label style="display:flex;align-items:center;gap:5px;cursor:pointer;padding:2px 0">
-          <input type="checkbox" onchange="sacFaltanteToggle()" data-sac-faltante="${idx}">
-          ${i.qtd}× ${i.titulo}${i.variante ? ' (' + i.variante + ')' : ''}
-        </label>`).join('');
+      const itensTxt = (d.itens || []).map(i => `${i.qtd}× ${i.titulo}${i.variante ? ' (' + i.variante + ')' : ''}`).join(', ');
       const statusCor = d.cancelado ? '#dc2626' : (d.status_financeiro === 'paid' ? '#16a34a' : '#b45309');
       preview.innerHTML = `
         <div style="display:flex;flex-wrap:wrap;gap:6px 16px;align-items:baseline">
@@ -677,8 +672,7 @@ function sacBuscarPedido() {
           <span style="color:var(--text-ter)">${d.status_envio === 'fulfilled' ? 'enviado' : d.status_envio === 'partial' ? 'parcialmente enviado' : 'não enviado'}</span>
           ${d.rastreio ? `<span style="color:var(--text-ter)">rastreio: ${d.rastreio}</span>` : ''}
         </div>
-        <div style="margin-top:4px">${itensHtml || '<span style="color:var(--text-ter)">(sem itens)</span>'}</div>
-        ${(d.itens || []).length ? '<div style="font-size:11px;color:var(--text-ter);margin-top:2px">marque as peças que estão faltando pra preencher o motivo sozinho</div>' : ''}`;
+        <div style="margin-top:4px;color:var(--text-ter)">${itensTxt || '(sem itens)'}</div>`;
       // Preenche o rastreio automaticamente se o campo ainda estiver vazio
       const rastreioEl = document.getElementById('sac-rastreio');
       if (d.rastreio && rastreioEl && !rastreioEl.value) rastreioEl.value = d.rastreio;
@@ -688,16 +682,6 @@ function sacBuscarPedido() {
   }, 500);
 }
 
-// Monta "Informação da expedição" a partir das peças marcadas como faltando na prévia do pedido.
-function sacFaltanteToggle() {
-  const marcados = Array.from(document.querySelectorAll('[data-sac-faltante]:checked'))
-    .map(el => window._sacItensAtuais[parseInt(el.dataset.sacFaltante)])
-    .filter(Boolean);
-  const infoEl = document.getElementById('sac-info-expedicao');
-  if (!infoEl) return;
-  if (marcados.length === 0) { infoEl.value = ''; return; }
-  infoEl.value = 'Faltando: ' + marcados.map(i => `${i.titulo}${i.variante ? ' (' + i.variante + ')' : ''}`).join(', ');
-}
 function sacSalvar(cfg) {
   cfg.updated_at = new Date().toISOString();
   saveLocal('vc:sac', cfg);
@@ -707,19 +691,18 @@ function sacSalvar(cfg) {
 function sacAdd() {
   const pedido = (document.getElementById('sac-pedido').value || '').trim();
   const caso = (document.getElementById('sac-caso').value || '').trim();
-  const infoExpedicao = (document.getElementById('sac-info-expedicao').value || '').trim();
   const rastreio = (document.getElementById('sac-rastreio').value || '').trim();
   if (!pedido || !caso) { alert('Preencha ao menos o nº do pedido e a informação do caso.'); return; }
   const cfg = sacGetConfig();
   const novo = {
-    id: 'sac' + Date.now(), pedido, caso, info_expedicao: infoExpedicao,
+    id: 'sac' + Date.now(), pedido, caso, info_expedicao: '',
     rastreio, status: 'pendente', criado_em: new Date().toISOString(),
   };
   cfg.tickets.push(novo);
   sacSalvar(cfg);
   sacRender();
   sacCarregarItens(novo.id, pedido); // busca itens/cliente em segundo plano
-  ['sac-pedido', 'sac-caso', 'sac-info-expedicao', 'sac-rastreio'].forEach(id => document.getElementById(id).value = '');
+  ['sac-pedido', 'sac-caso', 'sac-rastreio'].forEach(id => document.getElementById(id).value = '');
   document.getElementById('sac-pedido-preview').style.display = 'none';
   document.getElementById('sac-pedido').focus();
 }

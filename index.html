@@ -586,11 +586,10 @@
                 <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding:8px 10px;background:#f5f0e8;border-radius:8px">
                   <span style="font-size:9px;font-weight:800;letter-spacing:0.08em;color:#9a8870;text-transform:uppercase;width:100%">SAC</span>
                   <input id="sac-pedido" placeholder="Nº do pedido" style="width:110px;font-size:12px;padding:7px 10px;border:1px solid var(--border);border-radius:6px" oninput="sacBuscarPedido()" onkeydown="if(event.key==='Enter')document.getElementById('sac-caso').focus()">
-                  <input id="sac-caso" placeholder="Informação do caso" style="width:220px;font-size:12px;padding:7px 10px;border:1px solid var(--border);border-radius:6px" onkeydown="if(event.key==='Enter')document.getElementById('sac-info-expedicao').focus()">
+                  <input id="sac-caso" placeholder="Informação do caso" style="width:220px;font-size:12px;padding:7px 10px;border:1px solid var(--border);border-radius:6px" onkeydown="if(event.key==='Enter')document.getElementById('sac-rastreio').focus()">
                 </div>
                 <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding:8px 10px;background:#eef3f2;border-radius:8px">
                   <span style="font-size:9px;font-weight:800;letter-spacing:0.08em;color:#5a8a80;text-transform:uppercase;width:100%">Expedição</span>
-                  <input id="sac-info-expedicao" placeholder="Informação da expedição (ou marque os itens faltando acima)" style="width:320px;font-size:12px;padding:7px 10px;border:1px solid var(--border);border-radius:6px">
                   <input id="sac-rastreio" placeholder="Rastreio (opcional)" style="width:150px;font-size:12px;padding:7px 10px;border:1px solid var(--border);border-radius:6px" onkeydown="if(event.key==='Enter')sacAdd()">
                 </div>
                 <button class="btn-primary" style="font-size:12px;padding:7px 14px;align-self:center" onclick="sacAdd()"><i class="ti ti-plus"></i> Adicionar</button>
@@ -703,8 +702,8 @@
     </div>
   </div>
 </div>
-<script src="data.js?v=2026071501"></script>
-<script src="main.js?v=2026071501"></script>
+<script src="data.js?v=2026071502"></script>
+<script src="main.js?v=2026071502"></script>
 <script async src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js" onload="initSupabase()"></script>
 </body>
 </html>
