@@ -739,11 +739,61 @@ async function sacCarregarItens(id, pedido) {
     t.itens_busca_em = new Date().toISOString();
     sacSalvar(cfg);
     sacRender();
+    // Se o popup de seleção estava aberto pra esse ticket esperando os itens carregarem, atualiza com a lista.
+    const popup = document.getElementById('sac-linha-itens-popup');
+    if (popup && popup.dataset.ticketId === id && popup.style.display !== 'none') {
+      const inputEl = document.querySelector(`[data-sac-info-id="${id}"]`);
+      if (inputEl) sacMostrarItensLinha(id, inputEl);
+    }
   } catch (e) {
   } finally {
     _sacBuscandoItens.delete(id);
   }
 }
+
+// Ao focar o campo "Info expedição" de um ticket já criado, mostra um popup com os itens
+// do pedido (checkbox) pra marcar o que está faltando, igual ao formulário do topo.
+function sacMostrarItensLinha(id, inputEl) {
+  const cfg = sacGetConfig();
+  const t = cfg.tickets.find(x => x.id === id); if (!t) return;
+  const popup = document.getElementById('sac-linha-itens-popup');
+  if (!popup) return;
+  popup.dataset.ticketId = id;
+  if (!t.itens || !t.itens.length) {
+    popup.innerHTML = '<div style="padding:8px 10px;font-size:12px;color:var(--text-ter)">buscando itens do pedido...</div>';
+    sacCarregarItens(id, t.pedido);
+  } else {
+    const itensHtml = t.itens.map((i, idx) => `
+      <label style="display:flex;align-items:center;gap:5px;cursor:pointer;padding:3px 4px;font-size:12px;white-space:nowrap">
+        <input type="checkbox" onchange="sacLinhaFaltanteToggle('${id}')" data-sac-linha-idx="${idx}">
+        ${i.qtd}× ${i.titulo}${i.variante ? ' (' + i.variante + ')' : ''}
+      </label>`).join('');
+    popup.innerHTML = `<div style="font-size:10px;font-weight:700;color:var(--text-ter);padding:4px 4px 2px;text-transform:uppercase">marque o que está faltando</div>${itensHtml}`;
+  }
+  const r = inputEl.getBoundingClientRect();
+  popup.style.left = Math.round(r.left) + 'px';
+  popup.style.top = Math.round(r.bottom + 4) + 'px';
+  popup.style.width = Math.max(r.width, 220) + 'px';
+  popup.style.display = 'block';
+}
+function sacLinhaFaltanteToggle(id) {
+  const popup = document.getElementById('sac-linha-itens-popup');
+  const cfg = sacGetConfig();
+  const t = cfg.tickets.find(x => x.id === id); if (!t || !popup) return;
+  const marcados = Array.from(popup.querySelectorAll('[data-sac-linha-idx]:checked'))
+    .map(el => t.itens[parseInt(el.dataset.sacLinhaIdx)])
+    .filter(Boolean);
+  const texto = marcados.length ? 'Faltando: ' + marcados.map(i => `${i.titulo}${i.variante ? ' (' + i.variante + ')' : ''}`).join(', ') : '';
+  const inputEl = document.querySelector(`[data-sac-info-id="${id}"]`);
+  if (inputEl) inputEl.value = texto;
+  sacEdit(id, 'info_expedicao', texto);
+}
+document.addEventListener('click', (e) => {
+  const popup = document.getElementById('sac-linha-itens-popup');
+  if (!popup || popup.style.display === 'none') return;
+  if (e.target.closest('#sac-linha-itens-popup') || e.target.closest('[data-sac-info-id]')) return;
+  popup.style.display = 'none';
+});
 function sacToggle(id) {
   const cfg = sacGetConfig();
   const t = cfg.tickets.find(x => x.id === id); if (!t) return;
@@ -781,7 +831,7 @@ function sacRender() {
       <td style="padding:4px;text-align:center;vertical-align:middle"><input type="checkbox" ${t.status === 'resolvido' ? 'checked' : ''} onchange="sacToggle('${t.id}')" title="marcar como resolvido"></td>
       <td style="padding:4px;width:100px;max-width:100px;font-weight:700;white-space:nowrap;text-align:left;vertical-align:middle" title="Itens do pedido: ${esc(itensPlano(t))}">${t.pedido}${t.cliente ? `<div style="font-weight:400;font-size:11px;color:var(--text-ter);overflow:hidden;text-overflow:ellipsis">${t.cliente}</div>` : ''}</td>
       <td style="padding:4px;vertical-align:middle"><input value="${esc(t.caso !== undefined ? t.caso : t.motivo)}" oninput="sacEdit('${t.id}','caso',this.value)" style="width:100%;min-width:180px;font-size:12px;padding:4px 6px;border:1px solid var(--border);border-radius:5px;${t.status === 'resolvido' ? 'text-decoration:line-through' : ''}"></td>
-      <td style="padding:4px;vertical-align:middle"><input value="${esc(t.info_expedicao || t.itens_faltantes)}" oninput="sacEdit('${t.id}','info_expedicao',this.value)" style="width:100%;min-width:220px;font-size:12px;padding:4px 6px;border:1px solid var(--border);border-radius:5px"></td>
+      <td style="padding:4px;vertical-align:middle"><input value="${esc(t.info_expedicao || t.itens_faltantes)}" data-sac-info-id="${t.id}" oninput="sacEdit('${t.id}','info_expedicao',this.value)" onfocus="sacMostrarItensLinha('${t.id}', this)" style="width:100%;min-width:220px;font-size:12px;padding:4px 6px;border:1px solid var(--border);border-radius:5px"></td>
       <td style="padding:4px;vertical-align:middle"><input value="${esc(t.rastreio)}" oninput="sacEdit('${t.id}','rastreio',this.value)" style="width:130px;font-size:12px;padding:4px 6px;border:1px solid var(--border);border-radius:5px"></td>
       <td style="padding:4px;text-align:center;vertical-align:middle"><button onclick="sacDel('${t.id}')" title="excluir" style="background:none;border:none;cursor:pointer;color:var(--text-ter);font-size:15px">×</button></td>
     </tr>`).join('');
