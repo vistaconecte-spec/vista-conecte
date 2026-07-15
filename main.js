@@ -837,7 +837,52 @@ function retSalvar(cfg) {
   clearTimeout(window._retSaveTimer);
   window._retSaveTimer = setTimeout(() => salvarNuvem('retorno', cfg), 900);
 }
+// Busca o pedido na Shopify (debounced) e mostra os itens com checkbox pra marcar o(s) que está(ão) na troca.
+function retBuscarPedido() {
+  const numero = (document.getElementById('ret-pedido').value || '').trim();
+  const preview = document.getElementById('ret-pedido-preview');
+  clearTimeout(window._retBuscaTimer);
+  if (!numero) { preview.style.display = 'none'; preview.innerHTML = ''; return; }
+  window._retBuscaTimer = setTimeout(async () => {
+    preview.style.display = '';
+    preview.innerHTML = 'buscando pedido...';
+    try {
+      const res = await fetch(`/api/shopify-pedido-lookup?numero=${encodeURIComponent(numero)}`);
+      const d = await res.json();
+      if (document.getElementById('ret-pedido').value.trim() !== numero) return;
+      if (!d.encontrado) { preview.innerHTML = '<span style="color:var(--text-ter)">Pedido não encontrado.</span>'; return; }
+      window._retItensAtuais = d.itens || [];
+      const itensHtml = (d.itens || []).map((i, idx) => `
+        <label style="display:flex;align-items:center;gap:5px;cursor:pointer;padding:2px 0">
+          <input type="checkbox" onchange="retTrocaToggle()" data-ret-troca="${idx}">
+          ${i.qtd}× ${i.titulo}${i.variante ? ' (' + i.variante + ')' : ''}
+        </label>`).join('');
+      preview.innerHTML = `
+        <div style="display:flex;flex-wrap:wrap;gap:6px 16px;align-items:baseline">
+          <strong>${d.numero}</strong>
+          <span>${d.cliente || '(sem nome)'}</span>
+        </div>
+        <div style="margin-top:4px">${itensHtml || '<span style="color:var(--text-ter)">(sem itens)</span>'}</div>
+        ${(d.itens || []).length ? '<div style="font-size:11px;color:var(--text-ter);margin-top:2px">marque a(s) peça(s) que fazem parte da troca</div>' : ''}`;
+      const clienteEl = document.getElementById('ret-cliente');
+      if (d.cliente && clienteEl && !clienteEl.value) clienteEl.value = d.cliente;
+    } catch (e) {
+      preview.innerHTML = '<span style="color:#dc2626">Erro ao buscar pedido.</span>';
+    }
+  }, 500);
+}
+// Monta "Produtos" a partir das peças marcadas na prévia do pedido.
+function retTrocaToggle() {
+  const marcados = Array.from(document.querySelectorAll('[data-ret-troca]:checked'))
+    .map(el => window._retItensAtuais[parseInt(el.dataset.retTroca)])
+    .filter(Boolean);
+  const produtosEl = document.getElementById('ret-produtos');
+  if (!produtosEl) return;
+  if (marcados.length === 0) { produtosEl.value = ''; return; }
+  produtosEl.value = marcados.map(i => `${i.titulo}${i.variante ? ' (' + i.variante + ')' : ''}`).join(', ');
+}
 function retAdd() {
+  const pedido   = (document.getElementById('ret-pedido').value || '').trim();
   const cliente  = (document.getElementById('ret-cliente').value || '').trim();
   const data     = (document.getElementById('ret-data').value || '').trim();
   const produtos = (document.getElementById('ret-produtos').value || '').trim();
@@ -845,11 +890,12 @@ function retAdd() {
   const codigo   = (document.getElementById('ret-codigo').value || '').trim();
   if (!cliente || !produtos) { alert('Preencha ao menos o cliente e os produtos.'); return; }
   const cfg = retGetConfig();
-  cfg.itens.push({ id: 'ret' + Date.now(), cliente, data, produtos, obs, codigo_reenvio: codigo, status: 'pendente', criado_em: new Date().toISOString() });
+  cfg.itens.push({ id: 'ret' + Date.now(), pedido, cliente, data, produtos, obs, codigo_reenvio: codigo, status: 'pendente', criado_em: new Date().toISOString() });
   retSalvar(cfg);
   retRender();
-  ['ret-cliente', 'ret-data', 'ret-produtos', 'ret-obs', 'ret-codigo'].forEach(id => document.getElementById(id).value = '');
-  document.getElementById('ret-cliente').focus();
+  ['ret-pedido', 'ret-cliente', 'ret-data', 'ret-produtos', 'ret-obs', 'ret-codigo'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('ret-pedido-preview').style.display = 'none';
+  document.getElementById('ret-pedido').focus();
 }
 function retToggle(id) {
   const cfg = retGetConfig();
@@ -905,22 +951,33 @@ async function retSincronizarShopify() {
     if (statusEl) statusEl.textContent = 'erro ao buscar trocas da Shopify';
   }
 }
+const RET_TAMANHOS = ['PP', 'P', 'M', 'G', 'GG'];
 function retRender() {
   const cfg = retGetConfig();
   const mostrarResolvidos = document.getElementById('ret-mostrar-resolvidos')?.checked;
   const lista = cfg.itens
     .filter(t => mostrarResolvidos || t.status !== 'resolvido')
     .sort((a, b) => (b.criado_em || '').localeCompare(a.criado_em || ''));
-  const rows = lista.map(t => `
+  const esc = v => (v || '').replace(/"/g, '&quot;');
+  const rows = lista.map(t => {
+    const obsVal = t.obs || '';
+    const obsCustom = (obsVal && !RET_TAMANHOS.includes(obsVal)) ? `<option value="${esc(obsVal)}" selected>${esc(obsVal)}</option>` : '';
+    const obsOptions = RET_TAMANHOS.map(s => `<option value="${s}" ${obsVal === s ? 'selected' : ''}>${s}</option>`).join('');
+    return `
     <tr style="${t.status === 'resolvido' ? 'opacity:0.5' : ''}">
       <td style="padding:4px"><input type="checkbox" ${t.status === 'resolvido' ? 'checked' : ''} onchange="retToggle('${t.id}')" title="marcar como resolvido"></td>
-      <td style="padding:4px"><input value="${(t.cliente || '').replace(/"/g, '&quot;')}" oninput="retEdit('${t.id}','cliente',this.value)" style="width:150px;font-size:12px;padding:4px 6px;border:1px solid var(--border);border-radius:5px;${t.status === 'resolvido' ? 'text-decoration:line-through' : ''}"></td>
+      <td style="padding:4px"><input value="${esc(t.cliente)}" oninput="retEdit('${t.id}','cliente',this.value)" style="width:150px;font-size:12px;padding:4px 6px;border:1px solid var(--border);border-radius:5px;${t.status === 'resolvido' ? 'text-decoration:line-through' : ''}">${t.pedido ? `<div style="font-size:10px;color:var(--text-ter);margin-top:2px">pedido ${esc(t.pedido)}</div>` : ''}</td>
       <td style="padding:4px;white-space:nowrap">${t.data || ''}</td>
-      <td style="padding:4px"><input value="${(t.produtos || '').replace(/"/g, '&quot;')}" oninput="retEdit('${t.id}','produtos',this.value)" style="width:100%;min-width:180px;font-size:12px;padding:4px 6px;border:1px solid var(--border);border-radius:5px"></td>
-      <td style="padding:4px"><input value="${(t.obs || '').replace(/"/g, '&quot;')}" oninput="retEdit('${t.id}','obs',this.value)" style="width:120px;font-size:12px;padding:4px 6px;border:1px solid var(--border);border-radius:5px"></td>
-      <td style="padding:4px"><input value="${(t.codigo_reenvio || '').replace(/"/g, '&quot;')}" oninput="retEdit('${t.id}','codigo_reenvio',this.value)" style="width:130px;font-size:12px;padding:4px 6px;border:1px solid var(--border);border-radius:5px"></td>
+      <td style="padding:4px"><input value="${esc(t.produtos)}" oninput="retEdit('${t.id}','produtos',this.value)" style="width:100%;min-width:180px;font-size:12px;padding:4px 6px;border:1px solid var(--border);border-radius:5px"></td>
+      <td style="padding:4px"><select onchange="retEdit('${t.id}','obs',this.value)" style="width:80px;font-size:12px;padding:4px 6px;border:1px solid var(--border);border-radius:5px">
+        <option value="" ${!obsVal ? 'selected' : ''}>—</option>
+        ${obsCustom}
+        ${obsOptions}
+      </select></td>
+      <td style="padding:4px"><input value="${esc(t.codigo_reenvio)}" oninput="retEdit('${t.id}','codigo_reenvio',this.value)" style="width:130px;font-size:12px;padding:4px 6px;border:1px solid var(--border);border-radius:5px"></td>
       <td style="padding:4px;text-align:center"><button onclick="retDel('${t.id}')" title="excluir" style="background:none;border:none;cursor:pointer;color:var(--text-ter);font-size:15px">×</button></td>
-    </tr>`).join('');
+    </tr>`;
+  }).join('');
   document.getElementById('ret-tbody').innerHTML = rows ||
     '<tr><td colspan="7" style="text-align:center;color:var(--text-ter);font-size:12px;padding:12px">Nenhum registro ' + (mostrarResolvidos ? '' : 'pendente') + '.</td></tr>';
   const total = cfg.itens.filter(t => t.status !== 'resolvido').length;

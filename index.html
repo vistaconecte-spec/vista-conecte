@@ -640,13 +640,15 @@
           <div id="atd-sub-retorno" style="display:none">
             <div class="card" style="padding:14px 16px;margin-bottom:14px">
               <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-                <input id="ret-cliente" placeholder="Cliente" style="width:180px;font-size:12px;padding:7px 10px;border:1px solid var(--border);border-radius:6px">
+                <input id="ret-pedido" placeholder="Nº do pedido" style="width:110px;font-size:12px;padding:7px 10px;border:1px solid var(--border);border-radius:6px" oninput="retBuscarPedido()">
+                <input id="ret-cliente" placeholder="Cliente" style="width:160px;font-size:12px;padding:7px 10px;border:1px solid var(--border);border-radius:6px">
                 <input id="ret-data" placeholder="Data (ex.: 10/07)" style="width:110px;font-size:12px;padding:7px 10px;border:1px solid var(--border);border-radius:6px">
-                <input id="ret-produtos" placeholder="Produtos" style="flex:1;min-width:180px;font-size:12px;padding:7px 10px;border:1px solid var(--border);border-radius:6px">
+                <input id="ret-produtos" placeholder="Produtos (ou marque na prévia do pedido)" style="flex:1;min-width:200px;font-size:12px;padding:7px 10px;border:1px solid var(--border);border-radius:6px">
                 <input id="ret-obs" placeholder="OBS (opcional)" style="width:140px;font-size:12px;padding:7px 10px;border:1px solid var(--border);border-radius:6px">
                 <input id="ret-codigo" placeholder="Código de reenvio (opcional)" style="width:160px;font-size:12px;padding:7px 10px;border:1px solid var(--border);border-radius:6px" onkeydown="if(event.key==='Enter')retAdd()">
                 <button class="btn-primary" style="font-size:12px;padding:7px 14px" onclick="retAdd()"><i class="ti ti-plus"></i> Adicionar</button>
               </div>
+              <div id="ret-pedido-preview" style="display:none;margin-top:10px;padding:10px 12px;background:#f5f0e8;border-radius:8px;font-size:12px"></div>
             </div>
             <div class="card">
               <div class="card-header">
@@ -660,7 +662,7 @@
               </div>
               <div style="overflow-x:auto">
               <table style="width:100%;font-size:12px;min-width:700px">
-                <thead><tr style="color:var(--text-ter);font-size:11px;text-transform:uppercase"><th style="padding:4px;width:32px">ok</th><th style="text-align:left;padding:4px">Cliente</th><th style="text-align:left;padding:4px">Data</th><th style="text-align:left;padding:4px">Produtos</th><th style="text-align:left;padding:4px">OBS</th><th style="text-align:left;padding:4px">Cód. reenvio</th><th style="width:28px"></th></tr></thead>
+                <thead><tr style="color:var(--text-ter);font-size:11px;text-transform:uppercase"><th style="padding:4px;width:32px">ok</th><th style="text-align:left;padding:4px">Cliente</th><th style="text-align:left;padding:4px">Data</th><th style="text-align:left;padding:4px">Produtos</th><th style="text-align:left;padding:4px">Tamanho</th><th style="text-align:left;padding:4px">Cód. reenvio</th><th style="width:28px"></th></tr></thead>
                 <tbody id="ret-tbody"></tbody>
               </table>
               </div>
@@ -702,8 +704,8 @@
     </div>
   </div>
 </div>
-<script src="data.js?v=2026071502"></script>
-<script src="main.js?v=2026071502"></script>
+<script src="data.js?v=2026071503"></script>
+<script src="main.js?v=2026071503"></script>
 <script async src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js" onload="initSupabase()"></script>
 </body>
 </html>
