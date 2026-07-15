@@ -965,17 +965,17 @@ function retRender() {
     const obsOptions = RET_TAMANHOS.map(s => `<option value="${s}" ${obsVal === s ? 'selected' : ''}>${s}</option>`).join('');
     return `
     <tr style="${t.status === 'resolvido' ? 'opacity:0.5' : ''}">
-      <td style="padding:4px"><input type="checkbox" ${t.status === 'resolvido' ? 'checked' : ''} onchange="retToggle('${t.id}')" title="marcar como resolvido"></td>
-      <td style="padding:4px"><input value="${esc(t.cliente)}" oninput="retEdit('${t.id}','cliente',this.value)" style="width:150px;font-size:12px;padding:4px 6px;border:1px solid var(--border);border-radius:5px;${t.status === 'resolvido' ? 'text-decoration:line-through' : ''}">${t.pedido ? `<div style="font-size:10px;color:var(--text-ter);margin-top:2px">pedido ${esc(t.pedido)}</div>` : ''}</td>
-      <td style="padding:4px;white-space:nowrap">${t.data || ''}</td>
-      <td style="padding:4px"><input value="${esc(t.produtos)}" oninput="retEdit('${t.id}','produtos',this.value)" style="width:100%;min-width:180px;font-size:12px;padding:4px 6px;border:1px solid var(--border);border-radius:5px"></td>
-      <td style="padding:4px"><select onchange="retEdit('${t.id}','obs',this.value)" style="width:80px;font-size:12px;padding:4px 6px;border:1px solid var(--border);border-radius:5px">
+      <td style="padding:4px;text-align:center;vertical-align:middle"><input type="checkbox" ${t.status === 'resolvido' ? 'checked' : ''} onchange="retToggle('${t.id}')" title="marcar como resolvido"></td>
+      <td style="padding:4px;vertical-align:middle"><input value="${esc(t.cliente)}" oninput="retEdit('${t.id}','cliente',this.value)" style="width:100%;font-size:12px;padding:4px 6px;border:1px solid var(--border);border-radius:5px;${t.status === 'resolvido' ? 'text-decoration:line-through' : ''}">${t.pedido ? `<div style="font-size:10px;color:var(--text-ter);margin-top:2px">pedido ${esc(t.pedido)}</div>` : ''}</td>
+      <td style="padding:4px;white-space:nowrap;vertical-align:middle">${t.data || ''}</td>
+      <td style="padding:4px;vertical-align:middle"><input value="${esc(t.produtos)}" oninput="retEdit('${t.id}','produtos',this.value)" style="width:100%;font-size:12px;padding:4px 6px;border:1px solid var(--border);border-radius:5px"></td>
+      <td style="padding:4px;vertical-align:middle"><select onchange="retEdit('${t.id}','obs',this.value)" style="width:100%;font-size:12px;padding:4px 6px;border:1px solid var(--border);border-radius:5px">
         <option value="" ${!obsVal ? 'selected' : ''}>—</option>
         ${obsCustom}
         ${obsOptions}
       </select></td>
-      <td style="padding:4px"><input value="${esc(t.codigo_reenvio)}" oninput="retEdit('${t.id}','codigo_reenvio',this.value)" style="width:130px;font-size:12px;padding:4px 6px;border:1px solid var(--border);border-radius:5px"></td>
-      <td style="padding:4px;text-align:center"><button onclick="retDel('${t.id}')" title="excluir" style="background:none;border:none;cursor:pointer;color:var(--text-ter);font-size:15px">×</button></td>
+      <td style="padding:4px;vertical-align:middle"><input value="${esc(t.codigo_reenvio)}" oninput="retEdit('${t.id}','codigo_reenvio',this.value)" style="width:100%;font-size:12px;padding:4px 6px;border:1px solid var(--border);border-radius:5px"></td>
+      <td style="padding:4px;text-align:center;vertical-align:middle"><button onclick="retDel('${t.id}')" title="excluir" style="background:none;border:none;cursor:pointer;color:var(--text-ter);font-size:15px">×</button></td>
     </tr>`;
   }).join('');
   document.getElementById('ret-tbody').innerHTML = rows ||
