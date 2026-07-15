@@ -884,19 +884,24 @@ function retTrocaToggle() {
 function retAdd() {
   const pedido      = (document.getElementById('ret-pedido').value || '').trim();
   const cliente     = (document.getElementById('ret-cliente').value || '').trim();
-  const data        = (document.getElementById('ret-data').value || '').trim();
   const produtos    = (document.getElementById('ret-produtos').value || '').trim();
   const obs         = (document.getElementById('ret-obs').value || '').trim();
   const codigo      = (document.getElementById('ret-codigo').value || '').trim();
   const logReversa  = (document.getElementById('ret-logistica-reversa').value || '').trim();
   if (!cliente || !produtos) { alert('Preencha ao menos o cliente e os produtos.'); return; }
   const cfg = retGetConfig();
-  cfg.itens.push({ id: 'ret' + Date.now(), pedido, cliente, data, produtos, obs, codigo_reenvio: codigo, codigo_logistica_reversa: logReversa, status: 'pendente', criado_em: new Date().toISOString() });
+  cfg.itens.push({ id: 'ret' + Date.now(), pedido, cliente, produtos, obs, codigo_reenvio: codigo, codigo_logistica_reversa: logReversa, chegou_reversa: false, status: 'pendente', criado_em: new Date().toISOString() });
   retSalvar(cfg);
   retRender();
-  ['ret-pedido', 'ret-cliente', 'ret-data', 'ret-produtos', 'ret-obs', 'ret-codigo', 'ret-logistica-reversa'].forEach(id => document.getElementById(id).value = '');
+  ['ret-pedido', 'ret-cliente', 'ret-produtos', 'ret-obs', 'ret-codigo', 'ret-logistica-reversa'].forEach(id => document.getElementById(id).value = '');
   document.getElementById('ret-pedido-preview').style.display = 'none';
   document.getElementById('ret-pedido').focus();
+}
+function retChegouReversaToggle(id) {
+  const cfg = retGetConfig();
+  const t = cfg.itens.find(x => x.id === id); if (!t) return;
+  t.chegou_reversa = !t.chegou_reversa;
+  retSalvar(cfg);
 }
 function retToggle(id) {
   const cfg = retGetConfig();
@@ -968,7 +973,6 @@ function retRender() {
     <tr style="${t.status === 'resolvido' ? 'opacity:0.5' : ''}">
       <td style="padding:4px;text-align:center;vertical-align:middle"><input type="checkbox" ${t.status === 'resolvido' ? 'checked' : ''} onchange="retToggle('${t.id}')" title="marcar como resolvido"></td>
       <td style="padding:4px;vertical-align:middle"><input value="${esc(t.cliente)}" oninput="retEdit('${t.id}','cliente',this.value)" style="width:100%;font-size:12px;padding:4px 6px;border:1px solid var(--border);border-radius:5px;${t.status === 'resolvido' ? 'text-decoration:line-through' : ''}">${t.pedido ? `<div style="font-size:10px;color:var(--text-ter);margin-top:2px">pedido ${esc(t.pedido)}</div>` : ''}</td>
-      <td style="padding:4px;white-space:nowrap;vertical-align:middle">${t.data || ''}</td>
       <td style="padding:4px;vertical-align:middle"><input value="${esc(t.produtos)}" oninput="retEdit('${t.id}','produtos',this.value)" style="width:100%;font-size:12px;padding:4px 6px;border:1px solid var(--border);border-radius:5px"></td>
       <td style="padding:4px;vertical-align:middle"><select onchange="retEdit('${t.id}','obs',this.value)" style="width:100%;font-size:12px;padding:4px 6px;border:1px solid var(--border);border-radius:5px">
         <option value="" ${!obsVal ? 'selected' : ''}>—</option>
@@ -976,6 +980,7 @@ function retRender() {
         ${obsOptions}
       </select></td>
       <td style="padding:4px;vertical-align:middle"><input value="${esc(t.codigo_logistica_reversa)}" oninput="retEdit('${t.id}','codigo_logistica_reversa',this.value)" style="width:100%;font-size:12px;padding:4px 6px;border:1px solid var(--border);border-radius:5px"></td>
+      <td style="padding:4px;text-align:center;vertical-align:middle"><input type="checkbox" ${t.chegou_reversa ? 'checked' : ''} onchange="retChegouReversaToggle('${t.id}')" title="a peça chegou de volta pela logística reversa"></td>
       <td style="padding:4px;vertical-align:middle"><input value="${esc(t.codigo_reenvio)}" oninput="retEdit('${t.id}','codigo_reenvio',this.value)" style="width:100%;font-size:12px;padding:4px 6px;border:1px solid var(--border);border-radius:5px"></td>
       <td style="padding:4px;text-align:center;vertical-align:middle"><button onclick="retDel('${t.id}')" title="excluir" style="background:none;border:none;cursor:pointer;color:var(--text-ter);font-size:15px">×</button></td>
     </tr>`;

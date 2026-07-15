@@ -642,7 +642,6 @@
               <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
                 <input id="ret-pedido" placeholder="Nº do pedido" style="width:110px;font-size:12px;padding:7px 10px;border:1px solid var(--border);border-radius:6px" oninput="retBuscarPedido()">
                 <input id="ret-cliente" placeholder="Cliente" style="width:160px;font-size:12px;padding:7px 10px;border:1px solid var(--border);border-radius:6px">
-                <input id="ret-data" placeholder="Data (ex.: 10/07)" style="width:110px;font-size:12px;padding:7px 10px;border:1px solid var(--border);border-radius:6px">
                 <input id="ret-produtos" placeholder="Produtos (ou marque na prévia do pedido)" style="flex:1;min-width:200px;font-size:12px;padding:7px 10px;border:1px solid var(--border);border-radius:6px">
                 <select id="ret-obs" style="width:140px;font-size:12px;padding:7px 10px;border:1px solid var(--border);border-radius:6px">
                   <option value="" selected>Tamanho da troca</option>
@@ -670,8 +669,8 @@
               </div>
               <div style="overflow-x:auto">
               <table style="width:100%;font-size:12px;min-width:700px;table-layout:fixed">
-                <colgroup><col style="width:32px"><col style="width:150px"><col style="width:65px"><col><col style="width:85px"><col style="width:170px"><col style="width:130px"><col style="width:28px"></colgroup>
-                <thead><tr style="color:var(--text-ter);font-size:11px;text-transform:uppercase"><th style="padding:4px;text-align:center">ok</th><th style="text-align:left;padding:4px">Cliente</th><th style="text-align:left;padding:4px">Data</th><th style="text-align:left;padding:4px">Produtos</th><th style="text-align:left;padding:4px">Tamanho da troca</th><th style="text-align:left;padding:4px">Cód. logística reversa</th><th style="text-align:left;padding:4px">Cód. reenvio</th><th></th></tr></thead>
+                <colgroup><col style="width:32px"><col style="width:150px"><col><col style="width:85px"><col style="width:170px"><col style="width:100px"><col style="width:130px"><col style="width:28px"></colgroup>
+                <thead><tr style="color:var(--text-ter);font-size:11px;text-transform:uppercase"><th style="padding:4px;text-align:center">ok</th><th style="text-align:left;padding:4px">Cliente</th><th style="text-align:left;padding:4px">Produtos</th><th style="text-align:left;padding:4px">Tamanho da troca</th><th style="text-align:left;padding:4px">Cód. logística reversa</th><th style="text-align:center;padding:4px">Chegou da reversa</th><th style="text-align:left;padding:4px">Cód. reenvio</th><th></th></tr></thead>
                 <tbody id="ret-tbody"></tbody>
               </table>
               </div>
@@ -713,8 +712,8 @@
     </div>
   </div>
 </div>
-<script src="data.js?v=2026071507"></script>
-<script src="main.js?v=2026071507"></script>
+<script src="data.js?v=2026071508"></script>
+<script src="main.js?v=2026071508"></script>
 <script async src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js" onload="initSupabase()"></script>
 </body>
 </html>
