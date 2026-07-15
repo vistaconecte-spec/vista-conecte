@@ -644,7 +644,14 @@
                 <input id="ret-cliente" placeholder="Cliente" style="width:160px;font-size:12px;padding:7px 10px;border:1px solid var(--border);border-radius:6px">
                 <input id="ret-data" placeholder="Data (ex.: 10/07)" style="width:110px;font-size:12px;padding:7px 10px;border:1px solid var(--border);border-radius:6px">
                 <input id="ret-produtos" placeholder="Produtos (ou marque na prévia do pedido)" style="flex:1;min-width:200px;font-size:12px;padding:7px 10px;border:1px solid var(--border);border-radius:6px">
-                <input id="ret-obs" placeholder="OBS (opcional)" style="width:140px;font-size:12px;padding:7px 10px;border:1px solid var(--border);border-radius:6px">
+                <select id="ret-obs" style="width:140px;font-size:12px;padding:7px 10px;border:1px solid var(--border);border-radius:6px">
+                  <option value="" selected>Tamanho da troca</option>
+                  <option value="PP">PP</option>
+                  <option value="P">P</option>
+                  <option value="M">M</option>
+                  <option value="G">G</option>
+                  <option value="GG">GG</option>
+                </select>
                 <input id="ret-logistica-reversa" placeholder="Código logística reversa (opcional)" style="width:190px;font-size:12px;padding:7px 10px;border:1px solid var(--border);border-radius:6px">
                 <input id="ret-codigo" placeholder="Código de reenvio (opcional)" style="width:160px;font-size:12px;padding:7px 10px;border:1px solid var(--border);border-radius:6px" onkeydown="if(event.key==='Enter')retAdd()">
                 <button class="btn-primary" style="font-size:12px;padding:7px 14px" onclick="retAdd()"><i class="ti ti-plus"></i> Adicionar</button>
@@ -706,8 +713,8 @@
     </div>
   </div>
 </div>
-<script src="data.js?v=2026071506"></script>
-<script src="main.js?v=2026071506"></script>
+<script src="data.js?v=2026071507"></script>
+<script src="main.js?v=2026071507"></script>
 <script async src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js" onload="initSupabase()"></script>
 </body>
 </html>
