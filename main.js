@@ -882,18 +882,19 @@ function retTrocaToggle() {
   produtosEl.value = marcados.map(i => `${i.titulo}${i.variante ? ' (' + i.variante + ')' : ''}`).join(', ');
 }
 function retAdd() {
-  const pedido   = (document.getElementById('ret-pedido').value || '').trim();
-  const cliente  = (document.getElementById('ret-cliente').value || '').trim();
-  const data     = (document.getElementById('ret-data').value || '').trim();
-  const produtos = (document.getElementById('ret-produtos').value || '').trim();
-  const obs      = (document.getElementById('ret-obs').value || '').trim();
-  const codigo   = (document.getElementById('ret-codigo').value || '').trim();
+  const pedido      = (document.getElementById('ret-pedido').value || '').trim();
+  const cliente     = (document.getElementById('ret-cliente').value || '').trim();
+  const data        = (document.getElementById('ret-data').value || '').trim();
+  const produtos    = (document.getElementById('ret-produtos').value || '').trim();
+  const obs         = (document.getElementById('ret-obs').value || '').trim();
+  const codigo      = (document.getElementById('ret-codigo').value || '').trim();
+  const logReversa  = (document.getElementById('ret-logistica-reversa').value || '').trim();
   if (!cliente || !produtos) { alert('Preencha ao menos o cliente e os produtos.'); return; }
   const cfg = retGetConfig();
-  cfg.itens.push({ id: 'ret' + Date.now(), pedido, cliente, data, produtos, obs, codigo_reenvio: codigo, status: 'pendente', criado_em: new Date().toISOString() });
+  cfg.itens.push({ id: 'ret' + Date.now(), pedido, cliente, data, produtos, obs, codigo_reenvio: codigo, codigo_logistica_reversa: logReversa, status: 'pendente', criado_em: new Date().toISOString() });
   retSalvar(cfg);
   retRender();
-  ['ret-pedido', 'ret-cliente', 'ret-data', 'ret-produtos', 'ret-obs', 'ret-codigo'].forEach(id => document.getElementById(id).value = '');
+  ['ret-pedido', 'ret-cliente', 'ret-data', 'ret-produtos', 'ret-obs', 'ret-codigo', 'ret-logistica-reversa'].forEach(id => document.getElementById(id).value = '');
   document.getElementById('ret-pedido-preview').style.display = 'none';
   document.getElementById('ret-pedido').focus();
 }
@@ -975,11 +976,12 @@ function retRender() {
         ${obsOptions}
       </select></td>
       <td style="padding:4px;vertical-align:middle"><input value="${esc(t.codigo_reenvio)}" oninput="retEdit('${t.id}','codigo_reenvio',this.value)" style="width:100%;font-size:12px;padding:4px 6px;border:1px solid var(--border);border-radius:5px"></td>
+      <td style="padding:4px;vertical-align:middle"><input value="${esc(t.codigo_logistica_reversa)}" oninput="retEdit('${t.id}','codigo_logistica_reversa',this.value)" style="width:100%;font-size:12px;padding:4px 6px;border:1px solid var(--border);border-radius:5px"></td>
       <td style="padding:4px;text-align:center;vertical-align:middle"><button onclick="retDel('${t.id}')" title="excluir" style="background:none;border:none;cursor:pointer;color:var(--text-ter);font-size:15px">×</button></td>
     </tr>`;
   }).join('');
   document.getElementById('ret-tbody').innerHTML = rows ||
-    '<tr><td colspan="7" style="text-align:center;color:var(--text-ter);font-size:12px;padding:12px">Nenhum registro ' + (mostrarResolvidos ? '' : 'pendente') + '.</td></tr>';
+    '<tr><td colspan="8" style="text-align:center;color:var(--text-ter);font-size:12px;padding:12px">Nenhum registro ' + (mostrarResolvidos ? '' : 'pendente') + '.</td></tr>';
   const total = cfg.itens.filter(t => t.status !== 'resolvido').length;
   const totalEl = document.getElementById('ret-total-pendentes');
   if (totalEl) totalEl.textContent = total + ' pendente' + (total === 1 ? '' : 's');

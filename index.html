@@ -645,7 +645,8 @@
                 <input id="ret-data" placeholder="Data (ex.: 10/07)" style="width:110px;font-size:12px;padding:7px 10px;border:1px solid var(--border);border-radius:6px">
                 <input id="ret-produtos" placeholder="Produtos (ou marque na prévia do pedido)" style="flex:1;min-width:200px;font-size:12px;padding:7px 10px;border:1px solid var(--border);border-radius:6px">
                 <input id="ret-obs" placeholder="OBS (opcional)" style="width:140px;font-size:12px;padding:7px 10px;border:1px solid var(--border);border-radius:6px">
-                <input id="ret-codigo" placeholder="Código de reenvio (opcional)" style="width:160px;font-size:12px;padding:7px 10px;border:1px solid var(--border);border-radius:6px" onkeydown="if(event.key==='Enter')retAdd()">
+                <input id="ret-codigo" placeholder="Código de reenvio (opcional)" style="width:160px;font-size:12px;padding:7px 10px;border:1px solid var(--border);border-radius:6px">
+                <input id="ret-logistica-reversa" placeholder="Código logística reversa (opcional)" style="width:190px;font-size:12px;padding:7px 10px;border:1px solid var(--border);border-radius:6px" onkeydown="if(event.key==='Enter')retAdd()">
                 <button class="btn-primary" style="font-size:12px;padding:7px 14px" onclick="retAdd()"><i class="ti ti-plus"></i> Adicionar</button>
               </div>
               <div id="ret-pedido-preview" style="display:none;margin-top:10px;padding:10px 12px;background:#f5f0e8;border-radius:8px;font-size:12px"></div>
@@ -662,8 +663,8 @@
               </div>
               <div style="overflow-x:auto">
               <table style="width:100%;font-size:12px;min-width:700px;table-layout:fixed">
-                <colgroup><col style="width:32px"><col style="width:160px"><col style="width:70px"><col><col style="width:90px"><col style="width:140px"><col style="width:28px"></colgroup>
-                <thead><tr style="color:var(--text-ter);font-size:11px;text-transform:uppercase"><th style="padding:4px;text-align:center">ok</th><th style="text-align:left;padding:4px">Cliente</th><th style="text-align:left;padding:4px">Data</th><th style="text-align:left;padding:4px">Produtos</th><th style="text-align:left;padding:4px">Tamanho</th><th style="text-align:left;padding:4px">Cód. reenvio</th><th></th></tr></thead>
+                <colgroup><col style="width:32px"><col style="width:150px"><col style="width:65px"><col><col style="width:85px"><col style="width:130px"><col style="width:170px"><col style="width:28px"></colgroup>
+                <thead><tr style="color:var(--text-ter);font-size:11px;text-transform:uppercase"><th style="padding:4px;text-align:center">ok</th><th style="text-align:left;padding:4px">Cliente</th><th style="text-align:left;padding:4px">Data</th><th style="text-align:left;padding:4px">Produtos</th><th style="text-align:left;padding:4px">Tamanho da troca</th><th style="text-align:left;padding:4px">Cód. reenvio</th><th style="text-align:left;padding:4px">Cód. logística reversa</th><th></th></tr></thead>
                 <tbody id="ret-tbody"></tbody>
               </table>
               </div>
@@ -705,8 +706,8 @@
     </div>
   </div>
 </div>
-<script src="data.js?v=2026071504"></script>
-<script src="main.js?v=2026071504"></script>
+<script src="data.js?v=2026071505"></script>
+<script src="main.js?v=2026071505"></script>
 <script async src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js" onload="initSupabase()"></script>
 </body>
 </html>
