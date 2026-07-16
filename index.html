@@ -205,6 +205,13 @@
         <div id="leva2-vazio" style="margin-bottom:10px">
           <button class="btn-outline" style="font-size:11px;padding:6px 14px;color:#7C3AED;border-color:#7C3AED" onclick="adicionarLeva2()"><i class="ti ti-plus"></i> Adicionar 2ª leva de produção</button>
         </div>
+        <!-- Barra de status da 2ª leva: acima da linha, igual à barra de status principal -->
+        <div class="prod-bar" id="leva2-bar" style="display:none;border-left:4px solid #7C3AED">
+          <div class="prod-bar-left">
+            <div class="ctrl-g"><div class="ctrl-l" style="color:#7C3AED">STATUS · 2ª LEVA</div><select id="prod2-status" onchange="marcarCfgEditado()"><option value="">— Sem status —</option><option>Comprando tecido</option><option>Em corte</option><option>Em costura</option></select></div>
+            <div class="ctrl-g"><div class="ctrl-l" style="color:#7C3AED">PRAZO · 2ª LEVA</div><input type="date" id="prod2-prazo" onchange="marcarCfgEditado()"></div>
+          </div>
+        </div>
         <div class="sections-2" id="row-leva2-resumo" style="margin-bottom:10px">
           <div class="card" id="leva2-wrap" style="display:none;border:1px solid #7C3AED33">
             <div class="card-header card-header-tabela">
@@ -215,16 +222,12 @@
                 <button class="btn-outline" style="font-size:10px;padding:3px 8px;color:#dc2626;border-color:#dc2626" onclick="removerLeva2()" title="Remove a 2ª leva deste modelo"><i class="ti ti-x"></i> Remover</button>
               </div>
             </div>
-            <div style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;background:#f5f0ff;border:1px solid #7C3AED33;border-left:4px solid #7C3AED;border-radius:6px;padding:8px 10px;margin-bottom:10px">
-              <div class="ctrl-g"><div class="ctrl-l" style="color:#7C3AED">STATUS · 2ª LEVA</div><select id="prod2-status" onchange="marcarCfgEditado()"><option value="">— Sem status —</option><option>Comprando tecido</option><option>Em corte</option><option>Em costura</option></select></div>
-              <div class="ctrl-g"><div class="ctrl-l" style="color:#7C3AED">PRAZO · 2ª LEVA</div><input type="date" id="prod2-prazo" onchange="marcarCfgEditado()"></div>
-            </div>
             <table><thead id="prod2-thead"><tr><th>Cor</th><th>PP</th><th>P</th><th>M</th><th>G</th><th>GG</th><th>Tot</th></tr></thead>
             <tbody id="prod2-tbody"></tbody>
             <tfoot id="prod2-tfoot"><tr class="total-row"><td>Total</td><td id="p2-PP">0</td><td id="p2-P">0</td><td id="p2-M">0</td><td id="p2-G">0</td><td id="p2-GG">0</td><td id="p2-tot">0</td></tr></tfoot></table>
           </div>
           <div class="card">
-            <div class="card-header">
+            <div class="card-header card-header-tabela">
               <div class="card-title"><i class="ti ti-needle-thread"></i> A PRODUZIR</div>
               <span id="resumo-aprod-badge" style="font-size:11px;font-weight:700;color:#dc2626"></span>
             </div>
@@ -235,7 +238,7 @@
             </table>
           </div>
           <div class="card">
-            <div class="card-header">
+            <div class="card-header card-header-tabela">
               <div class="card-title"><i class="ti ti-package"></i> SALDO DISPONÍVEL</div>
               <span id="resumo-saldo-badge" style="font-size:11px;font-weight:700;color:#16a34a"></span>
             </div>
@@ -733,8 +736,8 @@
     </div>
   </div>
 </div>
-<script src="data.js?v=2026071605"></script>
-<script src="main.js?v=2026071605"></script>
+<script src="data.js?v=2026071606"></script>
+<script src="main.js?v=2026071606"></script>
 <script async src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js" onload="initSupabase()"></script>
 </body>
 </html>

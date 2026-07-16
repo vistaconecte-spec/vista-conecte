@@ -4116,6 +4116,9 @@ function renderLeva2(def, d, cores, SZ, tu) {
   const ativa = temLeva2(d);
   wrap.style.display = ativa ? '' : 'none';
   if (vazio) vazio.style.display = ativa ? 'none' : '';
+  // Barra de status da 2ª leva (acima da linha, igual à barra principal)
+  const bar = document.getElementById('leva2-bar');
+  if (bar) bar.style.display = ativa ? '' : 'none';
   // Com leva ativa, a linha vira 3 colunas (2ª leva + A Produzir + Saldo); sem, volta a 2
   const rowResumo = document.getElementById('row-leva2-resumo');
   if (rowResumo) rowResumo.className = ativa ? 'sections-3' : 'sections-2';
