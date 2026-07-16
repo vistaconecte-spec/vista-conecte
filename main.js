@@ -128,7 +128,7 @@ function iniciarRealtime() {
       saveLocal('vc:' + row.id, row.dados);
       // Re-renderiza a tela atual para refletir a mudança vinda de outro dispositivo
       if (modeloAtual === '__dashboard__') renderDashboard();
-      else if (!estEditado && !prodEditado && !cfgEditado) renderModelo(modeloAtual);
+      else if (!estEditado && !prodEditado && !prod2Editado && !cfgEditado) renderModelo(modeloAtual);
     })
     .subscribe();
 }
@@ -154,7 +154,7 @@ async function sincronizarNuvem() {
     });
     if (mudou) {
       if (modeloAtual === '__dashboard__') renderDashboard();
-      else if (!estEditado && !prodEditado && !cfgEditado) renderModelo(modeloAtual);
+      else if (!estEditado && !prodEditado && !prod2Editado && !cfgEditado) renderModelo(modeloAtual);
     }
   } catch (e) {}
 }
@@ -188,6 +188,7 @@ function autoSave() {
 
 let estEditado  = false;
 let prodEditado = false;
+let prod2Editado = false; // 2ª leva de produção
 let cfgEditado  = false;
 // Marca o último salvamento LOCAL (relógio local). Durante a carência logo após,
 // a sincronização não sobrescreve o modelo aberto (evita corrida com o envio à nuvem).
@@ -195,7 +196,7 @@ let _ultimoSaveTs = 0;
 const SYNC_CARENCIA_MS = 6000;
 function modeloAbertoProtegido(id) {
   return id === modeloAtual &&
-    (estEditado || prodEditado || cfgEditado || (Date.now() - _ultimoSaveTs < SYNC_CARENCIA_MS));
+    (estEditado || prodEditado || prod2Editado || cfgEditado || (Date.now() - _ultimoSaveTs < SYNC_CARENCIA_MS));
 }
 
 // Salva estado atual no localStorage IMEDIATAMENTE (sem esperar o debounce)
@@ -212,13 +213,21 @@ function salvarLocalImediato() {
     if (tu) { prod[r.dataset.cor] = [parseInt(r.querySelector('input')?.value) || 0, 0, 0, 0, 0]; }
     else     { prod[r.dataset.cor] = Array.from(r.querySelectorAll('input')).map(i => parseInt(i.value) || 0); }
   });
+  // 2ª leva: só coleta se a tabela está renderizada (leva ativa); senão preserva o que existe
+  const prod2 = {};
+  document.querySelectorAll('#prod2-tbody tr').forEach(r => {
+    if (tu) { prod2[r.dataset.cor] = [parseInt(r.querySelector('input')?.value) || 0, 0, 0, 0, 0]; }
+    else     { prod2[r.dataset.cor] = Array.from(r.querySelectorAll('input')).map(i => parseInt(i.value) || 0); }
+  });
   const existente = loadLocal('vc:' + modeloAtual) || {};
   const agora = new Date().toISOString();
   saveLocal('vc:' + modeloAtual, {
     ...existente,
     est, prod,
-    est_at:     estEditado  ? agora : (existente.est_at  || null),
-    prod_at:    prodEditado ? agora : (existente.prod_at || null),
+    ...(Object.keys(prod2).length ? { prod2 } : {}),
+    est_at:     estEditado   ? agora : (existente.est_at   || null),
+    prod_at:    prodEditado  ? agora : (existente.prod_at  || null),
+    prod2_at:   prod2Editado ? agora : (existente.prod2_at || null),
     updated_at: agora,
   });
   _ultimoSaveTs = Date.now();
@@ -240,6 +249,7 @@ function salvarManual() {
 
 function marcarEstEditado()  { estEditado  = true; recalc(); salvarLocalImediato(); mostrarBtnSalvar(); }
 function marcarProdEditado() { prodEditado = true; salvarLocalImediato(); renderResumoProducao(); mostrarBtnSalvar(); }
+function marcarProd2Editado(){ prod2Editado = true; salvarLocalImediato(); renderResumoProducao(); mostrarBtnSalvar(); }
 function marcarCfgEditado()  { cfgEditado  = true; mostrarBtnSalvar(); autoSave(); }
 
 function salvarModelo() {
@@ -261,10 +271,33 @@ function salvarModelo() {
       prod[r.dataset.cor] = Array.from(r.querySelectorAll('input')).map(i => parseInt(i.value) || 0);
     }
   });
+  // 2ª leva: coleta do DOM se renderizada; senão preserva o que já estava salvo
+  const prod2 = {};
+  document.querySelectorAll('#prod2-tbody tr').forEach(r => {
+    if (tu) {
+      const v = parseInt(r.querySelector('input').value) || 0;
+      prod2[r.dataset.cor] = [v, 0, 0, 0, 0];
+    } else {
+      prod2[r.dataset.cor] = Array.from(r.querySelectorAll('input')).map(i => parseInt(i.value) || 0);
+    }
+  });
   const existente  = loadLocal('vc:' + modeloAtual) || {};
   const statusVal  = document.getElementById('prod-status').value;
+  const statusVal2 = document.getElementById('prod2-status')?.value || '';
+  const prod2Final = Object.keys(prod2).length ? prod2 : (existente.prod2 || null);
   const data = {
     est, prod,
+    // ── 2ª leva (salva sempre que existir, para não perder no rebuild do JSON) ──
+    ...(existente.leva2 || prod2Final ? {
+      leva2:      !!existente.leva2,
+      ...(prod2Final ? { prod2: prod2Final } : {}),
+      status2:    statusVal2,
+      prazo2:     document.getElementById('prod2-prazo')?.value || '',
+      prod2_at:   prod2Editado ? new Date().toISOString() : (existente.prod2_at || null),
+      status2_at: ['Comprando tecido', 'Em corte'].includes(statusVal2)
+        ? (existente.status2 === statusVal2 && existente.status2_at ? existente.status2_at : new Date().toISOString())
+        : null,
+    } : {}),
     preco:       parseFloat(document.getElementById('preco-m').value) || 0,
     status:      statusVal,
     prazo:       document.getElementById('prod-prazo').value,
@@ -284,6 +317,7 @@ function salvarModelo() {
   };
   estEditado  = false;
   prodEditado = false;
+  prod2Editado = false;
   cfgEditado  = false;
   esconderBtnSalvar();
   saveLocal('vc:' + modeloAtual, data);
@@ -320,11 +354,11 @@ function buildSidebar() {
     document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
     dashItem.classList.add('active');
     // Salva edições pendentes antes de ir ao dashboard
-    if (modeloAtual !== '__dashboard__' && (estEditado || prodEditado || cfgEditado)) {
+    if (modeloAtual !== '__dashboard__' && (estEditado || prodEditado || prod2Editado || cfgEditado)) {
       clearTimeout(saveTimer);
       salvarModelo();
     }
-    estEditado = false; prodEditado = false;
+    estEditado = false; prodEditado = false; prod2Editado = false;
     esconderBtnSalvar();
     modeloAtual = '__dashboard__';
     location.hash = ''; // limpa hash ao voltar ao início
@@ -422,6 +456,17 @@ function buildSidebar() {
         item.innerHTML = `<span style="color:${cor};font-weight:600">${nome}</span>&nbsp;${badge}`;
       } else {
         item.textContent = nome;
+      }
+      // Badge da 2ª leva (status próprio, independente da leva principal)
+      const status2 = saved.status2 || '';
+      const BADGE2 = {
+        'Comprando tecido': ['var(--gold)', 'rgba(196,168,130,0.18)', '2ª TECIDO'],
+        'Em corte':         ['#7C3AED', 'rgba(124,58,237,0.12)', '2ª CORTE ✂'],
+        'Em costura':       ['#0891b2', 'rgba(8,145,178,0.12)', '2ª COSTURA 🧵'],
+      };
+      if (BADGE2[status2]) {
+        const [c2, bg2, lb2] = BADGE2[status2];
+        item.innerHTML += `&nbsp;<span style="font-size:9px;background:${bg2};color:${c2};border-radius:3px;padding:1px 5px;letter-spacing:0.04em;vertical-align:middle">${lb2}</span>`;
       }
       item.onclick = () => selectModel(item, key);
       nav.appendChild(item);
@@ -2751,9 +2796,10 @@ function selectModel(el, key) {
   // Salva o modelo atual ANTES de trocar — evita que o timer dispare com DOM do modelo errado
   if (modeloAtual !== '__dashboard__' && modeloAtual !== key) {
     clearTimeout(saveTimer);
-    if (estEditado || prodEditado || cfgEditado) salvarModelo(); // salva enquanto o DOM ainda é do modelo correto
+    if (estEditado || prodEditado || prod2Editado || cfgEditado) salvarModelo(); // salva enquanto o DOM ainda é do modelo correto
     estEditado  = false;
     prodEditado = false;
+    prod2Editado = false;
     esconderBtnSalvar();
   }
 
@@ -2769,17 +2815,22 @@ function selectModel(el, key) {
   closeSidebar();
 }
 
-function confirmarStatus(key, novoStatus) {
+function confirmarStatus(key, novoStatus, leva) {
   const saved = loadLocal('vc:' + key) || {};
-  saved.status     = novoStatus;
-  saved.status_at  = ['Em corte', 'Em costura'].includes(novoStatus) ? new Date().toISOString() : null;
+  if (leva === 2) {
+    saved.status2    = novoStatus;
+    saved.status2_at = ['Em corte', 'Em costura'].includes(novoStatus) ? new Date().toISOString() : null;
+  } else {
+    saved.status     = novoStatus;
+    saved.status_at  = ['Em corte', 'Em costura'].includes(novoStatus) ? new Date().toISOString() : null;
+  }
   saved.updated_at = new Date().toISOString();
   saveLocal('vc:' + key, saved);
   salvarNuvem(key, saved);
   buildSidebar();
   verificarAvisosStatus();
   if (modeloAtual === key) {
-    const sel = document.getElementById('prod-status');
+    const sel = document.getElementById(leva === 2 ? 'prod2-status' : 'prod-status');
     if (sel) sel.value = novoStatus;
   }
 }
@@ -2817,19 +2868,26 @@ function verificarAvisosStatus() {
     { status: 'Em corte',         horasMin: 60,  urgente: true,  proxStatus: 'Em costura', label: 'Confirmar → Em costura', emoji: '🧵', cor: '#dc2626', bg: '#fff1f2', borda: '#dc2626', txtTitulo: '#991b1b', txtInfo: '#b91c1c' },
   ];
 
-  const avisos = []; // { regra, nome, horas, key }
+  const avisos = []; // { regra, nome, horas, key, leva }
 
   for (const [key, def] of Object.entries(MODELOS)) {
-    const saved    = loadLocal('vc:' + key) || {};
-    const statusAt = saved.status_at ? new Date(saved.status_at).getTime() : null;
-    if (!statusAt) continue;
-    const horas = Math.floor((Date.now() - statusAt) / 3600000);
+    const saved = loadLocal('vc:' + key) || {};
+    // Cada leva tem status/relógio próprios e gera aviso independente
+    const levas = [
+      { status: saved.status,  at: saved.status_at,  leva: 1 },
+      { status: saved.status2, at: saved.status2_at, leva: 2 },
+    ];
+    for (const lv of levas) {
+      const statusAt = lv.at ? new Date(lv.at).getTime() : null;
+      if (!statusAt) continue;
+      const horas = Math.floor((Date.now() - statusAt) / 3600000);
 
-    // Pega a regra mais severa que se aplica (urgente tem prioridade)
-    const regrasAplicaveis = REGRAS.filter(r => r.status === saved.status && horas >= r.horasMin);
-    if (regrasAplicaveis.length === 0) continue;
-    const regra = regrasAplicaveis[regrasAplicaveis.length - 1]; // última = mais severa
-    avisos.push({ regra, nome: saved.nome || def.nome, horas, key });
+      // Pega a regra mais severa que se aplica (urgente tem prioridade)
+      const regrasAplicaveis = REGRAS.filter(r => r.status === lv.status && horas >= r.horasMin);
+      if (regrasAplicaveis.length === 0) continue;
+      const regra = regrasAplicaveis[regrasAplicaveis.length - 1]; // última = mais severa
+      avisos.push({ regra, nome: (saved.nome || def.nome) + (lv.leva === 2 ? ' (2ª leva)' : ''), horas, key, leva: lv.leva });
+    }
   }
 
   if (avisos.length === 0) {
@@ -2871,7 +2929,7 @@ function verificarAvisosStatus() {
                 <span style="font-size:13px;font-weight:700;color:#111">${v.nome}</span>
                 <span style="font-size:11px;color:${r.txtInfo};margin-left:8px">em "${r.status}" há <strong>${fmtDias(v.horas)}</strong></span>
               </div>
-              <button onclick="confirmarStatus('${v.key}', '${r.proxStatus}')"
+              <button onclick="confirmarStatus('${v.key}', '${r.proxStatus}', ${v.leva || 1})"
                 style="background:${r.cor};color:${r.cor === '#f59e0b' ? '#111' : '#fff'};border:none;border-radius:4px;padding:5px 14px;font-size:11px;font-weight:800;cursor:pointer;letter-spacing:0.04em;white-space:nowrap">
                 ${r.emoji} ${r.label}
               </button>
@@ -2897,7 +2955,7 @@ function renderDashboard() {
     cores.forEach(cor => {
       const ab = def.aberto && def.aberto[cor] || [0,0,0,0,0];
       const ev = saved.est && saved.est[cor] || [0,0,0,0,0];
-      const pv = saved.prod && saved.prod[cor] || null;
+      const pv = prodTotalCor(saved, cor); // leva 1 + leva 2
       pedidos  += ab.reduce((a,b) => a+b, 0);
       estoque  += tuMD ? (ev[0]||0) : ev.reduce((a,b) => a+b, 0);
       produzir += calcFaltaLiquido(ab, ev, pv, tuMD);
@@ -2927,7 +2985,7 @@ function renderDashboard() {
         const szLen = def.tamanhos?.length || 5;
         const ab = (def.aberto[cor] || []).concat(new Array(szLen).fill(0)).slice(0, szLen);
         const ev = ((saved.est && saved.est[cor]) || []).concat(new Array(szLen).fill(0)).slice(0, szLen);
-        const pv = ((saved.prod && saved.prod[cor]) || []).concat(new Array(szLen).fill(0)).slice(0, szLen);
+        const pv = (prodTotalCor(saved, cor) || []).concat(new Array(szLen).fill(0)).slice(0, szLen); // leva 1 + leva 2
         if (tu) {
           // tamanhoUnico ou tamanhos customizados: exibe só total
           const abTot = ab.reduce((a,b) => (a||0)+(b||0), 0);
@@ -2987,15 +3045,18 @@ function renderDashboard() {
     for (const [key, def] of Object.entries(MODELOS)) {
       if (CONJUNTO_PECAS[key]) continue;
       const saved = loadLocal('vc:' + key) || {};
-      if (!['Comprando tecido', 'Em corte', 'Em costura'].includes(saved.status)) continue;
-      const cores  = [...new Set([...def.cores, ...(saved.cores || [])])];
-      const tuP    = !!def.tamanhoUnico;
-      let totalProd = 0;
-      cores.forEach(cor => {
-        const pv = saved.prod && saved.prod[cor];
-        if (pv) totalProd += pv.reduce((a,b) => (a||0)+(b||0), 0);
+      const cores = [...new Set([...def.cores, ...(saved.cores || [])])];
+      // Cada leva entra como linha própria, com o próprio status
+      [{ prod: saved.prod, status: saved.status, leva2: false },
+       { prod: saved.prod2, status: saved.status2, leva2: true }].forEach(l => {
+        if (!['Comprando tecido', 'Em corte', 'Em costura'].includes(l.status)) return;
+        let totalProd = 0;
+        cores.forEach(cor => {
+          const pv = l.prod && l.prod[cor];
+          if (pv) totalProd += pv.reduce((a,b) => (a||0)+(b||0), 0);
+        });
+        if (totalProd > 0) prodList.push({ key, nome: def.nome, status: l.status, total: totalProd, leva2: l.leva2 });
       });
-      if (totalProd > 0) prodList.push({ key, nome: def.nome, status: saved.status, total: totalProd });
     }
 
     prodList.sort((a,b) => b.total - a.total);
@@ -3014,8 +3075,8 @@ function renderDashboard() {
           </tr></thead>
           <tbody>
             ${prodList.map(p => `
-              <tr style="cursor:pointer" onclick="(function(){const ni=Array.from(document.querySelectorAll('.nav-item')).find(el=>el.textContent.trim()==='${p.nome.replace(/'/g,"\\'")}');if(ni)ni.click();})()">
-                <td style="font-weight:600">${p.nome}</td>
+              <tr style="cursor:pointer" onclick="(function(){const ni=Array.from(document.querySelectorAll('.nav-item')).find(el=>el.textContent.trim().startsWith('${p.nome.replace(/'/g,"\\'")}'));if(ni)ni.click();})()">
+                <td style="font-weight:600">${p.nome}${p.leva2 ? ' <span style="font-size:9px;background:rgba(124,58,237,0.12);color:#7C3AED;border-radius:3px;padding:1px 5px;vertical-align:middle">2ª LEVA</span>' : ''}</td>
                 <td style="text-align:center;font-size:11px;color:#0891b2;font-weight:600">${p.status}</td>
                 <td style="text-align:center;font-weight:700;color:#0891b2">${p.total}</td>
               </tr>`).join('')}
@@ -3040,31 +3101,36 @@ function renderDashboard() {
     for (const [key, def] of Object.entries(MODELOS)) {
       if (CONJUNTO_PECAS[key]) continue;
       const saved = loadLocal('vc:' + key) || {};
-      if (saved.status !== 'Comprando tecido') continue;
       const consumo  = saved.consumo || def.consumo;
       const preco    = saved.preco   || def.preco || 0;
       const tecido   = saved.tecido  || def.tecido;
       const cores    = [...new Set([...def.cores, ...(saved.cores || [])])];
-      // Usa Em Produção para calcular metros; se vazio usa Pedidos − Estoque
       const tuC = !!def.tamanhoUnico;
-      let totalPecas = 0;
-      cores.forEach(cor => {
-        const pv = saved.prod && saved.prod[cor];
-        if (pv) {
-          totalPecas += pv.reduce((a,b) => a+b, 0);
-        } else {
-          const ab = def.aberto[cor] || [0,0,0,0,0];
-          const ev = saved.est && saved.est[cor] || [0,0,0,0,0];
-          if (tuC) {
-            totalPecas += Math.max(0, ab.reduce((a,b) => a+b, 0) - (ev[0]||0));
-          } else {
-            ab.forEach((a,i) => { totalPecas += Math.max(0, a - (ev[i]||0)); });
+      // Cada leva com status "Comprando tecido" vira uma linha própria.
+      // Leva 1 mantém o fallback Pedidos − Estoque; a 2ª leva só conta o que foi digitado.
+      const levas = [];
+      if (saved.status  === 'Comprando tecido') levas.push({ prod: saved.prod,  fallback: true,  leva2: false });
+      if (saved.status2 === 'Comprando tecido') levas.push({ prod: saved.prod2, fallback: false, leva2: true });
+      levas.forEach(l => {
+        let totalPecas = 0;
+        cores.forEach(cor => {
+          const pv = l.prod && l.prod[cor];
+          if (pv) {
+            totalPecas += pv.reduce((a,b) => a+b, 0);
+          } else if (l.fallback) {
+            const ab = def.aberto[cor] || [0,0,0,0,0];
+            const ev = saved.est && saved.est[cor] || [0,0,0,0,0];
+            if (tuC) {
+              totalPecas += Math.max(0, ab.reduce((a,b) => a+b, 0) - (ev[0]||0));
+            } else {
+              ab.forEach((a,i) => { totalPecas += Math.max(0, a - (ev[i]||0)); });
+            }
           }
-        }
+        });
+        const metros = totalPecas * consumo;
+        const custo  = metros * preco;
+        if (metros > 0) compraList.push({ key, nome: def.nome, tecido, metros, custo, preco, leva2: l.leva2 });
       });
-      const metros = totalPecas * consumo;
-      const custo  = metros * preco;
-      if (metros > 0) compraList.push({ key, nome: def.nome, tecido, metros, custo, preco });
     }
 
     const totalCusto = compraList.reduce((s,c) => s + c.custo, 0);
@@ -3084,8 +3150,8 @@ function renderDashboard() {
           </tr></thead>
           <tbody>
             ${compraList.map(c => `
-              <tr style="cursor:pointer" onclick="(function(){const ni=Array.from(document.querySelectorAll('.nav-item')).find(el=>el.textContent.trim()==='${c.nome.replace(/'/g,"\\'")}');if(ni)ni.click();})()">
-                <td style="font-weight:600">${c.nome}</td>
+              <tr style="cursor:pointer" onclick="(function(){const ni=Array.from(document.querySelectorAll('.nav-item')).find(el=>el.textContent.trim().startsWith('${c.nome.replace(/'/g,"\\'")}'));if(ni)ni.click();})()">
+                <td style="font-weight:600">${c.nome}${c.leva2 ? ' <span style="font-size:9px;background:rgba(124,58,237,0.12);color:#7C3AED;border-radius:3px;padding:1px 5px;vertical-align:middle">2ª LEVA</span>' : ''}</td>
                 <td style="color:var(--text-sec)">${c.tecido}</td>
                 <td style="text-align:center;font-weight:600">${c.metros.toFixed(2)}m</td>
                 <td style="text-align:center;color:var(--text-ter);font-size:11px">R$ ${fmt(c.preco)}</td>
@@ -3112,19 +3178,27 @@ function renderDashboard() {
     for (const [key, def] of Object.entries(MODELOS)) {
       if (CONJUNTO_PECAS[key]) continue;
       const saved = loadLocal('vc:' + key) || {};
-      if (saved.status !== 'Comprando tecido') continue;
       const cores = [...new Set([...def.cores, ...(saved.cores || [])])];
       const tuCst = !!def.tamanhoUnico;
       let tot = 0;
-      cores.forEach(cor => {
-        const pv = saved.prod && saved.prod[cor];
-        if (pv) { tot += pv.reduce((a,b) => a+b, 0); }
-        else {
-          const ab = def.aberto[cor] || [0,0,0,0,0];
-          const ev = saved.est && saved.est[cor] || [0,0,0,0,0];
-          tot += calcFalta(ab, ev, tuCst);
-        }
-      });
+      // Leva 1 (com fallback Pedidos − Estoque) + 2ª leva (só o digitado), cada uma no próprio status
+      if (saved.status === 'Comprando tecido') {
+        cores.forEach(cor => {
+          const pv = saved.prod && saved.prod[cor];
+          if (pv) { tot += pv.reduce((a,b) => a+b, 0); }
+          else {
+            const ab = def.aberto[cor] || [0,0,0,0,0];
+            const ev = saved.est && saved.est[cor] || [0,0,0,0,0];
+            tot += calcFalta(ab, ev, tuCst);
+          }
+        });
+      }
+      if (saved.status2 === 'Comprando tecido') {
+        cores.forEach(cor => {
+          const pv = saved.prod2 && saved.prod2[cor];
+          if (pv) tot += pv.reduce((a,b) => a+b, 0);
+        });
+      }
       if (tot > 0) { totalModelos++; totalPecas += tot; }
     }
     if (totalModelos === 0) {
@@ -3280,16 +3354,20 @@ function renderCorteCostura() {
   for (const [key, def] of Object.entries(MODELOS)) {
     if (CONJUNTO_PECAS[key]) continue; // conjuntos já contados nas peças
     const saved = loadLocal('vc:' + key) || {};
-    if (saved.status !== 'Em corte' && saved.status !== 'Em costura') continue;
     const cores = [...new Set([...def.cores, ...(saved.cores || [])])];
-    let totalProd = 0;
-    cores.forEach(cor => {
-      const pv = saved.prod && saved.prod[cor];
-      if (pv) totalProd += pv.reduce((a, b) => (a || 0) + (b || 0), 0);
+    // Cada leva conta na etapa do próprio status
+    [{ prod: saved.prod, status: saved.status, leva2: false },
+     { prod: saved.prod2, status: saved.status2, leva2: true }].forEach(l => {
+      if (l.status !== 'Em corte' && l.status !== 'Em costura') return;
+      let totalProd = 0;
+      cores.forEach(cor => {
+        const pv = l.prod && l.prod[cor];
+        if (pv) totalProd += pv.reduce((a, b) => (a || 0) + (b || 0), 0);
+      });
+      if (totalProd <= 0) return;
+      if (l.status === 'Em corte') { corte += totalProd; corteMods++; corteList.push({ key, nome: def.nome, total: totalProd, leva2: l.leva2 }); }
+      else                         { costura += totalProd; costuraMods++; costuraList.push({ key, nome: def.nome, total: totalProd, leva2: l.leva2 }); }
     });
-    if (totalProd <= 0) continue;
-    if (saved.status === 'Em corte') { corte += totalProd; corteMods++; corteList.push({ key, nome: def.nome, total: totalProd }); }
-    else                             { costura += totalProd; costuraMods++; costuraList.push({ key, nome: def.nome, total: totalProd }); }
   }
   corteList.sort((a, b) => b.total - a.total);
   costuraList.sort((a, b) => b.total - a.total);
@@ -3304,8 +3382,8 @@ function renderCorteCostura() {
     : `<table style="width:100%;border-collapse:collapse">
         <tbody>
           ${lista.map(p => `
-            <tr style="cursor:pointer;border-top:1px solid rgba(0,0,0,0.06)" onclick="(function(){const ni=Array.from(document.querySelectorAll('.nav-item')).find(el=>el.textContent.trim()==='${p.nome.replace(/'/g, "\\'")}');if(ni)ni.click();})()">
-              <td style="padding:5px 2px;font-size:13px;font-weight:600">${p.nome}</td>
+            <tr style="cursor:pointer;border-top:1px solid rgba(0,0,0,0.06)" onclick="(function(){const ni=Array.from(document.querySelectorAll('.nav-item')).find(el=>el.textContent.trim().startsWith('${p.nome.replace(/'/g, "\\'")}'));if(ni)ni.click();})()">
+              <td style="padding:5px 2px;font-size:13px;font-weight:600">${p.nome}${p.leva2 ? ' <span style="font-size:9px;background:rgba(124,58,237,0.12);color:#7C3AED;border-radius:3px;padding:1px 5px;vertical-align:middle">2ª LEVA</span>' : ''}</td>
               <td style="padding:5px 2px;text-align:right;font-size:13px;font-weight:700;color:${cor}">${p.total}</td>
             </tr>`).join('')}
         </tbody>
@@ -3615,6 +3693,16 @@ function renderModelo(key) {
   const statusSalvo = opcoesStatus.includes(d.status) ? d.status : '';
   statusSel.value = statusSalvo;
   document.getElementById('prod-prazo').value = d.prazo || '';
+  // 2ª leva: status/prazo próprios (mesmas opções da leva 1)
+  const statusSel2 = document.getElementById('prod2-status');
+  if (statusSel2) {
+    statusSel2.innerHTML = opcoesStatus
+      .map(s => `<option value="${s}">${s === '' ? '— Sem status —' : s}</option>`)
+      .join('');
+    statusSel2.value = opcoesStatus.includes(d.status2) ? d.status2 : '';
+    const prazo2El = document.getElementById('prod2-prazo');
+    if (prazo2El) prazo2El.value = d.prazo2 || '';
+  }
   document.getElementById('cfg-nome').value = nome;
   document.getElementById('cfg-tecido').value = tecido;
   document.getElementById('cfg-consumo').value = consumo;
@@ -3695,6 +3783,9 @@ function renderModelo(key) {
       prod.innerHTML += `<tr data-cor="${cor}" data-min="${mins.join(',')}"><td>${cor}</td>${pv.map((v, i) => `<td><input class="ci${v > 0 ? (v > mins[i] ? ' acima' : ' ci-val') : ''}" type="number" min="0" value="${v || ''}" placeholder="—" oninput="marcarProdEditado();calcProd(this);autoSave()"></td>`).join('')}<td class="rp ${ptot > 0 ? 'val-escuro' : ''}">${ptot || '—'}</td></tr>`;
     }
   });
+
+  // 2ª leva de produção (card extra com status próprio)
+  renderLeva2(def, d, cores, SZ, tu);
 
   const abTotal = abTots.reduce((a, b) => a + b, 0);
   if (!tu) SZ.forEach((s, i) => { const el = document.getElementById('ab-' + s); if (el) el.textContent = abTots[i]; });
@@ -3790,8 +3881,8 @@ function renderResumoProducao() {
 
   cores.forEach(cor => {
     const ab = def.aberto[cor] || [0,0,0,0,0];
-    const ev = d.est  && d.est[cor]  || [0,0,0,0,0];
-    const pv = d.prod && d.prod[cor] || [0,0,0,0,0];
+    const ev = d.est && d.est[cor] || [0,0,0,0,0];
+    const pv = prodTotalCor(d, cor) || [0,0,0,0,0]; // leva 1 + leva 2
 
     if (tu) {
       const saldo = ab.reduce((a,b)=>a+b,0) - (ev[0]||0) - (pv[0]||0);
@@ -4007,6 +4098,141 @@ function transferirParaEstoque() {
   renderModelo(modeloAtual);
 }
 
+// ─── 2ª LEVA DE PRODUÇÃO ─────────────────────────────────────────────────────
+// Leva extra por modelo (ex.: leva 1 já na costura + nova compra de tecido para
+// produzir mais). Começa sempre VAZIA (sem preenchimento automático) para não
+// duplicar contagens; entra nos cálculos somada à leva 1 (falta líquida) e conta
+// nos cards por etapa com o próprio status2.
+
+function temLeva2(d) {
+  return !!(d && (d.leva2 || d.status2 ||
+    (d.prod2 && Object.values(d.prod2).some(v => (v || []).some(x => x > 0)))));
+}
+
+function renderLeva2(def, d, cores, SZ, tu) {
+  const wrap  = document.getElementById('leva2-wrap');
+  const vazio = document.getElementById('leva2-vazio');
+  if (!wrap) return;
+  const ativa = temLeva2(d);
+  wrap.style.display = ativa ? '' : 'none';
+  if (vazio) vazio.style.display = ativa ? 'none' : '';
+
+  const thead = document.getElementById('prod2-thead');
+  const tbody = document.getElementById('prod2-tbody');
+  const tfoot = document.getElementById('prod2-tfoot');
+  tbody.innerHTML = '';
+  if (!ativa) { thead.innerHTML = ''; tfoot.innerHTML = ''; return; }
+
+  if (tu) {
+    thead.innerHTML = '<tr><th>Cor</th><th>Total</th></tr>';
+    tfoot.innerHTML = '<tr class="total-row"><td>Total</td><td id="p2-tot">0</td></tr>';
+  } else {
+    thead.innerHTML = `<tr><th>Cor</th>${SZ.map(s => `<th>${s}</th>`).join('')}<th>Tot</th></tr>`;
+    tfoot.innerHTML = `<tr class="total-row"><td>Total</td>${SZ.map(s => `<td id="p2-${s}">0</td>`).join('')}<td id="p2-tot">0</td></tr>`;
+  }
+
+  cores.forEach(cor => {
+    const pv = ((d.prod2 && d.prod2[cor]) || []).map(v => v || 0).concat(new Array(SZ.length).fill(0)).slice(0, SZ.length);
+    if (tu) {
+      const v = pv[0] || 0;
+      tbody.innerHTML += `<tr data-cor="${cor}"><td>${cor}</td><td><input class="ci${v > 0 ? ' ci-val' : ''}" type="number" min="0" value="${v || ''}" placeholder="—" oninput="marcarProd2Editado();calcProd2(this);autoSave()"></td></tr>`;
+    } else {
+      const tot = pv.reduce((a, b) => a + b, 0);
+      tbody.innerHTML += `<tr data-cor="${cor}"><td>${cor}</td>${pv.map(v => `<td><input class="ci${v > 0 ? ' ci-val' : ''}" type="number" min="0" value="${v || ''}" placeholder="—" oninput="marcarProd2Editado();calcProd2(this);autoSave()"></td>`).join('')}<td class="rp2 ${tot > 0 ? 'val-escuro' : ''}">${tot || '—'}</td></tr>`;
+    }
+  });
+
+  const updEl = document.getElementById('prod2-updated');
+  if (updEl) {
+    if (d.prod2_at) {
+      const dt = new Date(d.prod2_at);
+      const fmtDt = dt.toLocaleDateString('pt-BR', { day:'2-digit', month:'2-digit', year:'2-digit' });
+      const fmtHr = dt.toLocaleTimeString('pt-BR', { hour:'2-digit', minute:'2-digit' });
+      updEl.textContent = `Atualizado em ${fmtDt} às ${fmtHr}`;
+    } else {
+      updEl.textContent = '';
+    }
+  }
+}
+
+function calcProd2(inp) {
+  const row = inp.closest('tr');
+  const inputs = Array.from(row.querySelectorAll('input'));
+  inputs.forEach(i => { i.className = 'ci' + ((parseInt(i.value) || 0) > 0 ? ' ci-val' : ''); });
+  const sum = inputs.reduce((a, i) => a + (parseInt(i.value) || 0), 0);
+  const t = row.querySelector('.rp2');
+  if (t) { t.textContent = sum || '—'; t.className = 'rp2 ' + (sum > 0 ? 'val-escuro' : ''); }
+  atualizarTecido();
+}
+
+function adicionarLeva2() {
+  if (modeloAtual === '__dashboard__' || !MODELOS[modeloAtual]) return;
+  const saved = loadLocal('vc:' + modeloAtual) || {};
+  saved.leva2 = true;
+  saved.updated_at = new Date().toISOString();
+  saveLocal('vc:' + modeloAtual, saved);
+  _ultimoSaveTs = Date.now(); // carência: evita o sync da nuvem sobrescrever antes do upsert confirmar
+  salvarNuvem(modeloAtual, saved);
+  renderModelo(modeloAtual);
+}
+
+function removerLeva2() {
+  const saved = loadLocal('vc:' + modeloAtual) || {};
+  const temValores = saved.prod2 && Object.values(saved.prod2).some(v => (v || []).some(x => x > 0));
+  if (temValores && !confirm('Remover a 2ª leva? As quantidades digitadas nela serão apagadas (a produção principal não muda).')) return;
+  delete saved.prod2;
+  delete saved.status2;
+  delete saved.prazo2;
+  delete saved.status2_at;
+  delete saved.prod2_at;
+  saved.leva2 = false;
+  saved.updated_at = new Date().toISOString();
+  saveLocal('vc:' + modeloAtual, saved);
+  _ultimoSaveTs = Date.now();
+  salvarNuvem(modeloAtual, saved);
+  buildSidebar();
+  verificarAvisosStatus();
+  renderModelo(modeloAtual);
+}
+
+// Soma a 2ª leva ao Estoque e zera a leva (mesma lógica da leva 1)
+function transferirParaEstoque2() {
+  const saved = loadLocal('vc:' + modeloAtual) || {};
+  if (!saved.prod2 || Object.keys(saved.prod2).length === 0) return;
+
+  const def   = MODELOS[modeloAtual];
+  const cores = [...new Set([...def.cores, ...(saved.cores || [])])];
+
+  if (!saved.est) saved.est = {};
+
+  let temAlgo = false;
+  cores.forEach(cor => {
+    const pv = saved.prod2[cor];
+    if (!pv) return;
+    const total = pv.reduce((a, b) => a + (b || 0), 0);
+    if (total === 0) return;
+    temAlgo = true;
+    if (!saved.est[cor]) saved.est[cor] = [0, 0, 0, 0, 0];
+    saved.est[cor] = saved.est[cor].map((v, i) => v + (pv[i] || 0));
+  });
+
+  if (!temAlgo) return;
+
+  // Zera a leva explicitamente em todas as cores
+  cores.forEach(cor => { saved.prod2[cor] = [0, 0, 0, 0, 0]; });
+
+  const agora = new Date().toISOString();
+  saved.est_at     = agora;
+  saved.prod2_at   = agora;
+  saved.updated_at = agora;
+
+  saveLocal('vc:' + modeloAtual, saved);
+  _ultimoSaveTs = Date.now();
+  salvarNuvem(modeloAtual, saved);
+  renderModelo(modeloAtual);
+}
+// ─────────────────────────────────────────────────────────────────────────────
+
 function syncRowHeights() {
   // Só sincroniza no desktop (3 colunas visíveis)
   if (window.innerWidth < 769) return;
@@ -4038,19 +4264,30 @@ function syncRowHeights() {
 function atualizarTecido() {
   const consumo = parseFloat(document.getElementById('cfg-consumo').value) || MODELOS[modeloAtual].consumo;
   const preco = parseFloat(document.getElementById('preco-m').value) || 0;
-  const tots = [0, 0, 0, 0, 0];
-  const dados = [];
-  document.querySelectorAll('#prod-tbody tr').forEach(row => {
-    const cor = row.dataset.cor;
-    const vals = Array.from(row.querySelectorAll('input')).map(i => parseInt(i.value) || 0);
-    vals.forEach((v, i) => tots[i] += v);
-    const pecas = vals.reduce((a, b) => a + b, 0);
-    if (pecas > 0) dados.push({ cor, pecas, metros: pecas * consumo, custo: pecas * consumo * preco });
-  });
-  ['PP', 'P', 'M', 'G', 'GG'].forEach((s, i) => { const el = document.getElementById('p-' + s); if (el) el.textContent = tots[i]; });
+  const SZ = (MODELOS[modeloAtual] && MODELOS[modeloAtual].tamanhos) || ['PP', 'P', 'M', 'G', 'GG'];
+  // Tecido/custo por cor somam leva 1 + 2ª leva; rodapés das tabelas são separados
+  const porCor = {}; // cor → peças (ordem de inserção = ordem das linhas)
+  const lerTabela = (sel, tots) => {
+    document.querySelectorAll(sel + ' tr').forEach(row => {
+      const cor = row.dataset.cor;
+      const vals = Array.from(row.querySelectorAll('input')).map(i => parseInt(i.value) || 0);
+      vals.forEach((v, i) => { if (i < tots.length) tots[i] += v; });
+      const pecas = vals.reduce((a, b) => a + b, 0);
+      if (pecas > 0) porCor[cor] = (porCor[cor] || 0) + pecas;
+    });
+  };
+  const tots  = new Array(SZ.length).fill(0);
+  const tots2 = new Array(SZ.length).fill(0);
+  lerTabela('#prod-tbody', tots);
+  lerTabela('#prod2-tbody', tots2);
+  const dados = Object.entries(porCor).map(([cor, pecas]) => ({ cor, pecas, metros: pecas * consumo, custo: pecas * consumo * preco }));
+  SZ.forEach((s, i) => { const el = document.getElementById('p-' + s); if (el) el.textContent = tots[i]; });
   const sum = tots.reduce((a, b) => a + b, 0);
   const pt = document.getElementById('p-tot'); if (pt) { pt.textContent = sum; pt.className = sum > 0 ? 'val-escuro' : ''; }
-  document.getElementById('m-produzir').textContent = sum;
+  SZ.forEach((s, i) => { const el = document.getElementById('p2-' + s); if (el) el.textContent = tots2[i]; });
+  const sum2 = tots2.reduce((a, b) => a + b, 0);
+  const pt2 = document.getElementById('p2-tot'); if (pt2) { pt2.textContent = sum2; pt2.className = sum2 > 0 ? 'val-escuro' : ''; }
+  document.getElementById('m-produzir').textContent = sum + sum2;
   renderResumoProducao();
   const tm = dados.reduce((a, d) => a + d.metros, 0);
   const tc = dados.reduce((a, d) => a + d.custo, 0);
@@ -4166,23 +4403,32 @@ async function gerarFicha() {
     urlToBase64(croquiCostasRaw)
   ]);
 
-  // Coleta dados de produção
-  const prodRows = [];
-  document.querySelectorAll('#prod-tbody tr').forEach(row => {
-    const cor = row.dataset.cor;
-    const vals = Array.from(row.querySelectorAll('input')).map(i => parseInt(i.value) || 0);
-    const tot = vals.reduce((a, b) => a + b, 0);
-    prodRows.push({ cor, vals, tot });
-  });
+  // Coleta dados de produção (leva 1 + 2ª leva, seções separadas na ficha)
+  const lerRows = sel => {
+    const rows = [];
+    document.querySelectorAll(sel + ' tr').forEach(row => {
+      const cor = row.dataset.cor;
+      const vals = Array.from(row.querySelectorAll('input')).map(i => parseInt(i.value) || 0);
+      const tot = vals.reduce((a, b) => a + b, 0);
+      rows.push({ cor, vals, tot });
+    });
+    return rows;
+  };
+  const prodRows  = lerRows('#prod-tbody');
+  const prod2Rows = lerRows('#prod2-tbody').filter(r => r.tot > 0);
+  const status2   = document.getElementById('prod2-status')?.value || '';
   const prodTots = [0,0,0,0,0];
   prodRows.forEach(r => r.vals.forEach((v,i) => prodTots[i] += v));
+  const prod2Tots = [0,0,0,0,0];
+  prod2Rows.forEach(r => r.vals.forEach((v,i) => prod2Tots[i] += v));
+  prod2Rows.forEach(r => r.vals.forEach((v,i) => prodTots[i] += v)); // total geral = leva 1 + 2ª leva
   const prodTotal = prodTots.reduce((a,b) => a+b, 0);
 
   const hoje = new Date().toLocaleDateString('pt-BR');
   const prazoFmt = prazo ? new Date(prazo + 'T12:00:00').toLocaleDateString('pt-BR') : '—';
 
   const colSpan = tu ? 2 : 7;
-  const colorRowsHtml = prodRows.map((r, idx) => {
+  const rowsHtml = rows => rows.map((r, idx) => {
     const bg = idx % 2 === 1 ? '#faf8f5' : '#fff';
     const sizeCells = tu ? '' : r.vals.map(v => `<td style="text-align:center;padding:7px 8px;border:1px solid #ddd;background:${bg};color:${v ? '#111' : '#ccc'};">${v || '—'}</td>`).join('');
     return `
@@ -4192,6 +4438,11 @@ async function gerarFicha() {
       <td style="text-align:center;padding:7px 8px;border:1px solid #ddd;background:${bg};font-weight:700;">${r.tot || '—'}</td>
     </tr>`;
   }).join('');
+  const colorRowsHtml = rowsHtml(prodRows);
+  // Seção extra da 2ª leva (só entra se tiver quantidades)
+  const leva2RowsHtml = prod2Rows.length > 0
+    ? `<tr><td colspan="${colSpan}" class="section-hd">2ª leva${status2 ? ' — ' + status2 : ''}</td></tr>` + rowsHtml(prod2Rows)
+    : '';
 
   const makeCroqui = (base64, label) => base64
     ? `<div style="text-align:center;padding:14px 10px;">
@@ -4282,6 +4533,7 @@ async function gerarFicha() {
       <div>Data <strong>${hoje}</strong></div>
       <div>Prazo <strong>${prazoFmt}</strong></div>
       <div>Status <strong>${status}</strong></div>
+      ${prod2Rows.length > 0 && status2 ? `<div>Status 2ª leva <strong>${status2}</strong></div>` : ''}
     </div>
   </div>
 
@@ -4321,8 +4573,9 @@ async function gerarFicha() {
         </tr>
       </thead>
       <tbody>
-        <tr><td colspan="${colSpan}" class="section-hd">Total de peças a produzir</td></tr>
+        <tr><td colspan="${colSpan}" class="section-hd">Total de peças a produzir${leva2RowsHtml ? ' — leva principal' + (status ? ' (' + status + ')' : '') : ''}</td></tr>
         ${colorRowsHtml || `<tr><td colspan="${colSpan}" style="text-align:center;color:#bbb;padding:12px;">Nenhuma peça em produção</td></tr>`}
+        ${leva2RowsHtml}
       </tbody>
       <tfoot>
         <tr class="total-row">
@@ -4375,6 +4628,16 @@ function calcFalta(ab, ev, tu) {
   return ab.reduce((s,a,i) => s + Math.max(0, a - (ev[i]||0)), 0);
 }
 
+// Soma leva 1 + leva 2 de produção de uma cor (para falta líquida e afins).
+// Retorna null se nenhuma leva tem dados para a cor (preserva o fallback dos chamadores).
+function prodTotalCor(saved, cor) {
+  const p1 = saved.prod  && saved.prod[cor];
+  const p2 = saved.prod2 && saved.prod2[cor];
+  if (!p1 && !p2) return null;
+  const len = Math.max(p1 ? p1.length : 0, p2 ? p2.length : 0);
+  return Array.from({ length: len }, (_, i) => ((p1 && p1[i]) || 0) + ((p2 && p2[i]) || 0));
+}
+
 // Falta líquida: Pedidos − Estoque − Em Produção (o que ainda falta mandar para produção)
 function calcFaltaLiquido(ab, ev, pv, tu) {
   if (tu) {
@@ -4412,28 +4675,36 @@ function labelTecido(tecido) {
 function gerarFichaCompraGlobal() {
   const hoje = new Date().toLocaleDateString('pt-BR');
 
-  // Coleta todos os modelos com status "Comprando tecido"
+  // Coleta todos os modelos com alguma leva em "Comprando tecido"
+  // (leva 1 mantém o fallback Pedidos − Estoque; a 2ª leva só conta o digitado)
   const modelos = [];
   for (const [key, def] of Object.entries(MODELOS)) {
     if (CONJUNTO_PECAS[key]) continue;
     const saved = loadLocal('vc:' + key) || {};
-    if (saved.status !== 'Comprando tecido') continue;
     const consumo = saved.consumo || def.consumo;
     const preco   = saved.preco   || def.preco || 0;
     const tecido  = (saved.tecido || def.tecido || '').trim();
     const cores   = [...new Set([...def.cores, ...(saved.cores || [])])];
     const tuFC = !!def.tamanhoUnico;
     let totalPecas = 0;
-    cores.forEach(cor => {
-      const pv = saved.prod && saved.prod[cor];
-      if (pv) {
-        totalPecas += pv.reduce((a,b) => a+b, 0);
-      } else {
-        const ab = def.aberto[cor] || [0,0,0,0,0];
-        const ev = saved.est && saved.est[cor] || [0,0,0,0,0];
-        totalPecas += calcFalta(ab, ev, tuFC);
-      }
-    });
+    if (saved.status === 'Comprando tecido') {
+      cores.forEach(cor => {
+        const pv = saved.prod && saved.prod[cor];
+        if (pv) {
+          totalPecas += pv.reduce((a,b) => a+b, 0);
+        } else {
+          const ab = def.aberto[cor] || [0,0,0,0,0];
+          const ev = saved.est && saved.est[cor] || [0,0,0,0,0];
+          totalPecas += calcFalta(ab, ev, tuFC);
+        }
+      });
+    }
+    if (saved.status2 === 'Comprando tecido') {
+      cores.forEach(cor => {
+        const pv = saved.prod2 && saved.prod2[cor];
+        if (pv) totalPecas += pv.reduce((a,b) => a+b, 0);
+      });
+    }
     if (totalPecas === 0) continue;
     const metros = totalPecas * consumo;
     const custo  = metros * preco;
@@ -4452,7 +4723,7 @@ function gerarFichaCompraGlobal() {
   for (const [key, def] of Object.entries(MODELOS)) {
     if (CONJUNTO_PECAS[key]) continue;
     const saved = loadLocal('vc:' + key) || {};
-    if (saved.status !== 'Comprando tecido') continue;
+    if (saved.status !== 'Comprando tecido' && saved.status2 !== 'Comprando tecido') continue;
     const consumo = saved.consumo || def.consumo;
     const preco   = saved.preco   || def.preco || 0;
     const tecido  = (saved.tecido || def.tecido || 'Não especificado').trim();
@@ -4462,18 +4733,26 @@ function gerarFichaCompraGlobal() {
     if (!gruposLabel[chave]) gruposLabel[chave] = labelTecido(tecido);
     const tuG = !!def.tamanhoUnico;
     cores.forEach(cor => {
-      const pv = saved.prod && saved.prod[cor];
       let pecas = 0;
-      if (pv) {
-        pecas = pv.reduce((a,b) => a+b, 0);
-      } else {
-        const ab = def.aberto[cor] || [0,0,0,0,0];
-        const ev = saved.est && saved.est[cor] || [0,0,0,0,0];
-        if (tuG) {
-          pecas = Math.max(0, ab.reduce((a,b) => a+b, 0) - (ev[0]||0));
+      // Leva 1 (com fallback Pedidos − Estoque)
+      if (saved.status === 'Comprando tecido') {
+        const pv = saved.prod && saved.prod[cor];
+        if (pv) {
+          pecas += pv.reduce((a,b) => a+b, 0);
         } else {
-          pecas = calcFalta(ab, ev, tuG);
+          const ab = def.aberto[cor] || [0,0,0,0,0];
+          const ev = saved.est && saved.est[cor] || [0,0,0,0,0];
+          if (tuG) {
+            pecas += Math.max(0, ab.reduce((a,b) => a+b, 0) - (ev[0]||0));
+          } else {
+            pecas += calcFalta(ab, ev, tuG);
+          }
         }
+      }
+      // 2ª leva (só o digitado)
+      if (saved.status2 === 'Comprando tecido') {
+        const pv2 = saved.prod2 && saved.prod2[cor];
+        if (pv2) pecas += pv2.reduce((a,b) => a+b, 0);
       }
       if (pecas === 0) return;
       const metros = pecas * consumo;
@@ -4681,19 +4960,22 @@ renderFicha();
 function gerarFichaProducaoGeral() {
   const hoje = new Date().toLocaleDateString('pt-BR');
 
-  // Mesma lógica do card "EM PRODUÇÃO" do dashboard
+  // Mesma lógica do card "EM PRODUÇÃO" do dashboard (cada leva com o próprio status)
   const prodList = [];
   for (const [key, def] of Object.entries(MODELOS)) {
     if (CONJUNTO_PECAS[key]) continue;
     const saved = loadLocal('vc:' + key) || {};
-    if (!['Comprando tecido', 'Em corte', 'Em costura'].includes(saved.status)) continue;
     const cores = [...new Set([...def.cores, ...(saved.cores || [])])];
-    let total = 0;
-    cores.forEach(cor => {
-      const pv = saved.prod && saved.prod[cor];
-      if (pv) total += pv.reduce((a,b) => (a||0)+(b||0), 0);
+    [{ prod: saved.prod, status: saved.status, sufixo: '' },
+     { prod: saved.prod2, status: saved.status2, sufixo: ' — 2ª leva' }].forEach(l => {
+      if (!['Comprando tecido', 'Em corte', 'Em costura'].includes(l.status)) return;
+      let total = 0;
+      cores.forEach(cor => {
+        const pv = l.prod && l.prod[cor];
+        if (pv) total += pv.reduce((a,b) => (a||0)+(b||0), 0);
+      });
+      if (total > 0) prodList.push({ nome: def.nome + l.sufixo, status: l.status, total });
     });
-    if (total > 0) prodList.push({ nome: def.nome, status: saved.status, total });
   }
 
   if (prodList.length === 0) {
@@ -4801,30 +5083,37 @@ function gerarFichaProducaoGeral() {
 function gerarFichaConfeccao() {
   const hoje = new Date().toLocaleDateString('pt-BR');
 
-  // Coleta modelos com status "Comprando tecido"
+  // Coleta modelos com alguma leva em "Comprando tecido"
+  // (leva 1 com fallback Pedidos − Estoque; 2ª leva só o digitado, somadas por cor)
   const lista = [];
   for (const [key, def] of Object.entries(MODELOS)) {
     if (CONJUNTO_PECAS[key]) continue;
     const saved = loadLocal('vc:' + key) || {};
-    if (saved.status !== 'Comprando tecido') continue;
+    if (saved.status !== 'Comprando tecido' && saved.status2 !== 'Comprando tecido') continue;
     const tu    = !!def.tamanhoUnico;
     const cores = [...new Set([...def.cores, ...(saved.cores || [])])];
     const linhas = [];
     let totalModelo = 0;
     cores.forEach(cor => {
-      const pv = saved.prod && saved.prod[cor];
-      let vals;
-      if (pv) {
-        vals = [...pv];
-      } else {
-        const ab = def.aberto[cor] || [0,0,0,0,0];
-        const ev = saved.est && saved.est[cor] || [0,0,0,0,0];
-        if (tu) {
-          // tamanhoUnico: 1 valor total
-          vals = [calcFalta(ab, ev, true), 0, 0, 0, 0];
+      let vals = [0, 0, 0, 0, 0];
+      if (saved.status === 'Comprando tecido') {
+        const pv = saved.prod && saved.prod[cor];
+        if (pv) {
+          vals = vals.map((v,i) => v + (pv[i] || 0));
         } else {
-          vals = ab.map((a,i) => Math.max(0, a - (ev[i]||0)));
+          const ab = def.aberto[cor] || [0,0,0,0,0];
+          const ev = saved.est && saved.est[cor] || [0,0,0,0,0];
+          if (tu) {
+            // tamanhoUnico: 1 valor total
+            vals[0] += calcFalta(ab, ev, true);
+          } else {
+            vals = vals.map((v,i) => v + Math.max(0, (ab[i]||0) - (ev[i]||0)));
+          }
         }
+      }
+      if (saved.status2 === 'Comprando tecido') {
+        const pv2 = saved.prod2 && saved.prod2[cor];
+        if (pv2) vals = vals.map((v,i) => v + (pv2[i] || 0));
       }
       const tot = vals.reduce((a,b) => a+b, 0);
       if (tot === 0) return;
@@ -4958,18 +5247,29 @@ function gerarFichaCompra() {
   const preco   = parseFloat(document.getElementById('preco-m').value) || 0;
   const hoje    = new Date().toLocaleDateString('pt-BR');
 
-  // Coleta dados de produção (mesma lógica de atualizarTecido)
-  const dados = [];
-  document.querySelectorAll('#prod-tbody tr').forEach(row => {
-    const cor   = row.dataset.cor;
-    const vals  = Array.from(row.querySelectorAll('input')).map(i => parseInt(i.value) || 0);
-    const pecas = vals.reduce((a, b) => a + b, 0);
-    if (pecas > 0) {
-      const metros = pecas * consumo;
-      const custo  = metros * preco;
-      dados.push({ cor, pecas, metros, custo });
-    }
-  });
+  // Coleta dados de produção (mesma lógica de atualizarTecido).
+  // Com 2ª leva ativa: entram só as levas com status "Comprando tecido"
+  // (se nenhuma tiver, entram as duas). Sem 2ª leva: comportamento original.
+  const statusL1 = document.getElementById('prod-status')?.value || '';
+  const statusL2 = document.getElementById('prod2-status')?.value || '';
+  const leva2Ativa = document.querySelectorAll('#prod2-tbody tr').length > 0;
+  let incluiL1 = true, incluiL2 = leva2Ativa;
+  if (leva2Ativa && (statusL1 === 'Comprando tecido' || statusL2 === 'Comprando tecido')) {
+    incluiL1 = statusL1 === 'Comprando tecido';
+    incluiL2 = statusL2 === 'Comprando tecido';
+  }
+  const porCorFC = {};
+  const lerFC = sel => {
+    document.querySelectorAll(sel + ' tr').forEach(row => {
+      const cor   = row.dataset.cor;
+      const vals  = Array.from(row.querySelectorAll('input')).map(i => parseInt(i.value) || 0);
+      const pecas = vals.reduce((a, b) => a + b, 0);
+      if (pecas > 0) porCorFC[cor] = (porCorFC[cor] || 0) + pecas;
+    });
+  };
+  if (incluiL1) lerFC('#prod-tbody');
+  if (incluiL2) lerFC('#prod2-tbody');
+  const dados = Object.entries(porCorFC).map(([cor, pecas]) => ({ cor, pecas, metros: pecas * consumo, custo: pecas * consumo * preco }));
 
   if (dados.length === 0) {
     alert('Nenhuma peça em produção para gerar a ficha de compra.');
