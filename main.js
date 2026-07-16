@@ -4171,6 +4171,47 @@ function calcProd2(inp) {
   atualizarTecido();
 }
 
+// Preenche a 2ª leva com o que está em "A Produzir": Pedidos − Estoque − leva principal
+// (a leva 1 é lida do DOM, o mesmo que o card A Produzir enxerga)
+function recalcularProducao2() {
+  const def = MODELOS[modeloAtual];
+  if (!def) return;
+  const saved = loadLocal('vc:' + modeloAtual) || {};
+  const tu = !!def.tamanhoUnico;
+
+  // Leva 1 como está na tela
+  const p1Dom = {};
+  document.querySelectorAll('#prod-tbody tr').forEach(r => {
+    p1Dom[r.dataset.cor] = Array.from(r.querySelectorAll('input')).map(i => parseInt(i.value) || 0);
+  });
+
+  document.querySelectorAll('#prod2-tbody tr').forEach(row => {
+    const cor = row.dataset.cor;
+    const ab  = def.aberto[cor] || [0, 0, 0, 0, 0];
+    const ev  = saved.est && saved.est[cor] || [0, 0, 0, 0, 0];
+    const p1  = p1Dom[cor] || [0, 0, 0, 0, 0];
+    const inputs = Array.from(row.querySelectorAll('input'));
+
+    if (tu) {
+      // tamanhoUnico: 1 input = total. Estoque em ev[0]; leva 1 = soma do input único
+      const abTot = ab.reduce((a, b) => a + b, 0);
+      const falta = Math.max(0, abTot - (ev[0] || 0) - p1.reduce((a, b) => a + (b || 0), 0));
+      inputs[0].value = falta || '';
+      calcProd2(inputs[0]);
+    } else {
+      inputs.forEach((inp, i) => {
+        inp.value = Math.max(0, (ab[i] || 0) - (ev[i] || 0) - (p1[i] || 0)) || '';
+        calcProd2(inp);
+      });
+    }
+  });
+
+  prod2Editado = true;
+  salvarLocalImediato();   // persiste no localStorage imediatamente (antes de qualquer F5)
+  autoSave();              // agenda envio para a nuvem
+  renderModelo(modeloAtual); // atualiza card A Produzir e saldos
+}
+
 function adicionarLeva2() {
   if (modeloAtual === '__dashboard__' || !MODELOS[modeloAtual]) return;
   const saved = loadLocal('vc:' + modeloAtual) || {};

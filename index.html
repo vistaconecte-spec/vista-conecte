@@ -218,6 +218,7 @@
               <div class="card-title"><i class="ti ti-needle-thread"></i> EM PRODUÇÃO — 2ª LEVA</div>
               <div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap">
                 <span id="prod2-updated" style="font-size:10px;font-weight:600;color:var(--text-sec)"></span>
+                <button class="btn-outline" style="font-size:10px;padding:3px 8px" onclick="recalcularProducao2()" title="Preenche a 2ª leva com o que está em A Produzir (Pedidos − Estoque − leva principal)"><i class="ti ti-refresh"></i> Atualizar</button>
                 <button class="btn-outline" style="font-size:10px;padding:3px 8px;color:#16a34a;border-color:#16a34a" onclick="transferirParaEstoque2()" title="Soma a 2ª leva ao Estoque e zera a leva"><i class="ti ti-package-import"></i> → Estoque</button>
                 <button class="btn-outline" style="font-size:10px;padding:3px 8px;color:#dc2626;border-color:#dc2626" onclick="removerLeva2()" title="Remove a 2ª leva deste modelo"><i class="ti ti-x"></i> Remover</button>
               </div>
@@ -736,8 +737,8 @@
     </div>
   </div>
 </div>
-<script src="data.js?v=2026071606"></script>
-<script src="main.js?v=2026071606"></script>
+<script src="data.js?v=2026071607"></script>
+<script src="main.js?v=2026071607"></script>
 <script async src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js" onload="initSupabase()"></script>
 </body>
 </html>
