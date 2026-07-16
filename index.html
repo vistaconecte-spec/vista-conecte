@@ -205,25 +205,27 @@
         <div id="leva2-vazio" style="margin-bottom:10px">
           <button class="btn-outline" style="font-size:11px;padding:6px 14px;color:#7C3AED;border-color:#7C3AED" onclick="adicionarLeva2()"><i class="ti ti-plus"></i> Adicionar 2ª leva de produção</button>
         </div>
-        <div id="leva2-wrap" style="display:none;margin-bottom:10px">
-          <div class="prod-bar" style="border-left:4px solid #7C3AED">
-            <div class="prod-bar-left">
-              <div class="ctrl-g"><div class="ctrl-l" style="color:#7C3AED">STATUS · 2ª LEVA</div><select id="prod2-status" onchange="marcarCfgEditado()"><option value="">— Sem status —</option><option>Comprando tecido</option><option>Em corte</option><option>Em costura</option></select></div>
-              <div class="ctrl-g"><div class="ctrl-l" style="color:#7C3AED">PRAZO · 2ª LEVA</div><input type="date" id="prod2-prazo" onchange="marcarCfgEditado()"></div>
-            </div>
-          </div>
-          <div class="card" style="border:1px solid #7C3AED33">
-            <div class="card-header card-header-tabela">
-              <div class="card-title"><i class="ti ti-needle-thread"></i> EM PRODUÇÃO — 2ª LEVA</div>
-              <div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap">
-                <span id="prod2-updated" style="font-size:10px;font-weight:600;color:var(--text-sec)"></span>
-                <button class="btn-outline" style="font-size:10px;padding:3px 8px;color:#16a34a;border-color:#16a34a" onclick="transferirParaEstoque2()" title="Soma a 2ª leva ao Estoque e zera a leva"><i class="ti ti-package-import"></i> → Estoque</button>
-                <button class="btn-outline" style="font-size:10px;padding:3px 8px;color:#dc2626;border-color:#dc2626" onclick="removerLeva2()" title="Remove a 2ª leva deste modelo"><i class="ti ti-x"></i> Remover</button>
+        <div class="sections-3" id="leva2-wrap" style="display:none;margin-bottom:10px">
+          <div>
+            <div class="prod-bar" style="border-left:4px solid #7C3AED">
+              <div class="prod-bar-left">
+                <div class="ctrl-g"><div class="ctrl-l" style="color:#7C3AED">STATUS · 2ª LEVA</div><select id="prod2-status" onchange="marcarCfgEditado()"><option value="">— Sem status —</option><option>Comprando tecido</option><option>Em corte</option><option>Em costura</option></select></div>
+                <div class="ctrl-g"><div class="ctrl-l" style="color:#7C3AED">PRAZO · 2ª LEVA</div><input type="date" id="prod2-prazo" onchange="marcarCfgEditado()"></div>
               </div>
             </div>
-            <table><thead id="prod2-thead"><tr><th>Cor</th><th>PP</th><th>P</th><th>M</th><th>G</th><th>GG</th><th>Tot</th></tr></thead>
-            <tbody id="prod2-tbody"></tbody>
-            <tfoot id="prod2-tfoot"><tr class="total-row"><td>Total</td><td id="p2-PP">0</td><td id="p2-P">0</td><td id="p2-M">0</td><td id="p2-G">0</td><td id="p2-GG">0</td><td id="p2-tot">0</td></tr></tfoot></table>
+            <div class="card" style="border:1px solid #7C3AED33">
+              <div class="card-header card-header-tabela">
+                <div class="card-title"><i class="ti ti-needle-thread"></i> EM PRODUÇÃO — 2ª LEVA</div>
+                <div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap">
+                  <span id="prod2-updated" style="font-size:10px;font-weight:600;color:var(--text-sec)"></span>
+                  <button class="btn-outline" style="font-size:10px;padding:3px 8px;color:#16a34a;border-color:#16a34a" onclick="transferirParaEstoque2()" title="Soma a 2ª leva ao Estoque e zera a leva"><i class="ti ti-package-import"></i> → Estoque</button>
+                  <button class="btn-outline" style="font-size:10px;padding:3px 8px;color:#dc2626;border-color:#dc2626" onclick="removerLeva2()" title="Remove a 2ª leva deste modelo"><i class="ti ti-x"></i> Remover</button>
+                </div>
+              </div>
+              <table><thead id="prod2-thead"><tr><th>Cor</th><th>PP</th><th>P</th><th>M</th><th>G</th><th>GG</th><th>Tot</th></tr></thead>
+              <tbody id="prod2-tbody"></tbody>
+              <tfoot id="prod2-tfoot"><tr class="total-row"><td>Total</td><td id="p2-PP">0</td><td id="p2-P">0</td><td id="p2-M">0</td><td id="p2-G">0</td><td id="p2-GG">0</td><td id="p2-tot">0</td></tr></tfoot></table>
+            </div>
           </div>
         </div>
         <div class="sections-2" style="margin-bottom:10px">
@@ -737,8 +739,8 @@
     </div>
   </div>
 </div>
-<script src="data.js?v=2026071601"></script>
-<script src="main.js?v=2026071601"></script>
+<script src="data.js?v=2026071602"></script>
+<script src="main.js?v=2026071602"></script>
 <script async src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js" onload="initSupabase()"></script>
 </body>
 </html>
