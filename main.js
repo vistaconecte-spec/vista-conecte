@@ -5792,6 +5792,7 @@ function mdlRenderDetalhe() {
         <div style="font-size:12px;${a.status === 'done' ? 'text-decoration:line-through;color:var(--text-ter)' : ''}">${a.description}</div>
         <div style="font-size:10px;color:var(--text-ter);margin-top:2px">${a.version} · ${new Date(a.createdAt).toLocaleDateString('pt-BR')}</div>
       </div>
+      <i class="ti ti-pencil" onclick="mdlEditAlteracao(${a.id})" style="cursor:pointer;color:var(--text-ter);font-size:14px;margin-top:2px" title="Editar"></i>
     </div>`).join('') : '<div style="color:var(--text-ter);font-size:12px">Nenhuma alteração registrada.</div>';
 
   const pendencias = d.pendencias || [];
@@ -5802,6 +5803,7 @@ function mdlRenderDetalhe() {
         <div style="font-size:12px;${p.resolved ? 'text-decoration:line-through;color:var(--text-ter)' : ''}">${p.description}</div>
         <div style="font-size:10px;color:var(--text-ter);margin-top:2px">${new Date(p.createdAt).toLocaleDateString('pt-BR')}</div>
       </div>
+      <i class="ti ti-pencil" onclick="mdlEditPendencia(${p.id})" style="cursor:pointer;color:var(--text-ter);font-size:14px;margin-top:2px" title="Editar"></i>
     </div>`).join('') : '<div style="color:var(--text-ter);font-size:12px">Nenhuma pendência registrada.</div>';
 
   document.getElementById('mdl-det-body').innerHTML = `
@@ -5953,6 +5955,42 @@ async function mdlTogglePendencia(pendenciaId) {
     mdlCarregarLista();
   } catch (e) {
     alert('Erro ao atualizar pendência: ' + e.message);
+  }
+}
+
+async function mdlEditAlteracao(alteracaoId) {
+  const id = mdlProjetoAtual.projeto.id;
+  const atual = (mdlProjetoAtual.alteracoes || []).find(a => a.id === alteracaoId);
+  const nova = prompt('Editar alteração:', atual ? atual.description : '');
+  if (nova === null || !nova.trim() || nova.trim() === (atual && atual.description)) return;
+  try {
+    const res = await fetch('/api/modelagem-projeto', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id, acao: 'alteracao-edit', alteracaoId, description: nova.trim() }),
+    });
+    const data = await res.json();
+    if (data.erro) throw new Error(data.erro);
+    await mdlAbrirDetalhe(id);
+  } catch (e) {
+    alert('Erro ao editar alteração: ' + e.message);
+  }
+}
+
+async function mdlEditPendencia(pendenciaId) {
+  const id = mdlProjetoAtual.projeto.id;
+  const atual = (mdlProjetoAtual.pendencias || []).find(p => p.id === pendenciaId);
+  const nova = prompt('Editar pendência:', atual ? atual.description : '');
+  if (nova === null || !nova.trim() || nova.trim() === (atual && atual.description)) return;
+  try {
+    const res = await fetch('/api/modelagem-projeto', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id, acao: 'pendencia-edit', pendenciaId, description: nova.trim() }),
+    });
+    const data = await res.json();
+    if (data.erro) throw new Error(data.erro);
+    await mdlAbrirDetalhe(id);
+  } catch (e) {
+    alert('Erro ao editar pendência: ' + e.message);
   }
 }
 

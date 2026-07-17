@@ -6,8 +6,10 @@
  *   acao='consumo'          { larguraTecido, consumoPorPeca, observacoes }
  *   acao='alteracao-add'    { description }
  *   acao='alteracao-toggle' { alteracaoId }
+ *   acao='alteracao-edit'   { alteracaoId, description }
  *   acao='pendencia-add'    { description }
  *   acao='pendencia-toggle' { pendenciaId }
+ *   acao='pendencia-edit'   { pendenciaId, description }
  */
 const SB_URL = 'https://hckzsblwyabmhzbjdjgx.supabase.co';
 const USER_ID = 1; // admin fixo "Conecte Vista" — app não tem login por usuário
@@ -149,6 +151,13 @@ export async function onRequest(context) {
         return new Response(JSON.stringify({ alteracao }), { headers });
       }
 
+      if (acao === 'alteracao-edit') {
+        const { alteracaoId, description } = body;
+        if (!alteracaoId || !description) return new Response(JSON.stringify({ erro: 'informe alteracaoId e description' }), { status: 400, headers });
+        const alteracao = await sbPatch(env, `project_changes?id=eq.${alteracaoId}`, { description });
+        return new Response(JSON.stringify({ alteracao }), { headers });
+      }
+
       if (acao === 'pendencia-add') {
         const { description } = body;
         if (!description) return new Response(JSON.stringify({ erro: 'informe description' }), { status: 400, headers });
@@ -167,6 +176,13 @@ export async function onRequest(context) {
           ? { resolved: false, resolvedAt: null }
           : { resolved: true, resolvedAt: Date.now() };
         const pendencia = await sbPatch(env, `project_pendencias?id=eq.${pendenciaId}`, patch);
+        return new Response(JSON.stringify({ pendencia }), { headers });
+      }
+
+      if (acao === 'pendencia-edit') {
+        const { pendenciaId, description } = body;
+        if (!pendenciaId || !description) return new Response(JSON.stringify({ erro: 'informe pendenciaId e description' }), { status: 400, headers });
+        const pendencia = await sbPatch(env, `project_pendencias?id=eq.${pendenciaId}`, { description });
         return new Response(JSON.stringify({ pendencia }), { headers });
       }
 
