@@ -5700,7 +5700,7 @@ function mdlRenderLista() {
   }
   grid.innerHTML = lista.map(p => {
     const thumb = p.croquiKey
-      ? `<img src="/api/modelagem-storage?key=${encodeURIComponent(p.croquiKey)}" style="width:100%;height:100%;object-fit:cover;object-position:top" loading="lazy">`
+      ? `<img src="/api/modelagem-storage?key=${encodeURIComponent(p.croquiKey)}" style="width:100%;height:100%;object-fit:contain" loading="lazy">`
       : `<i class="ti ti-folder" style="font-size:38px;color:var(--gold)"></i>`;
     const badge = p.alteracoesPendentes > 0
       ? `<span style="position:absolute;top:6px;right:6px;background:#dc2626;color:#fff;font-size:10px;font-weight:700;border-radius:10px;padding:2px 7px">${p.alteracoesPendentes}</span>`
