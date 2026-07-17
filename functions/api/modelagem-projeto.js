@@ -1,11 +1,13 @@
 /**
  * Cloudflare Pages Function: /api/modelagem-projeto
- * GET  ?id=123                → detalhe do modelo (croquis, audaces, consumo, alterações)
+ * GET  ?id=123                → detalhe do modelo (croquis, fotos, audaces, consumo, alterações, pendências)
  * POST { id, acao, ... }      → mutações:
  *   acao='criar'            { title, category }
  *   acao='consumo'          { larguraTecido, consumoPorPeca, observacoes }
  *   acao='alteracao-add'    { description }
  *   acao='alteracao-toggle' { alteracaoId }
+ *   acao='pendencia-add'    { description }
+ *   acao='pendencia-toggle' { pendenciaId }
  */
 const SB_URL = 'https://hckzsblwyabmhzbjdjgx.supabase.co';
 const USER_ID = 1; // admin fixo "Conecte Vista" — app não tem login por usuário
@@ -62,13 +64,14 @@ async function sbPatch(env, path, body) {
 }
 
 async function carregarDetalhe(env, id) {
-  const [projetos, croquis, fotos, audaces, consumo, alteracoes] = await Promise.all([
+  const [projetos, croquis, fotos, audaces, consumo, alteracoes, pendencias] = await Promise.all([
     sbGet(env, `projects?id=eq.${id}&select=*`),
     sbGet(env, `project_croquis?projectId=eq.${id}&select=id,name,fileKey,createdAt&order=createdAt.desc`),
     sbGet(env, `project_files?projectId=eq.${id}&category=eq.foto&select=id,name,fileKey,createdAt&order=createdAt.desc`),
     sbGet(env, `project_files?projectId=eq.${id}&category=eq.audaces&select=id,name,fileKey,size,createdAt&order=createdAt.desc`),
     sbGet(env, `project_fabric_consumption?projectId=eq.${id}&select=*`),
     sbGet(env, `project_changes?projectId=eq.${id}&select=*&order=createdAt.desc`),
+    sbGet(env, `project_pendencias?projectId=eq.${id}&select=*&order=createdAt.desc`),
   ]);
   if (!projetos.length) return null;
   return {
@@ -78,6 +81,7 @@ async function carregarDetalhe(env, id) {
     audaces,
     consumo: consumo[0] || null,
     alteracoes,
+    pendencias,
   };
 }
 
@@ -143,6 +147,27 @@ export async function onRequest(context) {
           : { status: 'pending', doneAt: null, doneById: null };
         const alteracao = await sbPatch(env, `project_changes?id=eq.${alteracaoId}`, patch);
         return new Response(JSON.stringify({ alteracao }), { headers });
+      }
+
+      if (acao === 'pendencia-add') {
+        const { description } = body;
+        if (!description) return new Response(JSON.stringify({ erro: 'informe description' }), { status: 400, headers });
+        const pendencia = await sbInsert(env, 'project_pendencias', {
+          projectId: Number(id), description, resolved: false, createdById: USER_ID,
+        });
+        return new Response(JSON.stringify({ pendencia }), { headers });
+      }
+
+      if (acao === 'pendencia-toggle') {
+        const { pendenciaId } = body;
+        if (!pendenciaId) return new Response(JSON.stringify({ erro: 'informe pendenciaId' }), { status: 400, headers });
+        const [atual] = await sbGet(env, `project_pendencias?id=eq.${pendenciaId}&select=resolved`);
+        if (!atual) return new Response(JSON.stringify({ erro: 'pendência não encontrada' }), { status: 404, headers });
+        const patch = atual.resolved
+          ? { resolved: false, resolvedAt: null }
+          : { resolved: true, resolvedAt: Date.now() };
+        const pendencia = await sbPatch(env, `project_pendencias?id=eq.${pendenciaId}`, patch);
+        return new Response(JSON.stringify({ pendencia }), { headers });
       }
 
       return new Response(JSON.stringify({ erro: 'ação desconhecida' }), { status: 400, headers });

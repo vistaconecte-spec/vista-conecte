@@ -5706,8 +5706,12 @@ function mdlRenderLista() {
       ? `<span style="position:absolute;top:6px;right:6px;background:#dc2626;color:#fff;font-size:10px;font-weight:700;border-radius:10px;padding:2px 7px">${p.alteracoesPendentes}</span>`
       : '';
     const audacesIcon = p.temAudaces ? ' · <i class="ti ti-file-check" style="color:#16a34a"></i>' : '';
+    const faixaPendencia = p.pendenciasAbertas > 0
+      ? `<div style="background:#dc2626;color:#fff;font-size:10px;font-weight:700;letter-spacing:0.03em;text-align:center;padding:4px 6px"><i class="ti ti-alert-triangle"></i> ${p.pendenciasAbertas} PENDÊNCIA${p.pendenciasAbertas > 1 ? 'S' : ''}</div>`
+      : '';
     return `
       <div class="card" style="padding:0;cursor:pointer;overflow:hidden" onclick="mdlAbrirDetalhe(${p.id})">
+        ${faixaPendencia}
         <div style="position:relative;aspect-ratio:4/5;background:${p.croquiKey ? '#fff' : '#f5f0e8'};display:flex;align-items:center;justify-content:center">
           ${thumb}${badge}
         </div>
@@ -5790,6 +5794,16 @@ function mdlRenderDetalhe() {
       </div>
     </div>`).join('') : '<div style="color:var(--text-ter);font-size:12px">Nenhuma alteração registrada.</div>';
 
+  const pendencias = d.pendencias || [];
+  const pendenciasHtml = pendencias.length ? pendencias.map(p => `
+    <div style="display:flex;align-items:flex-start;gap:8px;padding:8px 0;border-bottom:1px solid var(--border)">
+      <input type="checkbox" ${p.resolved ? 'checked' : ''} onchange="mdlTogglePendencia(${p.id})" style="margin-top:3px">
+      <div style="flex:1">
+        <div style="font-size:12px;${p.resolved ? 'text-decoration:line-through;color:var(--text-ter)' : ''}">${p.description}</div>
+        <div style="font-size:10px;color:var(--text-ter);margin-top:2px">${new Date(p.createdAt).toLocaleDateString('pt-BR')}</div>
+      </div>
+    </div>`).join('') : '<div style="color:var(--text-ter);font-size:12px">Nenhuma pendência registrada.</div>';
+
   document.getElementById('mdl-det-body').innerHTML = `
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px">
       <div class="card">
@@ -5841,6 +5855,15 @@ function mdlRenderDetalhe() {
         <div style="display:flex;gap:6px">
           <input id="mdl-nova-alteracao" placeholder="Descrever alteração..." style="flex:1;padding:7px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px" onkeydown="if(event.key==='Enter')mdlAddAlteracao(${d.projeto.id})">
           <button class="btn-primary" style="font-size:12px;padding:7px 12px" onclick="mdlAddAlteracao(${d.projeto.id})"><i class="ti ti-plus"></i></button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header"><div class="card-title"><i class="ti ti-alert-triangle"></i> PENDÊNCIAS</div></div>
+        <div style="max-height:220px;overflow-y:auto;margin-bottom:10px">${pendenciasHtml}</div>
+        <div style="display:flex;gap:6px">
+          <input id="mdl-nova-pendencia" placeholder="Descrever pendência..." style="flex:1;padding:7px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px" onkeydown="if(event.key==='Enter')mdlAddPendencia(${d.projeto.id})">
+          <button class="btn-primary" style="font-size:12px;padding:7px 12px" onclick="mdlAddPendencia(${d.projeto.id})"><i class="ti ti-plus"></i></button>
         </div>
       </div>
     </div>`;
@@ -5895,6 +5918,41 @@ async function mdlToggleAlteracao(alteracaoId) {
     mdlCarregarLista();
   } catch (e) {
     alert('Erro ao atualizar alteração: ' + e.message);
+  }
+}
+
+async function mdlAddPendencia(id) {
+  const input = document.getElementById('mdl-nova-pendencia');
+  const description = input.value.trim();
+  if (!description) return;
+  try {
+    const res = await fetch('/api/modelagem-projeto', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id, acao: 'pendencia-add', description }),
+    });
+    const data = await res.json();
+    if (data.erro) throw new Error(data.erro);
+    input.value = '';
+    await mdlAbrirDetalhe(id);
+    mdlCarregarLista(); // atualiza a faixa de pendências na grid
+  } catch (e) {
+    alert('Erro ao adicionar pendência: ' + e.message);
+  }
+}
+
+async function mdlTogglePendencia(pendenciaId) {
+  const id = mdlProjetoAtual.projeto.id;
+  try {
+    const res = await fetch('/api/modelagem-projeto', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id, acao: 'pendencia-toggle', pendenciaId }),
+    });
+    const data = await res.json();
+    if (data.erro) throw new Error(data.erro);
+    await mdlAbrirDetalhe(id);
+    mdlCarregarLista();
+  } catch (e) {
+    alert('Erro ao atualizar pendência: ' + e.message);
   }
 }
 

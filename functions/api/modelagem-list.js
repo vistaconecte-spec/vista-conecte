@@ -25,11 +25,12 @@ export async function onRequest(context) {
   }
 
   try {
-    const [projRes, croquiRes, changesRes, filesRes] = await Promise.all([
+    const [projRes, croquiRes, changesRes, filesRes, pendenciasRes] = await Promise.all([
       fetch(`${SB_URL}/rest/v1/projects?select=id,title,category,status,createdAt&order=title.asc`, { headers: sbHeaders(env) }),
       fetch(`${SB_URL}/rest/v1/project_croquis?select=projectId,fileKey,createdAt&order=createdAt.desc`, { headers: sbHeaders(env) }),
       fetch(`${SB_URL}/rest/v1/project_changes?select=projectId,status`, { headers: sbHeaders(env) }),
       fetch(`${SB_URL}/rest/v1/project_files?select=projectId,category`, { headers: sbHeaders(env) }),
+      fetch(`${SB_URL}/rest/v1/project_pendencias?select=projectId,resolved`, { headers: sbHeaders(env) }),
     ]);
     if (!projRes.ok) {
       return new Response(JSON.stringify({ erro: 'projects', detalhe: await projRes.text() }), { status: 502, headers });
@@ -38,6 +39,7 @@ export async function onRequest(context) {
     const croquis = croquiRes.ok ? await croquiRes.json() : [];
     const changes = changesRes.ok ? await changesRes.json() : [];
     const files = filesRes.ok ? await filesRes.json() : [];
+    const pendencias = pendenciasRes.ok ? await pendenciasRes.json() : [];
 
     const croquiPorProjeto = {};
     for (const c of croquis) if (!croquiPorProjeto[c.projectId]) croquiPorProjeto[c.projectId] = c.fileKey;
@@ -48,6 +50,9 @@ export async function onRequest(context) {
     const audacesPorProjeto = {};
     for (const f of files) if (f.category === 'audaces') audacesPorProjeto[f.projectId] = true;
 
+    const pendenciasAbertasPorProjeto = {};
+    for (const p of pendencias) if (!p.resolved) pendenciasAbertasPorProjeto[p.projectId] = (pendenciasAbertasPorProjeto[p.projectId] || 0) + 1;
+
     const out = projects.map(p => ({
       id: p.id,
       title: p.title,
@@ -56,6 +61,7 @@ export async function onRequest(context) {
       croquiKey: croquiPorProjeto[p.id] || null,
       alteracoesPendentes: pendentesPorProjeto[p.id] || 0,
       temAudaces: !!audacesPorProjeto[p.id],
+      pendenciasAbertas: pendenciasAbertasPorProjeto[p.id] || 0,
     }));
 
     return new Response(JSON.stringify({ projetos: out }), { headers });
