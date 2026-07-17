@@ -5770,11 +5770,11 @@ function mdlRenderDetalhe() {
   document.getElementById('mdl-det-titulo').textContent = d.projeto.title;
 
   const croquisHtml = (d.croquis || []).map(c => `
-    <img src="/api/modelagem-storage?key=${encodeURIComponent(c.fileKey)}" style="width:100%;max-height:420px;object-fit:contain;border-radius:8px;border:1px solid var(--border);background:#fafafa">`
+    <img src="/api/modelagem-storage?key=${encodeURIComponent(c.fileKey)}" style="width:100%;max-height:220px;object-fit:contain;border-radius:8px;border:1px solid var(--border);background:#fafafa">`
   ).join('') || '<div style="color:var(--text-ter);font-size:12px">Nenhum croqui ainda.</div>';
 
   const fotosHtml = (d.fotos || []).map(f => `
-    <img src="/api/modelagem-storage?key=${encodeURIComponent(f.fileKey)}" style="width:100%;max-height:420px;object-fit:contain;border-radius:8px;border:1px solid var(--border);background:#fff">`
+    <img src="/api/modelagem-storage?key=${encodeURIComponent(f.fileKey)}" style="width:100%;max-height:220px;object-fit:contain;border-radius:8px;border:1px solid var(--border);background:#fff">`
   ).join('') || '<div style="color:var(--text-ter);font-size:12px">Nenhuma foto ainda.</div>';
 
   const audacesHtml = (d.audaces || []).map(a => `
@@ -5807,7 +5807,7 @@ function mdlRenderDetalhe() {
     </div>`).join('') : '<div style="color:var(--text-ter);font-size:12px">Nenhuma pendência registrada.</div>';
 
   document.getElementById('mdl-det-body').innerHTML = `
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px">
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px">
       <div class="card">
         <div class="card-header"><div class="card-title"><i class="ti ti-camera"></i> FOTO DO MODELO</div></div>
         <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;margin-bottom:10px">${fotosHtml}</div>
