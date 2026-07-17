@@ -5794,7 +5794,7 @@ function mdlRenderDetalhe() {
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px">
       <div class="card">
         <div class="card-header"><div class="card-title"><i class="ti ti-camera"></i> FOTO DO MODELO</div></div>
-        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(100px,1fr));gap:8px;margin-bottom:10px">${fotosHtml}</div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;margin-bottom:10px">${fotosHtml}</div>
         <label class="btn-outline" style="font-size:12px;padding:7px 12px;display:inline-flex;align-items:center;gap:6px;cursor:pointer">
           <i class="ti ti-upload"></i> Enviar foto
           <input type="file" accept="image/*" style="display:none" onchange="mdlUpload(${d.projeto.id},'foto',this)">
@@ -5803,7 +5803,7 @@ function mdlRenderDetalhe() {
 
       <div class="card">
         <div class="card-header"><div class="card-title"><i class="ti ti-photo"></i> CROQUI</div></div>
-        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(100px,1fr));gap:8px;margin-bottom:10px">${croquisHtml}</div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;margin-bottom:10px">${croquisHtml}</div>
         <label class="btn-outline" style="font-size:12px;padding:7px 12px;display:inline-flex;align-items:center;gap:6px;cursor:pointer">
           <i class="ti ti-upload"></i> Enviar croqui
           <input type="file" accept="image/*" style="display:none" onchange="mdlUpload(${d.projeto.id},'croqui',this)">
