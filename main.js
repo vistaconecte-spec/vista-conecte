@@ -407,6 +407,13 @@ function buildSidebar() {
   atdItem.onclick = () => abrirAtendimento(atdItem);
   nav.appendChild(atdItem);
 
+  // Botão Modelagem (arquivos Audaces, croquis, consumo e alterações por modelo)
+  const mdlItem = document.createElement('div');
+  mdlItem.className = 'nav-item nav-dashboard' + (modeloAtual === '__modelagem__' ? ' active' : '');
+  mdlItem.innerHTML = '<i class="ti ti-shirt"></i> MODELAGEM';
+  mdlItem.onclick = () => abrirModelagem(mdlItem);
+  nav.appendChild(mdlItem);
+
   // Título de seção: separa as ferramentas (acima) do catálogo de modelos (abaixo)
   const confTitle = document.createElement('div');
   confTitle.className = 'sidebar-section';
@@ -5638,11 +5645,265 @@ function agendarVerificacaoEnvios() {
   }, msAte16);
 }
 
+// ─── ABA MODELAGEM (pastas por modelo: croqui, arquivo Audaces, consumo, alterações) ──────────
+let mdlProjetos = [];
+let mdlProjetoAtual = null;
+
+function abrirModelagem(item) {
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  if (item) item.classList.add('active');
+  if (modeloAtual !== '__dashboard__' && modeloAtual !== '__modelagem__' && (estEditado || prodEditado || cfgEditado)) {
+    clearTimeout(saveTimer); salvarModelo();
+  }
+  estEditado = false; prodEditado = false; cfgEditado = false; esconderBtnSalvar();
+  modeloAtual = '__modelagem__';
+  location.hash = 'modelagem';
+  document.getElementById('model-title').innerHTML = '<span style="font-family:\'Bebas Neue\',\'Arial Narrow\',sans-serif;font-weight:400;font-size:26px;letter-spacing:0.1em">MODELAGEM</span>';
+  document.getElementById('model-sub').textContent = '';
+  document.getElementById('topbar-actions').style.display = 'none';
+  document.getElementById('tabs-modelo').style.display = 'none';
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  document.getElementById('panel-modelagem').classList.add('active');
+  document.body.classList.remove('precos-mode');
+  mdlVoltarLista();
+  mdlCarregarLista();
+  closeSidebar();
+}
+
+async function mdlCarregarLista() {
+  const grid = document.getElementById('mdl-grid');
+  grid.innerHTML = '<div style="color:var(--text-ter);font-size:13px;padding:20px">Carregando...</div>';
+  try {
+    const res = await fetch('/api/modelagem-list');
+    const data = await res.json();
+    if (data.erro) throw new Error(data.erro);
+    mdlProjetos = data.projetos || [];
+    mdlRenderLista();
+  } catch (e) {
+    grid.innerHTML = `<div style="color:#dc2626;font-size:13px;padding:20px">Erro ao carregar: ${e.message}</div>`;
+  }
+}
+
+function mdlRenderLista() {
+  const grid = document.getElementById('mdl-grid');
+  const busca = (document.getElementById('mdl-busca').value || '').toLowerCase().trim();
+  const lista = mdlProjetos.filter(p => !busca || (p.title || '').toLowerCase().includes(busca));
+  if (!lista.length) {
+    grid.innerHTML = '<div style="color:var(--text-ter);font-size:13px;padding:20px">Nenhum modelo encontrado.</div>';
+    return;
+  }
+  grid.innerHTML = lista.map(p => {
+    const thumb = p.croquiKey
+      ? `<img src="/api/modelagem-storage?key=${encodeURIComponent(p.croquiKey)}" style="width:100%;height:100%;object-fit:cover;object-position:top" loading="lazy">`
+      : `<i class="ti ti-folder" style="font-size:38px;color:var(--gold)"></i>`;
+    const badge = p.alteracoesPendentes > 0
+      ? `<span style="position:absolute;top:6px;right:6px;background:#dc2626;color:#fff;font-size:10px;font-weight:700;border-radius:10px;padding:2px 7px">${p.alteracoesPendentes}</span>`
+      : '';
+    const audacesIcon = p.temAudaces ? ' · <i class="ti ti-file-check" style="color:#16a34a"></i>' : '';
+    return `
+      <div class="card" style="padding:0;cursor:pointer;overflow:hidden" onclick="mdlAbrirDetalhe(${p.id})">
+        <div style="position:relative;aspect-ratio:4/5;background:#f5f0e8;display:flex;align-items:center;justify-content:center">
+          ${thumb}${badge}
+        </div>
+        <div style="padding:10px 12px">
+          <div style="font-weight:600;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${p.title}</div>
+          <div style="font-size:11px;color:var(--text-ter);margin-top:2px">${p.category || '—'}${audacesIcon}</div>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+async function mdlNovoModelo() {
+  const title = prompt('Nome do novo modelo:');
+  if (!title || !title.trim()) return;
+  const category = prompt('Categoria (opcional, ex.: Vestido, Conjunto...):') || null;
+  try {
+    const res = await fetch('/api/modelagem-projeto', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ acao: 'criar', title: title.trim(), category }),
+    });
+    const data = await res.json();
+    if (data.erro) throw new Error(data.erro);
+    await mdlCarregarLista();
+    mdlAbrirDetalhe(data.projeto.id);
+  } catch (e) {
+    alert('Erro ao criar modelo: ' + e.message);
+  }
+}
+
+function mdlVoltarLista() {
+  mdlProjetoAtual = null;
+  document.getElementById('mdl-detalhe').style.display = 'none';
+  document.getElementById('mdl-lista').style.display = '';
+}
+
+async function mdlAbrirDetalhe(id) {
+  document.getElementById('mdl-lista').style.display = 'none';
+  document.getElementById('mdl-detalhe').style.display = '';
+  document.getElementById('mdl-det-titulo').textContent = 'Carregando...';
+  document.getElementById('mdl-det-body').innerHTML = '';
+  try {
+    const res = await fetch('/api/modelagem-projeto?id=' + id);
+    const data = await res.json();
+    if (data.erro) throw new Error(data.erro);
+    mdlProjetoAtual = data;
+    mdlRenderDetalhe();
+  } catch (e) {
+    document.getElementById('mdl-det-titulo').textContent = 'Erro';
+    document.getElementById('mdl-det-body').innerHTML = `<div style="color:#dc2626;font-size:13px">${e.message}</div>`;
+  }
+}
+
+function mdlRenderDetalhe() {
+  const d = mdlProjetoAtual;
+  if (!d) return;
+  document.getElementById('mdl-det-titulo').textContent = d.projeto.title;
+
+  const croquisHtml = (d.croquis || []).map(c => `
+    <img src="/api/modelagem-storage?key=${encodeURIComponent(c.fileKey)}" style="width:100%;max-height:420px;object-fit:contain;border-radius:8px;border:1px solid var(--border);background:#fafafa">`
+  ).join('') || '<div style="color:var(--text-ter);font-size:12px">Nenhum croqui ainda.</div>';
+
+  const audacesHtml = (d.audaces || []).map(a => `
+    <div style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;margin-bottom:6px">
+      <i class="ti ti-file-type-xls" style="color:var(--gold-dark)"></i>
+      <a href="/api/modelagem-storage?key=${encodeURIComponent(a.fileKey)}" target="_blank" style="font-size:12px;color:inherit;text-decoration:none;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${a.name}</a>
+    </div>`).join('') || '<div style="color:var(--text-ter);font-size:12px">Nenhum arquivo da Audaces ainda.</div>';
+
+  const consumo = d.consumo || {};
+  const alteracoes = d.alteracoes || [];
+  const alteracoesHtml = alteracoes.length ? alteracoes.map(a => `
+    <div style="display:flex;align-items:flex-start;gap:8px;padding:8px 0;border-bottom:1px solid var(--border)">
+      <input type="checkbox" ${a.status === 'done' ? 'checked' : ''} onchange="mdlToggleAlteracao(${a.id})" style="margin-top:3px">
+      <div style="flex:1">
+        <div style="font-size:12px;${a.status === 'done' ? 'text-decoration:line-through;color:var(--text-ter)' : ''}">${a.description}</div>
+        <div style="font-size:10px;color:var(--text-ter);margin-top:2px">${a.version} · ${new Date(a.createdAt).toLocaleDateString('pt-BR')}</div>
+      </div>
+    </div>`).join('') : '<div style="color:var(--text-ter);font-size:12px">Nenhuma alteração registrada.</div>';
+
+  document.getElementById('mdl-det-body').innerHTML = `
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px">
+      <div class="card">
+        <div class="card-header"><div class="card-title"><i class="ti ti-photo"></i> CROQUI</div></div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(100px,1fr));gap:8px;margin-bottom:10px">${croquisHtml}</div>
+        <label class="btn-outline" style="font-size:12px;padding:7px 12px;display:inline-flex;align-items:center;gap:6px;cursor:pointer">
+          <i class="ti ti-upload"></i> Enviar croqui
+          <input type="file" accept="image/*" style="display:none" onchange="mdlUpload(${d.projeto.id},'croqui',this)">
+        </label>
+      </div>
+
+      <div class="card">
+        <div class="card-header"><div class="card-title"><i class="ti ti-file-type-xls"></i> ARQUIVO DA AUDACES</div></div>
+        <div style="margin-bottom:10px">${audacesHtml}</div>
+        <label class="btn-outline" style="font-size:12px;padding:7px 12px;display:inline-flex;align-items:center;gap:6px;cursor:pointer">
+          <i class="ti ti-upload"></i> Enviar arquivo
+          <input type="file" style="display:none" onchange="mdlUpload(${d.projeto.id},'audaces',this)">
+        </label>
+      </div>
+
+      <div class="card">
+        <div class="card-header"><div class="card-title"><i class="ti ti-ruler-2"></i> CONSUMO DO MODELO</div></div>
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <label style="font-size:11px;color:var(--text-sec)">Largura do tecido
+            <input id="mdl-consumo-largura" value="${consumo.larguraTecido || ''}" placeholder="ex.: 1,40m" style="width:100%;margin-top:3px;padding:7px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px">
+          </label>
+          <label style="font-size:11px;color:var(--text-sec)">Consumo por peça
+            <input id="mdl-consumo-peca" value="${consumo.consumoPorPeca || ''}" placeholder="ex.: 1,80m" style="width:100%;margin-top:3px;padding:7px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px">
+          </label>
+          <label style="font-size:11px;color:var(--text-sec)">Observações
+            <textarea id="mdl-consumo-obs" rows="2" style="width:100%;margin-top:3px;padding:7px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;resize:vertical">${consumo.observacoes || ''}</textarea>
+          </label>
+          <button class="btn-primary" style="font-size:12px;padding:8px;align-self:flex-start" onclick="mdlSalvarConsumo(${d.projeto.id})"><i class="ti ti-device-floppy"></i> Salvar consumo</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header"><div class="card-title"><i class="ti ti-list-details"></i> ALTERAÇÕES NO PROJETO</div></div>
+        <div style="max-height:220px;overflow-y:auto;margin-bottom:10px">${alteracoesHtml}</div>
+        <div style="display:flex;gap:6px">
+          <input id="mdl-nova-alteracao" placeholder="Descrever alteração..." style="flex:1;padding:7px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px" onkeydown="if(event.key==='Enter')mdlAddAlteracao(${d.projeto.id})">
+          <button class="btn-primary" style="font-size:12px;padding:7px 12px" onclick="mdlAddAlteracao(${d.projeto.id})"><i class="ti ti-plus"></i></button>
+        </div>
+      </div>
+    </div>`;
+}
+
+async function mdlSalvarConsumo(id) {
+  const larguraTecido = document.getElementById('mdl-consumo-largura').value.trim();
+  const consumoPorPeca = document.getElementById('mdl-consumo-peca').value.trim();
+  const observacoes = document.getElementById('mdl-consumo-obs').value.trim();
+  try {
+    const res = await fetch('/api/modelagem-projeto', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id, acao: 'consumo', larguraTecido, consumoPorPeca, observacoes }),
+    });
+    const data = await res.json();
+    if (data.erro) throw new Error(data.erro);
+    showSaved();
+  } catch (e) {
+    alert('Erro ao salvar consumo: ' + e.message);
+  }
+}
+
+async function mdlAddAlteracao(id) {
+  const input = document.getElementById('mdl-nova-alteracao');
+  const description = input.value.trim();
+  if (!description) return;
+  try {
+    const res = await fetch('/api/modelagem-projeto', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id, acao: 'alteracao-add', description }),
+    });
+    const data = await res.json();
+    if (data.erro) throw new Error(data.erro);
+    input.value = '';
+    await mdlAbrirDetalhe(id);
+    mdlCarregarLista(); // atualiza badge de pendências na grid
+  } catch (e) {
+    alert('Erro ao adicionar alteração: ' + e.message);
+  }
+}
+
+async function mdlToggleAlteracao(alteracaoId) {
+  const id = mdlProjetoAtual.projeto.id;
+  try {
+    const res = await fetch('/api/modelagem-projeto', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id, acao: 'alteracao-toggle', alteracaoId }),
+    });
+    const data = await res.json();
+    if (data.erro) throw new Error(data.erro);
+    await mdlAbrirDetalhe(id);
+    mdlCarregarLista();
+  } catch (e) {
+    alert('Erro ao atualizar alteração: ' + e.message);
+  }
+}
+
+async function mdlUpload(id, tipo, inputEl) {
+  const file = inputEl.files[0];
+  if (!file) return;
+  const form = new FormData();
+  form.append('projectId', id);
+  form.append('tipo', tipo);
+  form.append('file', file);
+  try {
+    const res = await fetch('/api/modelagem-upload', { method: 'POST', body: form });
+    const data = await res.json();
+    if (data.erro) throw new Error(data.erro);
+    await mdlAbrirDetalhe(id);
+    mdlCarregarLista();
+  } catch (e) {
+    alert('Erro ao enviar arquivo: ' + e.message);
+  } finally {
+    inputEl.value = '';
+  }
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 
 // 1. Monta sidebar e restaura tela pelo hash da URL (ou abre dashboard)
 const _hashKey = location.hash.replace('#', '');
-const _ESPECIAIS = { precos: '__precos__', financeiro: '__financeiro__', trafego: '__trafego__', fluxo: '__fluxo__', atendimento: '__atendimento__' };
+const _ESPECIAIS = { precos: '__precos__', financeiro: '__financeiro__', trafego: '__trafego__', fluxo: '__fluxo__', atendimento: '__atendimento__', modelagem: '__modelagem__' };
 modeloAtual = _ESPECIAIS[_hashKey] || ((_hashKey && MODELOS[_hashKey]) ? _hashKey : '__dashboard__');
 buildSidebar();
 
@@ -5656,6 +5917,8 @@ if (modeloAtual === '__precos__') {
   abrirFluxo(null); // restaura a aba Fluxo de Caixa após F5
 } else if (modeloAtual === '__atendimento__') {
   abrirAtendimento(null); // restaura a aba Atendimento após F5
+} else if (modeloAtual === '__modelagem__') {
+  abrirModelagem(null); // restaura a aba Modelagem após F5
 } else if (modeloAtual === '__dashboard__') {
   document.getElementById('tabs-modelo').style.display = 'none';
 } else {
@@ -5672,6 +5935,7 @@ const _renderInicial = () => {
   else if (modeloAtual === '__trafego__') { if (sessionStorage.getItem('fin-ok') === '1') trafCarregarFrame(); }
   else if (modeloAtual === '__fluxo__') { if (sessionStorage.getItem('fin-ok') === '1') renderFluxo(); }
   else if (modeloAtual === '__atendimento__') { if (sessionStorage.getItem('fin-ok') === '1') atdShowSub('sac'); }
+  else if (modeloAtual === '__modelagem__') { mdlCarregarLista(); }
   else renderModelo(modeloAtual);
 };
 carregarTodosNuvem().then(() => carregarPedidosShopify()).then(() => {

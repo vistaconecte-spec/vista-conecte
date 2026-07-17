@@ -734,11 +734,29 @@
           </div>
         </div>
       </div>
+
+      <div id="panel-modelagem" class="tab-panel">
+        <div id="mdl-lista">
+          <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap">
+            <div style="font-weight:700;font-size:18px"><i class="ti ti-shirt"></i> Modelagem</div>
+            <input id="mdl-busca" placeholder="Buscar modelo..." oninput="mdlRenderLista()" style="padding:7px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px;min-width:200px">
+            <button class="btn-primary" style="margin-left:auto;font-size:12px;padding:7px 14px" onclick="mdlNovoModelo()"><i class="ti ti-folder-plus"></i> Novo modelo</button>
+          </div>
+          <div id="mdl-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:14px"></div>
+        </div>
+        <div id="mdl-detalhe" style="display:none">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+            <button class="btn-outline" style="font-size:12px;padding:6px 12px" onclick="mdlVoltarLista()"><i class="ti ti-arrow-left"></i> Voltar</button>
+            <div id="mdl-det-titulo" style="font-weight:700;font-size:18px"></div>
+          </div>
+          <div id="mdl-det-body"></div>
+        </div>
+      </div>
     </div>
   </div>
 </div>
-<script src="data.js?v=2026071607"></script>
-<script src="main.js?v=2026071607"></script>
+<script src="data.js?v=2026071703"></script>
+<script src="main.js?v=2026071703"></script>
 <script async src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js" onload="initSupabase()"></script>
 </body>
 </html>
