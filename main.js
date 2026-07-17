@@ -5625,6 +5625,12 @@ function confirmarBaixaEstoque() {
   else renderModelo(modeloAtual);
 }
 
+function fecharModalEnvios() {
+  // X = só fecha, sem decidir: NÃO atualiza o snapshot, então os envios
+  // voltam a ser oferecidos na próxima verificação (diferente de "Ignorar")
+  document.getElementById('modal-envios').style.display = 'none';
+}
+
 function ignorarEnvios() {
   // Descarta sem atualizar estoque, mas salva novo snapshot
   salvarSnapshotAberto();
