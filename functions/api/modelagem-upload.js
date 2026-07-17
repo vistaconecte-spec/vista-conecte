@@ -1,8 +1,8 @@
 /**
  * Cloudflare Pages Function: /api/modelagem-upload
- * POST multipart/form-data { projectId, tipo: 'audaces'|'croqui', file, name? }
- * Sobe o arquivo pro Supabase Storage (bucket "modelagem") e grava a metadado
- * em project_files (audaces) ou project_croquis (croqui).
+ * POST multipart/form-data { projectId, tipo: 'audaces'|'croqui'|'foto', file, name? }
+ * Sobe o arquivo pro Supabase Storage (bucket "modelagem") e grava o metadado
+ * em project_files (audaces/foto) ou project_croquis (croqui).
  */
 const SB_URL = 'https://hckzsblwyabmhzbjdjgx.supabase.co';
 const BUCKET = 'modelagem';
@@ -41,7 +41,7 @@ export async function onRequest(context) {
     if (!projectId || !tipo || !file) {
       return new Response(JSON.stringify({ erro: 'informe projectId, tipo e file' }), { status: 400, headers });
     }
-    if (!['audaces', 'croqui'].includes(tipo)) {
+    if (!['audaces', 'croqui', 'foto'].includes(tipo)) {
       return new Response(JSON.stringify({ erro: 'tipo inválido' }), { status: 400, headers });
     }
 
@@ -67,7 +67,7 @@ export async function onRequest(context) {
     const table = tipo === 'croqui' ? 'project_croquis' : 'project_files';
     const rowBody = tipo === 'croqui'
       ? { projectId: Number(projectId), name: originalName, fileKey: key, url, mimeType: file.type || null, size: bytes.byteLength, uploadedById: USER_ID }
-      : { projectId: Number(projectId), name: originalName, fileKey: key, url, mimeType: file.type || null, size: bytes.byteLength, category: 'audaces', uploadedById: USER_ID };
+      : { projectId: Number(projectId), name: originalName, fileKey: key, url, mimeType: file.type || null, size: bytes.byteLength, category: tipo, uploadedById: USER_ID };
 
     const ins = await fetch(`${SB_URL}/rest/v1/${table}`, {
       method: 'POST',

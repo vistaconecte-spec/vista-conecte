@@ -29,7 +29,7 @@ export async function onRequest(context) {
       fetch(`${SB_URL}/rest/v1/projects?select=id,title,category,status,createdAt&order=title.asc`, { headers: sbHeaders(env) }),
       fetch(`${SB_URL}/rest/v1/project_croquis?select=projectId,fileKey,createdAt&order=createdAt.desc`, { headers: sbHeaders(env) }),
       fetch(`${SB_URL}/rest/v1/project_changes?select=projectId,status`, { headers: sbHeaders(env) }),
-      fetch(`${SB_URL}/rest/v1/project_files?select=projectId,category`, { headers: sbHeaders(env) }),
+      fetch(`${SB_URL}/rest/v1/project_files?select=projectId,category,fileKey,createdAt&order=createdAt.desc`, { headers: sbHeaders(env) }),
     ]);
     if (!projRes.ok) {
       return new Response(JSON.stringify({ erro: 'projects', detalhe: await projRes.text() }), { status: 502, headers });
@@ -42,6 +42,9 @@ export async function onRequest(context) {
     const croquiPorProjeto = {};
     for (const c of croquis) if (!croquiPorProjeto[c.projectId]) croquiPorProjeto[c.projectId] = c.fileKey;
 
+    const fotoPorProjeto = {};
+    for (const f of files) if (f.category === 'foto' && !fotoPorProjeto[f.projectId]) fotoPorProjeto[f.projectId] = f.fileKey;
+
     const pendentesPorProjeto = {};
     for (const c of changes) if (c.status === 'pending') pendentesPorProjeto[c.projectId] = (pendentesPorProjeto[c.projectId] || 0) + 1;
 
@@ -53,7 +56,7 @@ export async function onRequest(context) {
       title: p.title,
       category: p.category,
       status: p.status,
-      croquiKey: croquiPorProjeto[p.id] || null,
+      croquiKey: fotoPorProjeto[p.id] || croquiPorProjeto[p.id] || null,
       alteracoesPendentes: pendentesPorProjeto[p.id] || 0,
       temAudaces: !!audacesPorProjeto[p.id],
     }));

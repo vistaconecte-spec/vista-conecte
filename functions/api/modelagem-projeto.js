@@ -62,9 +62,10 @@ async function sbPatch(env, path, body) {
 }
 
 async function carregarDetalhe(env, id) {
-  const [projetos, croquis, audaces, consumo, alteracoes] = await Promise.all([
+  const [projetos, croquis, fotos, audaces, consumo, alteracoes] = await Promise.all([
     sbGet(env, `projects?id=eq.${id}&select=*`),
     sbGet(env, `project_croquis?projectId=eq.${id}&select=id,name,fileKey,createdAt&order=createdAt.desc`),
+    sbGet(env, `project_files?projectId=eq.${id}&category=eq.foto&select=id,name,fileKey,createdAt&order=createdAt.desc`),
     sbGet(env, `project_files?projectId=eq.${id}&category=eq.audaces&select=id,name,fileKey,size,createdAt&order=createdAt.desc`),
     sbGet(env, `project_fabric_consumption?projectId=eq.${id}&select=*`),
     sbGet(env, `project_changes?projectId=eq.${id}&select=*&order=createdAt.desc`),
@@ -73,6 +74,7 @@ async function carregarDetalhe(env, id) {
   return {
     projeto: projetos[0],
     croquis,
+    fotos,
     audaces,
     consumo: consumo[0] || null,
     alteracoes,
