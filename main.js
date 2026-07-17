@@ -5708,7 +5708,7 @@ function mdlRenderLista() {
     const audacesIcon = p.temAudaces ? ' · <i class="ti ti-file-check" style="color:#16a34a"></i>' : '';
     return `
       <div class="card" style="padding:0;cursor:pointer;overflow:hidden" onclick="mdlAbrirDetalhe(${p.id})">
-        <div style="position:relative;aspect-ratio:4/5;background:#f5f0e8;display:flex;align-items:center;justify-content:center">
+        <div style="position:relative;aspect-ratio:4/5;background:${p.croquiKey ? '#fff' : '#f5f0e8'};display:flex;align-items:center;justify-content:center">
           ${thumb}${badge}
         </div>
         <div style="padding:10px 12px">
