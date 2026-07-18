@@ -5836,6 +5836,15 @@ function mdlRenderDetalhe() {
       </div>
 
       <div class="card">
+        <div class="card-header"><div class="card-title"><i class="ti ti-list-details"></i> ALTERAÇÕES NO PROJETO</div></div>
+        <div style="max-height:220px;overflow-y:auto;margin-bottom:10px">${alteracoesHtml}</div>
+        <div style="display:flex;gap:6px">
+          <input id="mdl-nova-alteracao" placeholder="Descrever alteração..." style="flex:1;padding:7px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px" onkeydown="if(event.key==='Enter')mdlAddAlteracao(${d.projeto.id})">
+          <button class="btn-primary" style="font-size:12px;padding:7px 12px" onclick="mdlAddAlteracao(${d.projeto.id})"><i class="ti ti-plus"></i></button>
+        </div>
+      </div>
+
+      <div class="card">
         <div class="card-header"><div class="card-title"><i class="ti ti-ruler-2"></i> CONSUMO DO MODELO</div></div>
         <div style="display:flex;flex-direction:column;gap:8px">
           <label style="font-size:11px;color:var(--text-sec)">Largura do tecido
@@ -5848,15 +5857,6 @@ function mdlRenderDetalhe() {
             <textarea id="mdl-consumo-obs" rows="2" style="width:100%;margin-top:3px;padding:7px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;resize:vertical">${consumo.observacoes || ''}</textarea>
           </label>
           <button class="btn-primary" style="font-size:12px;padding:8px;align-self:flex-start" onclick="mdlSalvarConsumo(${d.projeto.id})"><i class="ti ti-device-floppy"></i> Salvar consumo</button>
-        </div>
-      </div>
-
-      <div class="card">
-        <div class="card-header"><div class="card-title"><i class="ti ti-list-details"></i> ALTERAÇÕES NO PROJETO</div></div>
-        <div style="max-height:220px;overflow-y:auto;margin-bottom:10px">${alteracoesHtml}</div>
-        <div style="display:flex;gap:6px">
-          <input id="mdl-nova-alteracao" placeholder="Descrever alteração..." style="flex:1;padding:7px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px" onkeydown="if(event.key==='Enter')mdlAddAlteracao(${d.projeto.id})">
-          <button class="btn-primary" style="font-size:12px;padding:7px 12px" onclick="mdlAddAlteracao(${d.projeto.id})"><i class="ti ti-plus"></i></button>
         </div>
       </div>
 
