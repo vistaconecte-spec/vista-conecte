@@ -5702,18 +5702,16 @@ function mdlRenderLista() {
     const thumb = p.croquiKey
       ? `<img src="/api/modelagem-storage?key=${encodeURIComponent(p.croquiKey)}" style="width:100%;height:100%;object-fit:contain" loading="lazy">`
       : `<i class="ti ti-folder" style="font-size:38px;color:var(--gold)"></i>`;
-    const badge = p.alteracoesPendentes > 0
-      ? `<span style="position:absolute;top:6px;right:6px;background:#dc2626;color:#fff;font-size:10px;font-weight:700;border-radius:10px;padding:2px 7px">${p.alteracoesPendentes}</span>`
-      : '';
     const audacesIcon = p.temAudaces ? ' · <i class="ti ti-file-check" style="color:#16a34a"></i>' : '';
-    const faixaPendencia = p.pendenciasAbertas > 0
-      ? `<div style="background:#dc2626;color:#fff;font-size:10px;font-weight:700;letter-spacing:0.03em;text-align:center;padding:4px 6px"><i class="ti ti-alert-triangle"></i> ${p.pendenciasAbertas} PENDÊNCIA${p.pendenciasAbertas > 1 ? 'S' : ''}</div>`
+    const totalPendencias = (p.pendenciasAbertas || 0) + (p.alteracoesPendentes || 0);
+    const faixaPendencia = totalPendencias > 0
+      ? `<div style="background:#dc2626;color:#fff;font-size:10px;font-weight:700;letter-spacing:0.03em;text-align:center;padding:4px 6px"><i class="ti ti-alert-triangle"></i> ${totalPendencias} PENDÊNCIA${totalPendencias > 1 ? 'S' : ''}</div>`
       : '';
     return `
       <div class="card" style="padding:0;cursor:pointer;overflow:hidden" onclick="mdlAbrirDetalhe(${p.id})">
         ${faixaPendencia}
         <div style="position:relative;aspect-ratio:4/5;background:${p.croquiKey ? '#fff' : '#f5f0e8'};display:flex;align-items:center;justify-content:center">
-          ${thumb}${badge}
+          ${thumb}
         </div>
         <div style="padding:10px 12px">
           <div style="font-weight:600;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${p.title}</div>
