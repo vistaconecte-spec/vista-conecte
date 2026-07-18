@@ -5781,7 +5781,10 @@ function mdlRenderDetalhe() {
       <a href="/api/modelagem-storage?key=${encodeURIComponent(a.fileKey)}" target="_blank" style="font-size:12px;color:inherit;text-decoration:none;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${a.name}</a>
     </div>`).join('') || '<div style="color:var(--text-ter);font-size:12px">Nenhum arquivo da Audaces ainda.</div>';
 
+  const faixaAlertaCard = texto => `<div style="background:#dc2626;color:#fff;font-size:10px;font-weight:700;letter-spacing:0.03em;text-align:center;padding:4px 6px;margin:-12px -16px 10px"><i class="ti ti-alert-triangle"></i> ${texto}</div>`;
+
   const consumo = d.consumo || {};
+  const consumoFaltando = !((consumo.larguraTecido || '').trim() || (consumo.consumoPorPeca || '').trim());
   const alteracoes = d.alteracoes || [];
   const alteracoesHtml = alteracoes.length ? alteracoes.map(a => `
     <div style="display:flex;align-items:flex-start;gap:8px;padding:8px 0;border-bottom:1px solid var(--border)">
@@ -5834,6 +5837,7 @@ function mdlRenderDetalhe() {
       </div>
 
       <div class="card">
+        ${alteracoes.filter(a => a.status === 'pending').length > 0 ? faixaAlertaCard(`${alteracoes.filter(a => a.status === 'pending').length} EM ABERTO`) : ''}
         <div class="card-header"><div class="card-title"><i class="ti ti-list-details"></i> ALTERAÇÕES NO PROJETO</div></div>
         <div style="max-height:220px;overflow-y:auto;margin-bottom:10px">${alteracoesHtml}</div>
         <div style="display:flex;gap:6px">
@@ -5843,6 +5847,7 @@ function mdlRenderDetalhe() {
       </div>
 
       <div class="card">
+        ${consumoFaltando ? faixaAlertaCard('NÃO PREENCHIDO') : ''}
         <div class="card-header"><div class="card-title"><i class="ti ti-ruler-2"></i> CONSUMO DO MODELO</div></div>
         <div style="display:flex;flex-direction:column;gap:8px">
           <label style="font-size:11px;color:var(--text-sec)">Largura do tecido
@@ -5859,6 +5864,7 @@ function mdlRenderDetalhe() {
       </div>
 
       <div class="card">
+        ${pendencias.filter(p => !p.resolved).length > 0 ? faixaAlertaCard(`${pendencias.filter(p => !p.resolved).length} EM ABERTO`) : ''}
         <div class="card-header"><div class="card-title"><i class="ti ti-alert-triangle"></i> PENDÊNCIAS</div></div>
         <div style="max-height:220px;overflow-y:auto;margin-bottom:10px">${pendenciasHtml}</div>
         <div style="display:flex;gap:6px">
