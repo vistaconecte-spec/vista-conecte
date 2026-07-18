@@ -5703,7 +5703,7 @@ function mdlRenderLista() {
       ? `<img src="/api/modelagem-storage?key=${encodeURIComponent(p.croquiKey)}" style="width:100%;height:100%;object-fit:contain" loading="lazy">`
       : `<i class="ti ti-folder" style="font-size:38px;color:var(--gold)"></i>`;
     const audacesIcon = p.temAudaces ? ' · <i class="ti ti-file-check" style="color:#16a34a"></i>' : '';
-    const totalPendencias = (p.pendenciasAbertas || 0) + (p.alteracoesPendentes || 0);
+    const totalPendencias = (p.pendenciasAbertas || 0) + (p.alteracoesPendentes || 0) + (p.semConsumo ? 1 : 0);
     const faixaPendencia = totalPendencias > 0
       ? `<div style="background:#dc2626;color:#fff;font-size:10px;font-weight:700;letter-spacing:0.03em;text-align:center;padding:4px 6px"><i class="ti ti-alert-triangle"></i> ${totalPendencias} PENDÊNCIA${totalPendencias > 1 ? 'S' : ''}</div>`
       : '';

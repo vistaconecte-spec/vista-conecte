@@ -1,7 +1,7 @@
 /**
  * Cloudflare Pages Function: /api/modelagem-list
  * Lista os modelos (projetos) como "pastas" pra grid da aba Modelagem.
- * GET → { projetos: [{ id, title, category, status, croquiKey, alteracoesPendentes, temAudaces }] }
+ * GET → { projetos: [{ id, title, category, status, croquiKey, alteracoesPendentes, temAudaces, pendenciasAbertas, semConsumo }] }
  */
 const SB_URL = 'https://hckzsblwyabmhzbjdjgx.supabase.co';
 
@@ -25,12 +25,13 @@ export async function onRequest(context) {
   }
 
   try {
-    const [projRes, croquiRes, changesRes, filesRes, pendenciasRes] = await Promise.all([
+    const [projRes, croquiRes, changesRes, filesRes, pendenciasRes, consumoRes] = await Promise.all([
       fetch(`${SB_URL}/rest/v1/projects?select=id,title,category,status,createdAt&order=title.asc`, { headers: sbHeaders(env) }),
       fetch(`${SB_URL}/rest/v1/project_croquis?select=projectId,fileKey,createdAt&order=createdAt.desc`, { headers: sbHeaders(env) }),
       fetch(`${SB_URL}/rest/v1/project_changes?select=projectId,status`, { headers: sbHeaders(env) }),
       fetch(`${SB_URL}/rest/v1/project_files?select=projectId,category`, { headers: sbHeaders(env) }),
       fetch(`${SB_URL}/rest/v1/project_pendencias?select=projectId,resolved`, { headers: sbHeaders(env) }),
+      fetch(`${SB_URL}/rest/v1/project_fabric_consumption?select=projectId,larguraTecido,consumoPorPeca`, { headers: sbHeaders(env) }),
     ]);
     if (!projRes.ok) {
       return new Response(JSON.stringify({ erro: 'projects', detalhe: await projRes.text() }), { status: 502, headers });
@@ -40,6 +41,7 @@ export async function onRequest(context) {
     const changes = changesRes.ok ? await changesRes.json() : [];
     const files = filesRes.ok ? await filesRes.json() : [];
     const pendencias = pendenciasRes.ok ? await pendenciasRes.json() : [];
+    const consumos = consumoRes.ok ? await consumoRes.json() : [];
 
     const croquiPorProjeto = {};
     for (const c of croquis) if (!croquiPorProjeto[c.projectId]) croquiPorProjeto[c.projectId] = c.fileKey;
@@ -53,6 +55,9 @@ export async function onRequest(context) {
     const pendenciasAbertasPorProjeto = {};
     for (const p of pendencias) if (!p.resolved) pendenciasAbertasPorProjeto[p.projectId] = (pendenciasAbertasPorProjeto[p.projectId] || 0) + 1;
 
+    const consumoPreenchidoPorProjeto = {};
+    for (const c of consumos) if ((c.larguraTecido || '').trim() || (c.consumoPorPeca || '').trim()) consumoPreenchidoPorProjeto[c.projectId] = true;
+
     const out = projects.map(p => ({
       id: p.id,
       title: p.title,
@@ -62,6 +67,7 @@ export async function onRequest(context) {
       alteracoesPendentes: pendentesPorProjeto[p.id] || 0,
       temAudaces: !!audacesPorProjeto[p.id],
       pendenciasAbertas: pendenciasAbertasPorProjeto[p.id] || 0,
+      semConsumo: !consumoPreenchidoPorProjeto[p.id],
     }));
 
     return new Response(JSON.stringify({ projetos: out }), { headers });
