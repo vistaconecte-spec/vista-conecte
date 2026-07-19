@@ -31,6 +31,8 @@ export async function onRequest(context) {
       }` : ''}
       shop {
         name
+        email
+        contactEmail
         checkoutApiSupported
       }
       webhookSubscriptions(first: 50) {
