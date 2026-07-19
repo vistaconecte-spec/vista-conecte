@@ -11,14 +11,16 @@ export async function onRequest(context) {
   const H = { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*', 'Cache-Control': 'no-store' };
   if (!store || !token) return new Response(JSON.stringify({ erro: 'env não configurado' }), { status: 500, headers: H });
 
+  const incluirCustomizations = new URL(context.request.url).searchParams.get('customizations') === '1';
   const query = `
     query {
+      ${incluirCustomizations ? `
       paymentCustomizations(first: 20) {
         edges { node { id title enabled functionId } }
       }
       deliveryCustomizations(first: 20) {
         edges { node { id title enabled functionId } }
-      }
+      }` : ''}
       shop {
         name
         checkoutApiSupported
