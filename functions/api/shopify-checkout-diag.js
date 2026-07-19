@@ -20,6 +20,14 @@ export async function onRequest(context) {
       }
       deliveryCustomizations(first: 20) {
         edges { node { id title enabled functionId } }
+      }
+      discountNodes(first: 20) {
+        edges { node { id
+          discount {
+            ... on DiscountAutomaticApp { title status appDiscountType { functionId targetType } }
+            ... on DiscountCodeApp { title status appDiscountType { functionId targetType } }
+          }
+        } }
       }` : ''}
       shop {
         name
