@@ -14,10 +14,10 @@ export async function onRequest(context) {
   const query = `
     query {
       paymentCustomizations(first: 20) {
-        edges { node { id title enabled errorMessage functionId } }
+        edges { node { id title enabled functionId } }
       }
       deliveryCustomizations(first: 20) {
-        edges { node { id title enabled errorMessage functionId } }
+        edges { node { id title enabled functionId } }
       }
       shop {
         name
