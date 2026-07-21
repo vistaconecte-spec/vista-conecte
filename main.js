@@ -3922,7 +3922,8 @@ function renderModelo(key) {
       prod.innerHTML += `<tr data-cor="${cor}" data-min="${minTU}"><td>${cor}</td><td><input class="ci${pvTU > 0 ? (pvTU > minTU ? ' acima' : ' ci-val') : ''}" type="number" min="0" value="${pvTU || ''}" placeholder="—" oninput="marcarProdEditado();calcProdTU(this);autoSave()"></td></tr>`;
     } else {
       const mins = ab.map((a, i) => Math.max(0, a - ev[i]));
-      const pv   = d.prod && d.prod[cor] || mins;
+      // normaliza pro nº de tamanhos do modelo (dados antigos podem ter menos posições — ex.: sapato migrado de PP-GG p/ 34-40)
+      const pv   = ((d.prod && d.prod[cor]) || mins).map(v => v || 0).concat(new Array(SZ.length).fill(0)).slice(0, SZ.length);
       abt.innerHTML  += `<tr><td>${cor}</td>${ab.map(v => `<td class="${v > 0 ? 'val-areia' : ''}">${v || '—'}</td>`).join('')}<td class="${abTot > 0 ? 'val-areia' : ''}">${abTot || '0'}</td></tr>`;
       const etot = ev.reduce((a, b) => a + b, 0);
       est.innerHTML  += `<tr data-cor="${cor}"><td>${cor}</td>${ev.map(v => `<td><input class="ci${v > 0 ? ' ci-val' : ''}" type="number" min="0" value="${v || ''}" placeholder="—" oninput="marcarEstEditado()"></td>`).join('')}<td class="re ${etot > 0 ? 'val-grafite' : ''}">${etot || '—'}</td></tr>`;
@@ -4022,8 +4023,8 @@ function renderResumoProducao() {
   if (tfootAp) tfootAp.innerHTML = tu ? tfTu('rp') : tfFull('rp');
   if (tfootSl) tfootSl.innerHTML = tu ? tfTu('rs') : tfFull('rs');
 
-  const totAp = tu ? [0] : [0,0,0,0,0];
-  const totSl = tu ? [0] : [0,0,0,0,0];
+  const totAp = tu ? [0] : new Array(SIZES.length).fill(0);
+  const totSl = tu ? [0] : new Array(SIZES.length).fill(0);
   let sumAp = 0, sumSl = 0;
 
   cores.forEach(cor => {
@@ -5833,7 +5834,10 @@ async function mdlCarregarLista() {
 function mdlRenderLista() {
   const grid = document.getElementById('mdl-grid');
   const busca = (document.getElementById('mdl-busca').value || '').toLowerCase().trim();
-  const lista = mdlProjetos.filter(p => !busca || (p.title || '').toLowerCase().includes(busca));
+  const nPend = p => (p.alteracoesPendentes || 0); // grade destaca só alterações/ajustes no projeto (consumo e pendências antigas não contam)
+  const lista = mdlProjetos
+    .filter(p => !busca || (p.title || '').toLowerCase().includes(busca))
+    .sort((a, b) => nPend(b) - nPend(a)); // com pendência primeiro (empate mantém a ordem original)
   if (!lista.length) {
     grid.innerHTML = '<div style="color:var(--text-ter);font-size:13px;padding:20px">Nenhum modelo encontrado.</div>';
     return;
@@ -5843,9 +5847,9 @@ function mdlRenderLista() {
       ? `<img src="/api/modelagem-storage?key=${encodeURIComponent(p.croquiKey)}" style="width:100%;height:100%;object-fit:contain" loading="lazy">`
       : `<i class="ti ti-folder" style="font-size:38px;color:var(--gold)"></i>`;
     const audacesIcon = p.temAudaces ? ' · <i class="ti ti-file-check" style="color:#16a34a"></i>' : '';
-    const totalPendencias = (p.pendenciasAbertas || 0) + (p.alteracoesPendentes || 0) + (p.semConsumo ? 1 : 0);
+    const totalPendencias = (p.alteracoesPendentes || 0); // grade destaca só alterações/ajustes no projeto
     const faixaPendencia = totalPendencias > 0
-      ? `<div style="background:#dc2626;color:#fff;font-size:10px;font-weight:700;letter-spacing:0.03em;text-align:center;padding:4px 6px"><i class="ti ti-alert-triangle"></i> ${totalPendencias} PENDÊNCIA${totalPendencias > 1 ? 'S' : ''}</div>`
+      ? `<div style="background:#dc2626;color:#fff;font-size:8px;font-weight:700;letter-spacing:0.03em;text-align:center;padding:2px 6px"><i class="ti ti-alert-triangle"></i> ${totalPendencias} PENDÊNCIA${totalPendencias > 1 ? 'S' : ''}</div>`
       : '';
     return `
       <div class="card" style="padding:0;cursor:pointer;overflow:hidden" onclick="mdlAbrirDetalhe(${p.id})">
@@ -5907,24 +5911,37 @@ function mdlRenderDetalhe() {
   if (!d) return;
   document.getElementById('mdl-det-titulo').textContent = d.projeto.title;
 
+  const btnRemoverImg = (tipo, fileId) => `
+    <button onclick="mdlRemoverArquivo(${d.projeto.id},'${tipo}',${fileId})" title="Remover" style="position:absolute;top:3px;right:3px;width:15px;height:15px;border:none;border-radius:50%;background:rgba(0,0,0,0.55);color:#fff;font-size:9px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0"><i class="ti ti-x"></i></button>`;
+
   const croquisHtml = (d.croquis || []).map(c => `
-    <img src="/api/modelagem-storage?key=${encodeURIComponent(c.fileKey)}" style="width:100%;max-height:170px;object-fit:contain;border-radius:8px;border:1px solid var(--border);background:#fafafa">`
+    <div style="position:relative">
+      <img src="/api/modelagem-storage?key=${encodeURIComponent(c.fileKey)}" style="width:100%;max-height:170px;object-fit:contain;border-radius:8px;border:1px solid var(--border);background:#fafafa">
+      ${btnRemoverImg('croqui', c.id)}
+    </div>`
   ).join('') || '<div style="color:var(--text-ter);font-size:12px">Nenhum croqui ainda.</div>';
 
   const fotosHtml = (d.fotos || []).map(f => `
-    <img src="/api/modelagem-storage?key=${encodeURIComponent(f.fileKey)}" style="width:100%;max-height:170px;object-fit:contain;border-radius:8px;border:1px solid var(--border);background:#fff">`
+    <div style="position:relative">
+      <img src="/api/modelagem-storage?key=${encodeURIComponent(f.fileKey)}" style="width:100%;max-height:170px;object-fit:contain;border-radius:8px;border:1px solid var(--border);background:#fff">
+      ${btnRemoverImg('foto', f.id)}
+    </div>`
   ).join('') || '<div style="color:var(--text-ter);font-size:12px">Nenhuma foto ainda.</div>';
 
   const audacesHtml = (d.audaces || []).map(a => `
     <div style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;margin-bottom:6px">
       <i class="ti ti-file-type-xls" style="color:var(--gold-dark)"></i>
       <a href="/api/modelagem-storage?key=${encodeURIComponent(a.fileKey)}" target="_blank" style="font-size:12px;color:inherit;text-decoration:none;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${a.name}</a>
+      <i class="ti ti-trash" onclick="mdlRemoverArquivo(${d.projeto.id},'audaces',${a.id})" title="Remover arquivo" style="cursor:pointer;color:#dc2626;font-size:15px"></i>
     </div>`).join('') || '<div style="color:var(--text-ter);font-size:12px">Nenhum arquivo da Audaces ainda.</div>';
 
   const faixaAlertaCard = texto => `<div style="background:#dc2626;color:#fff;font-size:10px;font-weight:700;letter-spacing:0.03em;text-align:center;padding:4px 6px;margin:-12px -16px 10px"><i class="ti ti-alert-triangle"></i> ${texto}</div>`;
 
   const consumo = d.consumo || {};
-  const consumoFaltando = !((consumo.larguraTecido || '').trim() || (consumo.consumoPorPeca || '').trim());
+  const temLargura = !!(consumo.larguraTecido || '').trim();
+  const temConsumoPeca = !!(consumo.consumoPorPeca || '').trim();
+  const consumoFaltando = !temLargura || !temConsumoPeca; // pendência se faltar qualquer campo essencial
+  const consumoTexto = (!temLargura && !temConsumoPeca) ? 'NÃO PREENCHIDO' : 'INCOMPLETO';
   const alteracoes = d.alteracoes || [];
   const alteracoesHtml = alteracoes.length ? alteracoes.map(a => `
     <div style="display:flex;align-items:flex-start;gap:8px;padding:8px 0;border-bottom:1px solid var(--border)">
@@ -5936,19 +5953,18 @@ function mdlRenderDetalhe() {
       <i class="ti ti-pencil" onclick="mdlEditAlteracao(${a.id})" style="cursor:pointer;color:var(--text-ter);font-size:14px;margin-top:2px" title="Editar"></i>
     </div>`).join('') : '<div style="color:var(--text-ter);font-size:12px">Nenhuma alteração registrada.</div>';
 
-  const pendencias = d.pendencias || [];
-  const pendenciasHtml = pendencias.length ? pendencias.map(p => `
-    <div style="display:flex;align-items:flex-start;gap:8px;padding:8px 0;border-bottom:1px solid var(--border)">
-      <input type="checkbox" ${p.resolved ? 'checked' : ''} onchange="mdlTogglePendencia(${p.id})" style="margin-top:3px">
-      <div style="flex:1">
-        <div style="font-size:12px;${p.resolved ? 'text-decoration:line-through;color:var(--text-ter)' : ''}">${p.description}</div>
-        <div style="font-size:10px;color:var(--text-ter);margin-top:2px">${new Date(p.createdAt).toLocaleDateString('pt-BR')}</div>
-      </div>
-      <i class="ti ti-pencil" onclick="mdlEditPendencia(${p.id})" style="cursor:pointer;color:var(--text-ter);font-size:14px;margin-top:2px" title="Editar"></i>
-    </div>`).join('') : '<div style="color:var(--text-ter);font-size:12px">Nenhuma pendência registrada.</div>';
-
   document.getElementById('mdl-det-body').innerHTML = `
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px">
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:12px">
+      <div class="card">
+        ${alteracoes.filter(a => a.status === 'pending').length > 0 ? faixaAlertaCard(`${alteracoes.filter(a => a.status === 'pending').length} EM ABERTO`) : ''}
+        <div class="card-header"><div class="card-title"><i class="ti ti-list-details"></i> ALTERAÇÕES NO PROJETO</div></div>
+        <div style="max-height:220px;overflow-y:auto;margin-bottom:10px">${alteracoesHtml}</div>
+        <div style="display:flex;gap:6px">
+          <input id="mdl-nova-alteracao" placeholder="Descrever alteração..." style="flex:1;padding:7px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px" onkeydown="if(event.key==='Enter')mdlAddAlteracao(${d.projeto.id})">
+          <button class="btn-primary" style="font-size:12px;padding:7px 12px" onclick="mdlAddAlteracao(${d.projeto.id})"><i class="ti ti-plus"></i></button>
+        </div>
+      </div>
+
       <div class="card">
         <div class="card-header"><div class="card-title"><i class="ti ti-camera"></i> FOTO DO MODELO</div></div>
         <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(95px,1fr));gap:8px;margin-bottom:10px">${fotosHtml}</div>
@@ -5959,6 +5975,7 @@ function mdlRenderDetalhe() {
       </div>
 
       <div class="card">
+        ${!(d.croquis || []).length ? faixaAlertaCard('NÃO PREENCHIDO') : ''}
         <div class="card-header"><div class="card-title"><i class="ti ti-photo"></i> CROQUI</div></div>
         <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(95px,1fr));gap:8px;margin-bottom:10px">${croquisHtml}</div>
         <label class="btn-outline" style="font-size:12px;padding:7px 12px;display:inline-flex;align-items:center;gap:6px;cursor:pointer">
@@ -5977,17 +5994,7 @@ function mdlRenderDetalhe() {
       </div>
 
       <div class="card">
-        ${alteracoes.filter(a => a.status === 'pending').length > 0 ? faixaAlertaCard(`${alteracoes.filter(a => a.status === 'pending').length} EM ABERTO`) : ''}
-        <div class="card-header"><div class="card-title"><i class="ti ti-list-details"></i> ALTERAÇÕES NO PROJETO</div></div>
-        <div style="max-height:220px;overflow-y:auto;margin-bottom:10px">${alteracoesHtml}</div>
-        <div style="display:flex;gap:6px">
-          <input id="mdl-nova-alteracao" placeholder="Descrever alteração..." style="flex:1;padding:7px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px" onkeydown="if(event.key==='Enter')mdlAddAlteracao(${d.projeto.id})">
-          <button class="btn-primary" style="font-size:12px;padding:7px 12px" onclick="mdlAddAlteracao(${d.projeto.id})"><i class="ti ti-plus"></i></button>
-        </div>
-      </div>
-
-      <div class="card">
-        ${consumoFaltando ? faixaAlertaCard('NÃO PREENCHIDO') : ''}
+        ${consumoFaltando ? faixaAlertaCard(consumoTexto) : ''}
         <div class="card-header"><div class="card-title"><i class="ti ti-ruler-2"></i> CONSUMO DO MODELO</div></div>
         <div style="display:flex;flex-direction:column;gap:8px">
           <label style="font-size:11px;color:var(--text-sec)">Largura do tecido
@@ -6000,16 +6007,6 @@ function mdlRenderDetalhe() {
             <textarea id="mdl-consumo-obs" rows="2" style="width:100%;margin-top:3px;padding:7px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;resize:vertical">${consumo.observacoes || ''}</textarea>
           </label>
           <button class="btn-primary" style="font-size:12px;padding:8px;align-self:flex-start" onclick="mdlSalvarConsumo(${d.projeto.id})"><i class="ti ti-device-floppy"></i> Salvar consumo</button>
-        </div>
-      </div>
-
-      <div class="card">
-        ${pendencias.filter(p => !p.resolved).length > 0 ? faixaAlertaCard(`${pendencias.filter(p => !p.resolved).length} EM ABERTO`) : ''}
-        <div class="card-header"><div class="card-title"><i class="ti ti-alert-triangle"></i> PENDÊNCIAS</div></div>
-        <div style="max-height:220px;overflow-y:auto;margin-bottom:10px">${pendenciasHtml}</div>
-        <div style="display:flex;gap:6px">
-          <input id="mdl-nova-pendencia" placeholder="Descrever pendência..." style="flex:1;padding:7px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px" onkeydown="if(event.key==='Enter')mdlAddPendencia(${d.projeto.id})">
-          <button class="btn-primary" style="font-size:12px;padding:7px 12px" onclick="mdlAddPendencia(${d.projeto.id})"><i class="ti ti-plus"></i></button>
         </div>
       </div>
     </div>`;
@@ -6155,6 +6152,24 @@ async function mdlUpload(id, tipo, inputEl) {
     alert('Erro ao enviar arquivo: ' + e.message);
   } finally {
     inputEl.value = '';
+  }
+}
+
+async function mdlRemoverArquivo(id, tipo, fileId) {
+  const nomes = { foto: 'esta foto', croqui: 'este croqui', audaces: 'este arquivo' };
+  if (!confirm(`Remover ${nomes[tipo] || 'este arquivo'}? Esta ação não pode ser desfeita.`)) return;
+  try {
+    const res = await fetch('/api/modelagem-projeto', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id, acao: 'arquivo-remover', tipo, fileId }),
+    });
+    const data = await res.json();
+    if (data.erro) throw new Error(data.erro);
+    await mdlAbrirDetalhe(id);
+    mdlCarregarLista();
+  } catch (e) {
+    alert('Erro ao remover: ' + e.message);
   }
 }
 
