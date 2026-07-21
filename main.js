@@ -685,14 +685,16 @@ function atdLock() {
 
 // Alterna entre as 4 sub-seções (pílulas) dentro do painel Atendimento
 function atdShowSub(sub) {
-  ['sac', 'retorno', 'estorno'].forEach(s => {
-    document.getElementById('atd-sub-' + s).style.display = (s === sub) ? '' : 'none';
+  ['kanban', 'sac', 'retorno', 'estorno'].forEach(s => {
+    const el = document.getElementById('atd-sub-' + s);
+    if (el) el.style.display = (s === sub) ? '' : 'none';
     const pill = document.getElementById('atd-pill-' + s);
     if (pill) pill.classList.toggle('active', s === sub);
   });
   if (sub === 'sac') sacRender();
   else if (sub === 'retorno') { retRender(); retSincronizarShopify(); }
   else if (sub === 'estorno') { estRender(); estSincronizarShopify(); }
+  else if (sub === 'kanban') kbAbrir();
 }
 
 // ── SAC ──────────────────────────────────────────────────────────────────────
@@ -1135,6 +1137,144 @@ function estRender() {
   const total = cfg.itens.reduce((s, t) => s + (t.valor || 0), 0);
   const totalEl = document.getElementById('atd-est-total-valor');
   if (totalEl) totalEl.textContent = 'R$ ' + total.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+// ── CRM Kanban — solicitações em andamento (SAC + Trocas + Devoluções) ───────
+// Agrega os itens ABERTOS das três listas do Atendimento num quadro de etapas.
+// A etapa fica gravada no PRÓPRIO item (`etapa`/`etapa_em`) dentro do storage de origem
+// (vc:sac / vc:retorno / vc:estorno) — sem storage novo, e a lista de origem continua
+// sendo a fonte da verdade. Concluído no kanban ⇒ resolvido na lista (e vice-versa).
+const KB_ETAPAS = [
+  ['novo', 'Novo', '#5b8def'],
+  ['andamento', 'Em andamento', '#c99a3c'],
+  ['aguardando', 'Aguardando cliente', '#8a63d2'],
+  ['concluido', 'Concluído', '#3aa76d'],
+];
+const KB_TIPOS = {
+  sac: { rotulo: 'SAC', badge: 'kb-b-sac', pill: 'sac' },
+  ret: { rotulo: 'Troca', badge: 'kb-b-ret', pill: 'retorno' },
+  est: { rotulo: 'Devolução', badge: 'kb-b-est', pill: 'estorno' },
+};
+function kbGet(tipo) {
+  if (tipo === 'sac') { const cfg = sacGetConfig(); return { cfg, arr: cfg.tickets, salvar: sacSalvar }; }
+  if (tipo === 'ret') { const cfg = retGetConfig(); return { cfg, arr: cfg.itens, salvar: retSalvar }; }
+  const cfg = estGetConfig(); return { cfg, arr: cfg.itens, salvar: estSalvar };
+}
+function kbEtapaDe(tipo, t) {
+  if (t.etapa && KB_ETAPAS.some(([k]) => k === t.etapa)) {
+    // status resolvido na lista prevalece sobre uma etapa antiga não-concluída (e vice-versa)
+    if (tipo !== 'est' && t.status === 'resolvido' && t.etapa !== 'concluido') return 'concluido';
+    if (tipo !== 'est' && t.status !== 'resolvido' && t.etapa === 'concluido') return 'andamento';
+    return t.etapa;
+  }
+  if (tipo !== 'est' && t.status === 'resolvido') return 'concluido';
+  if (tipo === 'ret' && t.chegou_reversa) return 'andamento';
+  return 'novo';
+}
+// Abre o quadro: renderiza já e, em paralelo, importa trocas/devoluções novas da Shopify.
+function kbAbrir() {
+  kbRender();
+  const st = document.getElementById('kb-status');
+  if (st) st.textContent = 'sincronizando com a Shopify...';
+  Promise.allSettled([retSincronizarShopify(), estSincronizarShopify()]).then(() => {
+    kbRender();
+    if (st) st.textContent = 'sincronizado ' + new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+  });
+}
+function kbRender() {
+  const board = document.getElementById('kb-board');
+  if (!board) return;
+  const esc = v => String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+  const cards = [];
+  sacGetConfig().tickets.forEach(t => cards.push({
+    tipo: 'sac', t,
+    nome: (t.pedido ? '#' + t.pedido + ' · ' : '') + (t.cliente || 'sem cliente'),
+    corpo: t.caso !== undefined ? t.caso : (t.motivo || ''),
+    meta: [t.info_expedicao, t.rastreio ? 'rastreio ' + t.rastreio : ''].filter(Boolean).join(' · '),
+  }));
+  retGetConfig().itens.forEach(t => cards.push({
+    tipo: 'ret', t,
+    nome: t.cliente || 'sem cliente',
+    corpo: t.produtos || '',
+    meta: [t.obs ? 'tam. ' + t.obs : '', t.chegou_reversa ? 'reversa chegou' : (t.codigo_logistica_reversa ? 'reversa ' + t.codigo_logistica_reversa : ''), t.codigo_reenvio ? 'reenvio ' + t.codigo_reenvio : ''].filter(Boolean).join(' · '),
+  }));
+  estGetConfig().itens.forEach(t => cards.push({
+    tipo: 'est', t,
+    nome: t.cliente || 'sem cliente',
+    corpo: [t.pecas, t.motivo].filter(Boolean).join(' — '),
+    meta: [t.valor ? 'R$ ' + Number(t.valor).toLocaleString('pt-BR', { minimumFractionDigits: 2 }) : '', t.data || ''].filter(Boolean).join(' · '),
+  }));
+  const corte = Date.now() - 14 * 24 * 3600 * 1000; // Concluído mostra só os últimos 14 dias
+  const porEtapa = Object.fromEntries(KB_ETAPAS.map(([k]) => [k, []]));
+  cards.forEach(c => {
+    const etapa = kbEtapaDe(c.tipo, c.t);
+    if (etapa === 'concluido') {
+      const quando = new Date(c.t.resolvido_em || c.t.etapa_em || c.t.criado_em || 0).getTime();
+      if (quando < corte) return;
+    }
+    porEtapa[etapa].push({ ...c, etapa });
+  });
+  const dataDe = t => t.criado_em ? new Date(t.criado_em).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }) : '';
+  board.innerHTML = KB_ETAPAS.map(([key, titulo, cor]) => {
+    const lista = porEtapa[key].sort((a, b) => (b.t.criado_em || '').localeCompare(a.t.criado_em || ''));
+    const cardsHtml = lista.map(c => {
+      const tp = KB_TIPOS[c.tipo];
+      const mover = KB_ETAPAS.map(([k, l]) => `<option value="${k}" ${k === c.etapa ? 'selected' : ''}>${l}</option>`).join('');
+      return `
+      <div class="kb-card" draggable="true"
+           ondragstart="kbDragStart(event,'${c.tipo}','${c.t.id}')" ondragend="kbDragEnd(event)">
+        <span class="kb-badge ${tp.badge}" style="cursor:pointer" title="abrir na lista de ${tp.rotulo}" onclick="atdShowSub('${tp.pill}')">${tp.rotulo}</span>
+        <div class="kb-nome" title="${esc(c.nome)}">${esc(c.nome)}</div>
+        ${c.corpo ? `<div class="kb-corpo">${esc(c.corpo)}</div>` : ''}
+        <div class="kb-meta">
+          ${c.meta ? `<span>${esc(c.meta)}</span>` : ''}
+          <span>${dataDe(c.t)}</span>
+          <select class="kb-mover" title="mover de etapa (alternativa ao arrastar)" onchange="kbSetEtapa('${c.tipo}','${c.t.id}',this.value)">${mover}</select>
+        </div>
+      </div>`;
+    }).join('');
+    return `
+    <div class="kb-col" ondragover="kbAllowDrop(event)" ondragleave="kbLeave(event)" ondrop="kbDrop(event,'${key}')">
+      <div class="kb-col-head">
+        <span class="kb-dot" style="background:${cor};color:${cor}"></span>
+        <span class="kb-col-title">${titulo}</span>
+        <span class="kb-count">${lista.length}</span>
+      </div>
+      ${cardsHtml || `<div class="kb-vazio">${key === 'concluido' ? 'nada concluído nos últimos 14 dias' : 'nenhuma solicitação'}</div>`}
+    </div>`;
+  }).join('');
+}
+let _kbDrag = null;
+function kbDragStart(ev, tipo, id) {
+  _kbDrag = { tipo, id };
+  ev.dataTransfer.effectAllowed = 'move';
+  try { ev.dataTransfer.setData('text/plain', tipo + ':' + id); } catch (e) {}
+  ev.currentTarget.classList.add('kb-drag');
+}
+function kbDragEnd(ev) {
+  ev.currentTarget.classList.remove('kb-drag');
+  document.querySelectorAll('#atd-sub-kanban .kb-col').forEach(c => c.classList.remove('kb-over'));
+}
+function kbAllowDrop(ev) { ev.preventDefault(); ev.currentTarget.classList.add('kb-over'); }
+function kbLeave(ev) { ev.currentTarget.classList.remove('kb-over'); }
+function kbDrop(ev, etapa) {
+  ev.preventDefault();
+  ev.currentTarget.classList.remove('kb-over');
+  if (!_kbDrag) return;
+  kbSetEtapa(_kbDrag.tipo, _kbDrag.id, etapa);
+  _kbDrag = null;
+}
+function kbSetEtapa(tipo, id, etapa) {
+  const { cfg, arr, salvar } = kbGet(tipo);
+  const t = arr.find(x => x.id === id); if (!t) return;
+  t.etapa = etapa;
+  t.etapa_em = new Date().toISOString();
+  if (tipo !== 'est') { // mantém o kanban e a lista de origem em acordo
+    if (etapa === 'concluido' && t.status !== 'resolvido') { t.status = 'resolvido'; t.resolvido_em = new Date().toISOString(); }
+    if (etapa !== 'concluido' && t.status === 'resolvido') { t.status = 'pendente'; t.resolvido_em = null; }
+  }
+  salvar(cfg);
+  kbRender();
 }
 
 function finPopularMeses() {

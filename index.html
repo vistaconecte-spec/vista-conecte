@@ -600,9 +600,54 @@
             <button class="btn-outline" style="margin-left:auto;font-size:11px;padding:5px 10px" onclick="atdLock()"><i class="ti ti-lock"></i> Sair</button>
           </div>
           <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">
+            <div id="atd-pill-kanban" class="atd-pill" onclick="atdShowSub('kanban')"><i class="ti ti-layout-kanban"></i> CRM</div>
             <div id="atd-pill-sac" class="atd-pill" onclick="atdShowSub('sac')"><i class="ti ti-headset"></i> SAC</div>
             <div id="atd-pill-retorno" class="atd-pill" onclick="atdShowSub('retorno')"><i class="ti ti-replace"></i> Troca</div>
             <div id="atd-pill-estorno" class="atd-pill" onclick="atdShowSub('estorno')"><i class="ti ti-receipt-refund"></i> Devolução</div>
+          </div>
+
+          <!-- CRM KANBAN — solicitações em andamento (SAC + Trocas + Devoluções), visual visionOS -->
+          <div id="atd-sub-kanban" style="display:none">
+            <style>
+              #atd-sub-kanban .kb-wrap{position:relative;border-radius:28px;padding:20px 16px 14px;overflow:hidden;background:linear-gradient(135deg,#e9e4f6 0%,#e3edf4 45%,#f2e9dd 100%);border:1px solid rgba(255,255,255,.6)}
+              #atd-sub-kanban .kb-wrap::before{content:'';position:absolute;width:440px;height:440px;border-radius:50%;background:radial-gradient(circle,#c8b6ff 0%,transparent 70%);top:-150px;left:-90px;filter:blur(46px);opacity:.55;pointer-events:none}
+              #atd-sub-kanban .kb-wrap::after{content:'';position:absolute;width:540px;height:540px;border-radius:50%;background:radial-gradient(circle,#ffd9a6 0%,transparent 70%);bottom:-220px;right:-140px;filter:blur(54px);opacity:.5;pointer-events:none}
+              #atd-sub-kanban .kb-blob{position:absolute;width:380px;height:380px;border-radius:50%;background:radial-gradient(circle,#a8d8ff 0%,transparent 70%);top:30%;left:42%;filter:blur(52px);opacity:.45;pointer-events:none}
+              #atd-sub-kanban .kb-topo{position:relative;z-index:1;display:flex;align-items:center;gap:10px;margin:0 6px 14px;flex-wrap:wrap}
+              #atd-sub-kanban .kb-titulo{font-weight:700;font-size:15px;color:#2e2a3d;letter-spacing:.01em}
+              #atd-sub-kanban .kb-sub{font-size:11px;color:#6f6a82}
+              #atd-sub-kanban .kb-board{position:relative;z-index:1;display:grid;grid-template-columns:repeat(4,minmax(225px,1fr));gap:13px}
+              @media(max-width:1100px){#atd-sub-kanban .kb-board{grid-template-columns:repeat(2,1fr)}}
+              @media(max-width:640px){#atd-sub-kanban .kb-board{grid-template-columns:1fr}}
+              #atd-sub-kanban .kb-col{background:rgba(255,255,255,.40);backdrop-filter:blur(22px) saturate(1.5);-webkit-backdrop-filter:blur(22px) saturate(1.5);border:1px solid rgba(255,255,255,.68);border-radius:22px;padding:11px;min-height:330px;box-shadow:0 8px 28px rgba(60,50,90,.10),inset 0 1px 0 rgba(255,255,255,.75);transition:background .2s,box-shadow .2s}
+              #atd-sub-kanban .kb-col.kb-over{background:rgba(255,255,255,.64);box-shadow:0 12px 34px rgba(60,50,90,.16),inset 0 1px 0 rgba(255,255,255,.9)}
+              #atd-sub-kanban .kb-col-head{display:flex;align-items:center;gap:8px;padding:2px 6px 10px}
+              #atd-sub-kanban .kb-dot{width:8px;height:8px;border-radius:50%;box-shadow:0 0 8px currentColor}
+              #atd-sub-kanban .kb-col-title{font-size:11px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;color:#3a3548}
+              #atd-sub-kanban .kb-count{margin-left:auto;font-size:11px;font-weight:700;background:rgba(255,255,255,.72);border:1px solid rgba(255,255,255,.95);border-radius:999px;padding:1px 9px;color:#6b6580;box-shadow:0 1px 3px rgba(0,0,0,.06)}
+              #atd-sub-kanban .kb-card{background:rgba(255,255,255,.78);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border:1px solid rgba(255,255,255,.95);border-radius:16px;padding:10px 12px;margin-bottom:9px;cursor:grab;box-shadow:0 4px 14px rgba(50,40,80,.08);transition:transform .16s ease,box-shadow .16s ease}
+              #atd-sub-kanban .kb-card:hover{transform:translateY(-2px) scale(1.012);box-shadow:0 12px 28px rgba(50,40,80,.16)}
+              #atd-sub-kanban .kb-card:active{cursor:grabbing}
+              #atd-sub-kanban .kb-card.kb-drag{opacity:.45;transform:scale(.97)}
+              #atd-sub-kanban .kb-badge{display:inline-block;font-size:8.5px;font-weight:800;letter-spacing:.09em;border-radius:999px;padding:2px 8px;text-transform:uppercase}
+              #atd-sub-kanban .kb-b-sac{background:rgba(196,168,130,.22);color:#8a6f45;border:1px solid rgba(196,168,130,.45)}
+              #atd-sub-kanban .kb-b-ret{background:rgba(127,176,163,.22);color:#3f6f61;border:1px solid rgba(127,176,163,.5)}
+              #atd-sub-kanban .kb-b-est{background:rgba(220,110,110,.16);color:#a44;border:1px solid rgba(220,110,110,.38)}
+              #atd-sub-kanban .kb-nome{font-size:12.5px;font-weight:700;color:#2e2a3d;margin-top:6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+              #atd-sub-kanban .kb-corpo{font-size:11.5px;color:#5a5570;margin-top:3px;line-height:1.4;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+              #atd-sub-kanban .kb-meta{font-size:10px;color:#8d88a0;margin-top:6px;display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+              #atd-sub-kanban .kb-mover{margin-left:auto;font-size:10px;border:1px solid rgba(0,0,0,.08);border-radius:8px;padding:2px 4px;background:rgba(255,255,255,.8);color:#6b6580}
+              #atd-sub-kanban .kb-vazio{font-size:11px;color:#9a95ac;text-align:center;padding:26px 6px}
+            </style>
+            <div class="kb-wrap">
+              <div class="kb-blob"></div>
+              <div class="kb-topo">
+                <div class="kb-titulo"><i class="ti ti-layout-kanban"></i> CRM — Solicitações em andamento</div>
+                <span class="kb-sub">SAC · Trocas · Devoluções — arraste os cards entre as etapas</span>
+                <span id="kb-status" class="kb-sub" style="margin-left:auto"></span>
+              </div>
+              <div class="kb-board" id="kb-board"></div>
+            </div>
           </div>
 
           <!-- SAC -->
@@ -756,8 +801,8 @@
     </div>
   </div>
 </div>
-<script src="data.js?v=2026071716"></script>
-<script src="main.js?v=2026071716"></script>
+<script src="data.js?v=2026071717"></script>
+<script src="main.js?v=2026071717"></script>
 <script async src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js" onload="initSupabase()"></script>
 </body>
 </html>
