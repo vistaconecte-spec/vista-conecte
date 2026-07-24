@@ -283,15 +283,21 @@ function parseLineItem(item, orderName, ignorados) {
     return null;
   }
 
+  // A cor escolhida na variante manda: é o que a cliente comprou de fato.
+  // Depois da unificação de produtos por cor, o título perdeu a cor ("Conjunto Peace") e ela
+  // passou a vir na variante ("Preto / M") — título e EXACT_TITLE_MAP só valem como fallback,
+  // senão um pedido Preto era lido como Off White (e reservava/produzia a cor errada).
+
   // 1. Mapa de títulos exatos (pedidos sem cor separada)
   const exact = EXACT_TITLE_MAP[titleForParsing];
   if (exact) {
-    return { modelKey: exact.modelKey, color: exact.color, sizeIdx, qty };
+    const color = colorFromVariant ? normalizeColor(colorFromVariant) : exact.color;
+    return { modelKey: exact.modelKey, color, sizeIdx, qty };
   }
 
   // 2. Modelo + cor extraídos do título por prefix matching
   const found = findModelAndColor(titleForParsing);
-  const rawColor = (found && found.color) ? found.color : (colorFromVariant || null);
+  const rawColor = colorFromVariant || (found && found.color) || null;
   if (!found || !rawColor) {
     ignorados.push(`${orderName} | "${item.title}" | produto não mapeado`);
     return null;
