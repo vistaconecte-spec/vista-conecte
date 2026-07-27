@@ -24,10 +24,12 @@ export async function onRequest(context) {
   const ymd = d => d.toISOString().slice(0, 10);
   const ate = url.searchParams.get('ate') || ymd(hoje);
   const desde = url.searchParams.get('desde') || ymd(new Date(hoje.getTime() - 14 * 86400000));
-  const nivel = url.searchParams.get('nivel') === 'account' ? 'account' : 'campaign';
+  const NIVEIS = { account: 1, campaign: 1, adset: 1, ad: 1 };
+  const nivelReq = url.searchParams.get('nivel');
+  const nivel = NIVEIS[nivelReq] ? nivelReq : 'campaign';
   const diario = url.searchParams.get('diario') === '1';
 
-  const fields = ['campaign_name', 'spend', 'impressions', 'clicks', 'ctr', 'cpc', 'cpm', 'reach', 'actions', 'action_values', 'purchase_roas'].join(',');
+  const fields = ['campaign_name', 'adset_name', 'ad_name', 'spend', 'impressions', 'clicks', 'ctr', 'cpc', 'cpm', 'reach', 'actions', 'action_values', 'purchase_roas'].join(',');
   const params = new URLSearchParams({
     level: nivel,
     fields,
@@ -62,6 +64,8 @@ export async function onRequest(context) {
         linhas.push({
           dia: r.date_start || `${desde}..${ate}`,
           campanha: r.campaign_name || '(conta toda)',
+          adset: r.adset_name || null,
+          anuncio: r.ad_name || null,
           gasto: +gasto.toFixed(2),
           impressoes: parseInt(r.impressions || '0', 10),
           cliques: parseInt(r.clicks || '0', 10),
