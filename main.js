@@ -1171,6 +1171,16 @@ async function estSincronizarShopify() {
   }
 }
 function estConcluida(t) { return t.status === 'resolvido' || t.etapa === 'concluido'; }
+// Tempo na fila da DEVOLUÇÃO: usa a data real da solicitação (campo `data`, DD/MM/YYYY) —
+// o `criado_em` é a data do import em massa (13/07), que zeraria o tempo de espera real.
+function estDiasNaFila(t) {
+  const m = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(t.data || '');
+  if (m) {
+    const ms = Date.now() - new Date(+m[3], +m[2] - 1, +m[1]).getTime();
+    if (!isNaN(ms)) return Math.max(0, Math.floor(ms / 86400000));
+  }
+  return retDiasNaFila(t);
+}
 function estRowHtml(t, bg, bold, dias) {
   const esc = v => (v || '').replace(/"/g, '&quot;');
   const concl = estConcluida(t);
@@ -1192,7 +1202,7 @@ function estRender() {
   // Pendentes: agrupadas por tempo na fila, mais antigas (tom mais forte) primeiro.
   const pendentes = cfg.itens
     .filter(t => !estConcluida(t))
-    .map(t => ({ t, dias: retDiasNaFila(t) }))
+    .map(t => ({ t, dias: estDiasNaFila(t) }))
     .sort((a, b) => b.dias - a.dias);
   let html = '';
   let lastBucket = null;
@@ -1210,7 +1220,7 @@ function estRender() {
     .sort((a, b) => (b.criado_em || '').localeCompare(a.criado_em || ''));
   if (concluidas.length) {
     html += `<tr><td colspan="7" style="padding:9px 6px 4px"><span style="font-size:11px;font-weight:700;color:var(--text-ter);text-transform:uppercase;letter-spacing:.3px">✅ Concluídas · ${concluidas.length}</span></td></tr>`;
-    concluidas.forEach(t => { html += estRowHtml(t, '', false, retDiasNaFila(t)); });
+    concluidas.forEach(t => { html += estRowHtml(t, '', false, estDiasNaFila(t)); });
   }
   document.getElementById('atd-est-tbody').innerHTML = html ||
     '<tr><td colspan="7" style="text-align:center;color:var(--text-ter);font-size:12px;padding:12px">Nenhum registro de devolução.</td></tr>';
@@ -1297,14 +1307,15 @@ function kbRender() {
   const dataDe = t => t.criado_em ? new Date(t.criado_em).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }) : '';
   board.innerHTML = KB_ETAPAS.map(([key, titulo, cor]) => {
     // Concluído: mais recentes no topo. Demais etapas: mais tempo na fila (mais urgente) no topo.
+    const diasCard = c => c.tipo === 'est' ? estDiasNaFila(c.t) : retDiasNaFila(c.t);
     const lista = porEtapa[key].sort((a, b) => key === 'concluido'
       ? (b.t.criado_em || '').localeCompare(a.t.criado_em || '')
-      : retDiasNaFila(b.t) - retDiasNaFila(a.t));
+      : diasCard(b) - diasCard(a));
     const cardsHtml = lista.map(c => {
       const tp = KB_TIPOS[c.tipo];
       const mover = KB_ETAPAS.map(([k, l]) => `<option value="${k}" ${k === c.etapa ? 'selected' : ''}>${l}</option>`).join('');
       // Heatmap de envelhecimento — mesma lógica das listas (só nas não-concluídas).
-      const dias = retDiasNaFila(c.t);
+      const dias = diasCard(c);
       const b = retBucket(dias);
       const isConcl = c.etapa === 'concluido';
       const cardStyle = isConcl ? '' : `border-left:3px solid ${b.bar};${b.bg ? 'background:' + b.bg + ';' : ''}`;
