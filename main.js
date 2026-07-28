@@ -944,7 +944,7 @@ function retAdd() {
   const logReversa  = (document.getElementById('ret-logistica-reversa').value || '').trim();
   if (!cliente || !produtos) { alert('Preencha ao menos o cliente e os produtos.'); return; }
   const cfg = retGetConfig();
-  cfg.itens.push({ id: 'ret' + Date.now(), pedido, cliente, produtos, obs, codigo_reenvio: codigo, codigo_logistica_reversa: logReversa, chegou_reversa: false, status: 'pendente', criado_em: new Date().toISOString() });
+  cfg.itens.push({ id: 'ret' + Date.now(), pedido, cliente, produtos, obs, codigo_reenvio: codigo, codigo_logistica_reversa: logReversa, chegou_reversa: false, data_chegada_reversa: '', status: 'pendente', criado_em: new Date().toISOString() });
   retSalvar(cfg);
   retRender();
   ['ret-pedido', 'ret-cliente', 'ret-produtos', 'ret-obs', 'ret-codigo', 'ret-logistica-reversa'].forEach(id => document.getElementById(id).value = '');
@@ -956,6 +956,15 @@ function retChegouReversaToggle(id) {
   const t = cfg.itens.find(x => x.id === id); if (!t) return;
   t.chegou_reversa = !t.chegou_reversa;
   retSalvar(cfg);
+}
+// Data em que a peça chegou dos Correios (logística reversa). Preencher a data marca "chegou"; limpar desmarca.
+function retDataReversa(id, value) {
+  const cfg = retGetConfig();
+  const t = cfg.itens.find(x => x.id === id); if (!t) return;
+  t.data_chegada_reversa = value || '';
+  t.chegou_reversa = !!value;
+  retSalvar(cfg);
+  retRender();
 }
 function retToggle(id) {
   const cfg = retGetConfig();
@@ -1034,7 +1043,7 @@ function retRender() {
         ${obsOptions}
       </select></td>
       <td style="padding:4px;vertical-align:middle"><input value="${esc(t.codigo_logistica_reversa)}" oninput="retEdit('${t.id}','codigo_logistica_reversa',this.value)" style="width:100%;font-size:12px;padding:4px 6px;border:1px solid var(--border);border-radius:5px"></td>
-      <td style="padding:4px;text-align:center;vertical-align:middle"><input type="checkbox" ${t.chegou_reversa ? 'checked' : ''} onchange="retChegouReversaToggle('${t.id}')" title="a peça chegou de volta pela logística reversa"></td>
+      <td style="padding:4px;text-align:center;vertical-align:middle"><input type="date" value="${t.data_chegada_reversa || ''}" onchange="retDataReversa('${t.id}',this.value)" title="data em que a peça chegou dos Correios (logística reversa)" style="font-size:12px;padding:4px 6px;border:1px solid var(--border);border-radius:5px;${t.chegou_reversa ? 'background:rgba(52,199,89,.12)' : ''}"></td>
       <td style="padding:4px;vertical-align:middle"><input value="${esc(t.codigo_reenvio)}" oninput="retEdit('${t.id}','codigo_reenvio',this.value)" style="width:100%;font-size:12px;padding:4px 6px;border:1px solid var(--border);border-radius:5px"></td>
       <td style="padding:4px;text-align:center;vertical-align:middle"><button onclick="retDel('${t.id}')" title="excluir" style="background:none;border:none;cursor:pointer;color:var(--text-ter);font-size:15px">×</button></td>
     </tr>`;
@@ -1196,7 +1205,7 @@ function kbRender() {
     tipo: 'ret', t,
     nome: t.cliente || 'sem cliente',
     corpo: t.produtos || '',
-    meta: [t.obs ? 'tam. ' + t.obs : '', t.chegou_reversa ? 'reversa chegou' : (t.codigo_logistica_reversa ? 'reversa ' + t.codigo_logistica_reversa : ''), t.codigo_reenvio ? 'reenvio ' + t.codigo_reenvio : ''].filter(Boolean).join(' · '),
+    meta: [t.obs ? 'tam. ' + t.obs : '', t.chegou_reversa ? ('chegou' + (t.data_chegada_reversa ? ' ' + t.data_chegada_reversa.split('-').reverse().join('/') : '')) : (t.codigo_logistica_reversa ? 'reversa ' + t.codigo_logistica_reversa : ''), t.codigo_reenvio ? 'reenvio ' + t.codigo_reenvio : ''].filter(Boolean).join(' · '),
   }));
   estGetConfig().itens.forEach(t => cards.push({
     tipo: 'est', t,
