@@ -1023,12 +1023,14 @@ async function retSincronizarShopify() {
 }
 const RET_TAMANHOS = ['PP', 'P', 'M', 'G', 'GG'];
 // Faixas de envelhecimento (tempo na fila aguardando resolução) — quanto mais tempo, tom mais forte.
+// bg = fundo da LINHA nas listas (fundo branco liso). cardBg = fundo do CARD no Kanban, mais
+// forte (o card é vidro fosco, então tint fraco some) — mesma cor, alpha maior.
 const RET_BUCKETS = [
-  { min: 14, label: '🔴 Crítico · 14+ dias na fila', bg: 'rgba(255,59,48,.30)', bar: '#ff3b30', bold: true },
-  { min: 7,  label: '🔴 Atrasado · 7 a 13 dias',      bg: 'rgba(255,59,48,.15)', bar: '#ff3b30', bold: false },
-  { min: 4,  label: '🟠 Atenção · 4 a 6 dias',        bg: 'rgba(255,149,0,.14)', bar: '#ff9500', bold: false },
-  { min: 2,  label: '🟡 Recente · 2 a 3 dias',        bg: 'rgba(255,204,0,.10)', bar: '#ffcc00', bold: false },
-  { min: 0,  label: '⚪ Novo · hoje / ontem',          bg: '',                    bar: 'var(--border)', bold: false },
+  { min: 14, label: '🔴 Crítico · 14+ dias na fila', bg: 'rgba(255,59,48,.30)', cardBg: 'rgba(255,59,48,.26)',  bar: '#ff3b30', bold: true },
+  { min: 7,  label: '🔴 Atrasado · 7 a 13 dias',      bg: 'rgba(255,59,48,.15)', cardBg: 'rgba(255,59,48,.16)',  bar: '#ff3b30', bold: false },
+  { min: 4,  label: '🟠 Atenção · 4 a 6 dias',        bg: 'rgba(255,149,0,.14)', cardBg: 'rgba(255,149,0,.20)',  bar: '#ff9500', bold: false },
+  { min: 2,  label: '🟡 Recente · 2 a 3 dias',        bg: 'rgba(255,204,0,.10)', cardBg: 'rgba(255,204,0,.20)',  bar: '#ffcc00', bold: false },
+  { min: 0,  label: '⚪ Novo · hoje / ontem',          bg: '',                    cardBg: '',                     bar: 'var(--border)', bold: false },
 ];
 function retDiasNaFila(t) {
   if (!t.criado_em) return 0;
@@ -1318,7 +1320,7 @@ function kbRender() {
       const dias = diasCard(c);
       const b = retBucket(dias);
       const isConcl = c.etapa === 'concluido';
-      const cardStyle = isConcl ? '' : `border-left:3px solid ${b.bar};${b.bg ? 'background:' + b.bg + ';' : ''}`;
+      const cardStyle = isConcl ? '' : `border-left:5px solid ${b.bar};${b.cardBg ? 'background:' + b.cardBg + ';backdrop-filter:none;-webkit-backdrop-filter:none;' : ''}`;
       const agingBadge = (!isConcl && dias >= 2) ? `<span class="kb-badge" style="background:${b.bar};color:#fff" title="tempo na fila aguardando resolução">${dias}d na fila</span>` : '';
       return `
       <div class="kb-card" draggable="true" style="${cardStyle}"
