@@ -709,7 +709,7 @@
 
           <!-- TROCA / RETORNO -->
           <div id="atd-sub-retorno" style="display:none">
-            <div class="card" style="padding:14px 16px;margin-bottom:14px">
+            <div class="card" style="padding:14px 16px;margin-bottom:14px;border-left:4px solid #0e8a8a">
               <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
                 <input id="ret-pedido" placeholder="Nº do pedido" style="width:110px;font-size:12px;padding:7px 10px;border:1px solid var(--border);border-radius:6px" oninput="retBuscarPedido()">
                 <input id="ret-cliente" placeholder="Cliente" style="width:160px;font-size:12px;padding:7px 10px;border:1px solid var(--border);border-radius:6px">
@@ -728,9 +728,12 @@
               </div>
               <div id="ret-pedido-preview" style="display:none;margin-top:10px;padding:10px 12px;background:#f5f0e8;border-radius:8px;font-size:12px"></div>
             </div>
-            <div class="card">
+            <div class="card" style="border-top:3px solid #0e8a8a">
               <div class="card-header">
-                <div class="card-title"><i class="ti ti-replace"></i> Trocas / Reenvios</div>
+                <div>
+                  <div class="card-title" style="color:#0b6e6e"><i class="ti ti-replace"></i> Trocas / Reenvios</div>
+                  <div style="font-size:11px;color:var(--text-ter);margin-top:2px">Cliente quer <b>outra peça</b> — logística reversa + reenvio (sem dinheiro de volta)</div>
+                </div>
                 <div style="display:flex;align-items:center;gap:10px;font-size:11px;color:var(--text-sec)">
                   <span id="atd-ret-sync-status"></span>
                   <button class="btn-outline" style="font-size:10px;padding:4px 8px" onclick="retSincronizarShopify()"><i class="ti ti-refresh"></i> Shopify</button>
@@ -741,7 +744,7 @@
               <div style="overflow-x:auto">
               <table style="width:100%;font-size:12px;min-width:700px;table-layout:fixed">
                 <colgroup><col style="width:32px"><col style="width:150px"><col><col style="width:85px"><col style="width:170px"><col style="width:100px"><col style="width:130px"><col style="width:28px"></colgroup>
-                <thead><tr style="color:var(--text-ter);font-size:11px;text-transform:uppercase"><th style="padding:4px;text-align:center">ok</th><th style="text-align:left;padding:4px">Cliente</th><th style="text-align:left;padding:4px">Produtos</th><th style="text-align:left;padding:4px">Tamanho da troca</th><th style="text-align:left;padding:4px">Cód. logística reversa</th><th style="text-align:center;padding:4px">Chegou dos Correios</th><th style="text-align:left;padding:4px">Cód. reenvio</th><th></th></tr></thead>
+                <thead><tr style="color:#0b6e6e;font-size:11px;text-transform:uppercase;background:rgba(14,138,138,.08)"><th style="padding:4px;text-align:center">ok</th><th style="text-align:left;padding:4px">Cliente</th><th style="text-align:left;padding:4px">Produtos</th><th style="text-align:left;padding:4px">Tamanho da troca</th><th style="text-align:left;padding:4px">Cód. logística reversa</th><th style="text-align:center;padding:4px">Chegou dos Correios</th><th style="text-align:left;padding:4px">Cód. reenvio</th><th></th></tr></thead>
                 <tbody id="ret-tbody"></tbody>
               </table>
               </div>
@@ -750,7 +753,7 @@
 
           <!-- DEVOLUÇÃO / ESTORNO -->
           <div id="atd-sub-estorno" style="display:none">
-            <div class="card" style="padding:14px 16px;margin-bottom:14px">
+            <div class="card" style="padding:14px 16px;margin-bottom:14px;border-left:4px solid var(--gold-dark)">
               <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
                 <input id="atd-est-cliente" placeholder="Cliente" style="width:160px;font-size:12px;padding:7px 10px;border:1px solid var(--border);border-radius:6px">
                 <input id="atd-est-pecas" placeholder="Peças" style="flex:1;min-width:180px;font-size:12px;padding:7px 10px;border:1px solid var(--border);border-radius:6px">
@@ -761,9 +764,12 @@
                 <button class="btn-primary" style="font-size:12px;padding:7px 14px" onclick="estAdd()"><i class="ti ti-plus"></i> Adicionar</button>
               </div>
             </div>
-            <div class="card">
+            <div class="card" style="border-top:3px solid var(--gold-dark)">
               <div class="card-header">
-                <div class="card-title"><i class="ti ti-receipt-refund"></i> Devoluções</div>
+                <div>
+                  <div class="card-title" style="color:var(--gold-dark)"><i class="ti ti-receipt-refund"></i> Devoluções · Estorno</div>
+                  <div style="font-size:11px;color:var(--text-ter);margin-top:2px"><b>Reembolso</b> — dinheiro de volta ao cliente (não é troca por outra peça)</div>
+                </div>
                 <div style="display:flex;align-items:center;gap:10px">
                   <span id="atd-est-sync-status" style="font-size:10px;color:var(--text-ter)"></span>
                   <button class="btn-outline" style="font-size:10px;padding:4px 8px" onclick="estSincronizarShopify()"><i class="ti ti-refresh"></i> Shopify</button>
@@ -772,7 +778,7 @@
               </div>
               <div style="overflow-x:auto">
               <table style="width:100%;font-size:12px;min-width:700px">
-                <thead><tr style="color:var(--text-ter);font-size:11px;text-transform:uppercase"><th style="text-align:left;padding:4px">Cliente</th><th style="text-align:left;padding:4px">Peças</th><th style="text-align:right;padding:4px">Valor</th><th style="text-align:left;padding:4px">Cód. devolução</th><th style="text-align:left;padding:4px">Data</th><th style="text-align:left;padding:4px">Motivo</th><th style="width:28px"></th></tr></thead>
+                <thead><tr style="color:var(--gold-dark);font-size:11px;text-transform:uppercase;background:rgba(184,134,11,.10)"><th style="text-align:left;padding:4px">Cliente</th><th style="text-align:left;padding:4px">Peças</th><th style="text-align:right;padding:4px">Valor R$</th><th style="text-align:left;padding:4px">Cód. devolução</th><th style="text-align:left;padding:4px">Data</th><th style="text-align:left;padding:4px">Motivo</th><th style="width:28px"></th></tr></thead>
                 <tbody id="atd-est-tbody"></tbody>
               </table>
               </div>
@@ -802,7 +808,7 @@
   </div>
 </div>
 <script src="data.js?v=2026072111"></script>
-<script src="main.js?v=2026072808"></script>
+<script src="main.js?v=2026072809"></script>
 <script async src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js" onload="initSupabase()"></script>
 </body>
 </html>

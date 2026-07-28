@@ -1199,7 +1199,7 @@ function estRowHtml(t, bg, bold, dias) {
     <tr style="${trStyle}">
       <td style="padding:4px"><input value="${esc(t.cliente)}" oninput="estEdit('${t.id}','cliente',this.value)" style="width:150px;font-size:12px;padding:4px 6px;border:1px solid var(--border);border-radius:5px">${badge}</td>
       <td style="padding:4px"><input value="${esc(t.pecas)}" oninput="estEdit('${t.id}','pecas',this.value)" style="width:100%;min-width:200px;font-size:12px;padding:4px 6px;border:1px solid var(--border);border-radius:5px"></td>
-      <td style="padding:4px"><input type="number" step="0.01" value="${t.valor}" oninput="estEdit('${t.id}','valor',this.value)" style="width:90px;text-align:right;font-size:12px;padding:4px 6px;border:1px solid var(--border);border-radius:5px"></td>
+      <td style="padding:4px"><input type="number" step="0.01" value="${t.valor}" oninput="estEdit('${t.id}','valor',this.value)" style="width:90px;text-align:right;font-size:12px;font-weight:700;color:var(--gold-dark);padding:4px 6px;border:1px solid var(--border);border-radius:5px"></td>
       <td style="padding:4px"><input value="${esc(t.codigo_devolucao)}" oninput="estEdit('${t.id}','codigo_devolucao',this.value)" style="width:130px;font-size:12px;padding:4px 6px;border:1px solid var(--border);border-radius:5px"></td>
       <td style="padding:4px;white-space:nowrap">${t.data || ''}</td>
       <td style="padding:4px"><input value="${esc(t.motivo)}" oninput="estEdit('${t.id}','motivo',this.value)" style="width:140px;font-size:12px;padding:4px 6px;border:1px solid var(--border);border-radius:5px"></td>
