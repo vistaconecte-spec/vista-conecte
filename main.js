@@ -1033,6 +1033,13 @@ const RET_BUCKETS = [
   { min: 0,  label: '⚪ Novo · hoje / ontem',          bg: '',                    cardBg: '',                     bar: 'var(--border)', bold: false },
 ];
 function retDiasNaFila(t) {
+  // Prefere a data real da solicitação/pedido (campo `data`, DD/MM/YYYY) — o criado_em costuma
+  // ser a data do cadastro em massa no sistema, que não reflete o tempo real de espera.
+  const m = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(t.data || '');
+  if (m) {
+    const ms = Date.now() - new Date(+m[3], +m[2] - 1, +m[1]).getTime();
+    if (!isNaN(ms)) return Math.max(0, Math.floor(ms / 86400000));
+  }
   if (!t.criado_em) return 0;
   const ms = Date.now() - new Date(t.criado_em).getTime();
   return isNaN(ms) ? 0 : Math.max(0, Math.floor(ms / 86400000));
