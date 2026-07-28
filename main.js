@@ -1021,21 +1021,33 @@ async function retSincronizarShopify() {
   }
 }
 const RET_TAMANHOS = ['PP', 'P', 'M', 'G', 'GG'];
-function retRender() {
-  const cfg = retGetConfig();
-  const mostrarResolvidos = document.getElementById('ret-mostrar-resolvidos')?.checked;
-  const lista = cfg.itens
-    .filter(t => mostrarResolvidos || t.status !== 'resolvido')
-    .sort((a, b) => (b.criado_em || '').localeCompare(a.criado_em || ''));
-  const esc = v => (v || '').replace(/"/g, '&quot;');
-  const rows = lista.map(t => {
-    const obsVal = t.obs || '';
-    const obsCustom = (obsVal && !RET_TAMANHOS.includes(obsVal)) ? `<option value="${esc(obsVal)}" selected>${esc(obsVal)}</option>` : '';
-    const obsOptions = RET_TAMANHOS.map(s => `<option value="${s}" ${obsVal === s ? 'selected' : ''}>${s}</option>`).join('');
-    return `
-    <tr style="${t.status === 'resolvido' ? 'opacity:0.5' : ''}">
-      <td style="padding:4px;text-align:center;vertical-align:middle"><input type="checkbox" ${t.status === 'resolvido' ? 'checked' : ''} onchange="retToggle('${t.id}')" title="marcar como resolvido"></td>
-      <td style="padding:4px;vertical-align:middle"><input value="${esc(t.cliente)}" oninput="retEdit('${t.id}','cliente',this.value)" style="width:100%;font-size:12px;padding:4px 6px;border:1px solid var(--border);border-radius:5px;${t.status === 'resolvido' ? 'text-decoration:line-through' : ''}">${t.pedido ? `<div style="font-size:10px;color:var(--text-ter);margin-top:2px">pedido ${esc(t.pedido)}</div>` : ''}</td>
+// Faixas de envelhecimento (tempo na fila aguardando resolução) — quanto mais tempo, tom mais forte.
+const RET_BUCKETS = [
+  { min: 14, label: '🔴 Crítico · 14+ dias na fila', bg: 'rgba(255,59,48,.30)', bar: '#ff3b30', bold: true },
+  { min: 7,  label: '🔴 Atrasado · 7 a 13 dias',      bg: 'rgba(255,59,48,.15)', bar: '#ff3b30', bold: false },
+  { min: 4,  label: '🟠 Atenção · 4 a 6 dias',        bg: 'rgba(255,149,0,.14)', bar: '#ff9500', bold: false },
+  { min: 2,  label: '🟡 Recente · 2 a 3 dias',        bg: 'rgba(255,204,0,.10)', bar: '#ffcc00', bold: false },
+  { min: 0,  label: '⚪ Novo · hoje / ontem',          bg: '',                    bar: 'var(--border)', bold: false },
+];
+function retDiasNaFila(t) {
+  if (!t.criado_em) return 0;
+  const ms = Date.now() - new Date(t.criado_em).getTime();
+  return isNaN(ms) ? 0 : Math.max(0, Math.floor(ms / 86400000));
+}
+function retBucket(dias) {
+  return RET_BUCKETS.find(b => dias >= b.min) || RET_BUCKETS[RET_BUCKETS.length - 1];
+}
+function retRowHtml(t, esc, bg, bold, dias) {
+  const resolvido = t.status === 'resolvido';
+  const obsVal = t.obs || '';
+  const obsCustom = (obsVal && !RET_TAMANHOS.includes(obsVal)) ? `<option value="${esc(obsVal)}" selected>${esc(obsVal)}</option>` : '';
+  const obsOptions = RET_TAMANHOS.map(s => `<option value="${s}" ${obsVal === s ? 'selected' : ''}>${s}</option>`).join('');
+  const badge = (!resolvido && dias >= 2) ? `<div><span style="display:inline-block;margin-top:2px;font-size:10px;font-weight:700;color:#fff;background:${retBucket(dias).bar};border-radius:4px;padding:1px 5px">${dias} dias na fila</span></div>` : '';
+  const trStyle = resolvido ? 'opacity:0.5' : (bg ? `background:${bg};${bold ? 'font-weight:600;' : ''}` : '');
+  return `
+    <tr style="${trStyle}">
+      <td style="padding:4px;text-align:center;vertical-align:middle"><input type="checkbox" ${resolvido ? 'checked' : ''} onchange="retToggle('${t.id}')" title="marcar como resolvido"></td>
+      <td style="padding:4px;vertical-align:middle"><input value="${esc(t.cliente)}" oninput="retEdit('${t.id}','cliente',this.value)" style="width:100%;font-size:12px;padding:4px 6px;border:1px solid var(--border);border-radius:5px;${resolvido ? 'text-decoration:line-through' : ''}">${t.pedido ? `<div style="font-size:10px;color:var(--text-ter);margin-top:2px">pedido ${esc(t.pedido)}</div>` : ''}${badge}</td>
       <td style="padding:4px;vertical-align:middle"><input value="${esc(t.produtos)}" oninput="retEdit('${t.id}','produtos',this.value)" style="width:100%;font-size:12px;padding:4px 6px;border:1px solid var(--border);border-radius:5px"></td>
       <td style="padding:4px;vertical-align:middle"><select onchange="retEdit('${t.id}','obs',this.value)" style="width:100%;font-size:12px;padding:4px 6px;border:1px solid var(--border);border-radius:5px">
         <option value="" ${!obsVal ? 'selected' : ''}>—</option>
@@ -1047,8 +1059,37 @@ function retRender() {
       <td style="padding:4px;vertical-align:middle"><input value="${esc(t.codigo_reenvio)}" oninput="retEdit('${t.id}','codigo_reenvio',this.value)" style="width:100%;font-size:12px;padding:4px 6px;border:1px solid var(--border);border-radius:5px"></td>
       <td style="padding:4px;text-align:center;vertical-align:middle"><button onclick="retDel('${t.id}')" title="excluir" style="background:none;border:none;cursor:pointer;color:var(--text-ter);font-size:15px">×</button></td>
     </tr>`;
-  }).join('');
-  document.getElementById('ret-tbody').innerHTML = rows ||
+}
+function retRender() {
+  const cfg = retGetConfig();
+  const mostrarResolvidos = document.getElementById('ret-mostrar-resolvidos')?.checked;
+  const esc = v => (v || '').replace(/"/g, '&quot;');
+  // Pendentes: agrupados por tempo na fila, mais antigos (tom mais forte) primeiro.
+  const pendentes = cfg.itens
+    .filter(t => t.status !== 'resolvido')
+    .map(t => ({ t, dias: retDiasNaFila(t) }))
+    .sort((a, b) => b.dias - a.dias);
+  let html = '';
+  let lastBucket = null;
+  pendentes.forEach(({ t, dias }) => {
+    const b = retBucket(dias);
+    if (b.label !== lastBucket) {
+      lastBucket = b.label;
+      const n = pendentes.filter(x => retBucket(x.dias).label === b.label).length;
+      html += `<tr><td colspan="8" style="padding:9px 6px 4px;border-left:3px solid ${b.bar};background:${b.bg || 'transparent'}"><span style="font-size:11px;font-weight:700;color:var(--text-sec);text-transform:uppercase;letter-spacing:.3px">${b.label} · ${n}</span></td></tr>`;
+    }
+    html += retRowHtml(t, esc, b.bg, b.bold, dias);
+  });
+  if (mostrarResolvidos) {
+    const resolvidos = cfg.itens
+      .filter(t => t.status === 'resolvido')
+      .sort((a, b) => (b.criado_em || '').localeCompare(a.criado_em || ''));
+    if (resolvidos.length) {
+      html += `<tr><td colspan="8" style="padding:9px 6px 4px"><span style="font-size:11px;font-weight:700;color:var(--text-ter);text-transform:uppercase;letter-spacing:.3px">✅ Resolvidos · ${resolvidos.length}</span></td></tr>`;
+      resolvidos.forEach(t => { html += retRowHtml(t, esc, '', false, retDiasNaFila(t)); });
+    }
+  }
+  document.getElementById('ret-tbody').innerHTML = html ||
     '<tr><td colspan="8" style="text-align:center;color:var(--text-ter);font-size:12px;padding:12px">Nenhum registro ' + (mostrarResolvidos ? '' : 'pendente') + '.</td></tr>';
   const total = cfg.itens.filter(t => t.status !== 'resolvido').length;
   const totalEl = document.getElementById('ret-total-pendentes');
