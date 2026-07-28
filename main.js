@@ -1043,7 +1043,7 @@ function retRender() {
         ${obsOptions}
       </select></td>
       <td style="padding:4px;vertical-align:middle"><input value="${esc(t.codigo_logistica_reversa)}" oninput="retEdit('${t.id}','codigo_logistica_reversa',this.value)" style="width:100%;font-size:12px;padding:4px 6px;border:1px solid var(--border);border-radius:5px"></td>
-      <td style="padding:4px;text-align:center;vertical-align:middle"><input type="date" value="${t.data_chegada_reversa || ''}" onchange="retDataReversa('${t.id}',this.value)" title="data em que a peça chegou dos Correios (logística reversa)" style="font-size:12px;padding:4px 6px;border:1px solid var(--border);border-radius:5px;${t.chegou_reversa ? 'background:rgba(52,199,89,.12)' : ''}"></td>
+      <td style="padding:4px;text-align:center;vertical-align:middle"><input type="date" value="${t.data_chegada_reversa || ''}" onchange="retDataReversa('${t.id}',this.value)" onclick="try{this.showPicker()}catch(e){}" title="clique para abrir o calendário — data em que a peça chegou dos Correios (logística reversa)" style="cursor:pointer;font-size:12px;padding:4px 6px;border:1px solid var(--border);border-radius:5px;${t.chegou_reversa ? 'background:rgba(52,199,89,.12)' : ''}"></td>
       <td style="padding:4px;vertical-align:middle"><input value="${esc(t.codigo_reenvio)}" oninput="retEdit('${t.id}','codigo_reenvio',this.value)" style="width:100%;font-size:12px;padding:4px 6px;border:1px solid var(--border);border-radius:5px"></td>
       <td style="padding:4px;text-align:center;vertical-align:middle"><button onclick="retDel('${t.id}')" title="excluir" style="background:none;border:none;cursor:pointer;color:var(--text-ter);font-size:15px">×</button></td>
     </tr>`;
