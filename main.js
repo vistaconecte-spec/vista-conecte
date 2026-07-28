@@ -837,7 +837,7 @@ function sacToggle(id) {
   t.status = (t.status === 'resolvido') ? 'pendente' : 'resolvido';
   t.resolvido_em = (t.status === 'resolvido') ? new Date().toISOString() : null;
   sacSalvar(cfg);
-  sacRender();
+  atdSyncViews();
 }
 function sacEdit(id, campo, val) {
   const cfg = sacGetConfig();
@@ -850,7 +850,7 @@ function sacDel(id) {
   const cfg = sacGetConfig();
   cfg.tickets = cfg.tickets.filter(x => x.id !== id);
   sacSalvar(cfg);
-  sacRender();
+  atdSyncViews();
 }
 function sacRender() {
   const cfg = sacGetConfig();
@@ -964,14 +964,15 @@ function retDataReversa(id, value) {
   t.data_chegada_reversa = value || '';
   t.chegou_reversa = !!value;
   retSalvar(cfg);
-  retRender();
+  atdSyncViews();
 }
 function retToggle(id) {
   const cfg = retGetConfig();
   const t = cfg.itens.find(x => x.id === id); if (!t) return;
   t.status = (t.status === 'resolvido') ? 'pendente' : 'resolvido';
+  t.resolvido_em = (t.status === 'resolvido') ? new Date().toISOString() : null;
   retSalvar(cfg);
-  retRender();
+  atdSyncViews();
 }
 function retEdit(id, campo, val) {
   const cfg = retGetConfig();
@@ -984,7 +985,7 @@ function retDel(id) {
   const cfg = retGetConfig();
   cfg.itens = cfg.itens.filter(x => x.id !== id);
   retSalvar(cfg);
-  retRender();
+  atdSyncViews();
 }
 
 // Puxa da Shopify as trocas solicitadas (devolução com exchangeLineItems — cliente pediu
@@ -1133,7 +1134,7 @@ function estDel(id) {
   const cfg = estGetConfig();
   cfg.itens = cfg.itens.filter(x => x.id !== id);
   estSalvar(cfg);
-  estRender();
+  atdSyncViews();
 }
 
 // Puxa da Shopify as devoluções solicitadas (ainda não processadas) e adiciona as que
@@ -1295,14 +1296,24 @@ function kbRender() {
   });
   const dataDe = t => t.criado_em ? new Date(t.criado_em).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }) : '';
   board.innerHTML = KB_ETAPAS.map(([key, titulo, cor]) => {
-    const lista = porEtapa[key].sort((a, b) => (b.t.criado_em || '').localeCompare(a.t.criado_em || ''));
+    // Concluído: mais recentes no topo. Demais etapas: mais tempo na fila (mais urgente) no topo.
+    const lista = porEtapa[key].sort((a, b) => key === 'concluido'
+      ? (b.t.criado_em || '').localeCompare(a.t.criado_em || '')
+      : retDiasNaFila(b.t) - retDiasNaFila(a.t));
     const cardsHtml = lista.map(c => {
       const tp = KB_TIPOS[c.tipo];
       const mover = KB_ETAPAS.map(([k, l]) => `<option value="${k}" ${k === c.etapa ? 'selected' : ''}>${l}</option>`).join('');
+      // Heatmap de envelhecimento — mesma lógica das listas (só nas não-concluídas).
+      const dias = retDiasNaFila(c.t);
+      const b = retBucket(dias);
+      const isConcl = c.etapa === 'concluido';
+      const cardStyle = isConcl ? '' : `border-left:3px solid ${b.bar};${b.bg ? 'background:' + b.bg + ';' : ''}`;
+      const agingBadge = (!isConcl && dias >= 2) ? `<span class="kb-badge" style="background:${b.bar};color:#fff" title="tempo na fila aguardando resolução">${dias}d na fila</span>` : '';
       return `
-      <div class="kb-card" draggable="true"
+      <div class="kb-card" draggable="true" style="${cardStyle}"
            ondragstart="kbDragStart(event,'${c.tipo}','${c.t.id}')" ondragend="kbDragEnd(event)">
         <span class="kb-badge ${tp.badge}" style="cursor:pointer" title="abrir na lista de ${tp.rotulo}" onclick="atdShowSub('${tp.pill}')">${tp.rotulo}</span>
+        ${agingBadge}
         <div class="kb-nome" title="${esc(c.nome)}">${esc(c.nome)}</div>
         ${c.corpo ? `<div class="kb-corpo">${esc(c.corpo)}</div>` : ''}
         <div class="kb-meta">
@@ -1353,7 +1364,16 @@ function kbSetEtapa(tipo, id, etapa) {
     if (etapa !== 'concluido' && t.status === 'resolvido') { t.status = 'pendente'; t.resolvido_em = null; }
   }
   salvar(cfg);
-  kbRender();
+  atdSyncViews();
+}
+// Sincroniza as 3 listas (SAC, Trocas, Devolução) + o quadro Kanban de uma vez. Todas leem o
+// mesmo storage (vc:sac / vc:retorno / vc:estorno), então qualquer ação — resolver, mover
+// etapa, marcar chegada, excluir — reflete na hora em TODAS as abas, esteja qual estiver visível.
+function atdSyncViews() {
+  try { if (document.getElementById('sac-tbody')) sacRender(); } catch (e) {}
+  try { if (document.getElementById('ret-tbody')) retRender(); } catch (e) {}
+  try { if (document.getElementById('atd-est-tbody')) estRender(); } catch (e) {}
+  try { if (document.getElementById('kb-board')) kbRender(); } catch (e) {}
 }
 
 function finPopularMeses() {
