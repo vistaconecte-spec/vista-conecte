@@ -1169,20 +1169,49 @@ async function estSincronizarShopify() {
     if (statusEl) statusEl.textContent = 'erro ao buscar devoluções da Shopify';
   }
 }
+function estConcluida(t) { return t.status === 'resolvido' || t.etapa === 'concluido'; }
+function estRowHtml(t, bg, bold, dias) {
+  const esc = v => (v || '').replace(/"/g, '&quot;');
+  const concl = estConcluida(t);
+  const badge = (!concl && dias >= 2) ? `<div><span style="display:inline-block;margin-top:2px;font-size:10px;font-weight:700;color:#fff;background:${retBucket(dias).bar};border-radius:4px;padding:1px 5px">${dias} dias na fila</span></div>` : '';
+  const trStyle = concl ? 'opacity:0.5' : (bg ? `background:${bg};${bold ? 'font-weight:600;' : ''}` : '');
+  return `
+    <tr style="${trStyle}">
+      <td style="padding:4px"><input value="${esc(t.cliente)}" oninput="estEdit('${t.id}','cliente',this.value)" style="width:150px;font-size:12px;padding:4px 6px;border:1px solid var(--border);border-radius:5px">${badge}</td>
+      <td style="padding:4px"><input value="${esc(t.pecas)}" oninput="estEdit('${t.id}','pecas',this.value)" style="width:100%;min-width:200px;font-size:12px;padding:4px 6px;border:1px solid var(--border);border-radius:5px"></td>
+      <td style="padding:4px"><input type="number" step="0.01" value="${t.valor}" oninput="estEdit('${t.id}','valor',this.value)" style="width:90px;text-align:right;font-size:12px;padding:4px 6px;border:1px solid var(--border);border-radius:5px"></td>
+      <td style="padding:4px"><input value="${esc(t.codigo_devolucao)}" oninput="estEdit('${t.id}','codigo_devolucao',this.value)" style="width:130px;font-size:12px;padding:4px 6px;border:1px solid var(--border);border-radius:5px"></td>
+      <td style="padding:4px;white-space:nowrap">${t.data || ''}</td>
+      <td style="padding:4px"><input value="${esc(t.motivo)}" oninput="estEdit('${t.id}','motivo',this.value)" style="width:140px;font-size:12px;padding:4px 6px;border:1px solid var(--border);border-radius:5px"></td>
+      <td style="padding:4px;text-align:center"><button onclick="estDel('${t.id}')" title="excluir" style="background:none;border:none;cursor:pointer;color:var(--text-ter);font-size:15px">×</button></td>
+    </tr>`;
+}
 function estRender() {
   const cfg = estGetConfig();
-  const lista = [...cfg.itens].sort((a, b) => (b.criado_em || '').localeCompare(a.criado_em || ''));
-  const rows = lista.map(t => `
-    <tr>
-      <td style="padding:4px"><input value="${(t.cliente || '').replace(/"/g, '&quot;')}" oninput="estEdit('${t.id}','cliente',this.value)" style="width:150px;font-size:12px;padding:4px 6px;border:1px solid var(--border);border-radius:5px"></td>
-      <td style="padding:4px"><input value="${(t.pecas || '').replace(/"/g, '&quot;')}" oninput="estEdit('${t.id}','pecas',this.value)" style="width:100%;min-width:200px;font-size:12px;padding:4px 6px;border:1px solid var(--border);border-radius:5px"></td>
-      <td style="padding:4px"><input type="number" step="0.01" value="${t.valor}" oninput="estEdit('${t.id}','valor',this.value)" style="width:90px;text-align:right;font-size:12px;padding:4px 6px;border:1px solid var(--border);border-radius:5px"></td>
-      <td style="padding:4px"><input value="${(t.codigo_devolucao || '').replace(/"/g, '&quot;')}" oninput="estEdit('${t.id}','codigo_devolucao',this.value)" style="width:130px;font-size:12px;padding:4px 6px;border:1px solid var(--border);border-radius:5px"></td>
-      <td style="padding:4px;white-space:nowrap">${t.data || ''}</td>
-      <td style="padding:4px"><input value="${(t.motivo || '').replace(/"/g, '&quot;')}" oninput="estEdit('${t.id}','motivo',this.value)" style="width:140px;font-size:12px;padding:4px 6px;border:1px solid var(--border);border-radius:5px"></td>
-      <td style="padding:4px;text-align:center"><button onclick="estDel('${t.id}')" title="excluir" style="background:none;border:none;cursor:pointer;color:var(--text-ter);font-size:15px">×</button></td>
-    </tr>`).join('');
-  document.getElementById('atd-est-tbody').innerHTML = rows ||
+  // Pendentes: agrupadas por tempo na fila, mais antigas (tom mais forte) primeiro.
+  const pendentes = cfg.itens
+    .filter(t => !estConcluida(t))
+    .map(t => ({ t, dias: retDiasNaFila(t) }))
+    .sort((a, b) => b.dias - a.dias);
+  let html = '';
+  let lastBucket = null;
+  pendentes.forEach(({ t, dias }) => {
+    const b = retBucket(dias);
+    if (b.label !== lastBucket) {
+      lastBucket = b.label;
+      const n = pendentes.filter(x => retBucket(x.dias).label === b.label).length;
+      html += `<tr><td colspan="7" style="padding:9px 6px 4px;border-left:3px solid ${b.bar};background:${b.bg || 'transparent'}"><span style="font-size:11px;font-weight:700;color:var(--text-sec);text-transform:uppercase;letter-spacing:.3px">${b.label} · ${n}</span></td></tr>`;
+    }
+    html += estRowHtml(t, b.bg, b.bold, dias);
+  });
+  const concluidas = cfg.itens
+    .filter(estConcluida)
+    .sort((a, b) => (b.criado_em || '').localeCompare(a.criado_em || ''));
+  if (concluidas.length) {
+    html += `<tr><td colspan="7" style="padding:9px 6px 4px"><span style="font-size:11px;font-weight:700;color:var(--text-ter);text-transform:uppercase;letter-spacing:.3px">✅ Concluídas · ${concluidas.length}</span></td></tr>`;
+    concluidas.forEach(t => { html += estRowHtml(t, '', false, retDiasNaFila(t)); });
+  }
+  document.getElementById('atd-est-tbody').innerHTML = html ||
     '<tr><td colspan="7" style="text-align:center;color:var(--text-ter);font-size:12px;padding:12px">Nenhum registro de devolução.</td></tr>';
   const total = cfg.itens.reduce((s, t) => s + (t.valor || 0), 0);
   const totalEl = document.getElementById('atd-est-total-valor');
