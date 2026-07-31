@@ -10,8 +10,12 @@
  *   acao='pendencia-add'    { description }
  *   acao='pendencia-toggle' { pendenciaId }
  *   acao='pendencia-edit'   { pendenciaId, description }
+ *   acao='medidas'          { medidas }            → grava JSON (texto) na coluna projects.medidas
+ *   acao='valor-ajuste'     { valorAjuste }        → grava texto na coluna projects.valorAjuste
+ *   acao='arquivo-remover'  { tipo, fileId }       → tipo 'croqui'|'foto'|'audaces'; apaga a linha e o objeto do Storage
  */
 const SB_URL = 'https://hckzsblwyabmhzbjdjgx.supabase.co';
+const BUCKET = 'modelagem';
 const USER_ID = 1; // admin fixo "Conecte Vista" — app não tem login por usuário
 
 function sbHeaders(env, extra = {}) {
@@ -52,6 +56,14 @@ async function sbUpsert(env, table, conflictCol, body) {
   if (!r.ok) throw new Error(`UPSERT ${table}: ${r.status} ${await r.text()}`);
   const rows = await r.json();
   return rows[0];
+}
+
+async function sbDelete(env, path) {
+  const r = await fetch(`${SB_URL}/rest/v1/${path}`, {
+    method: 'DELETE',
+    headers: sbHeaders(env),
+  });
+  if (!r.ok) throw new Error(`DELETE ${path}: ${r.status} ${await r.text()}`);
 }
 
 async function sbPatch(env, path, body) {
@@ -184,6 +196,37 @@ export async function onRequest(context) {
         if (!pendenciaId || !description) return new Response(JSON.stringify({ erro: 'informe pendenciaId e description' }), { status: 400, headers });
         const pendencia = await sbPatch(env, `project_pendencias?id=eq.${pendenciaId}`, { description });
         return new Response(JSON.stringify({ pendencia }), { headers });
+      }
+
+      if (acao === 'medidas') {
+        const { medidas } = body;
+        const projeto = await sbPatch(env, `projects?id=eq.${id}`, { medidas: JSON.stringify(medidas || {}) });
+        return new Response(JSON.stringify({ projeto }), { headers });
+      }
+
+      if (acao === 'valor-ajuste') {
+        const { valorAjuste } = body;
+        const projeto = await sbPatch(env, `projects?id=eq.${id}`, { valorAjuste: (valorAjuste ?? '').toString() });
+        return new Response(JSON.stringify({ projeto }), { headers });
+      }
+
+      if (acao === 'arquivo-remover') {
+        const { tipo, fileId } = body;
+        if (!['croqui', 'foto', 'audaces'].includes(tipo) || !fileId) {
+          return new Response(JSON.stringify({ erro: 'informe tipo (croqui|foto|audaces) e fileId' }), { status: 400, headers });
+        }
+        const tabela = tipo === 'croqui' ? 'project_croquis' : 'project_files';
+        const [row] = await sbGet(env, `${tabela}?id=eq.${fileId}&projectId=eq.${id}&select=id,fileKey`);
+        if (!row) return new Response(JSON.stringify({ erro: 'arquivo não encontrado' }), { status: 404, headers });
+        if (row.fileKey) {
+          // best-effort: a linha é a fonte da verdade; objeto órfão no Storage não quebra nada
+          await fetch(`${SB_URL}/storage/v1/object/${BUCKET}/${encodeURI(row.fileKey)}`, {
+            method: 'DELETE',
+            headers: { Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}` },
+          }).catch(() => {});
+        }
+        await sbDelete(env, `${tabela}?id=eq.${fileId}`);
+        return new Response(JSON.stringify({ ok: true }), { headers });
       }
 
       return new Response(JSON.stringify({ erro: 'ação desconhecida' }), { status: 400, headers });

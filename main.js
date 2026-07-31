@@ -483,6 +483,7 @@ function buildSidebar() {
 
 // ─── ABA FINANCEIRA ──────────────────────────────────────────────────────────
 const FIN_HASH = '61ec6cb14cce98a7e71c4ae4668d1df518e59a253aa83d0f7ba52773743aa78a';
+const MDL_HASH = 'a01b9981184c6b9627fb38968441bc17686288e37a8e81e8dec2b6c926b6dca7'; // senha da aba Modelagem (SHA-256)
 const CUSTO_DEFS = [
   ['trafego', 'Tráfego (anúncios)', '#D85A30'],
   ['tecido', 'Tecido', '#1D9E75'],
@@ -3215,7 +3216,7 @@ function renderDashboard() {
   for (const [key, def] of Object.entries(MODELOS)) {
     if (CONJUNTO_PECAS[key]) continue; // Conjuntos excluídos — peças já contadas individualmente
     const saved = loadLocal('vc:' + key) || {};
-    const cores = saved.cores || def.cores;
+    const cores = coresDoModelo(def, saved);
     const tuMD = !!def.tamanhoUnico;
     let pedidos = 0, estoque = 0, produzir = 0;
     cores.forEach(cor => {
@@ -3239,13 +3240,13 @@ function renderDashboard() {
     for (const [key, def] of Object.entries(MODELOS)) {
       if (CONJUNTO_PECAS[key]) continue;
       const saved      = loadLocal('vc:' + key) || {};
-      const cores      = [...new Set([...def.cores, ...(saved.cores || [])])];
-      const tu         = !!def.tamanhoUnico || !!def.tamanhos; // tamanhos customizados (ex: sapatos) → exibe só total
+      const cores      = coresDoModelo(def, saved);
+      const tu         = !!def.tamanhoUnico || ehNumeracao(def); // calçado (numeração) → exibe só total; G1 tem coluna própria
       const statusNorm = STATUS_VALIDOS.includes(saved.status) ? saved.status : '';
       // Cálculo: Pedidos − Estoque − Em Produção (líquido que realmente falta produzir).
       // O que já está coberto pela produção zera e some; o que sobrou aparece,
       // mesmo que o modelo já tenha algo em produção (status na coluna ao lado).
-      const sizes = [0,0,0,0,0];
+      const sizes = new Array(GRADE_ROUPA.length).fill(0); // PP..GG + G1
       let total   = 0;
       cores.forEach(cor => {
         const szLen = def.tamanhos?.length || 5;
@@ -3283,7 +3284,7 @@ function renderDashboard() {
           <thead><tr>
             <th style="text-align:left">Modelo</th>
             <th style="text-align:left">Status</th>
-            <th>PP</th><th>P</th><th>M</th><th>G</th><th>GG</th>
+            ${GRADE_ROUPA.map(s => `<th>${s}</th>`).join('')}
             <th>Total</th>
           </tr></thead>
           <tbody>
@@ -3292,7 +3293,7 @@ function renderDashboard() {
                 <td style="font-weight:600">${u.nome}</td>
                 <td style="font-size:11px;color:var(--text-sec)">${u.status || '—'}</td>
                 ${u.tu
-                  ? `<td colspan="5" style="text-align:center;color:var(--text-ter)">${MODELOS[u.key]?.tamanhos ? 'Numeração' : 'Tam. único'}</td>`
+                  ? `<td colspan="${GRADE_ROUPA.length}" style="text-align:center;color:var(--text-ter)">${MODELOS[u.key]?.tamanhos ? 'Numeração' : 'Tam. único'}</td>`
                   : u.sizes.map(v => `<td class="${v>0?'saldo-falta':''}">${v||'—'}</td>`).join('')
                 }
                 <td style="font-weight:700;color:#dc2626">${u.total}</td>
@@ -3303,6 +3304,66 @@ function renderDashboard() {
   }
   // ───────────────────────────────────────────────────────────────────────────
 
+  // ── Card Produção acima do necessário ────────────────────────────────────────
+  // Alerta anti-duplicação: leva 1 + leva 2 produzindo MAIS do que Pedidos − Estoque.
+  // Normalmente é leva antiga que ficou congelada depois que entrou estoque ou que a
+  // outra leva assumiu o pedido — o tecido dessas peças seria comprado à toa.
+  const dupEl    = document.getElementById('dash-duplicado');
+  const dupTotEl = document.getElementById('dash-duplicado-total');
+  const dupCard  = document.getElementById('card-duplicado');
+  if (dupEl) {
+    const dupList = [];
+    for (const [key, def] of Object.entries(MODELOS)) {
+      if (CONJUNTO_PECAS[key]) continue;
+      const saved = loadLocal('vc:' + key) || {};
+      const cores = coresDoModelo(def, saved);
+      const tuD   = !!def.tamanhoUnico;
+      const szLen = def.tamanhos?.length || 5;
+      const det   = [];
+      let sobra = 0;
+      cores.forEach(cor => {
+        const nrm = o => ((o || []).map(v => v || 0)).concat(new Array(szLen).fill(0)).slice(0, szLen);
+        const ab = nrm(def.aberto[cor]), ev = nrm(saved.est && saved.est[cor]);
+        const p1 = nrm(saved.prod && saved.prod[cor]), p2 = nrm(saved.prod2 && saved.prod2[cor]);
+        const som = a => a.reduce((x,y) => x+y, 0);
+        let s = 0;
+        if (tuD) {
+          s = Math.max(0, som(p1) + som(p2) - Math.max(0, som(ab) - (ev[0]||0)));
+        } else {
+          s = ab.reduce((acc,_,i) => acc + Math.max(0, (p1[i]+p2[i]) - Math.max(0, ab[i] - ev[i])), 0);
+        }
+        if (s > 0) { sobra += s; det.push(`${cor} ${s}`); }
+      });
+      if (sobra > 0) dupList.push({ key, nome: def.nome, sobra, det: det.join(' · ') });
+    }
+    dupList.sort((a,b) => b.sobra - a.sobra);
+    const totalSobra = dupList.reduce((s,x) => s + x.sobra, 0);
+    if (dupCard) dupCard.style.display = dupList.length ? '' : 'none';
+    if (dupTotEl) dupTotEl.textContent = totalSobra > 0 ? totalSobra + ' peças a mais' : '';
+    dupEl.innerHTML = dupList.length === 0 ? '' : `
+      <div style="font-size:11px;color:var(--text-sec);margin-bottom:6px">
+        Estas levas estão com mais peças do que os pedidos em aberto pedem (já descontado o estoque).
+        Confira antes de comprar tecido — pode ser produção repetida.
+      </div>
+      <table>
+        <thead><tr>
+          <th style="text-align:left">Modelo</th>
+          <th style="text-align:left">Cores</th>
+          <th>A mais</th>
+        </tr></thead>
+        <tbody>
+          ${dupList.map(x => `
+            <tr style="cursor:pointer" onclick="(function(){const ni=Array.from(document.querySelectorAll('.nav-item')).find(el=>el.textContent.trim().startsWith('${x.nome.replace(/'/g,"\\'")}'));if(ni)ni.click();})()">
+              <td style="font-weight:600">${x.nome}</td>
+              <td style="font-size:11px;color:var(--text-sec)">${x.det}</td>
+              <td style="text-align:center;font-weight:700;color:#d97706">${x.sobra}</td>
+            </tr>`).join('')}
+        </tbody>
+        <tfoot><tr class="total-row"><td>Total</td><td></td><td style="text-align:center">${totalSobra}</td></tr></tfoot>
+      </table>`;
+  }
+  // ─────────────────────────────────────────────────────────────────────────────
+
   // ── Card Em Produção ─────────────────────────────────────────────────────────
   const producaoEl    = document.getElementById('dash-producao');
   const producaoTotEl = document.getElementById('dash-producao-total');
@@ -3311,7 +3372,7 @@ function renderDashboard() {
     for (const [key, def] of Object.entries(MODELOS)) {
       if (CONJUNTO_PECAS[key]) continue;
       const saved = loadLocal('vc:' + key) || {};
-      const cores = [...new Set([...def.cores, ...(saved.cores || [])])];
+      const cores = coresDoModelo(def, saved);
       // Cada leva entra como linha própria, com o próprio status
       [{ prod: saved.prod, status: saved.status, leva2: false },
        { prod: saved.prod2, status: saved.status2, leva2: true }].forEach(l => {
@@ -3370,7 +3431,7 @@ function renderDashboard() {
       const consumo  = saved.consumo || def.consumo;
       const preco    = saved.preco   || def.preco || 0;
       const tecido   = saved.tecido  || def.tecido;
-      const cores    = [...new Set([...def.cores, ...(saved.cores || [])])];
+      const cores    = coresDoModelo(def, saved);
       const tuC = !!def.tamanhoUnico;
       // Cada leva com status "Comprando tecido" vira uma linha própria.
       // Leva 1 mantém o fallback Pedidos − Estoque; a 2ª leva só conta o que foi digitado.
@@ -3384,13 +3445,11 @@ function renderDashboard() {
           if (pv) {
             totalPecas += pv.reduce((a,b) => a+b, 0);
           } else if (l.fallback) {
+            // Fallback da leva 1: Pedidos − Estoque − 2ª leva (não recompra o que a leva 2 já produz)
             const ab = def.aberto[cor] || [0,0,0,0,0];
             const ev = saved.est && saved.est[cor] || [0,0,0,0,0];
-            if (tuC) {
-              totalPecas += Math.max(0, ab.reduce((a,b) => a+b, 0) - (ev[0]||0));
-            } else {
-              ab.forEach((a,i) => { totalPecas += Math.max(0, a - (ev[i]||0)); });
-            }
+            const p2 = saved.prod2 && saved.prod2[cor] || [];
+            totalPecas += calcFaltaLeva(ab, ev, p2, tuC);
           }
         });
         const metros = totalPecas * consumo;
@@ -3444,7 +3503,7 @@ function renderDashboard() {
     for (const [key, def] of Object.entries(MODELOS)) {
       if (CONJUNTO_PECAS[key]) continue;
       const saved = loadLocal('vc:' + key) || {};
-      const cores = [...new Set([...def.cores, ...(saved.cores || [])])];
+      const cores = coresDoModelo(def, saved);
       const tuCst = !!def.tamanhoUnico;
       let tot = 0;
       // Leva 1 (com fallback Pedidos − Estoque) + 2ª leva (só o digitado), cada uma no próprio status
@@ -3517,7 +3576,7 @@ function renderDashboard() {
   const saldoRows = [];
   for (const [key, def] of Object.entries(MODELOS)) {
     const saved = loadLocal('vc:' + key) || {};
-    const cores = saved.cores || def.cores;
+    const cores = coresDoModelo(def, saved);
     const tu = !!def.tamanhoUnico;
     cores.forEach(cor => {
       const ab = def.aberto && def.aberto[cor] || [0,0,0,0,0];
@@ -3620,7 +3679,7 @@ function renderCorteCostura() {
   for (const [key, def] of Object.entries(MODELOS)) {
     if (CONJUNTO_PECAS[key]) continue; // conjuntos já contados nas peças
     const saved = loadLocal('vc:' + key) || {};
-    const cores = [...new Set([...def.cores, ...(saved.cores || [])])];
+    const cores = coresDoModelo(def, saved);
     // Cada leva conta na etapa do próprio status
     [{ prod: saved.prod, status: saved.status, leva2: false },
      { prod: saved.prod2, status: saved.status2, leva2: true }].forEach(l => {
@@ -3658,6 +3717,167 @@ function renderCorteCostura() {
   if (costuraListaEl) costuraListaEl.innerHTML = listaHTML(costuraList, '#0891b2');
 }
 
+// ─── CARD: PEDIDOS PARADOS ───────────────────────────────────────────────────
+// Pedido pago que não sai porque falta peça some da vista: ele não entra em
+// "Prontos para envio" e nada mais o cobra. Havia pedidos de MAIO ainda abertos em
+// 28/07/2026 (a dona pegou na mão, olhando a Shopify). Este card lista os pagos
+// travados, do mais antigo para o mais novo, dizendo exatamente que peça segura cada um.
+const PARADO_ATENCAO = 15;  // dias
+const PARADO_CRITICO = 30;  // dias
+
+function diasDesde(data) {
+  if (!data) return 0;
+  return Math.floor((Date.now() - new Date(data).getTime()) / 86400000);
+}
+
+// A peça que falta já está sendo produzida? Procura nas duas levas do modelo (cor+tamanho)
+// e devolve a etapa em que ela está. Sem isso a dona não sabe se a peça está a caminho
+// ou se foi esquecida — que é a diferença entre esperar e mandar produzir agora.
+function producaoDaPeca(key, cor, tam) {
+  const d = loadLocal('vc:' + key) || {};
+  const i = MODELOS[key] && MODELOS[key].tamanhoUnico ? 0 : tam;
+  const levas = [
+    { prod: d.prod,  status: d.status,  nome: '1ª leva' },
+    { prod: d.prod2, status: d.status2, nome: '2ª leva' },
+  ];
+  let qtd = 0, etapas = [];
+  levas.forEach(l => {
+    const v = ((l.prod && l.prod[cor]) || [])[i] || 0;
+    if (v > 0) { qtd += v; if (l.status) etapas.push(l.status); }
+  });
+  if (qtd === 0) return { qtd: 0, etapa: null };
+  // mostra a etapa mais adiantada quando as duas levas têm a peça
+  const ORDEM = ['Comprando tecido', 'Em corte', 'Em costura'];
+  const etapa = etapas.sort((a, b) => ORDEM.indexOf(b) - ORDEM.indexOf(a))[0] || 'sem status';
+  return { qtd, etapa };
+}
+
+function renderPedidosParados() {
+  const el    = document.getElementById('dash-parados');
+  const totEl = document.getElementById('dash-parados-total');
+  const card  = document.getElementById('card-parados');
+  if (!el) return;
+
+  const lista = (window._pedidosPendentes || [])
+    .map(p => ({ ...p, dias: diasDesde(p.data) }))
+    .filter(p => p.dias >= PARADO_ATENCAO)
+    .sort((a, b) => b.dias - a.dias);
+
+  if (card) card.style.display = lista.length ? '' : 'none';
+  const criticos = lista.filter(p => p.dias >= PARADO_CRITICO).length;
+  if (totEl) totEl.textContent = lista.length
+    ? `${lista.length} pedido${lista.length > 1 ? 's' : ''}${criticos ? ` · ${criticos} com +${PARADO_CRITICO} dias` : ''}` : '';
+  if (lista.length === 0) { el.innerHTML = ''; return; }
+
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c]));
+  const sizeLabel = (key, tam) => {
+    const def = MODELOS[key];
+    if (def && def.tamanhoUnico) return 'Único';
+    return ((def && def.tamanhos) || ['PP','P','M','G','GG'])[tam] || '—';
+  };
+  const fmtData = d => d ? new Date(d).toLocaleDateString('pt-BR', { day:'2-digit', month:'short' }) : '—';
+  // Em modelo de tamanho único o rótulo "Único" só ocupa espaço — o modelo já diz isso
+  const nomePeca = f => {
+    const tam = MODELOS[f.key] && MODELOS[f.key].tamanhoUnico ? '' : ' ' + sizeLabel(f.key, f.tam);
+    return `${MODELOS[f.key] ? MODELOS[f.key].nome : f.key} ${f.cor}${tam}`;
+  };
+  const faltamPecas = p => (p.faltas || []).reduce((s, f) => s + f.falta, 0);
+
+  // Selo do estado de produção da peça que falta
+  const seloProducao = f => {
+    const pr = producaoDaPeca(f.key, f.cor, f.tam);
+    if (!pr.qtd) return `<span style="font-size:9px;background:rgba(220,38,38,.12);color:#dc2626;border-radius:3px;padding:1px 5px;font-weight:700;white-space:nowrap">NÃO ESTÁ NA PRODUÇÃO</span>`;
+    return `<span style="font-size:9px;background:rgba(8,145,178,.12);color:#0891b2;border-radius:3px;padding:1px 5px;font-weight:700;text-transform:uppercase;white-space:nowrap">${esc(pr.etapa)}${pr.qtd > 1 ? ' ×' + pr.qtd : ''}</span>`;
+  };
+
+  // Ranking das peças que mais travam pedidos: uma peça pode ser o único impedimento de
+  // vários pedidos ao mesmo tempo — produzir ela primeiro libera mais gente de uma vez.
+  const bloqueio = {};
+  lista.forEach(p => (p.faltas || []).forEach(f => {
+    const n = nomePeca(f);
+    if (!bloqueio[n]) {
+      const pr = producaoDaPeca(f.key, f.cor, f.tam);
+      bloqueio[n] = { pecas: 0, pedidos: [], maisAntigo: 0, emProducao: pr.qtd > 0, etapa: pr.etapa };
+    }
+    bloqueio[n].pecas += f.falta;
+    bloqueio[n].pedidos.push(p.numero);
+    bloqueio[n].maisAntigo = Math.max(bloqueio[n].maisAntigo, p.dias);
+  }));
+  const todosBloqueios = Object.entries(bloqueio).map(([nome, b]) => ({ nome, ...b }));
+  const porRelevancia = (a, b) => (b.pedidos.length - a.pedidos.length) || (b.maisAntigo - a.maisAntigo);
+  // TODAS as peças fora de produção — ninguém está fazendo, então só saem se entrarem na fila.
+  // Sem limite: é a lista de trabalho que precisa ser mandada produzir.
+  const foraDeProducao = todosBloqueios.filter(b => !b.emProducao).sort(porRelevancia);
+  // Já em produção: só as que destravam mais de um pedido (as demais saem sozinhas)
+  const jaEmProducao = todosBloqueios.filter(b => b.emProducao && b.pedidos.length > 1)
+    .sort(porRelevancia).slice(0, 5);
+  const paradasSemProducao = foraDeProducao.reduce((s, b) => s + b.pecas, 0);
+  const umaPecaSo = lista.filter(p => faltamPecas(p) === 1).length;
+
+  el.innerHTML = `
+    <style>
+      #dash-parados .vc-falta { white-space:nowrap; overflow:hidden; text-overflow:ellipsis }
+      @media (max-width: 980px) { #dash-parados .vc-falta { white-space:normal; overflow:visible } }
+    </style>
+    <div style="font-size:11px;color:var(--text-sec);margin-bottom:6px">
+      Pedidos pagos há ${PARADO_ATENCAO} dias ou mais que ainda não podem ser enviados. A coluna
+      <b>Falta</b> mostra a peça que está segurando cada um — é o que precisa entrar na produção para liberar.
+      ${umaPecaSo > 0 ? `<b style="color:#d97706">${umaPecaSo} ${umaPecaSo > 1 ? 'estão' : 'está'} a UMA peça de sair.</b>` : ''}
+    </div>
+    ${(foraDeProducao.length || jaEmProducao.length) ? `
+      <div style="background:rgba(217,119,6,.10);border-radius:8px;padding:8px 10px;margin-bottom:10px">
+        ${foraDeProducao.length ? `
+          <div style="font-size:11px;font-weight:700;color:#dc2626;margin-bottom:4px">
+            <i class="ti ti-alert-octagon"></i> MANDAR PRODUZIR — ${paradasSemProducao} peça(s) em ${foraDeProducao.length} item(ns), nenhuma está em leva de produção
+          </div>
+          <div style="font-size:11px;line-height:1.9;margin-bottom:${jaEmProducao.length ? '10' : '0'}px">
+            ${foraDeProducao.map(b => `• <b>${esc(b.nome)}</b>${b.pecas > 1 ? ` ×${b.pecas}` : ''} — ${b.pedidos.length > 1 ? `destrava ${b.pedidos.length} pedidos` : 'destrava 1 pedido'} (${esc(b.pedidos.slice(0,4).join(', '))}${b.pedidos.length > 4 ? '…' : ''}), parado há ${b.maisAntigo} dias`).join('<br>')}
+          </div>` : ''}
+        ${jaEmProducao.length ? `
+          <div style="font-size:11px;font-weight:700;color:#0891b2;margin-bottom:4px">
+            <i class="ti ti-needle-thread"></i> JÁ EM PRODUÇÃO — destravam vários pedidos quando chegarem
+          </div>
+          <div style="font-size:11px;line-height:1.9">
+            ${jaEmProducao.map(b => `• <b>${esc(b.nome)}</b>${b.pecas > 1 ? ` ×${b.pecas}` : ''} — destrava ${b.pedidos.length} pedidos (${esc(b.pedidos.slice(0,4).join(', '))}${b.pedidos.length > 4 ? '…' : ''}), parado há ${b.maisAntigo} dias <span style="font-size:9px;background:rgba(8,145,178,.12);color:#0891b2;border-radius:3px;padding:1px 5px;font-weight:700;text-transform:uppercase">já ${esc(b.etapa)}</span>`).join('<br>')}
+          </div>` : ''}
+      </div>` : ''}
+    <table style="table-layout:fixed;width:100%">
+      <colgroup>
+        <col style="width:15%"><col style="width:15%"><col style="width:7%">
+        <col style="width:8%"><col style="width:55%">
+      </colgroup>
+      <thead><tr>
+        <th style="text-align:left">Pedido</th>
+        <th style="text-align:left">Cliente</th>
+        <th style="text-align:center">Data</th>
+        <th style="text-align:center">Parado</th>
+        <th style="text-align:left">Falta</th>
+      </tr></thead>
+      <tbody>
+        ${lista.slice(0, 20).map(p => {
+          const critico = p.dias >= PARADO_CRITICO;
+          // cada falta numa linha só: nome + selo lado a lado, sem quebrar no meio
+          const faltas = (p.faltas || []).map(f => {
+            const txt = nomePeca(f) + (f.falta > 1 ? ' ×' + f.falta : '');
+            // .vc-falta: uma linha só no desktop (ver <style> abaixo); em tela estreita
+            // volta a quebrar, que é melhor do que cortar o nome da peça
+            return `<div class="vc-falta" title="${esc(txt)}">${esc(txt)} ${seloProducao(f)}</div>`;
+          });
+          const soUma = faltamPecas(p) === 1;
+          return `<tr>
+            <td style="font-weight:600"><a href="${p.url}" target="_blank" style="color:var(--gold-dark);text-decoration:none">${esc(p.numero)}</a>${p.parcial ? ' <span style="font-size:9px;background:rgba(124,58,237,.12);color:#7C3AED;border-radius:3px;padding:1px 5px">PARCIAL</span>' : ''}${soUma ? ' <span style="font-size:9px;background:rgba(217,119,6,.15);color:#b45309;border-radius:3px;padding:1px 5px;font-weight:700">FALTA 1</span>' : ''}</td>
+            <td style="font-size:11px">${esc(p.cliente || 'Cliente')}</td>
+            <td style="text-align:center;font-size:11px;color:var(--text-sec)">${fmtData(p.data)}</td>
+            <td style="text-align:center;font-weight:700;white-space:nowrap;color:${critico ? '#dc2626' : '#d97706'}">${p.dias} ${p.dias === 1 ? 'dia' : 'dias'}</td>
+            <td style="font-size:11px;color:var(--text-sec);line-height:1.9;text-align:left">${faltas.join('') || '—'}</td>
+          </tr>`;
+        }).join('')}
+      </tbody>
+    </table>
+    ${lista.length > 20 ? `<div style="font-size:11px;color:var(--text-ter);padding:6px 0 0">
+      Mostrando os 20 mais antigos — há mais ${lista.length - 20} pedido(s) parado(s) há ${PARADO_ATENCAO} dias ou mais.</div>` : ''}`;
+}
+
 // ─── CARD: PEDIDOS PRONTOS PARA ENVIO ────────────────────────────────────────
 // Lista os pedidos da Shopify cujos itens TODOS têm estoque disponível.
 // Aloca o estoque do pedido mais antigo para o mais recente, então a lista
@@ -3667,13 +3887,16 @@ function renderProntosParaEnvio() {
   const totEl = document.getElementById('dash-prontos-total');
   if (!el) return;
 
-  const COR_ALIASES_DIST = { 'Branca': 'Off White', 'Branco': 'Off White' };
+  // Branca → Branco (cor própria, NÃO off white). As demais diferenças de caixa/acento
+  // são resolvidas por corCanonica — senão "CINZA" do pedido não acha o estoque de "Cinza"
+  // e o pedido fica travado para sempre mesmo com peça na arara.
+  const COR_ALIASES_DIST = { 'Branca': 'Branco' };
 
   // Estoque de trabalho: cópia do estoque atual (será decrementado conforme aloca)
   const stock = {};
   for (const key of Object.keys(MODELOS)) {
     const saved = loadLocal('vc:' + key) || {};
-    const cores = [...new Set([...MODELOS[key].cores, ...(saved.cores || [])])];
+    const cores = coresDoModelo(MODELOS[key], saved);
     stock[key] = {};
     cores.forEach(cor => {
       const ev = (saved.est && saved.est[cor]) || [];
@@ -3693,27 +3916,18 @@ function renderProntosParaEnvio() {
     stock[key][cor][i] = ((stock[key][cor][i]) || 0) - q;
   };
 
-  // Expande um item do pedido em requisitos de estoque (conjuntos → peças individuais)
+  // Expande um item do pedido em requisitos de estoque (conjuntos → peças individuais).
+  // Usa a MESMA regra da distribuição de pedidos (pecasDoConjunto), senão um pedido pode
+  // contar produção numa cor e procurar estoque em outra — e nunca liberar.
   const reqsDoItem = (item) => {
-    const reqs = [];
     const { modelKey, cor, tam, qtd } = item;
     if (CONJUNTO_PECAS[modelKey]) {
-      for (const peca of CONJUNTO_PECAS[modelKey]) {
-        const pecaKey = typeof peca === 'string' ? peca : peca.key;
-        if (!MODELOS[pecaKey]) continue;
-        let pecaCor;
-        if (typeof peca === 'string') {
-          const corAlias = COR_ALIASES_DIST[cor] || cor;
-          pecaCor = MODELOS[pecaKey].aberto.hasOwnProperty(corAlias) ? corAlias : cor;
-        } else {
-          pecaCor = peca.cor;
-        }
-        reqs.push({ key: pecaKey, cor: pecaCor, tam, qtd });
-      }
-    } else if (MODELOS[modelKey]) {
-      reqs.push({ key: modelKey, cor, tam, qtd });
+      return pecasDoConjunto(modelKey, cor).map(p => ({ key: p.key, cor: p.cor, tam, qtd }));
     }
-    return reqs;
+    if (MODELOS[modelKey]) {
+      return [{ key: modelKey, cor: corCanonica(MODELOS[modelKey], COR_ALIASES_DIST[cor] || cor), tam, qtd }];
+    }
+    return [];
   };
 
   // Só pedidos PAGOS entram (exclui pendentes, autorizados, expirados, estornados, etc.)
@@ -3721,25 +3935,39 @@ function renderProntosParaEnvio() {
   const STATUS_PAGO = new Set(['paid', 'partially_refunded']);
 
   // Prioridade de liberação (alocação de estoque E exibição):
-  //   1º PARCIAIS (já começaram a ser enviados)
-  //   2º GRANDES (acima de 4 peças — senão ficam pra trás)
-  //   3º demais
+  //   1º ATRASADOS (pagos há 30+ dias, depois 15+) — quando a peça que faltava enfim chega,
+  //      o pedido antigo tem que pegar essa peça antes de um pedido novo consumir. Sem isto
+  //      o atrasado podia ficar esperando de novo (pedidos de MAIO abertos em 28/07/2026).
+  //   2º PARCIAIS (já começaram a ser enviados)
+  //   3º GRANDES (acima de 4 peças — senão ficam pra trás)
   //   → dentro de cada faixa, do mais antigo para o mais recente.
   const GRANDE_MIN = 5; // "acima de 4 itens"
   const totPecas = p => (p.itens || []).reduce((s, it) => s + (it.qtd || 0), 0);
-  const prioridade = p => (p.parcial ? 2 : 0) + (totPecas(p) >= GRANDE_MIN ? 1 : 0);
+  const atraso = p => {
+    const d = diasDesde(p.data);
+    return d >= PARADO_CRITICO ? 8 : d >= PARADO_ATENCAO ? 4 : 0;
+  };
+  const prioridade = p => atraso(p) + (p.parcial ? 2 : 0) + (totPecas(p) >= GRANDE_MIN ? 1 : 0);
   const detalhados = (window._shopifyDetalhados || [])
     .filter(p => STATUS_PAGO.has(p.financial_status))
     .sort((a, b) => (prioridade(b) - prioridade(a)) || (new Date(a.data || 0) - new Date(b.data || 0)));
 
   const prontos = [];
+  const pendentes = []; // pagos que NÃO podem sair ainda — alimentam o card PEDIDOS PARADOS
   for (const ped of detalhados) {
     let reqs = [];
     for (const item of ped.itens) reqs = reqs.concat(reqsDoItem(item));
     if (reqs.length === 0) continue; // pedido sem itens mapeáveis
 
     const disponivel = reqs.every(r => estGet(r.key, r.cor, r.tam) >= r.qtd);
-    if (!disponivel) continue;
+    if (!disponivel) {
+      // Guarda o que impede o envio (peça a peça), pro card de pedidos parados
+      const faltas = reqs
+        .map(r => ({ ...r, falta: Math.max(0, r.qtd - estGet(r.key, r.cor, r.tam)) }))
+        .filter(r => r.falta > 0);
+      pendentes.push({ ...ped, faltas });
+      continue;
+    }
 
     reqs.forEach(r => estDec(r.key, r.cor, r.tam, r.qtd));
     prontos.push({
@@ -3752,8 +3980,12 @@ function renderProntosParaEnvio() {
       url:     ped.url,
       parcial: ped.parcial,
       grande:  ped.itens.reduce((s, i) => s + i.qtd, 0) >= GRANDE_MIN,
+      dias:    diasDesde(ped.data),
     });
   }
+
+  window._pedidosPendentes = pendentes;
+  renderPedidosParados();
 
   const esc = (s) => String(s).replace(/[&<>"]/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c]));
 
@@ -3802,9 +4034,14 @@ function renderProntosParaEnvio() {
           const badgeGrande = p.grande
             ? `&nbsp;<span style="font-size:9px;font-weight:700;background:rgba(37,99,235,0.14);color:#1d4ed8;border-radius:3px;padding:1px 6px;letter-spacing:0.03em;vertical-align:middle">GRANDE ${p.pecas}</span>`
             : '';
+          // Pedido que estava parado e agora pode sair: precisa saltar aos olhos da expedição,
+          // senão volta a esperar atrás dos pedidos novos.
+          const badgeAtrasado = p.dias >= PARADO_ATENCAO
+            ? `&nbsp;<span style="font-size:9px;font-weight:700;background:${p.dias >= PARADO_CRITICO ? '#dc2626' : 'rgba(217,119,6,.85)'};color:#fff;border-radius:3px;padding:1px 6px;letter-spacing:0.03em;vertical-align:middle">ENVIAR PRIMEIRO · ${p.dias} dias</span>`
+            : '';
           const pedidoCell = (p.url
             ? `<a href="${esc(p.url)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" style="font-weight:700;color:#16a34a;text-decoration:none" title="Abrir pedido na Shopify">${esc(p.numero)} <i class="ti ti-external-link" style="font-size:11px;vertical-align:-1px"></i></a>`
-            : `<span style="font-weight:700;color:#16a34a">${esc(p.numero)}</span>`) + badgeParcial + badgeGrande;
+            : `<span style="font-weight:700;color:#16a34a">${esc(p.numero)}</span>`) + badgeAtrasado + badgeParcial + badgeGrande;
           return `<tr class="pronto-row" style="cursor:pointer" onclick="togglePronto(${i})">
               <td style="text-align:center"><i class="ti ti-chevron-right" id="pronto-cev-${i}" style="transition:transform .15s;color:var(--text-ter)"></i></td>
               <td>${pedidoCell}</td>
@@ -3942,9 +4179,9 @@ function renderModelo(key) {
   const consumo = d.consumo || def.consumo;
   const preco = d.preco || def.preco;
   // Cores do data.js são a referência; cores extras do localStorage só entram se não houver tamanhos customizados
-  // (modelos com tamanhos customizados como sapatos ignoram cores obsoletas do localStorage)
-  const coresExtras = def.tamanhos ? [] : (d.cores || []);
-  const cores = [...new Set([...def.cores, ...coresExtras])];
+  // (modelos com tamanhos customizados como sapatos ignoram cores obsoletas do localStorage).
+  // Cor que TEM pedido entra sempre — coresDoModelo garante isso.
+  const cores = coresDoModelo(def, def.tamanhos ? null : d);
 
   document.getElementById('model-title').textContent = nome;
   document.getElementById('model-sub').textContent = `TECIDO: ${tecido.toUpperCase()} • CONSUMO: ${consumo}M/PEÇA`;
@@ -4030,17 +4267,20 @@ function renderModelo(key) {
     const abTot = ab.reduce((a, b) => a + b, 0);
     ab.forEach((v, i) => abTots[i] += v);
 
+    // 2ª leva já em produção — desconta do "mínimo" sugerido para a leva 1 (senão duplica)
+    const p2Cor = ((d.prod2 && d.prod2[cor]) || []).map(v => v || 0);
+
     if (tu) {
       // Pedidos: soma total
       abt.innerHTML += `<tr><td>${cor}</td><td class="${abTot > 0 ? 'val-areia' : ''}">${abTot || '—'}</td></tr>`;
       // Estoque: 1 input — total armazenado em ev[0]
       const etot = ev[0] || 0;
-      const minTU = Math.max(0, abTot - etot);
+      const minTU = necessidadeLeva(ab, ev, p2Cor, true, SZ.length)[0];
       const pvTU  = d.prod && d.prod[cor] ? (d.prod[cor][0] || 0) : minTU;
       est.innerHTML  += `<tr data-cor="${cor}"><td>${cor}</td><td><input class="ci${etot > 0 ? ' ci-val' : ''}" type="number" min="0" value="${etot || ''}" placeholder="—" oninput="marcarEstEditado()"></td></tr>`;
       prod.innerHTML += `<tr data-cor="${cor}" data-min="${minTU}"><td>${cor}</td><td><input class="ci${pvTU > 0 ? (pvTU > minTU ? ' acima' : ' ci-val') : ''}" type="number" min="0" value="${pvTU || ''}" placeholder="—" oninput="marcarProdEditado();calcProdTU(this);autoSave()"></td></tr>`;
     } else {
-      const mins = ab.map((a, i) => Math.max(0, a - ev[i]));
+      const mins = necessidadeLeva(ab, ev, p2Cor, false, SZ.length);
       // normaliza pro nº de tamanhos do modelo (dados antigos podem ter menos posições — ex.: sapato migrado de PP-GG p/ 34-40)
       const pv   = ((d.prod && d.prod[cor]) || mins).map(v => v || 0).concat(new Array(SZ.length).fill(0)).slice(0, SZ.length);
       abt.innerHTML  += `<tr><td>${cor}</td>${ab.map(v => `<td class="${v > 0 ? 'val-areia' : ''}">${v || '—'}</td>`).join('')}<td class="${abTot > 0 ? 'val-areia' : ''}">${abTot || '0'}</td></tr>`;
@@ -4117,7 +4357,7 @@ function renderResumoProducao() {
   if (modeloAtual === '__dashboard__') return;
   const def   = MODELOS[modeloAtual];
   const d     = loadLocal('vc:' + modeloAtual) || {};
-  const cores = [...new Set([...def.cores, ...(d.cores || [])])];
+  const cores = coresDoModelo(def, d);
   const tu    = !!def.tamanhoUnico;
 
   const tbodyAp   = document.getElementById('resumo-aprod-tbody');
@@ -4293,10 +4533,12 @@ function calcProd(inp) {
   atualizarTecido();
 }
 
-// Preenche a tabela de produção com max(0, aberto − estoque) para cada cor/tamanho
+// Preenche a tabela de produção com max(0, aberto − estoque − 2ª leva) para cada cor/tamanho.
+// A 2ª leva entra na conta: o que ela já está produzindo NÃO precisa ser produzido de novo aqui.
 function recalcularProducao() {
   const def = MODELOS[modeloAtual];
   if (!def) return;
+  if (!confirmarLeituraConfiavel(modeloAtual)) return;
   const saved = loadLocal('vc:' + modeloAtual) || {};
   const tu = !!def.tamanhoUnico;
 
@@ -4304,17 +4546,15 @@ function recalcularProducao() {
     const cor = row.dataset.cor;
     const ab  = def.aberto[cor]  || [0, 0, 0, 0, 0];
     const ev  = saved.est && saved.est[cor] || [0, 0, 0, 0, 0];
+    const p2  = saved.prod2 && saved.prod2[cor] || [];
     const inputs = Array.from(row.querySelectorAll('input'));
+    const mins = necessidadeLeva(ab, ev, p2, tu, inputs.length);
 
     if (tu) {
-      // tamanhoUnico: 1 input = total. estoque salvo em ev[0], aberto = soma total
-      const abTot  = ab.reduce((a, b) => a + b, 0);
-      const estTot = ev[0] || 0;
-      const minTU  = Math.max(0, abTot - estTot);
-      inputs[0].value = minTU || '';
+      // tamanhoUnico: 1 input = total (necessidade já vem somada na posição 0)
+      inputs[0].value = mins[0] || '';
       calcProdTU(inputs[0]);
     } else {
-      const mins = ab.map((a, i) => Math.max(0, a - ev[i]));
       inputs.forEach((inp, i) => {
         inp.value = mins[i] || '';
         calcProd(inp);
@@ -4334,7 +4574,7 @@ function transferirParaEstoque() {
 
   const def  = MODELOS[modeloAtual];
   const tu   = !!def.tamanhoUnico;
-  const cores = [...new Set([...def.cores, ...(saved.cores || [])])];
+  const cores = coresDoModelo(def, saved);
 
   if (!saved.est) saved.est = {};
 
@@ -4443,6 +4683,7 @@ function calcProd2(inp) {
 function recalcularProducao2() {
   const def = MODELOS[modeloAtual];
   if (!def) return;
+  if (!confirmarLeituraConfiavel(modeloAtual)) return;
   const saved = loadLocal('vc:' + modeloAtual) || {};
   const tu = !!def.tamanhoUnico;
 
@@ -4515,7 +4756,7 @@ function transferirParaEstoque2() {
   if (!saved.prod2 || Object.keys(saved.prod2).length === 0) return;
 
   const def   = MODELOS[modeloAtual];
-  const cores = [...new Set([...def.cores, ...(saved.cores || [])])];
+  const cores = coresDoModelo(def, saved);
 
   if (!saved.est) saved.est = {};
 
@@ -4706,7 +4947,7 @@ async function gerarFicha() {
   const prazo = document.getElementById('prod-prazo').value;
   const componentes = saved.componentes || def.componentes || '—';
   const obs = saved.obs || def.obs || '';
-  const cores = saved.cores || def.cores;
+  const cores = coresDoModelo(def, saved);
   // prioridade: upload manual → legado → caminho padrão do modelo
   const croquiFrenteRaw = loadLocal('vc:croqui-frente:' + modeloAtual) || loadLocal('vc:croqui:' + modeloAtual) || def.croquiFrente || null;
   const croquiCostasRaw = loadLocal('vc:croqui-costas:' + modeloAtual) || def.croquiCostas || null;
@@ -4731,9 +4972,11 @@ async function gerarFicha() {
   const prodRows  = lerRows('#prod-tbody');
   const prod2Rows = lerRows('#prod2-tbody').filter(r => r.tot > 0);
   const status2   = document.getElementById('prod2-status')?.value || '';
-  const prodTots = [0,0,0,0,0];
+  // grade do modelo atual (pode ter G1) — nunca assumir 5 colunas
+  const SZ_FICHA = tamanhosDe(MODELOS[modeloAtual]);
+  const prodTots = new Array(SZ_FICHA.length).fill(0);
   prodRows.forEach(r => r.vals.forEach((v,i) => prodTots[i] += v));
-  const prod2Tots = [0,0,0,0,0];
+  const prod2Tots = new Array(SZ_FICHA.length).fill(0);
   prod2Rows.forEach(r => r.vals.forEach((v,i) => prod2Tots[i] += v));
   prod2Rows.forEach(r => r.vals.forEach((v,i) => prodTots[i] += v)); // total geral = leva 1 + 2ª leva
   const prodTotal = prodTots.reduce((a,b) => a+b, 0);
@@ -4741,7 +4984,7 @@ async function gerarFicha() {
   const hoje = new Date().toLocaleDateString('pt-BR');
   const prazoFmt = prazo ? new Date(prazo + 'T12:00:00').toLocaleDateString('pt-BR') : '—';
 
-  const colSpan = tu ? 2 : 7;
+  const colSpan = tu ? 2 : SZ_FICHA.length + 2;
   const rowsHtml = rows => rows.map((r, idx) => {
     const bg = idx % 2 === 1 ? '#faf8f5' : '#fff';
     const sizeCells = tu ? '' : r.vals.map(v => `<td style="text-align:center;padding:7px 8px;border:1px solid #ddd;background:${bg};color:${v ? '#111' : '#ccc'};">${v || '—'}</td>`).join('');
@@ -4882,7 +5125,7 @@ async function gerarFicha() {
       <thead>
         <tr>
           <th style="text-align:left;width:22%">Cor</th>
-          ${tu ? '' : '<th>PP</th><th>P</th><th>M</th><th>G</th><th>GG</th>'}
+          ${tu ? '' : SZ_FICHA.map(s => '<th>' + s + '</th>').join('')}
           <th style="background:#C4A882;">Total</th>
         </tr>
       </thead>
@@ -4942,6 +5185,70 @@ function calcFalta(ab, ev, tu) {
   return ab.reduce((s,a,i) => s + Math.max(0, a - (ev[i]||0)), 0);
 }
 
+// Grade de tamanhos padrão de roupa (PP..GG, agora com G1 em alguns modelos).
+// Calçado usa numeração (34..40) e é exibido de outro jeito — daí a distinção.
+const GRADE_ROUPA = ['PP', 'P', 'M', 'G', 'GG', 'G1'];
+function ehNumeracao(def) {
+  return !!(def && def.tamanhos && def.tamanhos[0] !== 'PP');
+}
+function tamanhosDe(def) {
+  return (def && def.tamanhos) || ['PP', 'P', 'M', 'G', 'GG'];
+}
+
+// Chave de comparação de cor: sem acento, minúscula, espaços colapsados ("CINZA" == "Cinza")
+function chaveCor(c) {
+  return String(c || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
+}
+
+// Nome canônico da cor dentro do modelo: se o modelo já conhece uma cor equivalente
+// (só muda caixa/acento), usa a dele — senão mantém a que veio do pedido.
+function corCanonica(def, cor) {
+  const k = chaveCor(cor);
+  // Apelido de cor do próprio modelo: o cliente compra "cinza" mas na produção a cor
+  // se chama "Mescla" (Conjunto Boho). Declarado em `aliasCores` no data.js.
+  const alias = def && def.aliasCores;
+  if (alias) {
+    const hit = Object.keys(alias).find(a => chaveCor(a) === k);
+    if (hit) return alias[hit];
+  }
+  const conhecidas = [...(def.cores || []), ...Object.keys(def.aberto || {})];
+  return conhecidas.find(c => chaveCor(c) === k) || cor;
+}
+
+// Cores a exibir/calcular num modelo: as do catálogo + as salvas + as que só existem
+// porque CHEGOU PEDIDO nelas (ex.: cor de conjunto que a peça não lista). Sem essa última
+// parte o pedido entra em def.aberto mas some da tela e das contas de produção.
+function coresDoModelo(def, saved) {
+  const lista = [], vistas = new Set();
+  const add = c => { const k = chaveCor(c); if (!k || vistas.has(k)) return; vistas.add(k); lista.push(c); };
+  (def.cores || []).forEach(add);
+  ((saved && saved.cores) || []).forEach(add);
+  Object.entries(def.aberto || {}).forEach(([cor, qt]) => { if ((qt || []).some(v => v > 0)) add(cor); });
+  return lista;
+}
+
+// Necessidade de UMA leva: Pedidos − Estoque − o que a OUTRA leva já está produzindo.
+// Sem descontar a outra leva, uma leva recém-recalculada manda produzir/comprar tecido
+// de novo para pedidos que a outra leva já está cobrindo (duplicação de produção).
+// Retorna sempre array; em tamanhoUnico o total fica na posição 0.
+function necessidadeLeva(ab, ev, outra, tu, n) {
+  const len = n || Math.max(ab.length, (ev||[]).length, (outra||[]).length, 5);
+  const val = (arr, i) => (arr && arr[i]) || 0;
+  if (tu) {
+    const abTot    = (ab || []).reduce((a,b) => a + (b||0), 0);
+    const outraTot = (outra || []).reduce((a,b) => a + (b||0), 0);
+    const res = new Array(len).fill(0);
+    res[0] = Math.max(0, abTot - val(ev, 0) - outraTot);
+    return res;
+  }
+  return Array.from({ length: len }, (_, i) => Math.max(0, val(ab, i) - val(ev, i) - val(outra, i)));
+}
+
+// Mesma conta acima, já somada (total de peças da leva)
+function calcFaltaLeva(ab, ev, outra, tu, n) {
+  return necessidadeLeva(ab, ev, outra, tu, n).reduce((a,b) => a+b, 0);
+}
+
 // Soma leva 1 + leva 2 de produção de uma cor (para falta líquida e afins).
 // Retorna null se nenhuma leva tem dados para a cor (preserva o fallback dos chamadores).
 function prodTotalCor(saved, cor) {
@@ -4998,7 +5305,7 @@ function gerarFichaCompraGlobal() {
     const consumo = saved.consumo || def.consumo;
     const preco   = saved.preco   || def.preco || 0;
     const tecido  = (saved.tecido || def.tecido || '').trim();
-    const cores   = [...new Set([...def.cores, ...(saved.cores || [])])];
+    const cores   = coresDoModelo(def, saved);
     const tuFC = !!def.tamanhoUnico;
     let totalPecas = 0;
     if (saved.status === 'Comprando tecido') {
@@ -5009,7 +5316,8 @@ function gerarFichaCompraGlobal() {
         } else {
           const ab = def.aberto[cor] || [0,0,0,0,0];
           const ev = saved.est && saved.est[cor] || [0,0,0,0,0];
-          totalPecas += calcFalta(ab, ev, tuFC);
+          const p2 = saved.prod2 && saved.prod2[cor] || [];
+          totalPecas += calcFaltaLeva(ab, ev, p2, tuFC);
         }
       });
     }
@@ -5041,7 +5349,7 @@ function gerarFichaCompraGlobal() {
     const consumo = saved.consumo || def.consumo;
     const preco   = saved.preco   || def.preco || 0;
     const tecido  = (saved.tecido || def.tecido || 'Não especificado').trim();
-    const cores   = [...new Set([...def.cores, ...(saved.cores || [])])];
+    const cores   = coresDoModelo(def, saved);
     const chave = normalizarTecido(tecido);
     if (!grupos[chave])      grupos[chave]      = {};
     if (!gruposLabel[chave]) gruposLabel[chave] = labelTecido(tecido);
@@ -5056,11 +5364,8 @@ function gerarFichaCompraGlobal() {
         } else {
           const ab = def.aberto[cor] || [0,0,0,0,0];
           const ev = saved.est && saved.est[cor] || [0,0,0,0,0];
-          if (tuG) {
-            pecas += Math.max(0, ab.reduce((a,b) => a+b, 0) - (ev[0]||0));
-          } else {
-            pecas += calcFalta(ab, ev, tuG);
-          }
+          const p2 = saved.prod2 && saved.prod2[cor] || [];
+          pecas += calcFaltaLeva(ab, ev, p2, tuG);
         }
       }
       // 2ª leva (só o digitado)
@@ -5279,7 +5584,7 @@ function gerarFichaProducaoGeral() {
   for (const [key, def] of Object.entries(MODELOS)) {
     if (CONJUNTO_PECAS[key]) continue;
     const saved = loadLocal('vc:' + key) || {};
-    const cores = [...new Set([...def.cores, ...(saved.cores || [])])];
+    const cores = coresDoModelo(def, saved);
     [{ prod: saved.prod, status: saved.status, sufixo: '' },
      { prod: saved.prod2, status: saved.status2, sufixo: ' — 2ª leva' }].forEach(l => {
       if (!['Comprando tecido', 'Em corte', 'Em costura'].includes(l.status)) return;
@@ -5405,7 +5710,7 @@ function gerarFichaConfeccao() {
     const saved = loadLocal('vc:' + key) || {};
     if (saved.status !== 'Comprando tecido' && saved.status2 !== 'Comprando tecido') continue;
     const tu    = !!def.tamanhoUnico;
-    const cores = [...new Set([...def.cores, ...(saved.cores || [])])];
+    const cores = coresDoModelo(def, saved);
     const linhas = [];
     let totalModelo = 0;
     cores.forEach(cor => {
@@ -5415,14 +5720,12 @@ function gerarFichaConfeccao() {
         if (pv) {
           vals = vals.map((v,i) => v + (pv[i] || 0));
         } else {
-          const ab = def.aberto[cor] || [0,0,0,0,0];
-          const ev = saved.est && saved.est[cor] || [0,0,0,0,0];
-          if (tu) {
-            // tamanhoUnico: 1 valor total
-            vals[0] += calcFalta(ab, ev, true);
-          } else {
-            vals = vals.map((v,i) => v + Math.max(0, (ab[i]||0) - (ev[i]||0)));
-          }
+          // Fallback da leva 1: Pedidos − Estoque − 2ª leva (tamanhoUnico soma tudo na posição 0)
+          const ab   = def.aberto[cor] || [0,0,0,0,0];
+          const ev   = saved.est && saved.est[cor] || [0,0,0,0,0];
+          const p2   = saved.prod2 && saved.prod2[cor] || [];
+          const nec  = necessidadeLeva(ab, ev, p2, tu, vals.length);
+          vals = vals.map((v,i) => v + (nec[i] || 0));
         }
       }
       if (saved.status2 === 'Comprando tecido') {
@@ -5727,6 +6030,8 @@ async function carregarPedidosShopify() {
     const data = resp.pedidos || resp; // API retorna { pedidos:{...}, ignorados:[...] }
     // Guarda ignorados para diagnóstico
     window._shopifyIgnorados = resp.ignorados || [];
+    // Cores que a API ADIVINHOU por regra fixa em vez de ler do pedido — alarme
+    window._shopifyCoresAssumidas = resp.cores_assumidas || [];
     window._shopifyTotalPedidos = resp.total_pedidos || 0;
     // Guarda detalhe por pedido (número, cliente, data, itens) p/ card "Prontos para envio"
     window._shopifyDetalhados = resp.detalhados || [];
@@ -5738,36 +6043,39 @@ async function carregarPedidosShopify() {
       }
     }
 
+    // Pedido em tamanho que o modelo não tem (ex.: G1 num modelo de grade PP..GG) era
+    // truncado aqui e sumia sem deixar rastro. Agora vira aviso na faixa.
+    window._shopifyForaDaGrade = [];
+
     for (const [modelKey, coresDados] of Object.entries(data)) {
       if (!MODELOS[modelKey]) continue;
       const sz = MODELOS[modelKey].tamanhos?.length || 5;
       for (const [cor, qtds] of Object.entries(coresDados)) {
-        // Garante array denso (sem undefined) no tamanho correto do modelo
-        MODELOS[modelKey].aberto[cor] = Array(sz).fill(0).map((_, i) => qtds[i] || 0);
+        // Casa a cor com a que o modelo já conhece ignorando caixa/acento ("CINZA" soma em "Cinza",
+        // senão vira uma cor separada que não aparece na tela). Soma em vez de atribuir porque
+        // o mesmo modelo pode receber a mesma cor grafada de dois jeitos.
+        const c = corCanonica(MODELOS[modelKey], cor);
+        const base = MODELOS[modelKey].aberto[c] || Array(sz).fill(0);
+        // Tamanho além da grade do modelo (ex.: G1 num modelo PP..GG): a peça NÃO some —
+        // entra no maior tamanho da grade, que é o GG. Regra definida pela Bárbara em
+        // 29/07/2026 para o Carneirinho Cropped e vale para qualquer modelo sem G1.
+        const extra = (qtds || []).slice(sz).reduce((a, b) => a + (b || 0), 0);
+        MODELOS[modelKey].aberto[c] = Array(sz).fill(0).map((_, i) => (base[i] || 0) + (qtds[i] || 0));
+        if (extra > 0) {
+          MODELOS[modelKey].aberto[c][sz - 1] += extra;
+          window._shopifyForaDaGrade.push({ modelo: modelKey, cor: c, qtd: extra, caiuEm: tamanhosDe(MODELOS[modelKey])[sz - 1] });
+        }
       }
     }
 
-    // Distribui pedidos de conjuntos para as peças individuais (usa constante global CONJUNTO_PECAS)
-    // Aliases de cor: alguns conjuntos usam nome diferente do modelo de peça individual
-    const COR_ALIASES_DIST = { 'Branca': 'Off White', 'Branco': 'Off White' };
-
-    for (const [conjuntoKey, pecas] of Object.entries(CONJUNTO_PECAS)) {
+    // Distribui pedidos de conjuntos para as peças individuais.
+    // A cor de cada peça sai de pecasDoConjunto (cor combinada, cor fixa ou a própria cor).
+    for (const conjuntoKey of Object.keys(CONJUNTO_PECAS)) {
       if (!MODELOS[conjuntoKey]) continue;
       for (const [cor, qtds] of Object.entries(MODELOS[conjuntoKey].aberto)) {
         const total = qtds.reduce((a, b) => (a || 0) + (b || 0), 0);
         if (total === 0) continue;
-        for (const peca of pecas) {
-          const pecaKey = typeof peca === 'string' ? peca : peca.key;
-          if (!MODELOS[pecaKey]) continue;
-          // Para peças com cor fixa, usa a cor definida. Para peças dinâmicas, resolve alias se necessário
-          let pecaCor;
-          if (typeof peca === 'string') {
-            const corAlias = COR_ALIASES_DIST[cor] || cor;
-            // Prefere a cor aliasada se o modelo a tiver, senão usa a cor original
-            pecaCor = MODELOS[pecaKey].aberto.hasOwnProperty(corAlias) ? corAlias : cor;
-          } else {
-            pecaCor = peca.cor;
-          }
+        for (const { key: pecaKey, cor: pecaCor } of pecasDoConjunto(conjuntoKey, cor)) {
           const pecaSz = MODELOS[pecaKey].tamanhos?.length || 5;
           if (!MODELOS[pecaKey].aberto[pecaCor]) {
             MODELOS[pecaKey].aberto[pecaCor] = Array(pecaSz).fill(0);
@@ -5778,7 +6086,120 @@ async function carregarPedidosShopify() {
       }
     }
 
+    verificarLeituraPedidos();
   } catch (_) {}
+}
+
+// Trava antes de gravar produção: se a leitura dos pedidos DESTE modelo tem aviso
+// (cor adivinhada, item ignorado, cor não cadastrada), pede confirmação em vez de
+// gravar calado. Recalcular grava por cima do que a costura já tem — o dado errado
+// aqui vira compra de tecido errada.
+function confirmarLeituraConfiavel(key) {
+  const avisos = (window._avisosLeitura || []).filter(a => a.modelo === key);
+  if (avisos.length === 0) return true;
+  const txt = avisos.map(a => '• ' + a.texto.replace(/<[^>]+>/g, '')).join('\n');
+  return confirm(
+    'ATENÇÃO — a leitura dos pedidos deste modelo tem pendência:\n\n' + txt +
+    '\n\nRecalcular agora vai gravar a produção em cima desses números, que podem estar ' +
+    'na cor errada ou incompletos.\n\nQuer recalcular mesmo assim?'
+  );
+}
+
+// ─── AUDITORIA DA LEITURA DE PEDIDOS ─────────────────────────────────────────
+// Rede de segurança: um pedido só entra na produção se o sistema souber DE VERDADE
+// o modelo e a cor. Quando ele adivinha (regra fixa), ignora um item ou joga o pedido
+// numa cor que o modelo não tem, isso aparece aqui em vez de virar número silencioso.
+// Motivo: em 07/2026 uma regra antiga apagou a cor real de todos os pedidos de
+// Calça Peace/Conjunto Peace e a produção foi comprada em cima do dado errado.
+// Avisos já conferidos pela dona ficam guardados na nuvem (id `avisos-conferidos`),
+// então somem no PC e no celular. A assinatura inclui a COR — se a regra mudar a cor
+// de novo, o aviso volta a aparecer para ser conferido outra vez.
+const AVISOS_KEY = 'avisos-conferidos';
+const avisoAssinatura = a => [a.tipo, a.modelo || '', a.texto.replace(/<[^>]+>/g, '')].join('|');
+
+function avisosConferidos() {
+  return (loadLocal('vc:' + AVISOS_KEY) || {}).conferidos || {};
+}
+
+function marcarAvisoConferido(assinatura) {
+  const dados = loadLocal('vc:' + AVISOS_KEY) || { conferidos: {} };
+  dados.conferidos = dados.conferidos || {};
+  dados.conferidos[assinatura] = new Date().toISOString();
+  dados.updated_at = new Date().toISOString();
+  saveLocal('vc:' + AVISOS_KEY, dados);
+  salvarNuvem(AVISOS_KEY, dados);
+  verificarLeituraPedidos();
+}
+
+function auditarLeituraPedidos() {
+  const avisos = [];
+
+  (window._shopifyCoresAssumidas || []).forEach(c => {
+    avisos.push({
+      tipo: 'cor-assumida',
+      texto: `${c.pedido}: "${c.item}"${c.variante ? ' (' + c.variante + ')' : ''} — cor <b>${c.corAssumida}</b> foi assumida por regra fixa, não veio do pedido`,
+      modelo: c.modelo,
+    });
+  });
+
+  (window._shopifyIgnorados || []).forEach(txt => {
+    avisos.push({ tipo: 'ignorado', texto: `Item fora da produção — ${txt}`, modelo: null });
+  });
+
+  // Tamanho fora da grade NÃO vira aviso: por regra, cai no maior tamanho do modelo
+  // (fica registrado em window._shopifyForaDaGrade para diagnóstico).
+
+  // Pedido caiu numa cor que o modelo não tem cadastrada
+  for (const [key, def] of Object.entries(MODELOS)) {
+    const cadastradas = new Set([...(def.cores || []), ...((loadLocal('vc:' + key) || {}).cores || [])].map(chaveCor));
+    Object.entries(def.aberto || {}).forEach(([cor, qt]) => {
+      if (!(qt || []).some(v => v > 0)) return;
+      if (!cadastradas.has(chaveCor(cor))) {
+        const n = qt.reduce((a, b) => a + (b || 0), 0);
+        avisos.push({ tipo: 'cor-nova', texto: `<b>${def.nome}</b>: ${n} peça(s) na cor "<b>${cor}</b>", que não está cadastrada no modelo`, modelo: key });
+      }
+    });
+  }
+
+  // Tira os que a dona já conferiu (ex.: cor assumida que ela confirmou estar certa)
+  const conferidos = avisosConferidos();
+  const pendentes = avisos.filter(a => !conferidos[avisoAssinatura(a)]);
+
+  window._avisosLeitura = pendentes;
+  window._avisosLeituraTodos = avisos;
+  return pendentes;
+}
+
+function verificarLeituraPedidos() {
+  const avisos = auditarLeituraPedidos();
+  const el = document.getElementById('faixa-leitura');
+  if (avisos.length === 0) { if (el) el.remove(); return; }
+  const btnStyle = 'background:#fff;color:#b45309;border:0;border-radius:5px;padding:3px 10px;' +
+                   'font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;flex-shrink:0';
+  const linhas = avisos.slice(0, 8).map(a =>
+    `<div style="display:flex;align-items:center;gap:10px;padding:3px 0">
+       <div style="flex:1">• ${a.texto}</div>
+       <button title="Já conferi, está correto — não mostrar de novo"
+               onclick="marcarAvisoConferido(${JSON.stringify(avisoAssinatura(a)).replace(/"/g, '&quot;')})"
+               style="${btnStyle}">✓ conferido</button>
+     </div>`).join('');
+  const html =
+    `<div style="display:flex;align-items:flex-start;gap:12px;flex-wrap:wrap">
+       <div style="flex:1;min-width:260px">
+         <div style="font-weight:700;margin-bottom:4px"><i class="ti ti-alert-triangle"></i> Confira a leitura dos pedidos (${avisos.length})</div>
+         <div style="font-size:12px;line-height:1.6">${linhas}
+         ${avisos.length > 8 ? `<div style="padding-top:4px"><i>…e mais ${avisos.length - 8}</i></div>` : ''}</div>
+         <div style="font-size:11px;margin-top:6px;opacity:.85">Enquanto isso não for resolvido, esses pedidos podem estar na cor errada ou fora da conta de produção. O "conferido" vale para este pedido e some no celular também.</div>
+       </div>
+       <button onclick="this.closest('#faixa-leitura').remove()" style="background:transparent;border:1px solid rgba(255,255,255,.6);color:#fff;border-radius:6px;padding:5px 12px;font-size:12px;cursor:pointer">Ocultar</button>
+     </div>`;
+  if (el) { el.innerHTML = html; return; }
+  const div = document.createElement('div');
+  div.id = 'faixa-leitura';
+  div.style.cssText = 'position:sticky;top:0;z-index:900;background:#b45309;color:#fff;padding:12px 16px;margin:0 0 12px;border-radius:8px';
+  div.innerHTML = html;
+  const alvo = document.getElementById('panel-dashboard') || document.querySelector('.content') || document.body;
+  alvo.insertBefore(div, alvo.firstChild);
 }
 
 // ─── DETECÇÃO DE ENVIOS E BAIXA AUTOMÁTICA DE ESTOQUE ────────────────────────
@@ -5813,6 +6234,39 @@ const CONJUNTO_PECAS = {
   // Canguru Longo distribui para Canguru Amplo + Calça Básica Moletom
   'conjunto-canguru-longo':           ['canguru-amplo', 'calca-basica-moletom'],
 };
+
+// Cores COMBINADAS: a variante do conjunto descreve as duas peças de uma vez
+// ("Verde Militar + Preta" = camiseta militar + mini saia preta). Sem este mapa a cor
+// combinada vira uma cor que não existe em peça nenhuma, e o pedido fica sem estoque
+// possível — travado para sempre. Confirmado com a Bárbara em 28/07/2026.
+const CONJUNTO_CORES_COMBINADAS = {
+  'conjunto-camiseta-mini-saia': {
+    'Verde Militar + Preta': { 'camiseta-oversized': 'Militar', 'mini-saia-canelada': 'Preto' },
+    'Marsala + Nude':        { 'camiseta-oversized': 'Marsala', 'mini-saia-canelada': 'Nude'  },
+  },
+};
+
+// Resolve as peças de um pedido de conjunto e a COR de cada peça.
+// Fonte única: usada tanto na distribuição dos pedidos quanto na liberação de estoque —
+// antes a regra estava escrita nos dois lugares e uma delas ficou desatualizada.
+function pecasDoConjunto(conjuntoKey, cor) {
+  const pecas = CONJUNTO_PECAS[conjuntoKey];
+  if (!pecas) return [];
+  const combinada = (CONJUNTO_CORES_COMBINADAS[conjuntoKey] || {})[cor];
+  const ALIAS = { 'Branca': 'Branco' }; // Branco é cor própria, não Off White
+  return pecas.map(p => {
+    const key = typeof p === 'string' ? p : p.key;
+    if (!MODELOS[key]) return null;
+    let corPeca;
+    if (combinada && combinada[key]) corPeca = combinada[key];
+    else if (typeof p !== 'string')  corPeca = p.cor;
+    else {
+      const alias = ALIAS[cor] || cor;
+      corPeca = MODELOS[key].aberto.hasOwnProperty(alias) ? alias : corCanonica(MODELOS[key], alias);
+    }
+    return { key, cor: corPeca };
+  }).filter(Boolean);
+}
 
 function salvarSnapshotAberto() {
   const snapshot = {};
@@ -5931,9 +6385,34 @@ function abrirModelagem(item) {
   document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
   document.getElementById('panel-modelagem').classList.add('active');
   document.body.classList.remove('precos-mode');
-  mdlVoltarLista();
-  mdlCarregarLista();
+  const ok = sessionStorage.getItem('mdl-ok') === '1';
+  document.getElementById('mdl-gate').style.display = ok ? 'none' : '';
+  document.getElementById('mdl-content').style.display = ok ? '' : 'none';
+  if (ok) { mdlVoltarLista(); mdlCarregarLista(); }
+  else setTimeout(() => document.getElementById('mdl-senha')?.focus(), 60);
   closeSidebar();
+}
+
+async function mdlUnlock() {
+  const v = document.getElementById('mdl-senha').value;
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(v));
+  const hex = [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, '0')).join('');
+  if (hex === MDL_HASH) {
+    sessionStorage.setItem('mdl-ok', '1');
+    document.getElementById('mdl-erro').textContent = '';
+    document.getElementById('mdl-senha').value = '';
+    document.getElementById('mdl-gate').style.display = 'none';
+    document.getElementById('mdl-content').style.display = '';
+    mdlVoltarLista();
+    mdlCarregarLista();
+  } else {
+    document.getElementById('mdl-erro').textContent = 'Senha incorreta';
+  }
+}
+function mdlLock() {
+  sessionStorage.removeItem('mdl-ok');
+  document.getElementById('mdl-gate').style.display = '';
+  document.getElementById('mdl-content').style.display = 'none';
 }
 
 async function mdlCarregarLista() {
@@ -6061,6 +6540,10 @@ function mdlRenderDetalhe() {
   const temConsumoPeca = !!(consumo.consumoPorPeca || '').trim();
   const consumoFaltando = !temLargura || !temConsumoPeca; // pendência se faltar qualquer campo essencial
   const consumoTexto = (!temLargura && !temConsumoPeca) ? 'NÃO PREENCHIDO' : 'INCOMPLETO';
+  const valorAjuste = (d.projeto.valorAjuste || '').trim();
+  // medidas da peça: JSON em texto na coluna `medidas` ({ Busto: {PP:'88', ...}, __obs:'' })
+  let medidas = {};
+  try { medidas = d.projeto.medidas ? JSON.parse(d.projeto.medidas) : {}; } catch (_) { medidas = {}; }
   const alteracoes = d.alteracoes || [];
   const alteracoesHtml = alteracoes.length ? alteracoes.map(a => `
     <div style="display:flex;align-items:flex-start;gap:8px;padding:8px 0;border-bottom:1px solid var(--border)">
@@ -6075,12 +6558,72 @@ function mdlRenderDetalhe() {
   document.getElementById('mdl-det-body').innerHTML = `
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:12px">
       <div class="card">
+        ${consumoFaltando ? faixaAlertaCard(consumoTexto) : ''}
+        <div class="card-header"><div class="card-title"><i class="ti ti-ruler-2"></i> CONSUMO DO MODELO</div></div>
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <label style="font-size:11px;color:var(--text-sec)">Largura do tecido
+            <input id="mdl-consumo-largura" value="${consumo.larguraTecido || ''}" placeholder="ex.: 1,40m" style="width:100%;margin-top:3px;padding:7px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px">
+          </label>
+          <label style="font-size:11px;color:var(--text-sec)">Consumo por peça
+            <input id="mdl-consumo-peca" value="${consumo.consumoPorPeca || ''}" placeholder="ex.: 1,80m" style="width:100%;margin-top:3px;padding:7px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px">
+          </label>
+          <label style="font-size:11px;color:var(--text-sec)">Observações
+            <textarea id="mdl-consumo-obs" rows="2" style="width:100%;margin-top:3px;padding:7px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;resize:vertical">${consumo.observacoes || ''}</textarea>
+          </label>
+          <button class="btn-primary" style="font-size:12px;padding:8px;align-self:flex-start" onclick="mdlSalvarConsumo(${d.projeto.id})"><i class="ti ti-device-floppy"></i> Salvar consumo</button>
+        </div>
+      </div>
+
+      <div class="card">
         ${alteracoes.filter(a => a.status === 'pending').length > 0 ? faixaAlertaCard(`${alteracoes.filter(a => a.status === 'pending').length} EM ABERTO`) : ''}
         <div class="card-header"><div class="card-title"><i class="ti ti-list-details"></i> ALTERAÇÕES NO PROJETO</div></div>
         <div style="max-height:220px;overflow-y:auto;margin-bottom:10px">${alteracoesHtml}</div>
         <div style="display:flex;gap:6px">
           <input id="mdl-nova-alteracao" placeholder="Descrever alteração..." style="flex:1;padding:7px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px" onkeydown="if(event.key==='Enter')mdlAddAlteracao(${d.projeto.id})">
           <button class="btn-primary" style="font-size:12px;padding:7px 12px" onclick="mdlAddAlteracao(${d.projeto.id})"><i class="ti ti-plus"></i></button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header"><div class="card-title"><i class="ti ti-ruler-measure"></i> MEDIDAS DA PEÇA</div></div>
+        <div style="font-size:10px;color:var(--text-ter);margin-bottom:8px">Medida da peça pronta, em cm. Deixe em branco o que não se aplica.</div>
+        <div style="overflow-x:auto">
+          <table style="width:100%;border-collapse:collapse;font-size:12px">
+            <thead>
+              <tr>
+                <th style="text-align:left;padding:4px 6px;font-size:10px;color:var(--text-sec)">Medida</th>
+                ${MDL_TAMANHOS.map(t => `<th style="padding:4px 3px;font-size:10px;color:var(--text-sec)">${t}</th>`).join('')}
+              </tr>
+            </thead>
+            <tbody>
+              ${MDL_MEDIDAS.map(m => `
+                <tr>
+                  <td style="padding:3px 6px;font-weight:600;white-space:nowrap">${m}</td>
+                  ${MDL_TAMANHOS.map(t => `<td style="padding:2px 3px">
+                    <input data-medida="${m}" data-tam="${t}" value="${((medidas[m] || {})[t] || '').toString().replace(/"/g, '&quot;')}"
+                      onkeydown="if(event.key==='Enter')mdlSalvarMedidas(${d.projeto.id})"
+                      style="width:100%;min-width:44px;padding:5px 4px;border:1px solid var(--border);border-radius:5px;font-size:12px;text-align:center">
+                  </td>`).join('')}
+                </tr>`).join('')}
+            </tbody>
+          </table>
+        </div>
+        <label style="font-size:11px;color:var(--text-sec);display:block;margin-top:8px">Observações da modelagem
+          <textarea id="mdl-medidas-obs" rows="2" style="width:100%;margin-top:3px;padding:7px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;resize:vertical">${(medidas.__obs || '').toString()}</textarea>
+        </label>
+        <button class="btn-primary" style="font-size:12px;padding:8px;align-self:flex-start;margin-top:8px" onclick="mdlSalvarMedidas(${d.projeto.id})"><i class="ti ti-device-floppy"></i> Salvar medidas</button>
+      </div>
+
+      <div class="card">
+        <div class="card-header"><div class="card-title"><i class="ti ti-cash"></i> VALOR DO AJUSTE</div></div>
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <label style="font-size:11px;color:var(--text-sec)">Valor cobrado pela modelista
+            <div style="display:flex;align-items:center;gap:6px;margin-top:3px">
+              <span style="font-size:14px;color:var(--text-sec);font-weight:600">R$</span>
+              <input id="mdl-valor-ajuste" value="${valorAjuste.replace(/"/g, '&quot;')}" placeholder="ex.: 50,00" onkeydown="if(event.key==='Enter')mdlSalvarValorAjuste(${d.projeto.id})" style="flex:1;padding:7px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px">
+            </div>
+          </label>
+          <button class="btn-primary" style="font-size:12px;padding:8px;align-self:flex-start" onclick="mdlSalvarValorAjuste(${d.projeto.id})"><i class="ti ti-device-floppy"></i> Salvar valor</button>
         </div>
       </div>
 
@@ -6112,22 +6655,6 @@ function mdlRenderDetalhe() {
         </label>
       </div>
 
-      <div class="card">
-        ${consumoFaltando ? faixaAlertaCard(consumoTexto) : ''}
-        <div class="card-header"><div class="card-title"><i class="ti ti-ruler-2"></i> CONSUMO DO MODELO</div></div>
-        <div style="display:flex;flex-direction:column;gap:8px">
-          <label style="font-size:11px;color:var(--text-sec)">Largura do tecido
-            <input id="mdl-consumo-largura" value="${consumo.larguraTecido || ''}" placeholder="ex.: 1,40m" style="width:100%;margin-top:3px;padding:7px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px">
-          </label>
-          <label style="font-size:11px;color:var(--text-sec)">Consumo por peça
-            <input id="mdl-consumo-peca" value="${consumo.consumoPorPeca || ''}" placeholder="ex.: 1,80m" style="width:100%;margin-top:3px;padding:7px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px">
-          </label>
-          <label style="font-size:11px;color:var(--text-sec)">Observações
-            <textarea id="mdl-consumo-obs" rows="2" style="width:100%;margin-top:3px;padding:7px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;resize:vertical">${consumo.observacoes || ''}</textarea>
-          </label>
-          <button class="btn-primary" style="font-size:12px;padding:8px;align-self:flex-start" onclick="mdlSalvarConsumo(${d.projeto.id})"><i class="ti ti-device-floppy"></i> Salvar consumo</button>
-        </div>
-      </div>
     </div>`;
 }
 
@@ -6145,6 +6672,56 @@ async function mdlSalvarConsumo(id) {
     showSaved();
   } catch (e) {
     alert('Erro ao salvar consumo: ' + e.message);
+  }
+}
+
+// Medidas da peça — linhas e colunas do card MEDIDAS DA PEÇA.
+// Mexer aqui muda a tabela; o dado é guardado por nome, então acrescentar uma medida
+// nova não apaga o que já foi preenchido.
+const MDL_MEDIDAS  = ['Busto', 'Cintura', 'Quadril', 'Comprimento', 'Ombro', 'Manga', 'Boca da perna'];
+const MDL_TAMANHOS = ['PP', 'P', 'M', 'G', 'GG', 'G1'];
+
+async function mdlSalvarMedidas(id) {
+  const medidas = {};
+  document.querySelectorAll('#mdl-detalhe input[data-medida]').forEach(inp => {
+    const v = inp.value.trim();
+    if (!v) return;
+    const m = inp.dataset.medida, t = inp.dataset.tam;
+    if (!medidas[m]) medidas[m] = {};
+    medidas[m][t] = v;
+  });
+  const obs = (document.getElementById('mdl-medidas-obs') || {}).value || '';
+  if (obs.trim()) medidas.__obs = obs.trim();
+  try {
+    const res = await fetch('/api/modelagem-projeto', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id, acao: 'medidas', medidas }),
+    });
+    const data = await res.json();
+    if (data.erro) throw new Error(data.erro);
+    if (mdlProjetoAtual && mdlProjetoAtual.projeto) {
+      mdlProjetoAtual.projeto.medidas = JSON.stringify(medidas);
+      mdlRenderDetalhe();
+    }
+    showSaved();
+  } catch (e) {
+    alert('Erro ao salvar medidas: ' + e.message);
+  }
+}
+
+async function mdlSalvarValorAjuste(id) {
+  const valorAjuste = document.getElementById('mdl-valor-ajuste').value.trim();
+  try {
+    const res = await fetch('/api/modelagem-projeto', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id, acao: 'valor-ajuste', valorAjuste }),
+    });
+    const data = await res.json();
+    if (data.erro) throw new Error(data.erro);
+    if (mdlProjetoAtual && mdlProjetoAtual.projeto) { mdlProjetoAtual.projeto.valorAjuste = valorAjuste; mdlRenderDetalhe(); }
+    showSaved();
+  } catch (e) {
+    alert('Erro ao salvar valor: ' + e.message);
   }
 }
 
@@ -6328,7 +6905,7 @@ const _renderInicial = () => {
   else if (modeloAtual === '__trafego__') { if (sessionStorage.getItem('fin-ok') === '1') trafCarregarFrame(); }
   else if (modeloAtual === '__fluxo__') { if (sessionStorage.getItem('fin-ok') === '1') renderFluxo(); }
   else if (modeloAtual === '__atendimento__') { if (sessionStorage.getItem('fin-ok') === '1') atdShowSub('sac'); }
-  else if (modeloAtual === '__modelagem__') { mdlCarregarLista(); }
+  else if (modeloAtual === '__modelagem__') { if (sessionStorage.getItem('mdl-ok') === '1') mdlCarregarLista(); }
   else renderModelo(modeloAtual);
 };
 carregarTodosNuvem().then(() => carregarPedidosShopify()).then(() => {
@@ -6355,10 +6932,54 @@ setInterval(() => { sincronizarNuvem(); }, 15 * 1000);
 // 3c. Sincroniza IMEDIATAMENTE ao voltar para o app/aba (celular: ao desbloquear/voltar pra aba).
 // Navegadores móveis pausam os timers em segundo plano, então isto garante dados frescos na volta.
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible') sincronizarNuvem();
+  if (document.visibilityState === 'visible') { sincronizarNuvem(); checarVersaoNova(); }
 });
 window.addEventListener('focus', () => sincronizarNuvem());
 window.addEventListener('pageshow', () => sincronizarNuvem());
+
+// ─── AVISO DE VERSÃO NOVA ────────────────────────────────────────────────────
+// Aba deixada aberta continua rodando o JS antigo depois de um deploy — e um
+// clique em Recalcular grava conta velha por cima do dado certo (aconteceu em
+// 28/07/2026). Aqui a página compara a versão que ELA carregou com a que está no
+// servidor e avisa. Fonte da verdade: o ?v= do index.html, que já é bumpado a cada
+// deploy — sem arquivo de versão separado para esquecer de atualizar.
+const APP_VERSAO = ((document.querySelector('script[src*="main.js"]') || {}).src || '').match(/[?&]v=(\d+)/)?.[1] || '';
+let _versaoAvisada = false;
+
+async function checarVersaoNova() {
+  if (_versaoAvisada || !APP_VERSAO) return;
+  try {
+    const res = await fetch('/?_v=' + Date.now(), { cache: 'no-store' });
+    if (!res.ok) return;
+    const m = (await res.text()).match(/main\.js\?v=(\d+)/);
+    if (m && m[1] !== APP_VERSAO) { _versaoAvisada = true; mostrarFaixaVersaoNova(m[1]); }
+  } catch (_) {}
+}
+
+function mostrarFaixaVersaoNova(versaoNova) {
+  if (document.getElementById('faixa-versao')) return;
+  const el = document.createElement('div');
+  el.id = 'faixa-versao';
+  el.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:9999;background:#dc2626;color:#fff;' +
+    'padding:12px 16px;display:flex;align-items:center;justify-content:center;gap:14px;flex-wrap:wrap;' +
+    'font-size:14px;font-weight:600;box-shadow:0 2px 12px rgba(0,0,0,.3)';
+  el.innerHTML =
+    '<span><i class="ti ti-alert-triangle"></i> Esta página está desatualizada — o sistema foi atualizado. ' +
+    'Recarregue ANTES de mexer em produção ou estoque, senão os cálculos saem errados.</span>' +
+    '<button id="btn-versao-reload" style="background:#fff;color:#dc2626;border:0;border-radius:6px;' +
+    'padding:7px 16px;font-weight:700;font-size:13px;cursor:pointer">Recarregar agora</button>';
+  document.body.appendChild(el);
+  document.body.style.paddingTop = el.offsetHeight + 'px';
+  document.getElementById('btn-versao-reload').onclick = () => {
+    // salva o que estiver pendente antes de recarregar (não perde digitação)
+    try { if ((estEditado || prodEditado || cfgEditado) && modeloAtual !== '__dashboard__') salvarModelo(); } catch (_) {}
+    location.reload();
+  };
+  console.warn('[Vista Conecte] versão carregada:', APP_VERSAO, '· versão no servidor:', versaoNova);
+}
+
+setInterval(checarVersaoNova, 60 * 1000);   // 1x por minuto
+checarVersaoNova();
 
 // 4. Agendamento da verificação de envios às 16h
 agendarVerificacaoEnvios();
