@@ -1137,7 +1137,13 @@ function estEdit(id, campo, val) {
   const t = cfg.itens.find(x => x.id === id); if (!t) return;
   t[campo] = (campo === 'valor') ? (parseFloat(String(val).replace(',', '.')) || 0) : val;
   estSalvar(cfg);
-  estRender();
+  // Sem re-render a cada tecla (mataria o foco do input e, com ordenação ativa, a linha
+  // trocaria de posição no meio da digitação) — mesmo padrão do retEdit. Só o total atualiza.
+  if (campo === 'valor') {
+    const total = cfg.itens.reduce((s, x) => s + (x.valor || 0), 0);
+    const totalEl = document.getElementById('atd-est-total-valor');
+    if (totalEl) totalEl.textContent = 'R$ ' + total.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
 }
 function estDel(id) {
   if (!confirm('Excluir esse registro de devolução?')) return;
@@ -1207,27 +1213,65 @@ function estRowHtml(t, bg, bold, dias) {
       <td style="padding:4px;text-align:center"><button onclick="estDel('${t.id}')" title="excluir" style="background:none;border:none;cursor:pointer;color:var(--text-ter);font-size:15px">×</button></td>
     </tr>`;
 }
+// Ordenação por coluna (clique no cabeçalho): 1º clique asc, 2º desc, 3º volta à visão padrão (fila).
+let estSort = null; // { campo, dir: 1 | -1 }
+function estOrdenar(campo) {
+  if (estSort && estSort.campo === campo) estSort = estSort.dir === 1 ? { campo, dir: -1 } : null;
+  else estSort = { campo, dir: 1 };
+  estRender();
+}
+function estChaveOrdenacao(t, campo) {
+  if (campo === 'valor') return t.valor || 0;
+  if (campo === 'data') {
+    const m = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec((t.data || '').trim());
+    return m ? new Date(+m[3], +m[2] - 1, +m[1]).getTime() : '';
+  }
+  return String(t[campo] || '').trim().toLowerCase();
+}
+function estComparar(a, b) {
+  const va = estChaveOrdenacao(a, estSort.campo), vb = estChaveOrdenacao(b, estSort.campo);
+  // Vazios sempre no fim, independente da direção.
+  if (va === '' && vb !== '') return 1;
+  if (vb === '' && va !== '') return -1;
+  const cmp = (typeof va === 'number' && typeof vb === 'number') ? va - vb : String(va).localeCompare(String(vb), 'pt-BR');
+  return cmp * estSort.dir;
+}
+function estAtualizarSetas() {
+  document.querySelectorAll('#atd-sub-estorno th[data-sort]').forEach(th => {
+    const s = th.querySelector('.est-arrow');
+    if (s) s.textContent = (estSort && estSort.campo === th.dataset.sort) ? (estSort.dir === 1 ? '▲' : '▼') : '';
+  });
+}
 function estRender() {
   const cfg = estGetConfig();
-  // Pendentes: agrupadas por tempo na fila, mais antigas (tom mais forte) primeiro.
   const pendentes = cfg.itens
     .filter(t => !estConcluida(t))
-    .map(t => ({ t, dias: estDiasNaFila(t) }))
-    .sort((a, b) => b.dias - a.dias);
+    .map(t => ({ t, dias: estDiasNaFila(t) }));
   let html = '';
-  let lastBucket = null;
-  pendentes.forEach(({ t, dias }) => {
-    const b = retBucket(dias);
-    if (b.label !== lastBucket) {
-      lastBucket = b.label;
-      const n = pendentes.filter(x => retBucket(x.dias).label === b.label).length;
-      html += `<tr><td colspan="7" style="padding:9px 6px 4px;border-left:3px solid ${b.bar};background:${b.bg || 'transparent'}"><span style="font-size:11px;font-weight:700;color:var(--text-sec);text-transform:uppercase;letter-spacing:.3px">${b.label} · ${n}</span></td></tr>`;
-    }
-    html += estRowHtml(t, b.bg, b.bold, dias);
-  });
+  if (estSort) {
+    // Visão ordenada por coluna: lista corrida (sem faixas), mantendo a cor de urgência por linha.
+    pendentes.sort((a, b) => estComparar(a.t, b.t));
+    pendentes.forEach(({ t, dias }) => {
+      const b = retBucket(dias);
+      html += estRowHtml(t, b.bg, b.bold, dias);
+    });
+  } else {
+    // Visão padrão: agrupadas por tempo na fila, mais antigas (tom mais forte) primeiro.
+    pendentes.sort((a, b) => b.dias - a.dias);
+    let lastBucket = null;
+    pendentes.forEach(({ t, dias }) => {
+      const b = retBucket(dias);
+      if (b.label !== lastBucket) {
+        lastBucket = b.label;
+        const n = pendentes.filter(x => retBucket(x.dias).label === b.label).length;
+        html += `<tr><td colspan="7" style="padding:9px 6px 4px;border-left:3px solid ${b.bar};background:${b.bg || 'transparent'}"><span style="font-size:11px;font-weight:700;color:var(--text-sec);text-transform:uppercase;letter-spacing:.3px">${b.label} · ${n}</span></td></tr>`;
+      }
+      html += estRowHtml(t, b.bg, b.bold, dias);
+    });
+  }
   const concluidas = cfg.itens
     .filter(estConcluida)
-    .sort((a, b) => (b.criado_em || '').localeCompare(a.criado_em || ''));
+    .sort(estSort ? estComparar : ((a, b) => (b.criado_em || '').localeCompare(a.criado_em || '')));
   if (concluidas.length) {
     html += `<tr><td colspan="7" style="padding:9px 6px 4px"><span style="font-size:11px;font-weight:700;color:var(--text-ter);text-transform:uppercase;letter-spacing:.3px">✅ Concluídas · ${concluidas.length}</span></td></tr>`;
     concluidas.forEach(t => { html += estRowHtml(t, '', false, estDiasNaFila(t)); });
@@ -1237,6 +1281,7 @@ function estRender() {
   const total = cfg.itens.reduce((s, t) => s + (t.valor || 0), 0);
   const totalEl = document.getElementById('atd-est-total-valor');
   if (totalEl) totalEl.textContent = 'R$ ' + total.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  estAtualizarSetas();
 }
 
 // ── CRM Kanban — solicitações em andamento (SAC + Trocas + Devoluções) ───────

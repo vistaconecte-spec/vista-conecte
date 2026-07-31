@@ -792,7 +792,7 @@
               </div>
               <div style="overflow-x:auto">
               <table style="width:100%;font-size:12px;min-width:700px">
-                <thead><tr style="color:var(--gold-dark);font-size:11px;text-transform:uppercase;background:rgba(184,134,11,.10)"><th style="text-align:left;padding:4px">Cliente</th><th style="text-align:left;padding:4px">Peças</th><th style="text-align:right;padding:4px">Valor R$</th><th style="text-align:left;padding:4px">Cód. devolução</th><th style="text-align:left;padding:4px">Data</th><th style="text-align:left;padding:4px">Motivo</th><th style="width:28px"></th></tr></thead>
+                <thead><tr style="color:var(--gold-dark);font-size:11px;text-transform:uppercase;background:rgba(184,134,11,.10)"><th data-sort="cliente" onclick="estOrdenar('cliente')" title="Clique para ordenar" style="text-align:left;padding:4px;cursor:pointer;user-select:none">Cliente <span class="est-arrow"></span></th><th data-sort="pecas" onclick="estOrdenar('pecas')" title="Clique para ordenar" style="text-align:left;padding:4px;cursor:pointer;user-select:none">Peças <span class="est-arrow"></span></th><th data-sort="valor" onclick="estOrdenar('valor')" title="Clique para ordenar" style="text-align:right;padding:4px;cursor:pointer;user-select:none">Valor R$ <span class="est-arrow"></span></th><th data-sort="codigo_devolucao" onclick="estOrdenar('codigo_devolucao')" title="Clique para ordenar" style="text-align:left;padding:4px;cursor:pointer;user-select:none">Cód. devolução <span class="est-arrow"></span></th><th data-sort="data" onclick="estOrdenar('data')" title="Clique para ordenar" style="text-align:left;padding:4px;cursor:pointer;user-select:none">Data <span class="est-arrow"></span></th><th data-sort="motivo" onclick="estOrdenar('motivo')" title="Clique para ordenar" style="text-align:left;padding:4px;cursor:pointer;user-select:none">Motivo <span class="est-arrow"></span></th><th style="width:28px"></th></tr></thead>
                 <tbody id="atd-est-tbody"></tbody>
               </table>
               </div>
@@ -834,7 +834,7 @@
   </div>
 </div>
 <script src="data.js?v=2026073101"></script>
-<script src="main.js?v=2026073101"></script>
+<script src="main.js?v=2026073102"></script>
 <script async src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js" onload="initSupabase()"></script>
 </body>
 </html>
