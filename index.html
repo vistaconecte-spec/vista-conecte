@@ -93,12 +93,26 @@
           </div>
           <div id="dash-prontos"></div>
         </div>
+        <div class="card" id="card-parados" style="border-left:3px solid #d97706;display:none">
+          <div class="card-header">
+            <div class="card-title" style="color:#d97706"><i class="ti ti-clock-exclamation"></i> PEDIDOS PARADOS</div>
+            <span id="dash-parados-total" style="font-size:11px;font-weight:700;color:#d97706"></span>
+          </div>
+          <div id="dash-parados"></div>
+        </div>
         <div class="card" id="card-urgentes" style="border-left:3px solid #dc2626">
           <div class="card-header">
             <div class="card-title" style="color:#dc2626"><i class="ti ti-alert-triangle"></i> URGENTE — A PRODUZIR</div>
             <span id="dash-urgentes-total" style="font-size:11px;font-weight:700;color:#dc2626"></span>
           </div>
           <div id="dash-urgentes"></div>
+        </div>
+        <div class="card" id="card-duplicado" style="border-left:3px solid #d97706;display:none">
+          <div class="card-header">
+            <div class="card-title" style="color:#d97706"><i class="ti ti-copy-off"></i> PRODUÇÃO ACIMA DO NECESSÁRIO</div>
+            <span id="dash-duplicado-total" style="font-size:11px;font-weight:700;color:#d97706"></span>
+          </div>
+          <div id="dash-duplicado"></div>
         </div>
         <div class="card" style="border-left:3px solid #0891b2">
           <div class="card-header">
@@ -737,6 +751,17 @@
       </div>
 
       <div id="panel-modelagem" class="tab-panel">
+        <div id="mdl-gate" style="max-width:380px;margin:48px auto">
+          <div class="card" style="text-align:center;padding:30px 26px">
+            <i class="ti ti-lock" style="font-size:30px;color:var(--gold-dark)"></i>
+            <div style="font-weight:700;font-size:17px;margin:10px 0 2px">Área de Modelagem</div>
+            <div style="font-size:12px;color:var(--text-sec);margin-bottom:16px">Digite a senha para acessar</div>
+            <input type="password" id="mdl-senha" placeholder="Senha" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;font-size:14px" onkeydown="if(event.key==='Enter')mdlUnlock()">
+            <div id="mdl-erro" style="color:#dc2626;font-size:12px;height:16px;margin-top:6px"></div>
+            <button class="btn-primary" style="width:100%;margin-top:6px;padding:10px" onclick="mdlUnlock()"><i class="ti ti-lock-open"></i> Entrar</button>
+          </div>
+        </div>
+        <div id="mdl-content" style="display:none">
         <div id="mdl-lista">
           <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap">
             <div style="font-weight:700;font-size:18px"><i class="ti ti-shirt"></i> Modelagem</div>
@@ -752,12 +777,13 @@
           </div>
           <div id="mdl-det-body"></div>
         </div>
+        </div>
       </div>
     </div>
   </div>
 </div>
-<script src="data.js?v=2026071715"></script>
-<script src="main.js?v=2026071715"></script>
+<script src="data.js?v=2026072910"></script>
+<script src="main.js?v=2026072910"></script>
 <script async src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js" onload="initSupabase()"></script>
 </body>
 </html>
