@@ -67,7 +67,7 @@ const MODELOS = {
 
   // ── SAPATOS ───────────────────────────────────────────────────────────────
   'flat':{nome:'Flat',tecido:'',consumo:0,preco:0,componentes:'',obs:'',revenda:true,tamanhos:['34','35','36','37','38','39','40'],cores:['Preto','Off White'],aberto:{'Preto':[0,0,0,0,0,0,0],'Off White':[0,0,0,0,0,0,0]}},
-  'sandalia-gladiadora':{nome:'Sandália Gladiadora',tecido:'',consumo:0,preco:0,componentes:'',obs:'Calçado / revenda (não produzido na confecção)',revenda:true,tamanhos:['34','35','36','37','38','39','40'],cores:['Preto','Marrom','Nude/Marrom'],aberto:{'Preto':[0,0,0,0,0,0,0],'Marrom':[0,0,0,0,0,0,0],'Nude/Marrom':[0,0,0,0,0,0,0]}},
+  'sandalia-gladiadora':{nome:'Sandália Gladiadora',tecido:'',consumo:0,preco:0,componentes:'',obs:'Calçado / revenda (não produzido na confecção)',revenda:true,tamanhos:['34','35','36','37','38','39','40'],cores:['Preto','Marrom','Nude/Marrom'],aliasCores:{'Bege':'Nude/Marrom'},aberto:{'Preto':[0,0,0,0,0,0,0],'Marrom':[0,0,0,0,0,0,0],'Nude/Marrom':[0,0,0,0,0,0,0]}},
 
   // ── OUTROS ────────────────────────────────────────────────────────────────
   'canguru-amplo':{nome:'Canguru Amplo',tecido:'Moletom',consumo:1.8,preco:30,componentes:'2 Frentes – 1 Costas – 2 Mangas – 1 Capuz – 2 Bolsos',obs:'',cores:['Preto','Off White','Branco','Cinza','Marrom','Nude','Telha'],aberto:{'Preto':[0,0,0,0,0],'Off White':[0,0,0,0,0],'Branco':[0,0,0,0,0],'Cinza':[0,0,0,0,0],'Marrom':[0,0,0,0,0],'Nude':[0,0,0,0,0],'Telha':[0,0,0,0,0]}},
