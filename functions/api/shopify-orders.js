@@ -83,6 +83,11 @@ const PRODUCT_MAP = {
   'Sandália Plataforma':                                    'sandalia-gladiadora',
   'Sandalia Plataforma':                                    'sandalia-gladiadora',
   // Saias
+  // "Fenda Frontal" faz parte do NOME do modelo — sem esta entrada o prefixo casa só
+  // "Saia Midi" e o resto do título vira a cor "Fenda Frontal Preto" (pedido #8602, 07/2026).
+  // O casamento usa o prefixo MAIS LONGO, então esta entrada vence a de baixo.
+  'Saia Midi Fenda Frontal':                                'saia-midi',
+  'Saia Midi com fenda Frontal':                            'saia-midi',
   'Saia Midi':                                              'saia-midi',
   'Mini Saia Canelada':                                     'mini-saia-canelada',
   // Outros
@@ -136,10 +141,13 @@ const COLOR_NORM = {
   'black':     'Preto',
   'vermelho':  'Vermelho',
   'red':       'Vermelho',
-  'branca':    'Off White',
-  'Branca':    'Off White',
-  'branco':    'Off White',
-  'Branco':    'Off White',
+  // Branco NÃO é Off White — são cores diferentes na produção e existem produtos ativos
+  // separados ("Mini Saia Canelada Branca" x variante Off White). Unificar as duas fazia
+  // o pedido de branco entrar no balde do off white e sumir. Canônico no masculino, como Preta→Preto.
+  'branca':    'Branco',
+  'Branca':    'Branco',
+  'branco':    'Branco',
+  'Branco':    'Branco',
 };
 
 function normalizeColor(c) {
