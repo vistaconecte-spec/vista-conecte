@@ -6599,20 +6599,46 @@ function mdlRenderDetalhe() {
   // Versão do arquivo da Audaces pela DATA de envio: o mais antigo é V1, o seguinte V2…
   // (a modelista reenvia o mesmo arquivo com o mesmo nome — sem isso não dá para saber
   //  qual é o atual). A lista continua com o mais recente no topo, marcado como ATUAL.
+  // O Postgres devolve o createdAt SEM fuso ("2026-08-03T16:52:28.9") e o valor é UTC —
+  // sem o 'Z' o navegador leria como hora local e mostraria 3h a mais (e o dia errado
+  // em upload feito à noite). Por isso o Z é acrescentado quando não vem fuso na string.
+  const dataUpload = iso => {
+    if (!iso) return null;
+    const s = String(iso);
+    const t = new Date(/([zZ]|[+-]\d{2}:?\d{2})$/.test(s) ? s : s + 'Z');
+    return isNaN(t.getTime()) ? null : t;
+  };
   const audacesPorData = [...(d.audaces || [])].sort((a, b) => {
-    const ta = new Date(a.createdAt || 0).getTime(), tb = new Date(b.createdAt || 0).getTime();
-    return (isNaN(ta) ? 0 : ta) - (isNaN(tb) ? 0 : tb) || (a.id - b.id);
+    const ta = dataUpload(a.createdAt), tb = dataUpload(b.createdAt);
+    return ((ta ? ta.getTime() : 0) - (tb ? tb.getTime() : 0)) || (a.id - b.id);
   });
   const versaoAudaces = new Map(audacesPorData.map((a, i) => [a.id, i + 1]));
   const totalAudaces = audacesPorData.length;
+  // Data + hora: os dois arquivos costumam ser do mesmo dia, então só a data não separa as versões.
   const dataCurta = iso => {
-    const t = new Date(iso || 0);
-    return (iso && !isNaN(t.getTime())) ? t.toLocaleDateString('pt-BR') : '';
+    const t = dataUpload(iso);
+    return t ? `${t.toLocaleDateString('pt-BR')} ${t.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}` : '';
+  };
+  // Dois envios no mesmo minuto (acontece ao reenviar em seguida) mostrariam a mesma hora —
+  // nesse caso, e só nele, o rótulo ganha os segundos para as versões ficarem distinguíveis.
+  const rotuloBase = new Map(audacesPorData.map(a => [a.id, dataCurta(a.createdAt)]));
+  const rotulosRepetidos = new Set();
+  const jaVistos = new Set();
+  for (const r of rotuloBase.values()) {
+    if (!r) continue;
+    if (jaVistos.has(r)) rotulosRepetidos.add(r);
+    jaVistos.add(r);
+  }
+  const rotuloData = a => {
+    const base = rotuloBase.get(a.id);
+    if (!base || !rotulosRepetidos.has(base)) return base;
+    const t = dataUpload(a.createdAt);
+    return `${t.toLocaleDateString('pt-BR')} ${t.toLocaleTimeString('pt-BR')}`;
   };
   const audacesHtml = audacesPorData.slice().reverse().map(a => {
     const v = versaoAudaces.get(a.id);
     const atual = v === totalAudaces;
-    const dt = dataCurta(a.createdAt);
+    const dt = rotuloData(a);
     const selo = `<span title="${atual ? 'versão mais recente' : 'versão anterior'}" style="font-size:10px;font-weight:700;border-radius:4px;padding:1px 6px;white-space:nowrap;${atual ? 'background:var(--gold-dark);color:#fff' : 'background:rgba(0,0,0,.06);color:var(--text-ter)'}">V${v}</span>`;
     return `
     <div style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;margin-bottom:6px${atual ? '' : ';opacity:.65'}">
