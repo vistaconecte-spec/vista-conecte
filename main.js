@@ -6702,30 +6702,6 @@ function mdlRenderDetalhe() {
       </div>
 
       <div class="card">
-        <div class="card-header"><div class="card-title"><i class="ti ti-ruler-measure"></i> MEDIDAS DA PEÇA</div></div>
-        <div style="font-size:10px;color:var(--text-ter);margin-bottom:8px">Medida da peça pronta, em cm. O nome de cada linha é livre — escreva o que essa peça precisa.</div>
-        <div style="overflow-x:auto">
-          <table style="width:100%;border-collapse:collapse;font-size:12px">
-            <thead>
-              <tr>
-                <th style="text-align:left;padding:4px 6px;font-size:10px;color:var(--text-sec)">Medida</th>
-                ${MDL_TAMANHOS.map(t => `<th style="padding:4px 3px;font-size:10px;color:var(--text-sec)">${t}</th>`).join('')}
-                <th style="width:24px"></th>
-              </tr>
-            </thead>
-            <tbody id="mdl-medidas-tbody">
-              ${mdlLinhasMedidaHtml(d.projeto.id, medidas)}
-            </tbody>
-          </table>
-        </div>
-        <button class="btn-outline" style="font-size:11px;padding:5px 10px;align-self:flex-start;margin-top:6px" onclick="mdlAddLinhaMedida(${d.projeto.id})"><i class="ti ti-plus"></i> Adicionar linha</button>
-        <label style="font-size:11px;color:var(--text-sec);display:block;margin-top:8px">Observações da modelagem
-          <textarea id="mdl-medidas-obs" rows="2" style="width:100%;margin-top:3px;padding:7px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;resize:vertical">${(medidas.__obs || '').toString()}</textarea>
-        </label>
-        <button class="btn-primary" style="font-size:12px;padding:8px;align-self:flex-start;margin-top:8px" onclick="mdlSalvarMedidas(${d.projeto.id})"><i class="ti ti-device-floppy"></i> Salvar medidas</button>
-      </div>
-
-      <div class="card">
         <div class="card-header"><div class="card-title"><i class="ti ti-cash"></i> VALOR DO AJUSTE</div></div>
         <div style="display:flex;flex-direction:column;gap:8px">
           <label style="font-size:11px;color:var(--text-sec)">Valor cobrado pela modelista
@@ -6764,6 +6740,30 @@ function mdlRenderDetalhe() {
           <i class="ti ti-upload"></i> Enviar arquivo
           <input type="file" style="display:none" onchange="mdlUpload(${d.projeto.id},'audaces',this)">
         </label>
+      </div>
+
+      <div class="card" style="grid-column:1/-1">
+        <div class="card-header"><div class="card-title"><i class="ti ti-ruler-measure"></i> MEDIDAS DA PEÇA</div></div>
+        <div style="font-size:10px;color:var(--text-ter);margin-bottom:8px">Medida da peça pronta, em cm. O nome de cada linha é livre — escreva o que essa peça precisa.</div>
+        <div style="overflow-x:auto">
+          <table style="width:100%;border-collapse:collapse;font-size:12px">
+            <thead>
+              <tr>
+                <th style="text-align:left;padding:4px 6px;font-size:10px;color:var(--text-sec);width:22%;min-width:150px">Medida</th>
+                ${MDL_TAMANHOS.map(t => `<th style="padding:4px 3px;font-size:10px;color:var(--text-sec)">${t}</th>`).join('')}
+                <th style="width:24px"></th>
+              </tr>
+            </thead>
+            <tbody id="mdl-medidas-tbody">
+              ${mdlLinhasMedidaHtml(d.projeto.id, medidas)}
+            </tbody>
+          </table>
+        </div>
+        <button class="btn-outline" style="font-size:11px;padding:5px 10px;align-self:flex-start;margin-top:6px" onclick="mdlAddLinhaMedida(${d.projeto.id})"><i class="ti ti-plus"></i> Adicionar linha</button>
+        <label style="font-size:11px;color:var(--text-sec);display:block;margin-top:8px">Observações da modelagem
+          <textarea id="mdl-medidas-obs" rows="2" style="width:100%;margin-top:3px;padding:7px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;resize:vertical">${(medidas.__obs || '').toString()}</textarea>
+        </label>
+        <button class="btn-primary" style="font-size:12px;padding:8px;align-self:flex-start;margin-top:8px" onclick="mdlSalvarMedidas(${d.projeto.id})"><i class="ti ti-device-floppy"></i> Salvar medidas</button>
       </div>
 
     </div>`;
