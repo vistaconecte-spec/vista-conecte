@@ -6596,12 +6596,33 @@ function mdlRenderDetalhe() {
     </div>`
   ).join('') || '<div style="color:var(--text-ter);font-size:12px">Nenhuma foto ainda.</div>';
 
-  const audacesHtml = (d.audaces || []).map(a => `
-    <div style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;margin-bottom:6px">
+  // Versão do arquivo da Audaces pela DATA de envio: o mais antigo é V1, o seguinte V2…
+  // (a modelista reenvia o mesmo arquivo com o mesmo nome — sem isso não dá para saber
+  //  qual é o atual). A lista continua com o mais recente no topo, marcado como ATUAL.
+  const audacesPorData = [...(d.audaces || [])].sort((a, b) => {
+    const ta = new Date(a.createdAt || 0).getTime(), tb = new Date(b.createdAt || 0).getTime();
+    return (isNaN(ta) ? 0 : ta) - (isNaN(tb) ? 0 : tb) || (a.id - b.id);
+  });
+  const versaoAudaces = new Map(audacesPorData.map((a, i) => [a.id, i + 1]));
+  const totalAudaces = audacesPorData.length;
+  const dataCurta = iso => {
+    const t = new Date(iso || 0);
+    return (iso && !isNaN(t.getTime())) ? t.toLocaleDateString('pt-BR') : '';
+  };
+  const audacesHtml = audacesPorData.slice().reverse().map(a => {
+    const v = versaoAudaces.get(a.id);
+    const atual = v === totalAudaces;
+    const dt = dataCurta(a.createdAt);
+    const selo = `<span title="${atual ? 'versão mais recente' : 'versão anterior'}" style="font-size:10px;font-weight:700;border-radius:4px;padding:1px 6px;white-space:nowrap;${atual ? 'background:var(--gold-dark);color:#fff' : 'background:rgba(0,0,0,.06);color:var(--text-ter)'}">V${v}</span>`;
+    return `
+    <div style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;margin-bottom:6px${atual ? '' : ';opacity:.65'}">
       <i class="ti ti-file-type-xls" style="color:var(--gold-dark)"></i>
+      ${selo}
       <a href="/api/modelagem-storage?key=${encodeURIComponent(a.fileKey)}" target="_blank" style="font-size:12px;color:inherit;text-decoration:none;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${a.name}</a>
+      ${dt ? `<span style="font-size:10px;color:var(--text-ter);white-space:nowrap">${dt}</span>` : ''}
       <i class="ti ti-trash" onclick="mdlRemoverArquivo(${d.projeto.id},'audaces',${a.id})" title="Remover arquivo" style="cursor:pointer;color:#dc2626;font-size:15px"></i>
-    </div>`).join('') || '<div style="color:var(--text-ter);font-size:12px">Nenhum arquivo da Audaces ainda.</div>';
+    </div>`;
+  }).join('') || '<div style="color:var(--text-ter);font-size:12px">Nenhum arquivo da Audaces ainda.</div>';
 
   const faixaAlertaCard = texto => `<div style="background:#dc2626;color:#fff;font-size:10px;font-weight:700;letter-spacing:0.03em;text-align:center;padding:4px 6px;margin:-12px -16px 10px"><i class="ti ti-alert-triangle"></i> ${texto}</div>`;
 
@@ -6656,28 +6677,22 @@ function mdlRenderDetalhe() {
 
       <div class="card">
         <div class="card-header"><div class="card-title"><i class="ti ti-ruler-measure"></i> MEDIDAS DA PEÇA</div></div>
-        <div style="font-size:10px;color:var(--text-ter);margin-bottom:8px">Medida da peça pronta, em cm. Deixe em branco o que não se aplica.</div>
+        <div style="font-size:10px;color:var(--text-ter);margin-bottom:8px">Medida da peça pronta, em cm. O nome de cada linha é livre — escreva o que essa peça precisa.</div>
         <div style="overflow-x:auto">
           <table style="width:100%;border-collapse:collapse;font-size:12px">
             <thead>
               <tr>
                 <th style="text-align:left;padding:4px 6px;font-size:10px;color:var(--text-sec)">Medida</th>
                 ${MDL_TAMANHOS.map(t => `<th style="padding:4px 3px;font-size:10px;color:var(--text-sec)">${t}</th>`).join('')}
+                <th style="width:24px"></th>
               </tr>
             </thead>
-            <tbody>
-              ${MDL_MEDIDAS.map(m => `
-                <tr>
-                  <td style="padding:3px 6px;font-weight:600;white-space:nowrap">${m}</td>
-                  ${MDL_TAMANHOS.map(t => `<td style="padding:2px 3px">
-                    <input data-medida="${m}" data-tam="${t}" value="${((medidas[m] || {})[t] || '').toString().replace(/"/g, '&quot;')}"
-                      onkeydown="if(event.key==='Enter')mdlSalvarMedidas(${d.projeto.id})"
-                      style="width:100%;min-width:44px;padding:5px 4px;border:1px solid var(--border);border-radius:5px;font-size:12px;text-align:center">
-                  </td>`).join('')}
-                </tr>`).join('')}
+            <tbody id="mdl-medidas-tbody">
+              ${mdlLinhasMedidaHtml(d.projeto.id, medidas)}
             </tbody>
           </table>
         </div>
+        <button class="btn-outline" style="font-size:11px;padding:5px 10px;align-self:flex-start;margin-top:6px" onclick="mdlAddLinhaMedida(${d.projeto.id})"><i class="ti ti-plus"></i> Adicionar linha</button>
         <label style="font-size:11px;color:var(--text-sec);display:block;margin-top:8px">Observações da modelagem
           <textarea id="mdl-medidas-obs" rows="2" style="width:100%;margin-top:3px;padding:7px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;resize:vertical">${(medidas.__obs || '').toString()}</textarea>
         </label>
@@ -6745,21 +6760,79 @@ async function mdlSalvarConsumo(id) {
   }
 }
 
-// Medidas da peça — linhas e colunas do card MEDIDAS DA PEÇA.
-// Mexer aqui muda a tabela; o dado é guardado por nome, então acrescentar uma medida
-// nova não apaga o que já foi preenchido.
-const MDL_MEDIDAS  = ['Busto', 'Cintura', 'Quadril', 'Comprimento', 'Ombro', 'Manga', 'Boca da perna'];
+// Medidas da peça — colunas do card MEDIDAS DA PEÇA.
+// O NOME de cada linha é digitado pela modelista (não há mais lista fixa de Busto/Cintura/…):
+// cada peça precisa de medidas diferentes. O dado continua guardado por nome
+// ({ 'Busto': {PP:'88'}, __obs:'' }), então o que já estava preenchido continua aparecendo.
 const MDL_TAMANHOS = ['PP', 'P', 'M', 'G', 'GG', 'G1'];
+const MDL_LINHAS_NOVAS = 8; // linhas em branco quando o projeto ainda não tem medida nenhuma
+const MDL_LINHAS_EXTRA = 3; // linhas em branco no fim, para continuar preenchendo
+
+function mdlLinhaMedidaHtml(idProjeto, nome, valores) {
+  const esc = v => (v == null ? '' : String(v)).replace(/"/g, '&quot;');
+  const val = t => esc((valores || {})[t] || '');
+  return `
+    <tr>
+      <td style="padding:3px 6px">
+        <input class="mdl-medida-nome" value="${esc(nome)}" placeholder="nome da medida"
+          onkeydown="if(event.key==='Enter')mdlSalvarMedidas(${idProjeto})"
+          style="width:100%;min-width:110px;padding:5px 6px;border:1px solid var(--border);border-radius:5px;font-size:12px;font-weight:600">
+      </td>
+      ${MDL_TAMANHOS.map(t => `<td style="padding:2px 3px">
+        <input data-tam="${t}" value="${val(t)}"
+          onkeydown="if(event.key==='Enter')mdlSalvarMedidas(${idProjeto})"
+          style="width:100%;min-width:44px;padding:5px 4px;border:1px solid var(--border);border-radius:5px;font-size:12px;text-align:center">
+      </td>`).join('')}
+      <td style="padding:2px 3px;text-align:center">
+        <button onclick="mdlRemoverLinhaMedida(this)" title="remover esta linha"
+          style="background:none;border:none;cursor:pointer;color:var(--text-ter);font-size:15px;line-height:1">×</button>
+      </td>
+    </tr>`;
+}
+
+function mdlLinhasMedidaHtml(idProjeto, medidas) {
+  const nomes = Object.keys(medidas || {}).filter(k => k !== '__obs');
+  const vazias = nomes.length ? MDL_LINHAS_EXTRA : MDL_LINHAS_NOVAS;
+  return [
+    ...nomes.map(n => mdlLinhaMedidaHtml(idProjeto, n, medidas[n])),
+    ...Array.from({ length: vazias }, () => mdlLinhaMedidaHtml(idProjeto, '', {})),
+  ].join('');
+}
+
+function mdlAddLinhaMedida(idProjeto) {
+  const tbody = document.getElementById('mdl-medidas-tbody');
+  if (!tbody) return;
+  tbody.insertAdjacentHTML('beforeend', mdlLinhaMedidaHtml(idProjeto, '', {}));
+  const inp = tbody.querySelector('tr:last-child .mdl-medida-nome');
+  if (inp) inp.focus();
+}
+
+// Só tira a linha da tela; o que some do JSON é gravado no próximo "Salvar medidas".
+function mdlRemoverLinhaMedida(btn) {
+  const tr = btn.closest('tr');
+  if (tr) tr.remove();
+}
 
 async function mdlSalvarMedidas(id) {
   const medidas = {};
-  document.querySelectorAll('#mdl-detalhe input[data-medida]').forEach(inp => {
-    const v = inp.value.trim();
-    if (!v) return;
-    const m = inp.dataset.medida, t = inp.dataset.tam;
-    if (!medidas[m]) medidas[m] = {};
-    medidas[m][t] = v;
+  const semNome = [];
+  const repetidos = [];
+  document.querySelectorAll('#mdl-medidas-tbody tr').forEach((tr, i) => {
+    const nome = (tr.querySelector('.mdl-medida-nome') || {}).value || '';
+    const valores = {};
+    tr.querySelectorAll('input[data-tam]').forEach(inp => {
+      const v = inp.value.trim();
+      if (v) valores[inp.dataset.tam] = v;
+    });
+    const temValor = Object.keys(valores).length > 0;
+    const nomeLimpo = nome.trim();
+    if (!nomeLimpo) { if (temValor) semNome.push(i + 1); return; } // linha em branco: ignora
+    if (medidas[nomeLimpo]) { repetidos.push(nomeLimpo); return; }
+    if (temValor) medidas[nomeLimpo] = valores;
   });
+  // Valor digitado sem nome de medida seria perdido em silêncio — avisa e não grava.
+  if (semNome.length) { alert('Dê um nome à medida da linha ' + semNome.join(', ') + ' antes de salvar.'); return; }
+  if (repetidos.length) { alert('Há duas linhas com o mesmo nome: ' + [...new Set(repetidos)].join(', ') + '. Renomeie uma delas.'); return; }
   const obs = (document.getElementById('mdl-medidas-obs') || {}).value || '';
   if (obs.trim()) medidas.__obs = obs.trim();
   try {
