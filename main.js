@@ -1189,12 +1189,25 @@ async function estSincronizarShopify() {
 function estConcluida(t) { return t.status === 'resolvido' || t.etapa === 'concluido'; }
 // Tempo na fila da DEVOLUÇÃO: usa a data real da solicitação (campo `data`, DD/MM/YYYY) —
 // o `criado_em` é a data do import em massa (13/07), que zeraria o tempo de espera real.
-function estDiasNaFila(t) {
-  const m = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(t.data || '');
+// Lê a data digitada. Aceita "DD/MM/AAAA" (formato do import da Shopify) e também
+// "DD/MM" — que é o formato que o próprio placeholder do campo sugere ("ex.: 03/08") e
+// era lido como data vazia: o registro manual perdia o tempo de fila e caía no fim da
+// ordenação por data. Sem ano, assume o ano corrente; se cair no futuro, o anterior.
+function estDataMs(valor) {
+  const s = String(valor || '').trim();
+  let m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(s);
+  if (m) return new Date(+m[3], +m[2] - 1, +m[1]).getTime();
+  m = /^(\d{1,2})\/(\d{1,2})$/.exec(s);
   if (m) {
-    const ms = Date.now() - new Date(+m[3], +m[2] - 1, +m[1]).getTime();
-    if (!isNaN(ms)) return Math.max(0, Math.floor(ms / 86400000));
+    const ano = new Date().getFullYear();
+    const ts = new Date(ano, +m[2] - 1, +m[1]).getTime();
+    return ts > Date.now() + 86400000 ? new Date(ano - 1, +m[2] - 1, +m[1]).getTime() : ts;
   }
+  return null;
+}
+function estDiasNaFila(t) {
+  const ms = estDataMs(t.data);
+  if (ms !== null && !isNaN(ms)) return Math.max(0, Math.floor((Date.now() - ms) / 86400000));
   return retDiasNaFila(t);
 }
 function estRowHtml(t, bg, bold, dias) {
@@ -1223,8 +1236,8 @@ function estOrdenar(campo) {
 function estChaveOrdenacao(t, campo) {
   if (campo === 'valor') return t.valor || 0;
   if (campo === 'data') {
-    const m = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec((t.data || '').trim());
-    return m ? new Date(+m[3], +m[2] - 1, +m[1]).getTime() : '';
+    const ms = estDataMs(t.data);
+    return ms === null ? '' : ms;
   }
   return String(t[campo] || '').trim().toLowerCase();
 }
@@ -1256,17 +1269,29 @@ function estRender() {
       html += estRowHtml(t, b.bg, b.bold, dias);
     });
   } else {
-    // Visão padrão: agrupadas por tempo na fila, mais antigas (tom mais forte) primeiro.
-    pendentes.sort((a, b) => b.dias - a.dias);
-    let lastBucket = null;
-    pendentes.forEach(({ t, dias }) => {
-      const b = retBucket(dias);
-      if (b.label !== lastBucket) {
-        lastBucket = b.label;
-        const n = pendentes.filter(x => retBucket(x.dias).label === b.label).length;
-        html += `<tr><td colspan="7" style="padding:9px 6px 4px;border-left:3px solid ${b.bar};background:${b.bg || 'transparent'}"><span style="font-size:11px;font-weight:700;color:var(--text-sec);text-transform:uppercase;letter-spacing:.3px">${b.label} · ${n}</span></td></tr>`;
-      }
-      html += estRowHtml(t, b.bg, b.bold, dias);
+    // Visão padrão: primeiro as lançadas À MÃO no atendimento (não têm `shopify_id`),
+    // depois as importadas da Shopify; dentro de cada grupo, da data MAIS RECENTE para a
+    // mais antiga. A cor de urgência e o selo "N dias na fila" continuam por linha, então
+    // dá para ver o que está crítico sem depender do agrupamento por tempo de fila.
+    const grupos = [
+      { label: 'Inseridas manualmente', itens: pendentes.filter(x => !x.t.shopify_id) },
+      { label: 'Importadas da Shopify', itens: pendentes.filter(x =>  x.t.shopify_id) },
+    ];
+    grupos.forEach(g => {
+      if (!g.itens.length) return;
+      // Sem data preenchida vai para o fim do grupo (empate resolve pelo tempo de fila).
+      g.itens.sort((a, b) => {
+        const da = estChaveOrdenacao(a.t, 'data'), db = estChaveOrdenacao(b.t, 'data');
+        if (da === '' && db === '') return b.dias - a.dias;
+        if (da === '') return 1;
+        if (db === '') return -1;
+        return db - da;
+      });
+      html += `<tr><td colspan="7" style="padding:9px 6px 4px;border-left:3px solid var(--border)"><span style="font-size:11px;font-weight:700;color:var(--text-sec);text-transform:uppercase;letter-spacing:.3px">${g.label} · ${g.itens.length}</span></td></tr>`;
+      g.itens.forEach(({ t, dias }) => {
+        const b = retBucket(dias);
+        html += estRowHtml(t, b.bg, b.bold, dias);
+      });
     });
   }
   const concluidas = cfg.itens
