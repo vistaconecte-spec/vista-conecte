@@ -7,7 +7,10 @@
  *   variant_title = "PP"                     (só o tamanho)
  */
 
-const SIZES      = ['PP', 'P', 'M', 'G', 'GG'];
+// G1 entra depois do GG (índice 5). Modelo que não tem G1 na grade recebe a peça no maior
+// tamanho (regra da Bárbara, 29/07/2026) — o main.js já faz isso ao distribuir. Sem o G1 aqui
+// o item era recusado como "variante inválida" e o pedido sob medida sumia da produção (#8520).
+const SIZES      = ['PP', 'P', 'M', 'G', 'GG', 'G1'];
 const SHOE_SIZES = ['34', '35', '36', '37', '38', '39', '40']; // calçados 34-40
 
 // Mapa: prefixo exato do título Shopify → chave do modelo no sistema
@@ -148,6 +151,10 @@ function cleanTitle(title) {
   return title
     .replace(/\s+preço unitário\s*/i, '')
     .replace(/\s+unit price\s*/i, '')
+    // Peça sob medida: o atendimento anota a medida no fim do título
+    // ("... G1 quadril 1,20"). Sem tirar isso, o tamanho não é lido e a peça
+    // some da produção — era o caso dos 4 itens do pedido #8520.
+    .replace(/\s+(quadril|cintura|busto|altura)\s*:?\s*[\d]+([.,][\d]+)?\s*(m|cm)?\s*$/i, '')
     .trim();
 }
 
