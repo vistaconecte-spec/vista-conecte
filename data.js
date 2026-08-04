@@ -42,6 +42,10 @@ const MODELOS = {
   'calca-flare':{nome:'Calça Flare Canelada',tecido:'Canelado',consumo:1.4,preco:24,componentes:'2 Frentes – 2 Costas – 1 Cós',obs:'',cores:['Nude','Preto','Marsala','Telha','Cinza','Marrom','Militar'],aberto:{'Nude':[0,0,0,0,0],'Preto':[0,0,0,0,0],'Marsala':[0,0,0,0,0],'Telha':[0,0,0,0,0],'Cinza':[0,0,0,0,0],'Marrom':[0,0,0,0,0],'Militar':[0,0,0,0,0]},croquiFrente:'/croqui-calca-flare-frente.jpg?v=2026061601'},
   'calca-peace':{nome:'Calça Peace',tecido:'Moletom',consumo:1.3,preco:22,componentes:'2 Frentes – 2 Costas – 1 Cós',obs:'',cores:['Marsala','Off White','Preto','Nude'],aberto:{'Marsala':[0,0,0,0,0],'Off White':[0,0,0,0,0],'Preto':[0,0,0,0,0],'Nude':[0,0,0,0,0]},croquiFrente:'/croqui-calca-peace-frente.jpg',croquiCostas:'/croqui-calca-peace-costas.jpg'},
   'calca-bolso-frontal':{nome:'Calça Bolso Frontal',tecido:'Moletom',consumo:1.3,preco:22,componentes:'2 Frentes – 2 Costas – 1 Cós – 2 Bolsos Frontais',obs:'',cores:['Off White','Preto'],aberto:{'Off White':[0,0,0,0,0],'Preto':[0,0,0,0,0]}},
+  // Peças do Conjunto Boho (separadas em 04/08/2026 a pedido da Bárbara — o conjunto passou a
+  // distribuir para as duas). Consumo e preço dividem os do conjunto (2,5m e R$30) e são estimados:
+  // ajustar quando tiver o dado real de cada peça. Grade vai até G1, igual à do conjunto.
+  'calca-boho':{nome:'Calça Boho',tecido:'Viscose Est.',consumo:1.5,preco:18,componentes:'2 Frentes – 2 Costas – 1 Cós – 2 Bolsos Frontais',obs:'Corte reto, bolsos frontais amplos, cós liso na frente e ajustado atrás. Consumo/preço estimados (divididos do conjunto) — ajustar com o dado real.',cores:['Nude','Mescla','Marinho'],tamanhos:['PP','P','M','G','GG','G1'],aliasCores:{'Cinza':'Mescla'},aberto:{'Nude':[0,0,0,0,0,0],'Mescla':[0,0,0,0,0,0],'Marinho':[0,0,0,0,0,0]}},
 
   // ── CASACOS ───────────────────────────────────────────────────────────────
   'casaco-sherpa':{nome:'Casaco Sherpa',tecido:'Sherpa',consumo:1.8,preco:35,componentes:'',obs:'',cores:['Preto'],aberto:{'Preto':[0,0,0,0,0]}},
@@ -64,6 +68,8 @@ const MODELOS = {
   'cropped-moletom':{nome:'Cropped Moletom',tecido:'Moletom',consumo:0.8,preco:20,componentes:'',obs:'',cores:['Cinza','Preto','Nude','Marrom','Off White','Vermelho'],tamanhos:['PP','P','M','G','GG','G1'],aberto:{'Cinza':[0,0,0,0,0],'Preto':[0,0,0,0,0],'Nude':[0,0,0,0,0],'Marrom':[0,0,0,0,0],'Off White':[0,0,0,0,0],'Vermelho':[0,0,0,0,0]}},
 
   'cropped-frente-unica':{nome:'Cropped Frente Única',tecido:'Suplex',consumo:0.6,preco:20,componentes:'',obs:'Consumo/preço estimados (mesmo padrão dos outros croppeds) — ajustar quando tiver dado real.',cores:['Royal','Preto','Militar'],aberto:{'Royal':[0,0,0,0,0],'Preto':[0,0,0,0,0],'Militar':[0,0,0,0,0]}},
+  // Par da 'calca-boho' — as duas juntas formam o Conjunto Boho.
+  'blusa-boho':{nome:'Blusa Boho',tecido:'Viscose Est.',consumo:1.0,preco:12,componentes:'2 Frentes – 1 Costas',obs:'Modelagem despojada, ombro levemente caído, recortes frontais. Consumo/preço estimados (divididos do conjunto) — ajustar com o dado real.',cores:['Nude','Mescla','Marinho'],tamanhos:['PP','P','M','G','GG','G1'],aliasCores:{'Cinza':'Mescla'},aberto:{'Nude':[0,0,0,0,0,0],'Mescla':[0,0,0,0,0,0],'Marinho':[0,0,0,0,0,0]}},
 
   // ── SAPATOS ───────────────────────────────────────────────────────────────
   'flat':{nome:'Flat',tecido:'',consumo:0,preco:0,componentes:'',obs:'',revenda:true,tamanhos:['34','35','36','37','38','39','40'],cores:['Preto','Off White'],aberto:{'Preto':[0,0,0,0,0,0,0],'Off White':[0,0,0,0,0,0,0]}},
@@ -79,9 +85,9 @@ const SIDEBAR_ESTRUTURA = [
   {titulo:'MACACÕES',    modelos:['macacao-amplo','macacao-manga-longa']},
   {titulo:'MACAQUINHOS', modelos:['macaquinho-amplo','macaquinho-ruel']},
   {titulo:'VESTIDOS',    modelos:['vestido-frente-unica-longo','vestido-frente-unica-curto','vestido-amplo']},
-  {titulo:'CALÇAS',      modelos:['calca-pantalona','calca-basica-moletom','calca-pantalona-viscolycra','calca-flare','calca-peace','calca-bolso-frontal']},
+  {titulo:'CALÇAS',      modelos:['calca-pantalona','calca-basica-moletom','calca-pantalona-viscolycra','calca-flare','calca-peace','calca-bolso-frontal','calca-boho']},
   {titulo:'CASACOS',     modelos:['casaco-sherpa','casaco-sherpa-capuz','casaco-pele-persa','carneirinho-cropped','sherpa-ziper-bolsos']},
-  {titulo:'TOPS',        modelos:['camiseta-oversized','blusa-canelada-simples','blusa-canelada','regata-oversized','regata-canelada','cropped-canelado','cropped-moletom','cropped-peace','cropped-frente-unica']},
+  {titulo:'TOPS',        modelos:['camiseta-oversized','blusa-canelada-simples','blusa-canelada','regata-oversized','regata-canelada','cropped-canelado','cropped-moletom','cropped-peace','cropped-frente-unica','blusa-boho']},
   {titulo:'SAIAS',       modelos:['saia-midi','mini-saia-canelada']},
   {titulo:'SAPATOS',     modelos:['flat','sandalia-gladiadora']},
   {titulo:'OUTROS',      modelos:['moletom-gola-alta','moletom-ziper-bolsos','canguru-amplo']},

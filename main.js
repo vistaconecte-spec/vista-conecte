@@ -6284,6 +6284,8 @@ const CONJUNTO_PECAS = {
   'conjunto-mood':                    ['calca-basica-moletom', 'moletom-ziper-bolsos'],
   'conjunto-wide':                    ['calca-pantalona', 'moletom-gola-alta'],
   'conjunto-canelado':                ['blusa-canelada', 'calca-flare'],
+  // Separado em 04/08/2026: antes o Conjunto Boho era peça única (o estoque era lançado nele).
+  'conjunto-boho':                    ['calca-boho', 'blusa-boho'],
   'conjunto-pantalona-blusa':         ['calca-pantalona-viscolycra', 'blusa-canelada-simples'],
   'conjunto-peace':                   ['calca-peace', 'cropped-peace'],
   'conjunto-calca-flare-moletom':     ['calca-flare', 'moletom-gola-alta'],
