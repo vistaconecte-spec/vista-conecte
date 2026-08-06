@@ -29,7 +29,7 @@ export async function onRequest(context) {
   const nivel = NIVEIS[nivelReq] ? nivelReq : 'campaign';
   const diario = url.searchParams.get('diario') === '1';
 
-  const fields = ['campaign_name', 'adset_name', 'ad_name', 'spend', 'impressions', 'clicks', 'ctr', 'cpc', 'cpm', 'reach', 'actions', 'action_values', 'purchase_roas'].join(',');
+  const fields = ['campaign_name', 'adset_name', 'ad_name', 'spend', 'impressions', 'clicks', 'ctr', 'cpc', 'cpm', 'reach', 'actions', 'action_values', 'purchase_roas', 'inline_link_clicks', 'outbound_clicks'].join(',');
   const params = new URLSearchParams({
     level: nivel,
     fields,
@@ -43,6 +43,12 @@ export async function onRequest(context) {
   const acaoCompra = (arr) => {
     if (!Array.isArray(arr)) return 0;
     const a = arr.find(x => x.action_type === 'purchase' || x.action_type === 'omni_purchase' || x.action_type === 'offsite_conversion.fb_pixel_purchase');
+    return a ? num(a.value) : 0;
+  };
+  // Pega uma action específica (ex.: landing_page_view = quem realmente carregou a loja).
+  const acao = (arr, tipo) => {
+    if (!Array.isArray(arr)) return 0;
+    const a = arr.find(x => x.action_type === tipo);
     return a ? num(a.value) : 0;
   };
 
@@ -69,6 +75,11 @@ export async function onRequest(context) {
           gasto: +gasto.toFixed(2),
           impressoes: parseInt(r.impressions || '0', 10),
           cliques: parseInt(r.clicks || '0', 10),
+          // "cliques" acima é clique em TUDO (curtida, comentário, expandir foto).
+          // Os três abaixo são o que vira visita de verdade na loja:
+          cliques_no_link: parseInt(r.inline_link_clicks || '0', 10),
+          cliques_saida: Array.isArray(r.outbound_clicks) ? parseInt((r.outbound_clicks[0] || {}).value || '0', 10) : 0,
+          visitas_na_loja: acao(r.actions, 'landing_page_view'),
           ctr: +num(r.ctr).toFixed(2),
           cpc: +num(r.cpc).toFixed(2),
           cpm: +num(r.cpm).toFixed(2),
@@ -82,8 +93,9 @@ export async function onRequest(context) {
 
     const tot = linhas.reduce((a, l) => ({
       gasto: a.gasto + l.gasto, impressoes: a.impressoes + l.impressoes, cliques: a.cliques + l.cliques,
+      cliques_no_link: a.cliques_no_link + l.cliques_no_link, visitas: a.visitas + l.visitas_na_loja,
       compras: a.compras + l.compras_meta, valor: a.valor + l.valor_compras_meta,
-    }), { gasto: 0, impressoes: 0, cliques: 0, compras: 0, valor: 0 });
+    }), { gasto: 0, impressoes: 0, cliques: 0, cliques_no_link: 0, visitas: 0, compras: 0, valor: 0 });
 
     return new Response(JSON.stringify({
       conta, periodo: { desde, ate }, nivel, diario,
@@ -91,7 +103,12 @@ export async function onRequest(context) {
         gasto: +tot.gasto.toFixed(2),
         impressoes: tot.impressoes,
         cliques: tot.cliques,
+        cliques_no_link: tot.cliques_no_link,
+        visitas_na_loja: tot.visitas,
         ctr_medio: tot.impressoes ? +(100 * tot.cliques / tot.impressoes).toFixed(2) : 0,
+        ctr_link: tot.impressoes ? +(100 * tot.cliques_no_link / tot.impressoes).toFixed(2) : 0,
+        // Quantos dos cliques no link viraram carregamento de página de fato.
+        taxa_clique_virou_visita: tot.cliques_no_link ? +(100 * tot.visitas / tot.cliques_no_link).toFixed(1) : 0,
         compras_meta: tot.compras,
         valor_compras_meta: +tot.valor.toFixed(2),
         roas_meta: tot.gasto ? +(tot.valor / tot.gasto).toFixed(2) : 0,
