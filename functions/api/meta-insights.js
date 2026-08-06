@@ -29,7 +29,7 @@ export async function onRequest(context) {
   const nivel = NIVEIS[nivelReq] ? nivelReq : 'campaign';
   const diario = url.searchParams.get('diario') === '1';
 
-  const fields = ['campaign_name', 'adset_name', 'ad_name', 'spend', 'impressions', 'clicks', 'ctr', 'cpc', 'cpm', 'reach', 'actions', 'action_values', 'purchase_roas', 'inline_link_clicks', 'outbound_clicks'].join(',');
+  const fields = ['campaign_name', 'adset_name', 'ad_name', 'spend', 'impressions', 'clicks', 'ctr', 'cpc', 'cpm', 'reach', 'actions', 'action_values', 'purchase_roas', 'inline_link_clicks', 'outbound_clicks', 'frequency', 'video_thruplay_watched_actions', 'video_p75_watched_actions'].join(',');
   const params = new URLSearchParams({
     level: nivel,
     fields,
@@ -80,6 +80,15 @@ export async function onRequest(context) {
           cliques_no_link: parseInt(r.inline_link_clicks || '0', 10),
           cliques_saida: Array.isArray(r.outbound_clicks) ? parseInt((r.outbound_clicks[0] || {}).value || '0', 10) : 0,
           visitas_na_loja: acao(r.actions, 'landing_page_view'),
+          // Funil pós-visita, pra saber em qual degrau cada criativo perde a cliente.
+          viu_produto: acao(r.actions, 'view_content') || acao(r.actions, 'offsite_conversion.fb_pixel_view_content'),
+          add_carrinho: acao(r.actions, 'add_to_cart') || acao(r.actions, 'offsite_conversion.fb_pixel_add_to_cart'),
+          iniciou_checkout: acao(r.actions, 'initiate_checkout') || acao(r.actions, 'offsite_conversion.fb_pixel_initiate_checkout'),
+          alcance: parseInt(r.reach || '0', 10),
+          frequencia: +num(r.frequency).toFixed(2),
+          // Vídeo: quem assistiu 15s+ (thruplay) e quem chegou a 75%.
+          thruplay: Array.isArray(r.video_thruplay_watched_actions) ? num((r.video_thruplay_watched_actions[0] || {}).value) : 0,
+          video_75: Array.isArray(r.video_p75_watched_actions) ? num((r.video_p75_watched_actions[0] || {}).value) : 0,
           ctr: +num(r.ctr).toFixed(2),
           cpc: +num(r.cpc).toFixed(2),
           cpm: +num(r.cpm).toFixed(2),
