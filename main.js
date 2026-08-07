@@ -2866,7 +2866,7 @@ function flxRecompute() {
 
 // ─── ABA PRECIFICAÇÃO ────────────────────────────────────────────────────────
 function precoGetConfig() {
-  return loadLocal('vc:precificacao') || { global: { custoMetro: 28, taxa: 2.6, plataforma: 1.05, imposto: 0, marketing: 26.73, fixos: 9.55, logistica: 2.09, margem: 25 }, modelos: {} };
+  return loadLocal('vc:precificacao') || { global: { custoMetro: 12, taxa: 2.6, plataforma: 1.05, imposto: 0, marketing: 26.73, fixos: 9.55, logistica: 2.09, margem: 25 }, modelos: {} };
 }
 function precoChaves() {
   const ks = [];
@@ -2921,7 +2921,7 @@ function precoLock() {
 
 async function renderPrecos() {
   const cfg = precoGetConfig();
-  const g = cfg.global || { custoMetro: 28, taxa: 2.6, imposto: 0, margem: 25 };
+  const g = cfg.global || { custoMetro: 12, taxa: 2.6, imposto: 0, margem: 25 };
   const ginp = (id, label, val, suf) => `<div style="display:flex;flex-direction:column;gap:2px">
     <label style="font-size:11px;color:var(--text-sec)">${label}</label>
     <div style="display:flex;align-items:center;gap:4px"><input id="${id}" type="number" step="0.01" value="${val}" oninput="precoSalvar()" style="width:90px;text-align:right;padding:6px 8px;border:1px solid var(--border);border-radius:6px"><span style="font-size:12px;color:var(--text-ter)">${suf}</span></div>
