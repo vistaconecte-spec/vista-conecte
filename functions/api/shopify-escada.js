@@ -58,11 +58,18 @@ export async function onRequest(context) {
         }
       }`;
     const out = [];
-    for (const id of body.ids) {
+    for (const item of body.ids) {
+      // aceita "gid://..." ou { id, pct, titulo } para também trocar o percentual
+      const id = typeof item === 'string' ? item : item.id;
+      const extra = {};
+      if (typeof item === 'object') {
+        if (item.pct != null) extra.customerGets = { value: { percentage: Number(item.pct) / 100 }, items: { all: true } };
+        if (item.titulo) extra.title = item.titulo;
+      }
       const res = await fetch(`https://${store}/admin/api/${API_VERSION}/graphql.json`, {
         method: 'POST',
         headers: { 'X-Shopify-Access-Token': token, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query: MUT_UP, variables: { id, d: { startsAt: ini.toISOString(), ...(f ? { endsAt: f.toISOString() } : {}) } } }),
+        body: JSON.stringify({ query: MUT_UP, variables: { id, d: { startsAt: ini.toISOString(), ...(f ? { endsAt: f.toISOString() } : {}), ...extra } } }),
       });
       const data = await res.json();
       const r = data.data?.discountAutomaticBasicUpdate;
