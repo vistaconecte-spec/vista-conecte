@@ -80,6 +80,8 @@ export async function onRequest(context) {
         tipo: d.__typename,
         titulo: d.title,
         status: d.status,
+        comecou: d.startsAt || null,
+        terminou: d.endsAt || null,
         minimo: d.minimumRequirement
           ? (d.minimumRequirement.greaterThanOrEqualToQuantity
               ? `${d.minimumRequirement.greaterThanOrEqualToQuantity} itens`
