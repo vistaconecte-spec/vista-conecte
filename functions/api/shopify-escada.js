@@ -42,6 +42,39 @@ export async function onRequest(context) {
   let body = {};
   if (request.method === 'POST') { try { body = await request.json(); } catch (e) { body = {}; } }
 
+  // Ação de reagendamento: muda só a data de início/fim dos descontos indicados.
+  // Usada para testar o carrinho agora e depois devolver a data original.
+  if (request.method === 'POST' && body.acao === 'reagendar') {
+    if (!Array.isArray(body.ids) || !body.ids.length) {
+      return new Response(JSON.stringify({ erro: 'informe ids: ["gid://shopify/DiscountAutomaticNode/..."]' }), { status: 400, headers });
+    }
+    const ini = body.inicioEm ? new Date(body.inicioEm) : new Date(Date.now() - 60000);
+    const f = body.fimEm ? new Date(body.fimEm) : null;
+    const MUT_UP = `
+      mutation up($id: ID!, $d: DiscountAutomaticBasicInput!) {
+        discountAutomaticBasicUpdate(id: $id, automaticBasicDiscount: $d) {
+          automaticDiscountNode { id automaticDiscount { ... on DiscountAutomaticBasic { title status startsAt endsAt } } }
+          userErrors { field message }
+        }
+      }`;
+    const out = [];
+    for (const id of body.ids) {
+      const res = await fetch(`https://${store}/admin/api/${API_VERSION}/graphql.json`, {
+        method: 'POST',
+        headers: { 'X-Shopify-Access-Token': token, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query: MUT_UP, variables: { id, d: { startsAt: ini.toISOString(), ...(f ? { endsAt: f.toISOString() } : {}) } } }),
+      });
+      const data = await res.json();
+      const r = data.data?.discountAutomaticBasicUpdate;
+      const errs = r?.userErrors || [];
+      const nd = r?.automaticDiscountNode?.automaticDiscount;
+      out.push((data.errors || errs.length)
+        ? { id, ok: false, erro: data.errors || errs }
+        : { id, ok: true, titulo: nd?.title, status: nd?.status, comeca: nd?.startsAt, termina: nd?.endsAt });
+    }
+    return new Response(JSON.stringify({ modo: 'reagendado', resultado: out }, null, 2), { headers });
+  }
+
   const niveis = Array.isArray(body.niveis) && body.niveis.length ? body.niveis : NIVEIS_PADRAO;
   const prefixo = body.prefixo || 'CONECTA';
   const dias = body.dias != null ? Number(body.dias) : 7;
