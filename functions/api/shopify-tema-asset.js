@@ -42,9 +42,15 @@ export async function onRequest({ request, env }) {
 
     // POST = gravar
     const b = await request.json();
-    if (!b.key || typeof b.value !== 'string') return new Response(JSON.stringify({ erro: 'key e value obrigatórios' }), { status: 400, headers });
-    if (b.confirmar !== true) return new Response(JSON.stringify({ modo: 'dry-run (nada gravado)', key: b.key, tamanho_novo: b.value.length, dica: 'reenvie com confirmar:true' }, null, 2), { headers });
-    const w = await fetch(base, { method: 'PUT', headers: sh, body: JSON.stringify({ asset: { key: b.key, value: b.value } }) });
+    // `attachment` = arquivo binário em base64 (imagens, fontes). `value` = texto (liquid/json/css).
+    const ehBinario = typeof b.attachment === 'string' && b.attachment.length > 0;
+    if (!b.key || (!ehBinario && typeof b.value !== 'string')) {
+      return new Response(JSON.stringify({ erro: 'informe key + value (texto) ou key + attachment (base64)' }), { status: 400, headers });
+    }
+    const tamanho = ehBinario ? Math.round(b.attachment.length * 0.75) : b.value.length;
+    if (b.confirmar !== true) return new Response(JSON.stringify({ modo: 'dry-run (nada gravado)', key: b.key, tipo: ehBinario ? 'binário (base64)' : 'texto', tamanho_novo: tamanho, dica: 'reenvie com confirmar:true' }, null, 2), { headers });
+    const corpo = ehBinario ? { asset: { key: b.key, attachment: b.attachment } } : { asset: { key: b.key, value: b.value } };
+    const w = await fetch(base, { method: 'PUT', headers: sh, body: JSON.stringify(corpo) });
     const wd = await w.json();
     if (!w.ok) return new Response(JSON.stringify({ erro: 'falha ao gravar', detalhe: wd }), { status: w.status, headers });
     return new Response(JSON.stringify({ ok: true, key: b.key, msg: 'asset gravado' }, null, 2), { headers });
