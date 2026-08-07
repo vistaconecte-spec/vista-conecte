@@ -28,9 +28,10 @@ export async function onRequest(context) {
     if (list) {
       const r = await fetch(`https://${store}/admin/api/${API_VERSION}/themes/${theme}/assets.json`, { headers: sh });
       const d = await r.json();
-      let keys = (d.assets || []).map(a => a.key);
-      if (grep) keys = keys.filter(k => k.toLowerCase().includes(grep));
-      return new Response(JSON.stringify({ total: keys.length, keys }, null, 2), { headers: H });
+      let assets = (d.assets || []).map(a => ({ key: a.key, updated_at: a.updated_at }));
+      if (grep) assets = assets.filter(a => a.key.toLowerCase().includes(grep));
+      assets.sort((a, b) => (b.updated_at || '').localeCompare(a.updated_at || ''));
+      return new Response(JSON.stringify({ total: assets.length, assets }, null, 2), { headers: H });
     }
     if (key) {
       const r = await fetch(`https://${store}/admin/api/${API_VERSION}/themes/${theme}/assets.json?asset[key]=${encodeURIComponent(key)}`, { headers: sh });
