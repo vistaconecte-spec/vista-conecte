@@ -2944,6 +2944,7 @@ async function renderPrecos() {
     const m = (cfg.modelos && cfg.modelos[k]) || {};
     const comps = (typeof CONJUNTO_PECAS !== 'undefined') ? CONJUNTO_PECAS[k] : null;
     const fim = `<td id="pr-${k}-custo" style="text-align:right;padding:5px 6px;font-weight:600">—</td>
+      <td id="pr-${k}-oper" style="text-align:right;padding:5px 6px;color:var(--text-sec)">—</td>
       <td id="pr-${k}-sug" style="text-align:right;padding:5px 6px;font-weight:700;color:#16a34a">—</td>
       <td id="pr-${k}-venda" style="text-align:right;padding:5px 6px;color:var(--text-ter)">—</td>
       <td id="pr-${k}-mreal" style="text-align:right;padding:5px 6px;font-weight:600">—</td>
@@ -3081,6 +3082,19 @@ function precoRecompute() {
     const venda = (window._prcPrecos && window._prcPrecos[k]) || 0;
     const vcell = document.getElementById('pr-' + k + '-venda');
     if (vcell) vcell.textContent = venda ? finBRL(venda) : '—';
+
+    // Custo de operacao em R$: os percentuais globais aplicados ao preco.
+    // Usa a venda quando ela existe; sem venda, estima sobre o preco sugerido.
+    const ocell = document.getElementById('pr-' + k + '-oper');
+    if (ocell) {
+      const baseOper = venda > 0 ? venda : sug;
+      const oper = comps ? (baseOper * vpPct + perOrderFixo) : (baseOper * pctVar);
+      ocell.textContent = (custo > 0 && baseOper > 0) ? finBRL(oper) : '—';
+      ocell.style.color = venda > 0 ? 'var(--text-sec)' : 'var(--text-ter)';
+      ocell.title = venda > 0
+        ? 'Imposto, taxa, plataforma, marketing, fixos e logistica sobre o preco de venda'
+        : 'Estimativa sobre o preco sugerido (este modelo nao tem preco de venda cadastrado)';
+    }
 
     const mcell = document.getElementById('pr-' + k + '-mreal');
     const lcell = document.getElementById('pr-' + k + '-lucro');
