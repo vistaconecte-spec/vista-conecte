@@ -201,5 +201,34 @@ ok('sem estoque livre → nada a liberar',
 ok('sem pedidos pendentes → nada a liberar',
    numeros(rodar([], { calca: { Preto: [9,9,9,9,9,9] } })), []);
 
+console.log('\n9) Botão "troquei" — aplica a troca no estoque');
+// A troca física só vira dado aqui: a peça sai do tamanho antigo e entra no novo. É o que
+// falta pro pedido virar enviável. O risco é criar peça que não existe na arara.
+const aplica = main.slice(main.indexOf('async function aplicarTrocaEtiqueta'),
+                          main.indexOf('\nfunction renderTrocaEtiqueta'));
+ok('pede confirmação antes de mexer no estoque', /confirm\(/.test(aplica), true);
+ok('tira do tamanho antigo', /arr\[tr\.de\]\s*=\s*temNoTamanhoAntigo - mover/.test(aplica), true);
+ok('põe no tamanho novo',    /arr\[tr\.para\] = \(arr\[tr\.para\] \|\| 0\) \+ mover/.test(aplica), true);
+ok('é uma TRANSFERÊNCIA: não muda o total de peças',
+   /const mover = Math\.min\(temNoTamanhoAntigo, tr\.qtd\)/.test(aplica), true);
+ok('peça que sumiu entre a tela e o clique não é inventada',
+   /if \(mover <= 0\) \{ faltaram\.push/.test(aplica), true);
+ok('avisa o que não deu para trocar', /faltaram\.length\) \{[\s\S]{0,120}alert\(/.test(aplica), true);
+ok('grava na nuvem', /await salvarNuvem\(pl\.key, saved\)/.test(aplica), true);
+ok('completa a grade curta antes de indexar', /while \(arr\.length < nSz\) arr\.push\(0\)/.test(aplica), true);
+ok('a lista fica acessível para o botão', /window\._trocasEtiqueta = liberaveis/.test(main), true);
+ok('o botão existe na tabela', /onclick="aplicarTrocaEtiqueta\(\$\{idx\}, this\)"/.test(main), true);
+// Simula a transferência com a mesma conta do código
+const transferir = (arr, de, para, qtd) => {
+  const tem = arr[de] || 0, mover = Math.min(tem, qtd);
+  if (mover <= 0) return arr.slice();
+  const n = arr.slice(); n[de] = tem - mover; n[para] = (n[para] || 0) + mover; return n;
+};
+ok('G→M com 1 no G: some do G, aparece no M', transferir([0,0,0,1,0,0], 3, 2, 1), [0,0,1,0,0,0]);
+ok('total de peças não muda',
+   transferir([0,0,0,1,0,0], 3, 2, 1).reduce((a,b)=>a+b,0), 1);
+ok('sem peça no tamanho antigo, nada muda', transferir([0,0,0,0,0,0], 3, 2, 1), [0,0,0,0,0,0]);
+ok('pede 2 e só tem 1: move 1, não inventa o segundo', transferir([0,0,0,1,0,0], 3, 2, 2), [0,0,1,0,0,0]);
+
 console.log(`\n${falhas === 0 ? '✓ TODOS OS TESTES PASSARAM' : '✗ ' + falhas + ' FALHA(S)'} — ${total - falhas}/${total}\n`);
 process.exit(falhas === 0 ? 0 : 1);

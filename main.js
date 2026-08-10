@@ -4142,6 +4142,68 @@ function planejarTrocaEtiqueta(pendentes, livre, modelos, semTroca, diasDe, brut
   return { liberaveis, parciais, travadosSemTroca, simultaneos };
 }
 
+// Aplica no estoque a troca de etiqueta que já foi feita na peça física: a peça sai do
+// tamanho antigo e entra no novo. É só isso que falta para o pedido virar enviável —
+// depois disso ele aparece sozinho em PRONTOS PARA ENVIO, porque o tamanho que faltava
+// passa a existir na arara.
+let _ultimaTroca = null; // { numero, pecas, quando } — feedback na própria tela
+
+async function aplicarTrocaEtiqueta(i, btn) {
+  const p = (window._trocasEtiqueta || [])[i];
+  if (!p) return;
+
+  const rotulo = (key, idx) => (MODELOS[key] && MODELOS[key].tamanhoUnico) ? 'Único'
+    : (((MODELOS[key] && MODELOS[key].tamanhos) || ['PP','P','M','G','GG'])[idx] || '?');
+  const resumo = p.planos.flatMap(pl => pl.trocas.map(tr =>
+    `• ${(MODELOS[pl.key] && MODELOS[pl.key].nome) || pl.key} ${pl.cor}: ${rotulo(pl.key, tr.de)} → ${rotulo(pl.key, tr.para)}${tr.qtd > 1 ? ' ×' + tr.qtd : ''}`)).join('\n');
+
+  if (!confirm(`Confirma que a etiqueta JÁ foi trocada nestas peças?\n\n${resumo}\n\n`
+    + `O estoque passa do tamanho antigo para o novo e o pedido ${p.numero} entra na fila de prontos para envio.`)) return;
+
+  if (btn) { btn.disabled = true; btn.style.opacity = '0.6'; btn.innerHTML = '<i class="ti ti-loader-2"></i>'; }
+
+  const feitas = [], faltaram = [];
+  for (const pl of p.planos) {
+    const def = MODELOS[pl.key];
+    if (!def) continue;
+    const nSz  = (def.tamanhos || ['PP','P','M','G','GG']).length;
+    const saved = loadLocal('vc:' + pl.key) || {};
+    if (!saved.est) saved.est = {};
+    const arr = (saved.est[pl.cor] || []).map(v => v || 0);
+    while (arr.length < nSz) arr.push(0);
+
+    let mexeu = false;
+    for (const tr of pl.trocas) {
+      // A peça pode ter sido usada entre a tela e o clique (outro pedido, uma baixa).
+      // Move só o que existe de verdade — nunca cria peça que não está na arara.
+      const temNoTamanhoAntigo = arr[tr.de] || 0;
+      const mover = Math.min(temNoTamanhoAntigo, tr.qtd);
+      if (mover <= 0) { faltaram.push(`${def.nome} ${pl.cor} ${rotulo(pl.key, tr.de)}`); continue; }
+      arr[tr.de]   = temNoTamanhoAntigo - mover;
+      arr[tr.para] = (arr[tr.para] || 0) + mover;
+      mexeu = true;
+      feitas.push(`${def.nome} ${pl.cor} ${rotulo(pl.key, tr.de)}→${rotulo(pl.key, tr.para)}${mover > 1 ? ' ×' + mover : ''}`);
+      if (mover < tr.qtd) faltaram.push(`${def.nome} ${pl.cor} ${rotulo(pl.key, tr.de)} (faltou ${tr.qtd - mover})`);
+    }
+    if (!mexeu) continue;
+
+    saved.est[pl.cor] = arr;
+    saved.est_at = saved.updated_at = new Date().toISOString();
+    saveLocal('vc:' + pl.key, saved);
+    await salvarNuvem(pl.key, saved);
+  }
+
+  if (feitas.length) _ultimaTroca = { numero: p.numero, pecas: feitas, quando: new Date().toISOString() };
+  if (faltaram.length) {
+    alert('Estas peças não estavam mais no estoque do tamanho antigo e NÃO foram trocadas:\n\n'
+      + faltaram.map(f => '• ' + f).join('\n')
+      + '\n\nConfira a arara e o estoque do modelo.');
+  }
+
+  if (modeloAtual === '__dashboard__') renderDashboard();
+  else if (MODELOS[modeloAtual]) renderModelo(modeloAtual);
+}
+
 function renderTrocaEtiqueta() {
   const el    = document.getElementById('dash-troca');
   const totEl = document.getElementById('dash-troca-total');
@@ -4154,8 +4216,23 @@ function renderTrocaEtiqueta() {
     window._pedidosPendentes || [], window._estoqueLivre || {}, MODELOS, SEM_TROCA_ETIQUETA,
     diasDesde, window._estoqueBruto || {});
 
-  if (card) card.style.display = liberaveis.length ? '' : 'none';
-  if (liberaveis.length === 0) { el.innerHTML = ''; if (totEl) totEl.textContent = ''; return; }
+  // Guarda a lista para o botão "já troquei" saber o que aplicar
+  window._trocasEtiqueta = liberaveis;
+
+  const escT = s => String(s).replace(/[&<>"]/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c]));
+  const avisoTroca = _ultimaTroca ? `
+    <div style="background:rgba(22,163,74,.10);border-left:3px solid #16a34a;border-radius:8px;padding:8px 10px;margin-bottom:8px;font-size:11px;line-height:1.6">
+      <b style="color:#16a34a"><i class="ti ti-check"></i> TROCA APLICADA NO ESTOQUE</b> — pedido
+      ${escT(_ultimaTroca.numero)}: ${_ultimaTroca.pecas.map(escT).join(' · ')}.
+      Ele já deve aparecer em <b>PRONTOS PARA ENVIO</b>.
+    </div>` : '';
+
+  if (card) card.style.display = (liberaveis.length || _ultimaTroca) ? '' : 'none';
+  if (liberaveis.length === 0) {
+    el.innerHTML = avisoTroca;
+    if (totEl) totEl.textContent = '';
+    return;
+  }
 
   const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c]));
   const totPecas = liberaveis.filter(p => p.simultaneo)
@@ -4167,6 +4244,7 @@ function renderTrocaEtiqueta() {
     + (emDisputa ? ` · ${emDisputa} em disputa` : '');
 
   el.innerHTML = `
+    ${avisoTroca}
     <div style="font-size:11px;color:var(--text-sec);margin-bottom:8px">
       Pedidos parados que <b>saem hoje</b> — a peça que falta tem o tamanho vizinho na arara e a
       diferença de um tamanho pro outro se resolve trocando a etiqueta. Só aparece quando a troca
@@ -4189,15 +4267,16 @@ function renderTrocaEtiqueta() {
         ${travadosSemTroca ? `${travadosSemTroca} pedido(s) sairiam na troca, mas travam numa peça que não aceita remarcar.` : ''}
       </div>` : ''}
     <table style="table-layout:fixed;width:100%">
-      <colgroup><col style="width:15%"><col style="width:17%"><col style="width:10%"><col style="width:58%"></colgroup>
+      <colgroup><col style="width:14%"><col style="width:15%"><col style="width:9%"><col style="width:47%"><col style="width:15%"></colgroup>
       <thead><tr>
         <th style="text-align:left">Pedido</th>
         <th style="text-align:left">Cliente</th>
         <th style="text-align:center">Parado</th>
         <th style="text-align:left">Troca a fazer</th>
+        <th style="text-align:center">Já troquei</th>
       </tr></thead>
       <tbody>
-        ${liberaveis.map(p => {
+        ${liberaveis.map((p, idx) => {
           const critico = p.dias >= PARADO_CRITICO;
           const linhas = p.planos.map(pl => {
             const nome = (MODELOS[pl.key] && MODELOS[pl.key].nome) || pl.key;
@@ -4216,6 +4295,13 @@ function renderTrocaEtiqueta() {
             <td style="font-size:11px">${esc(p.cliente || 'Cliente')}</td>
             <td style="text-align:center;font-weight:700;white-space:nowrap;color:${critico ? '#dc2626' : p.dias >= PARADO_ATENCAO ? '#d97706' : 'var(--text-sec)'}">${p.dias} ${p.dias === 1 ? 'dia' : 'dias'}</td>
             <td style="font-size:11px;line-height:1.7;text-align:left">${linhas}</td>
+            <td style="text-align:center">
+              <button class="btn-primary" style="font-size:10px;padding:5px 9px;background:#0d9488;border-color:#0d9488;white-space:nowrap"
+                onclick="aplicarTrocaEtiqueta(${idx}, this)"
+                title="Só depois de trocar a etiqueta na peça: move a peça do tamanho antigo para o novo no estoque e libera o pedido">
+                <i class="ti ti-tag"></i> troquei
+              </button>
+            </td>
           </tr>`;
         }).join('')}
       </tbody>
