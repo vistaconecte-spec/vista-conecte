@@ -25,7 +25,10 @@ function extrair(nome) {
   const fim = main.indexOf('\n}', i);
   return main.slice(i, fim + 2);
 }
-const planejar = new Function(extrair('planejarTrocaEtiqueta') + '; return planejarTrocaEtiqueta;')();
+// planejarTrocaEtiqueta depende da regra compartilhada de quem aceita troca
+const planejar = new Function(
+  extrair('modeloAceitaTrocaEtiqueta') + '\n' + extrair('planejarTrocaEtiqueta')
+  + '; return planejarTrocaEtiqueta;')();
 
 // A lista real de modelos sem troca vive em main.js — se alguém tirar o macaquinho
 // de lá, o teste 3 quebra, que é exatamente o que se quer.
@@ -206,16 +209,20 @@ console.log('\n9) Botão "troquei" — aplica a troca no estoque');
 // falta pro pedido virar enviável. O risco é criar peça que não existe na arara.
 const aplica = main.slice(main.indexOf('async function aplicarTrocaEtiqueta'),
                           main.indexOf('\nfunction renderTrocaEtiqueta'));
+// A conta em si vive em transferirTamanhoEstoque — fonte única dos dois botões
+const transf = main.slice(main.indexOf('async function transferirTamanhoEstoque'),
+                          main.indexOf('\n}', main.indexOf('async function transferirTamanhoEstoque')));
 ok('pede confirmação antes de mexer no estoque', /confirm\(/.test(aplica), true);
-ok('tira do tamanho antigo', /arr\[tr\.de\]\s*=\s*temNoTamanhoAntigo - mover/.test(aplica), true);
-ok('põe no tamanho novo',    /arr\[tr\.para\] = \(arr\[tr\.para\] \|\| 0\) \+ mover/.test(aplica), true);
+ok('tira do tamanho antigo', /arr\[de\]\s*=\s*tem - mover/.test(transf), true);
+ok('põe no tamanho novo',    /arr\[para\] = \(arr\[para\] \|\| 0\) \+ mover/.test(transf), true);
 ok('é uma TRANSFERÊNCIA: não muda o total de peças',
-   /const mover = Math\.min\(temNoTamanhoAntigo, tr\.qtd\)/.test(aplica), true);
+   /const mover = Math\.min\(tem, qtd\)/.test(transf), true);
 ok('peça que sumiu entre a tela e o clique não é inventada',
-   /if \(mover <= 0\) \{ faltaram\.push/.test(aplica), true);
+   /if \(mover <= 0\) return 0;/.test(transf), true);
 ok('avisa o que não deu para trocar', /faltaram\.length\) \{[\s\S]{0,120}alert\(/.test(aplica), true);
-ok('grava na nuvem', /await salvarNuvem\(pl\.key, saved\)/.test(aplica), true);
-ok('completa a grade curta antes de indexar', /while \(arr\.length < nSz\) arr\.push\(0\)/.test(aplica), true);
+ok('grava na nuvem', /await salvarNuvem\(key, saved\)/.test(transf), true);
+ok('completa a grade curta antes de indexar', /while \(arr\.length < nSz\) arr\.push\(0\)/.test(transf), true);
+ok('índice fora da grade não é aceito', /if \(de < 0 \|\| de >= nSz \|\| para < 0 \|\| para >= nSz\) return 0;/.test(transf), true);
 ok('a lista fica acessível para o botão', /window\._trocasEtiqueta = liberaveis/.test(main), true);
 ok('o botão existe na tabela', /onclick="aplicarTrocaEtiqueta\(\$\{idx\}, this\)"/.test(main), true);
 // Simula a transferência com a mesma conta do código
@@ -229,6 +236,58 @@ ok('total de peças não muda',
    transferir([0,0,0,1,0,0], 3, 2, 1).reduce((a,b)=>a+b,0), 1);
 ok('sem peça no tamanho antigo, nada muda', transferir([0,0,0,0,0,0], 3, 2, 1), [0,0,0,0,0,0]);
 ok('pede 2 e só tem 1: move 1, não inventa o segundo', transferir([0,0,0,1,0,0], 3, 2, 2), [0,0,1,0,0,0]);
+
+console.log('\n10) ECONOMIA DE PRODUÇÃO — não costurar o que já existe no vizinho');
+// Caso real do Macacão Amplo Marsala (10/08/2026): faltava produzir 1 PP e 1 G, e havia
+// 1 GG pronto sem pedido em cima. Trocar a etiqueta do GG mata a produção do G.
+const casarVizinhos = new Function(
+  main.slice(main.indexOf('function casarVizinhos'), main.indexOf('\n}', main.indexOf('function casarVizinhos'))) + '\n}'
+  + '; return casarVizinhos;')();
+const cenarioReal = () => {
+  const ab = [1,0,5,1,1], ev = [0,0,5,0,2], pv = [0,0,0,0,0];
+  const falta = ab.map((a,k) => Math.max(0, a - ev[k] - pv[k]));
+  const livre = ab.map((a,k) => Math.max(0, ev[k] - a));
+  return casarVizinhos(falta, livre, 5);
+};
+ok('Macacão Amplo Marsala: usa o GG pronto no lugar de produzir o G',
+   cenarioReal(), [{ de: 4, para: 3, qtd: 1 }]);
+ok('o PP que falta continua na produção (não tem vizinho livre)',
+   cenarioReal().some(t => t.para === 0), false);
+
+// A fonte é ESTOQUE − PEDIDOS, nunca o saldo da tabela (que desconta produção também):
+// não se troca etiqueta de peça que ainda não foi costurada.
+ok('peça que está só em PRODUÇÃO não vira sugestão', (() => {
+  const ab = [0,0,0,1,0], ev = [0,0,0,0,0], pv = [0,0,0,0,1]; // GG só na leva, arara vazia
+  const falta = ab.map((a,k) => Math.max(0, a - ev[k] - pv[k]));
+  const livre = ab.map((a,k) => Math.max(0, ev[k] - a));
+  return casarVizinhos(falta, livre, 5);
+})(), []);
+ok('peça livre reservada a um pedido não é oferecida', (() => {
+  const ab = [0,0,0,1,2], ev = [0,0,0,0,2], pv = [0,0,0,0,0]; // 2 GG na arara, 2 pedidos GG
+  const falta = ab.map((a,k) => Math.max(0, a - ev[k] - pv[k]));
+  const livre = ab.map((a,k) => Math.max(0, ev[k] - a));
+  return casarVizinhos(falta, livre, 5);
+})(), []);
+ok('a mesma peça livre não é prometida a dois tamanhos',
+   casarVizinhos([0,1,0,1,0], [0,0,1,0,0], 5), [{ de: 2, para: 1, qtd: 1 }]);
+ok('não estoura a grade no primeiro tamanho', casarVizinhos([1,0,0,0,0], [0,1,0,0,0], 5), [{ de: 1, para: 0, qtd: 1 }]);
+ok('não estoura a grade no último tamanho',   casarVizinhos([0,0,0,0,1], [0,0,0,1,0], 5), [{ de: 3, para: 4, qtd: 1 }]);
+ok('dois de distância não serve', casarVizinhos([0,0,1,0,0], [1,0,0,0,0], 5), []);
+
+console.log('\n11) A regra de quem aceita troca é a MESMA nos dois lugares');
+const aceita = new Function(
+  main.slice(main.indexOf('function modeloAceitaTrocaEtiqueta'), main.indexOf('\n}', main.indexOf('function modeloAceitaTrocaEtiqueta'))) + '\n}'
+  + '; return modeloAceitaTrocaEtiqueta;')();
+ok('modelo comum aceita',        aceita({ nome:'X' }, 'x', SEM_TROCA), true);
+ok('Macaquinho Amplo não',       aceita({ nome:'Macaquinho Amplo' }, 'macaquinho-amplo', SEM_TROCA), false);
+ok('tamanho único não',          aceita({ nome:'V', tamanhoUnico:true }, 'v', SEM_TROCA), false);
+ok('calçado (revenda) não',      aceita({ nome:'F', revenda:true }, 'f', SEM_TROCA), false);
+ok('o card do dashboard usa a mesma função',
+   /const podeTrocar = key => modeloAceitaTrocaEtiqueta\(modelos\[key\], key, semTroca\)/.test(main), true);
+ok('a página do modelo usa a mesma função',
+   /const aceitaTroca = modeloAceitaTrocaEtiqueta\(def, modeloAtual, SEM_TROCA_ETIQUETA\)/.test(main), true);
+ok('os dois botões usam a mesma transferência',
+   (main.match(/await transferirTamanhoEstoque\(/g) || []).length >= 2, true);
 
 console.log(`\n${falhas === 0 ? '✓ TODOS OS TESTES PASSARAM' : '✗ ' + falhas + ' FALHA(S)'} — ${total - falhas}/${total}\n`);
 process.exit(falhas === 0 ? 0 : 1);

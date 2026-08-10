@@ -3997,19 +3997,45 @@ const SEM_TROCA_ETIQUETA = new Set([
   'macaquinho-amplo', // etiqueta não sai — a dona não consegue remarcar
 ]);
 
+// Regra ÚNICA de quem aceita troca de etiqueta. Usada pelo card do dashboard (pedidos
+// parados) e pela sugestão de economia de produção na página do modelo — se as duas
+// divergissem, um lugar ofereceria o que o outro proíbe.
+function modeloAceitaTrocaEtiqueta(def, key, semTroca) {
+  if (!def) return false;
+  if (semTroca && semTroca.has(key)) return false;
+  if (def.tamanhoUnico) return false; // não existe tamanho vizinho
+  if (def.revenda)      return false; // calçado: 36 não vira 37 trocando etiqueta
+  return true;
+}
+
+// Casa faltas com peças livres no tamanho VIZINHO. Puro, para poder ser testado sem DOM.
+// Serve tanto para "falta produzir" quanto para qualquer outra falta por tamanho.
+function casarVizinhos(falta, livre, nSz) {
+  const usado = new Array(nSz).fill(0);
+  const out = [];
+  for (let i = 0; i < nSz; i++) {
+    let resta = falta[i] || 0;
+    if (resta <= 0) continue;
+    for (const j of [i - 1, i + 1]) {
+      if (resta <= 0) break;
+      if (j < 0 || j >= nSz) continue;
+      const disp = (livre[j] || 0) - usado[j];
+      if (disp <= 0) continue;
+      const q = Math.min(resta, disp);
+      usado[j] += q;
+      out.push({ de: j, para: i, qtd: q });
+      resta -= q;
+    }
+  }
+  return out;
+}
+
 // Motor da troca, separado do render para poder ser testado sem DOM.
 function planejarTrocaEtiqueta(pendentes, livre, modelos, semTroca, diasDe, bruto) {
   const SZ_PADRAO = ['PP', 'P', 'M', 'G', 'GG'];
   const tamsDe = key => (modelos[key] && modelos[key].tamanhos) || SZ_PADRAO;
 
-  const podeTrocar = key => {
-    const def = modelos[key];
-    if (!def) return false;
-    if (semTroca.has(key)) return false;
-    if (def.tamanhoUnico) return false; // não existe tamanho vizinho
-    if (def.revenda)      return false; // calçado: 36 não vira 37 trocando etiqueta
-    return true;
-  };
+  const podeTrocar = key => modeloAceitaTrocaEtiqueta(modelos[key], key, semTroca);
 
   // Ledger de trabalho = o que sobrou na arara depois de separar os pedidos prontos
   // para envio. Peça que já foi reservada para um pedido que sai hoje não aparece aqui.
@@ -4148,6 +4174,33 @@ function planejarTrocaEtiqueta(pendentes, livre, modelos, semTroca, diasDe, brut
 // passa a existir na arara.
 let _ultimaTroca = null; // { numero, pecas, quando } — feedback na própria tela
 
+// Move peças de um tamanho para o outro no estoque de um modelo/cor. É TRANSFERÊNCIA:
+// o total de peças do modelo não muda, só muda de gaveta. Devolve quantas moveu — pode ser
+// menos do que o pedido se a peça saiu da arara nesse meio-tempo, e NUNCA cria peça.
+// Fonte única dos dois botões de troca (pedido parado no dashboard e economia de produção).
+async function transferirTamanhoEstoque(key, cor, de, para, qtd) {
+  const def = MODELOS[key];
+  if (!def) return 0;
+  const nSz   = (def.tamanhos || ['PP','P','M','G','GG']).length;
+  const saved = loadLocal('vc:' + key) || {};
+  if (!saved.est) saved.est = {};
+  const arr = (saved.est[cor] || []).map(v => v || 0);
+  while (arr.length < nSz) arr.push(0);
+  if (de < 0 || de >= nSz || para < 0 || para >= nSz) return 0;
+
+  const tem = arr[de] || 0;
+  const mover = Math.min(tem, qtd);
+  if (mover <= 0) return 0;
+
+  arr[de]   = tem - mover;
+  arr[para] = (arr[para] || 0) + mover;
+  saved.est[cor] = arr;
+  saved.est_at = saved.updated_at = new Date().toISOString();
+  saveLocal('vc:' + key, saved);
+  await salvarNuvem(key, saved);
+  return mover;
+}
+
 async function aplicarTrocaEtiqueta(i, btn) {
   const p = (window._trocasEtiqueta || [])[i];
   if (!p) return;
@@ -4166,31 +4219,12 @@ async function aplicarTrocaEtiqueta(i, btn) {
   for (const pl of p.planos) {
     const def = MODELOS[pl.key];
     if (!def) continue;
-    const nSz  = (def.tamanhos || ['PP','P','M','G','GG']).length;
-    const saved = loadLocal('vc:' + pl.key) || {};
-    if (!saved.est) saved.est = {};
-    const arr = (saved.est[pl.cor] || []).map(v => v || 0);
-    while (arr.length < nSz) arr.push(0);
-
-    let mexeu = false;
     for (const tr of pl.trocas) {
       // A peça pode ter sido usada entre a tela e o clique (outro pedido, uma baixa).
-      // Move só o que existe de verdade — nunca cria peça que não está na arara.
-      const temNoTamanhoAntigo = arr[tr.de] || 0;
-      const mover = Math.min(temNoTamanhoAntigo, tr.qtd);
-      if (mover <= 0) { faltaram.push(`${def.nome} ${pl.cor} ${rotulo(pl.key, tr.de)}`); continue; }
-      arr[tr.de]   = temNoTamanhoAntigo - mover;
-      arr[tr.para] = (arr[tr.para] || 0) + mover;
-      mexeu = true;
-      feitas.push(`${def.nome} ${pl.cor} ${rotulo(pl.key, tr.de)}→${rotulo(pl.key, tr.para)}${mover > 1 ? ' ×' + mover : ''}`);
-      if (mover < tr.qtd) faltaram.push(`${def.nome} ${pl.cor} ${rotulo(pl.key, tr.de)} (faltou ${tr.qtd - mover})`);
+      const mover = await transferirTamanhoEstoque(pl.key, pl.cor, tr.de, tr.para, tr.qtd);
+      if (mover > 0) feitas.push(`${def.nome} ${pl.cor} ${rotulo(pl.key, tr.de)}→${rotulo(pl.key, tr.para)}${mover > 1 ? ' ×' + mover : ''}`);
+      if (mover < tr.qtd) faltaram.push(`${def.nome} ${pl.cor} ${rotulo(pl.key, tr.de)}${mover > 0 ? ` (faltou ${tr.qtd - mover})` : ''}`);
     }
-    if (!mexeu) continue;
-
-    saved.est[pl.cor] = arr;
-    saved.est_at = saved.updated_at = new Date().toISOString();
-    saveLocal('vc:' + pl.key, saved);
-    await salvarNuvem(pl.key, saved);
   }
 
   if (feitas.length) _ultimaTroca = { numero: p.numero, pecas: feitas, quando: new Date().toISOString() };
@@ -4837,6 +4871,11 @@ function renderResumoProducao() {
   const totSl = tu ? [0] : new Array(SIZES.length).fill(0);
   let sumAp = 0, sumSl = 0;
 
+  // Peça que ia ser cortada mas já existe pronta no tamanho vizinho: trocar a etiqueta
+  // economiza a confecção inteira (e o tecido, se ainda não foi comprado).
+  const aceitaTroca = modeloAceitaTrocaEtiqueta(def, modeloAtual, SEM_TROCA_ETIQUETA);
+  const economia = [];
+
   cores.forEach(cor => {
     const ab = def.aberto[cor] || [0,0,0,0,0];
     const ev = d.est && d.est[cor] || [0,0,0,0,0];
@@ -4854,6 +4893,15 @@ function renderResumoProducao() {
     } else {
       const saldos = ab.map((a,i) => a - (ev[i]||0) - (pv[i]||0));
       const tot = saldos.reduce((a,b)=>a+b,0);
+
+      // Economia de produção: falta um tamanho e sobra peça PRONTA no vizinho.
+      // A fonte é ESTOQUE − PEDIDOS, não o saldo da tabela: aquele desconta a produção
+      // também, e não dá para trocar a etiqueta de peça que ainda não foi costurada.
+      if (aceitaTroca) {
+        const livre = ab.map((a, i) => Math.max(0, (ev[i] || 0) - a));
+        const falta = saldos.map(v => v > 0 ? v : 0);
+        casarVizinhos(falta, livre, SIZES.length).forEach(t => economia.push({ cor, ...t }));
+      }
 
       const temFalta  = saldos.some(v => v > 0);
       const temSobra  = saldos.some(v => v < 0);
@@ -4901,6 +4949,82 @@ function renderResumoProducao() {
   // Atualiza métrica do topo "A PRODUZIR"
   const mp = document.getElementById('m-produzir');
   if (mp) { mp.textContent = sumAp; mp.className = 'val' + (sumAp > 0 ? ' val-escuro' : ''); }
+
+  renderEconomiaTroca(economia, SIZES);
+}
+
+// Card "DÁ PRA NÃO PRODUZIR" — cada linha é uma peça que sairia da fila de confecção
+// só trocando a etiqueta de uma que já está pronta no tamanho vizinho.
+function renderEconomiaTroca(economia, SIZES) {
+  const el    = document.getElementById('economia-troca');
+  const card  = document.getElementById('card-economia-troca');
+  const badge = document.getElementById('economia-troca-badge');
+  if (!el || !card) return;
+
+  window._economiaTroca = economia;
+  if (!economia.length) { card.style.display = 'none'; el.innerHTML = ''; if (badge) badge.textContent = ''; return; }
+
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c]));
+  const total = economia.reduce((s, e) => s + e.qtd, 0);
+  card.style.display = '';
+  if (badge) badge.textContent = `${total} peça${total > 1 ? 's' : ''} a menos pra costurar`;
+
+  el.innerHTML = `
+    <div style="font-size:11px;color:var(--text-sec);margin-bottom:8px">
+      Estas peças estão na fila de produção, mas já existe uma <b>pronta na arara</b> no tamanho
+      vizinho, sem pedido em cima dela. Trocando a etiqueta você economiza a confecção — e o
+      tecido, se ainda não comprou. A peça sai de um tamanho e entra no outro: o total do
+      modelo não muda.
+    </div>
+    <table style="table-layout:fixed;width:100%">
+      <colgroup><col style="width:26%"><col style="width:40%"><col style="width:14%"><col style="width:20%"></colgroup>
+      <thead><tr>
+        <th style="text-align:left">Cor</th>
+        <th style="text-align:left">Troca</th>
+        <th style="text-align:center">Peças</th>
+        <th style="text-align:center">Já troquei</th>
+      </tr></thead>
+      <tbody>
+        ${economia.map((e, i) => `
+          <tr>
+            <td style="text-align:left;font-weight:600">${esc(e.cor)}</td>
+            <td style="text-align:left;font-size:12px">
+              <b>${esc(SIZES[e.de] || '?')}</b>
+              <i class="ti ti-arrow-right" style="font-size:11px;vertical-align:-1px;color:#0d9488"></i>
+              <b style="color:#0d9488">${esc(SIZES[e.para] || '?')}</b>
+              <span style="color:var(--text-ter);font-size:11px"> — deixa de produzir ${esc(SIZES[e.para] || '?')}</span>
+            </td>
+            <td style="text-align:center;font-weight:700">${e.qtd}</td>
+            <td style="text-align:center">
+              <button class="btn-primary" style="font-size:10px;padding:5px 9px;background:#0d9488;border-color:#0d9488;white-space:nowrap"
+                onclick="aplicarEconomiaTroca(${i}, this)"
+                title="Só depois de trocar a etiqueta na peça: move a peça do tamanho antigo para o novo no estoque">
+                <i class="ti ti-tag"></i> troquei
+              </button>
+            </td>
+          </tr>`).join('')}
+      </tbody>
+    </table>`;
+}
+
+async function aplicarEconomiaTroca(i, btn) {
+  const e = (window._economiaTroca || [])[i];
+  if (!e) return;
+  const def = MODELOS[modeloAtual];
+  const SZ  = (def && def.tamanhos) || ['PP','P','M','G','GG'];
+
+  if (!confirm(`Confirma que a etiqueta JÁ foi trocada?\n\n`
+    + `• ${def.nome} ${e.cor}: ${SZ[e.de]} → ${SZ[e.para]}${e.qtd > 1 ? ' ×' + e.qtd : ''}\n\n`
+    + `A peça passa do ${SZ[e.de]} para o ${SZ[e.para]} no estoque e sai da fila de produção.`)) return;
+
+  if (btn) { btn.disabled = true; btn.style.opacity = '0.6'; btn.innerHTML = '<i class="ti ti-loader-2"></i>'; }
+  const mover = await transferirTamanhoEstoque(modeloAtual, e.cor, e.de, e.para, e.qtd);
+  if (mover < e.qtd) {
+    alert(mover === 0
+      ? `Não há mais ${def.nome} ${e.cor} ${SZ[e.de]} no estoque — nada foi trocado.`
+      : `Só havia ${mover} peça(s) de ${def.nome} ${e.cor} ${SZ[e.de]}. O resto não foi trocado.`);
+  }
+  renderModelo(modeloAtual);
 }
 
 function renderCoresTags(cores) {
