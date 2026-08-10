@@ -6571,7 +6571,7 @@ function verificarLeituraPedidos() {
 
 // ─── DETECÇÃO DE ENVIOS E BAIXA AUTOMÁTICA DE ESTOQUE ────────────────────────
 
-let _enviosPendentes = []; // guarda envios detectados aguardando confirmação
+let _enviosPendentes = null; // envios sem baixa aguardando decisão na conferência manual
 
 // Mapa de conjuntos → peças individuais (usado em pedidos E baixa de estoque)
 const CONJUNTO_PECAS = {
@@ -6637,53 +6637,52 @@ function pecasDoConjunto(conjuntoKey, cor) {
   }).filter(Boolean);
 }
 
-function salvarSnapshotAberto() {
-  const snapshot = {};
-  for (const [key, def] of Object.entries(MODELOS)) {
-    snapshot[key] = {};
-    for (const [cor, qtds] of Object.entries(def.aberto)) {
-      snapshot[key][cor] = [...qtds];
-    }
-  }
-  saveLocal('vc:aberto-snapshot', snapshot);
-}
 
-// Conferência MANUAL (botão "conferir envios" no card de prontos). A baixa do dia a dia é
-// automática — isto aqui é a rede de segurança: compara o total de pedidos em aberto com a
-// última foto e mostra o que saiu sem ter tido baixa, para confirmar na mão. Serve para o
-// que escapar da automação e para a virada da regra, em 10/08/2026.
+// ─── CONFERÊNCIA MANUAL DE ENVIOS SEM BAIXA ──────────────────────────────────
+// Rede de segurança do botão "conferir envios". Compara o que a Shopify diz que foi
+// enviado com o registro de baixas e mostra o que ficou de fora — envio que aconteceu
+// com o app fechado, ou que a automação não pegou por algum motivo.
+//
+// A conta é feita CONTRA O REGISTRO, não contra uma foto do total em aberto. A foto era
+// o jeito antigo e não serve mais: como a baixa automática mexe no estoque sem tocar na
+// foto, a diferença mostraria de novo tudo o que já foi baixado — e confirmar subtrairia
+// duas vezes. Pelo registro isso não acontece: remessa já aplicada nunca reaparece.
 async function verificarEnvios() {
-  const snapshot = loadLocal('vc:aberto-snapshot');
   await carregarPedidosShopify();
 
-  if (!snapshot) {
-    // Primeira vez — salva o snapshot e não mostra nada
-    salvarSnapshotAberto();
+  const ledger = lerLedgerBaixas();
+  if (!ledger) {
+    alert('O registro de baixas ainda está sendo criado. Recarregue a página e tente de novo.');
     return;
   }
 
-  const envios = [];
-  for (const [key, def] of Object.entries(MODELOS)) {
-    // Conjuntos têm baixa distribuída nas peças individuais — ignora o modelo de conjunto
-    if (CONJUNTO_PECAS[key]) continue;
-    for (const [cor, newQtds] of Object.entries(def.aberto)) {
-      const oldQtds = snapshot[key] && snapshot[key][cor] || [0, 0, 0, 0, 0];
-      const delta = oldQtds.map((old, i) => Math.max(0, old - (newQtds[i] || 0)));
-      const total = delta.reduce((a, b) => a + b, 0);
-      if (total > 0) envios.push({ key, nome: def.nome, cor, delta, total });
+  const semBaixa = (window._shopifyProcessados || []).filter(p => !ledger.envios[p.id]);
+  if (semBaixa.length === 0) {
+    alert('Tudo certo — todos os envios da Shopify já tiveram baixa no estoque.');
+    return;
+  }
+
+  // Agrupa por modelo+cor para caber na tabela do modal (uma linha por cor, colunas = tamanhos)
+  const porCor = {};
+  for (const p of semBaixa) {
+    for (const item of p.itens) {
+      for (const r of requisitosDoItem(item)) {
+        const def = MODELOS[r.key];
+        if (!def) continue;
+        const nSz = (def.tamanhos || ['PP','P','M','G','GG']).length;
+        const ch = r.key + '|' + r.cor;
+        if (!porCor[ch]) porCor[ch] = { key: r.key, nome: def.nome, cor: r.cor, delta: new Array(nSz).fill(0), total: 0 };
+        const i = def.tamanhoUnico ? 0 : r.tam;
+        porCor[ch].delta[i] = (porCor[ch].delta[i] || 0) + r.qtd;
+        porCor[ch].total += r.qtd;
+      }
     }
   }
 
-  if (envios.length === 0) {
-    // Nenhum envio detectado — só atualiza snapshot
-    salvarSnapshotAberto();
-    return;
-  }
+  _enviosPendentes = { linhas: Object.values(porCor), ids: semBaixa.map(p => p.id), numeros: [...new Set(semBaixa.map(p => p.numero))] };
 
-  // Mostra modal de confirmação
-  _enviosPendentes = envios;
   const tbody = document.getElementById('modal-envios-tbody');
-  tbody.innerHTML = envios.map(e => `
+  tbody.innerHTML = _enviosPendentes.linhas.map(e => `
     <tr style="border-top:1px solid var(--border)">
       <td style="padding:7px 4px;font-weight:500">${e.nome}</td>
       <td style="padding:7px 4px">${e.cor}</td>
@@ -6693,36 +6692,54 @@ async function verificarEnvios() {
   document.getElementById('modal-envios').style.display = 'flex';
 }
 
-function confirmarBaixaEstoque() {
-  for (const e of _enviosPendentes) {
-    const saved = loadLocal('vc:' + e.key);
-    // Só aplica baixa se o modelo tiver estoque cadastrado para esta cor
-    // (evita criar entrada zerada para modelos sem estoque definido)
-    if (!saved || !saved.est || !saved.est[e.cor]) continue;
-    saved.est[e.cor] = saved.est[e.cor].map((v, i) => Math.max(0, v - (e.delta[i] || 0)));
-    saved.est_at = new Date().toISOString();
-    saved.updated_at = new Date().toISOString();
-    saveLocal('vc:' + e.key, saved);
-    salvarNuvem(e.key, saved);
-  }
-  salvarSnapshotAberto();
-  _enviosPendentes = [];
+async function confirmarBaixaEstoque() {
+  const pend = _enviosPendentes;
   document.getElementById('modal-envios').style.display = 'none';
+  if (!pend || !pend.ids || !pend.ids.length) return;
+
+  const ledger = lerLedgerBaixas();
+  if (!ledger) return;
+
+  const porId = Object.fromEntries((window._shopifyProcessados || []).map(p => [p.id, p]));
+  const pecas = [];
+  for (const id of pend.ids) {
+    if (ledger.envios[id]) continue; // já aplicada nesse meio-tempo
+    const p = porId[id];
+    if (!p) continue;
+    const b = baixarEstoqueDoPedido(p.itens);
+    ledger.envios[id] = { numero: p.numero, em: p.enviado_em, aplicado: new Date().toISOString(), pecas: b.length, nota: 'conferência manual' };
+    pecas.push(...b);
+  }
+  saveLocal(LEDGER_LOCAL, ledger);
+  await salvarNuvem(LEDGER_BAIXAS, ledger);
+
+  if (pecas.length) _ultimaBaixaAuto = { quando: new Date().toISOString(), pedidos: pend.numeros, pecas };
+  _enviosPendentes = null;
   if (modeloAtual === '__dashboard__') renderDashboard();
-  else renderModelo(modeloAtual);
+  else if (MODELOS[modeloAtual]) renderModelo(modeloAtual);
 }
 
 function fecharModalEnvios() {
-  // X = só fecha, sem decidir: NÃO atualiza o snapshot, então os envios
-  // voltam a ser oferecidos na próxima verificação (diferente de "Ignorar")
+  // X = só fecha, sem decidir: o registro NÃO é tocado, então os envios voltam a
+  // aparecer na próxima conferência (diferente de "Ignorar")
   document.getElementById('modal-envios').style.display = 'none';
 }
 
-function ignorarEnvios() {
-  // Descarta sem atualizar estoque, mas salva novo snapshot
-  salvarSnapshotAberto();
-  _enviosPendentes = [];
+async function ignorarEnvios() {
+  // Marca como resolvidos SEM mexer no estoque — para envio que já foi baixado na mão.
+  const pend = _enviosPendentes;
   document.getElementById('modal-envios').style.display = 'none';
+  if (!pend || !pend.ids) return;
+  const ledger = lerLedgerBaixas();
+  if (!ledger) return;
+  for (const id of pend.ids) {
+    if (ledger.envios[id]) continue;
+    const p = (window._shopifyProcessados || []).find(x => x.id === id);
+    ledger.envios[id] = { numero: p && p.numero, em: p && p.enviado_em, aplicado: null, pecas: 0, nota: 'ignorado na conferência' };
+  }
+  saveLocal(LEDGER_LOCAL, ledger);
+  await salvarNuvem(LEDGER_BAIXAS, ledger);
+  _enviosPendentes = null;
 }
 
 // ─── BAIXA DE ESTOQUE NA HORA DO PROCESSAMENTO ───────────────────────────────
@@ -6743,9 +6760,22 @@ function ignorarEnvios() {
 const LEDGER_BAIXAS = 'baixas-estoque';
 const LEDGER_LOCAL  = 'vc:' + LEDGER_BAIXAS;
 
+// chave 'fulfillment' = registro por REMESSA. Registro em formato antigo (por pedido) é
+// tratado como inexistente: volta a semear do zero, sem baixar nada.
+const LEDGER_CHAVE = 'fulfillment';
+
 function lerLedgerBaixas() {
   const l = loadLocal(LEDGER_LOCAL);
-  return (l && typeof l === 'object' && l.pedidos) ? l : null;
+  return (l && typeof l === 'object' && l.envios && l.chave === LEDGER_CHAVE) ? l : null;
+}
+
+// Datas da Shopify vêm com fuso ("...-03:00") e as nossas em Z. Comparar como TEXTO dá
+// resultado errado quando o envio cruza a meia-noite — o envio virava "antigo" e nunca
+// tinha baixa. Sempre comparar em milissegundos.
+function maisNovoQue(iso, refISO) {
+  const a = Date.parse(iso), b = Date.parse(refISO);
+  if (isNaN(a) || isNaN(b)) return false;
+  return a >= b;
 }
 
 // Aplica a baixa das peças de um pedido. Devolve o que foi baixado, para o aviso.
@@ -6782,14 +6812,14 @@ async function baixaImediataDeProcessados() {
     //
     // A janela da API traz 7 dias de envios, e esses já tiveram baixa pela rotina antiga
     // das 16h (e pelo acerto manual do dia da virada — em 10/08/2026 o modal foi
-    // confirmado às 17h41). Reaplicar aqui subtrairia o mesmo envio duas vezes, e estoque
-    // subtraído a mais só reaparece se alguém contar a arara na mão.
+    // confirmado às 17h41). Reaplicar aqui subtrairia a mesma remessa duas vezes, e
+    // estoque subtraído a mais só reaparece se alguém contar a arara na mão.
     //
-    // Na dúvida entre baixar duas vezes e não baixar, o certo é não baixar: o que ficar
-    // de fora aparece na conferência do dia; o que for subtraído a mais some sem rastro.
-    ledger = { desde: new Date().toISOString(), pedidos: {} };
+    // Vale também para o registro em formato antigo (chave por pedido): semeia de novo
+    // com o corte em AGORA, senão o que já foi baixado pela versão anterior sairia outra vez.
+    ledger = { chave: LEDGER_CHAVE, desde: new Date().toISOString(), envios: {} };
     for (const p of processados) {
-      ledger.pedidos[p.id] = { numero: p.numero, em: p.enviado_em, aplicado: null, pecas: 0, nota: 'anterior ao registro' };
+      ledger.envios[p.id] = { numero: p.numero, em: p.enviado_em, aplicado: null, pecas: 0, nota: 'anterior ao registro' };
     }
     saveLocal(LEDGER_LOCAL, ledger);
     await salvarNuvem(LEDGER_BAIXAS, ledger);
@@ -6797,21 +6827,20 @@ async function baixaImediataDeProcessados() {
   }
 
   const novos = processados.filter(p =>
-    !ledger.pedidos[p.id] &&
-    p.enviado_em && p.enviado_em >= ledger.desde
+    !ledger.envios[p.id] && p.enviado_em && maisNovoQue(p.enviado_em, ledger.desde)
   );
   if (novos.length === 0) return;
 
   const pecas = [], numeros = [];
   for (const p of novos) {
     const b = baixarEstoqueDoPedido(p.itens);
-    ledger.pedidos[p.id] = { numero: p.numero, em: p.enviado_em, aplicado: new Date().toISOString(), pecas: b.length };
-    if (b.length) { pecas.push(...b); numeros.push(p.numero); }
+    ledger.envios[p.id] = { numero: p.numero, em: p.enviado_em, aplicado: new Date().toISOString(), pecas: b.length };
+    if (b.length) { pecas.push(...b); if (!numeros.includes(p.numero)) numeros.push(p.numero); }
   }
 
   // Poda: 60 dias bastam para a idempotência (a janela da API é de 7)
   const corte = new Date(Date.now() - 60 * 86400000).toISOString();
-  for (const [id, r] of Object.entries(ledger.pedidos)) if (r.em && r.em < corte) delete ledger.pedidos[id];
+  for (const [id, r] of Object.entries(ledger.envios)) if (r.em && !maisNovoQue(r.em, corte)) delete ledger.envios[id];
 
   saveLocal(LEDGER_LOCAL, ledger);
   await salvarNuvem(LEDGER_BAIXAS, ledger);
@@ -7466,9 +7495,6 @@ const _renderInicial = () => {
   else renderModelo(modeloAtual);
 };
 carregarTodosNuvem().then(() => carregarPedidosShopify()).then(async () => {
-  // Na primeira carga do dia, salva snapshot se não existir
-  if (!loadLocal('vc:aberto-snapshot')) salvarSnapshotAberto();
-
   // Baixa de estoque dos pedidos que a Shopify já processou (inclusive o atraso de hoje).
   await baixaImediataDeProcessados().catch(() => {});
 
