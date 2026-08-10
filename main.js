@@ -3962,6 +3962,199 @@ function renderPedidosParados() {
       Mostrando os 20 mais antigos — há mais ${lista.length - 20} pedido(s) parado(s) há ${PARADO_ATENCAO} dias ou mais.</div>` : ''}`;
 }
 
+// ─── CARD: LIBERAR TROCANDO A ETIQUETA ───────────────────────────────────────
+// Pedido parado esperando produção quando o tamanho VIZINHO já está na arara:
+// a diferença de um tamanho pro outro dá pra resolver trocando a etiqueta, e o
+// pedido sai hoje em vez de esperar a leva ficar pronta.
+//
+// Só entra o pedido em que a troca resolve TODAS as faltas. Meia solução não tira
+// o pedido da fila — só consumiria uma peça da arara sem liberar ninguém.
+//
+// Modelos em que a etiqueta NÃO pode ser trocada.
+const SEM_TROCA_ETIQUETA = new Set([
+  'macaquinho-amplo', // etiqueta não sai — a dona não consegue remarcar
+]);
+
+// Motor da troca, separado do render para poder ser testado sem DOM.
+function planejarTrocaEtiqueta(pendentes, livre, modelos, semTroca, diasDe, bruto) {
+  const SZ_PADRAO = ['PP', 'P', 'M', 'G', 'GG'];
+  const tamsDe = key => (modelos[key] && modelos[key].tamanhos) || SZ_PADRAO;
+
+  const podeTrocar = key => {
+    const def = modelos[key];
+    if (!def) return false;
+    if (semTroca.has(key)) return false;
+    if (def.tamanhoUnico) return false; // não existe tamanho vizinho
+    if (def.revenda)      return false; // calçado: 36 não vira 37 trocando etiqueta
+    return true;
+  };
+
+  // Ledger de trabalho = o que sobrou na arara depois de separar os pedidos prontos
+  // para envio. Peça que já foi reservada para um pedido que sai hoje não aparece aqui.
+  const ledger = {};
+  for (const key of Object.keys(livre || {})) {
+    ledger[key] = {};
+    for (const cor of Object.keys(livre[key] || {})) ledger[key][cor] = (livre[key][cor] || []).map(v => v || 0);
+  }
+  const disp = (key, cor, i) => (ledger[key] && ledger[key][cor] && ledger[key][cor][i]) || 0;
+  const baixa = (key, cor, i, q) => {
+    if (!ledger[key]) ledger[key] = {};
+    if (!ledger[key][cor]) ledger[key][cor] = [];
+    ledger[key][cor][i] = (ledger[key][cor][i] || 0) - q;
+  };
+  // Em modelo de tamanho único o estoque inteiro mora na posição 0 (mesma regra do
+  // card de prontos) — reservar na posição errada deixaria a peça solta na conta.
+  const idxEst = (key, tam) => (modelos[key] && modelos[key].tamanhoUnico) ? 0 : tam;
+
+  // Mais parado primeiro: se dois pedidos disputam a mesma peça da arara,
+  // quem está esperando há mais tempo leva.
+  const fila = (pendentes || [])
+    .map(p => ({ ...p, dias: diasDe(p.data) }))
+    .sort((a, b) => b.dias - a.dias);
+
+  // PASSO 1 — reserva. Pedido travado que já tem parte das peças separadas continua
+  // dono delas: só espera o resto chegar. Oferecer essa peça para outro pedido faria
+  // o antigo precisar da peça de novo depois — ele atrasaria ainda mais.
+  // Depois desta volta o ledger é o SALDO DISPONÍVEL de verdade: o que não está
+  // prometido nem para pedido que sai hoje, nem para pedido travado.
+  for (const p of fila) {
+    for (const r of (p.reqs || [])) {
+      const i = idxEst(r.key, r.tam);
+      const tem = Math.min(r.qtd, disp(r.key, r.cor, i));
+      if (tem > 0) baixa(r.key, r.cor, i, tem);
+    }
+  }
+
+  // PASSO 1b — teto do saldo. O passo 1 só enxerga pedido PAGO (é o filtro do card de
+  // prontos). Pedido aguardando pagamento aparece na tabela PEDIDOS EM ABERTO e ficaria
+  // de fora da reserva. Então, por cor/tamanho, o que pode ser oferecido nunca passa de
+  // ESTOQUE − PEDIDOS EM ABERTO — independente do status do pagamento.
+  const estBruto = bruto || livre || {};
+  for (const key of Object.keys(ledger)) {
+    if (!podeTrocar(key)) continue;
+    const aberto = (modelos[key] && modelos[key].aberto) || {};
+    for (const cor of Object.keys(ledger[key])) {
+      const ab = aberto[cor] || [];
+      ledger[key][cor] = ledger[key][cor].map((v, i) => {
+        const teto = ((estBruto[key] && estBruto[key][cor] && estBruto[key][cor][i]) || 0) - (ab[i] || 0);
+        return Math.min(v, teto);
+      });
+    }
+  }
+
+  const liberaveis = [];
+  let parciais = 0;         // a troca resolve parte das faltas, mas o pedido continua travado
+  let travadosSemTroca = 0; // sairiam na troca, só que uma das peças não aceita remarcar
+
+  // PASSO 2 — casamento. Agora só se mexe no saldo disponível.
+  for (const p of fila) {
+    const faltas = p.faltas || [];
+    if (!faltas.length) continue;
+
+    const planos = [];
+    const hold   = []; // reserva provisória — só vai pro ledger se o pedido inteiro fechar
+    const usado  = (key, cor, i) => hold.reduce((s, h) => s + (h.key === key && h.cor === cor && h.i === i ? h.qtd : 0), 0);
+    let cobriuTudo = true, cobriuAlguma = false, barradoPorModelo = false;
+
+    for (const f of faltas) {
+      if (!podeTrocar(f.key)) { cobriuTudo = false; barradoPorModelo = true; continue; }
+      const nSz = tamsDe(f.key).length;
+      const trocas = [];
+      let resta = f.falta;
+      for (const viz of [f.tam - 1, f.tam + 1]) {
+        if (resta <= 0) break;
+        if (viz < 0 || viz >= nSz) continue;
+        const sobra = disp(f.key, f.cor, viz) - usado(f.key, f.cor, viz);
+        if (sobra <= 0) continue;
+        const q = Math.min(resta, sobra);
+        hold.push({ key: f.key, cor: f.cor, i: viz, qtd: q });
+        trocas.push({ de: viz, para: f.tam, qtd: q });
+        resta -= q;
+      }
+      if (trocas.length) cobriuAlguma = true;
+      if (resta > 0) cobriuTudo = false;
+      else planos.push({ ...f, trocas });
+    }
+
+    if (!cobriuTudo) {
+      if (barradoPorModelo && cobriuAlguma) travadosSemTroca++;
+      else if (cobriuAlguma) parciais++;
+      continue;
+    }
+    hold.forEach(h => { ledger[h.key][h.cor][h.i] -= h.qtd; });
+    liberaveis.push({ ...p, planos });
+  }
+
+  return { liberaveis, parciais, travadosSemTroca };
+}
+
+function renderTrocaEtiqueta() {
+  const el    = document.getElementById('dash-troca');
+  const totEl = document.getElementById('dash-troca-total');
+  const card  = document.getElementById('card-troca-etiqueta');
+  if (!el) return;
+
+  const sizeLabel = (key, i) => ((MODELOS[key] && MODELOS[key].tamanhos) || ['PP','P','M','G','GG'])[i] || '—';
+
+  const { liberaveis, parciais, travadosSemTroca } = planejarTrocaEtiqueta(
+    window._pedidosPendentes || [], window._estoqueLivre || {}, MODELOS, SEM_TROCA_ETIQUETA,
+    diasDesde, window._estoqueBruto || {});
+
+  if (card) card.style.display = liberaveis.length ? '' : 'none';
+  if (liberaveis.length === 0) { el.innerHTML = ''; if (totEl) totEl.textContent = ''; return; }
+
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c]));
+  const totPecas = liberaveis.reduce((s, p) => s + p.planos.reduce((t, pl) => t + pl.trocas.reduce((u, tr) => u + tr.qtd, 0), 0), 0);
+  const atrasados = liberaveis.filter(p => p.dias >= PARADO_ATENCAO).length;
+
+  if (totEl) totEl.textContent = `${liberaveis.length} pedido${liberaveis.length > 1 ? 's' : ''} · ${totPecas} etiqueta${totPecas > 1 ? 's' : ''}`;
+
+  el.innerHTML = `
+    <div style="font-size:11px;color:var(--text-sec);margin-bottom:8px">
+      Pedidos parados que <b>saem hoje</b> — a peça que falta tem o tamanho vizinho na arara e a
+      diferença de um tamanho pro outro se resolve trocando a etiqueta. Só aparece quando a troca
+      resolve o pedido inteiro, e só usa <b>saldo disponível</b> — nunca passa de
+      <b>estoque − pedidos em aberto</b> daquela cor e tamanho, então não tira peça de
+      pedido nenhum, pago ou aguardando pagamento.
+      ${atrasados ? `<b style="color:#0d9488">${atrasados} ${atrasados > 1 ? 'estão parados' : 'está parado'} há ${PARADO_ATENCAO} dias ou mais.</b>` : ''}
+      <span style="color:var(--text-ter)">Macaquinho Amplo fica de fora (etiqueta não pode ser trocada).</span>
+    </div>
+    ${(parciais || travadosSemTroca) ? `
+      <div style="font-size:11px;color:var(--text-ter);margin-bottom:8px">
+        ${parciais ? `${parciais} pedido(s) a troca resolveria só em parte — continuam esperando produção.` : ''}
+        ${travadosSemTroca ? `${travadosSemTroca} pedido(s) sairiam na troca, mas travam numa peça que não aceita remarcar.` : ''}
+      </div>` : ''}
+    <table style="table-layout:fixed;width:100%">
+      <colgroup><col style="width:15%"><col style="width:17%"><col style="width:10%"><col style="width:58%"></colgroup>
+      <thead><tr>
+        <th style="text-align:left">Pedido</th>
+        <th style="text-align:left">Cliente</th>
+        <th style="text-align:center">Parado</th>
+        <th style="text-align:left">Troca a fazer</th>
+      </tr></thead>
+      <tbody>
+        ${liberaveis.map(p => {
+          const critico = p.dias >= PARADO_CRITICO;
+          const linhas = p.planos.map(pl => {
+            const nome = (MODELOS[pl.key] && MODELOS[pl.key].nome) || pl.key;
+            const trs = pl.trocas.map(tr =>
+              `<span style="white-space:nowrap"><b>${esc(sizeLabel(pl.key, tr.de))}</b> <i class="ti ti-arrow-right" style="font-size:11px;vertical-align:-1px;color:#0d9488"></i> <b style="color:#0d9488">${esc(sizeLabel(pl.key, tr.para))}</b>${tr.qtd > 1 ? ` ×${tr.qtd}` : ''}</span>`
+            ).join(' · ');
+            return `<div style="padding:2px 0">${esc(nome)} <span style="color:var(--text-sec)">${esc(pl.cor)}</span> — ${trs}</div>`;
+          }).join('');
+          return `<tr>
+            <td style="font-weight:600">${p.url
+              ? `<a href="${esc(p.url)}" target="_blank" rel="noopener" style="color:#0d9488;text-decoration:none">${esc(p.numero)} <i class="ti ti-external-link" style="font-size:11px;vertical-align:-1px"></i></a>`
+              : esc(p.numero)}${p.parcial ? ' <span style="font-size:9px;background:rgba(124,58,237,.12);color:#7C3AED;border-radius:3px;padding:1px 5px">PARCIAL</span>' : ''}</td>
+            <td style="font-size:11px">${esc(p.cliente || 'Cliente')}</td>
+            <td style="text-align:center;font-weight:700;white-space:nowrap;color:${critico ? '#dc2626' : p.dias >= PARADO_ATENCAO ? '#d97706' : 'var(--text-sec)'}">${p.dias} ${p.dias === 1 ? 'dia' : 'dias'}</td>
+            <td style="font-size:11px;line-height:1.7;text-align:left">${linhas}</td>
+          </tr>`;
+        }).join('')}
+      </tbody>
+    </table>`;
+}
+
 // ─── CARD: PEDIDOS PRONTOS PARA ENVIO ────────────────────────────────────────
 // Lista os pedidos da Shopify cujos itens TODOS têm estoque disponível.
 // Aloca o estoque do pedido mais antigo para o mais recente, então a lista
@@ -3986,6 +4179,15 @@ function renderProntosParaEnvio() {
       const ev = (saved.est && saved.est[cor]) || [];
       stock[key][cor] = ev.map(v => v || 0);
     });
+  }
+
+  // Foto do estoque ANTES de qualquer alocação. A troca de etiqueta usa isto para nunca
+  // oferecer mais do que "ESTOQUE − PEDIDOS EM ABERTO" daquela cor/tamanho — a mesma conta
+  // que as duas tabelas do modelo mostram lado a lado.
+  const estoqueBruto = {};
+  for (const k of Object.keys(stock)) {
+    estoqueBruto[k] = {};
+    for (const c of Object.keys(stock[k])) estoqueBruto[k][c] = stock[k][c].slice();
   }
 
   const estIdx = (key, tam) => (MODELOS[key] && MODELOS[key].tamanhoUnico) ? 0 : tam;
@@ -4049,7 +4251,9 @@ function renderProntosParaEnvio() {
       const faltas = reqs
         .map(r => ({ ...r, falta: Math.max(0, r.qtd - estGet(r.key, r.cor, r.tam)) }))
         .filter(r => r.falta > 0);
-      pendentes.push({ ...ped, faltas });
+      // reqs vai junto: a troca de etiqueta precisa saber o que este pedido travado JÁ tem
+      // separado na arara, senão ofereceria essa peça para outro pedido.
+      pendentes.push({ ...ped, faltas, reqs });
       continue;
     }
 
@@ -4070,6 +4274,12 @@ function renderProntosParaEnvio() {
 
   window._pedidosPendentes = pendentes;
   renderPedidosParados();
+
+  // O que sobrou na arara depois de separar os pedidos prontos — é desse saldo que
+  // sai a troca de etiqueta, senão ela roubaria peça de pedido que já ia ser enviado.
+  window._estoqueLivre = stock;
+  window._estoqueBruto = estoqueBruto;
+  renderTrocaEtiqueta();
 
   const esc = (s) => String(s).replace(/[&<>"]/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c]));
 

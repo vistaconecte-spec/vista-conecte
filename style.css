@@ -367,6 +367,15 @@ tr:hover td { background: #FAFAFA; }
   font-size: 12px;
 }
 
+/* Pedidos em aberto: números em preto e negrito — o dourado ficava apagado demais */
+#aberto-tbody td.val-areia,
+#aberto-tfoot .total-row td,
+#aberto-tfoot .total-row td.val-areia {
+  color: var(--text) !important;
+  font-weight: 700;
+}
+
+
 /* editable cell input — visualmente igual às células de texto */
 input[type=number].ci {
   width: 36px !important;
