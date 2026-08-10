@@ -274,6 +274,54 @@ async function fetchProcessados(store, token, desdeISO) {
 }
 
 /**
+ * ITENS MONTADOS À MÃO NO PEDIDO.
+ *
+ * Às vezes a venda é fechada com um item digitado direto no pedido, sem produto na Shopify
+ * (por isso `variant_title` vem null e o tamanho fica embutido no título). Quando esse item
+ * é um conjunto, ele pode pedir TAMANHO DIFERENTE por peça — coisa que um conjunto normal
+ * não expressa, porque lá o tamanho escolhido vale para todas as peças.
+ *
+ * Aqui cada peça é declarada com o SEU modelo, a SUA cor e o SEU tamanho. Sem isto o item
+ * cai em "produto não mapeado", o pedido some da produção e ninguém corta a peça.
+ *
+ * A chave é o título normalizado (maiúsculas, espaços colapsados).
+ */
+const ITENS_MANUAIS = {
+  // #8719 — confirmado com a Bárbara em 10/08/2026: é a Pantalona VISCOLYCRA (não a de
+  // moletom nem a Bolso Frontal) com o Cropped CANELADO, cada uma no seu tamanho.
+  'CONJUNTO CALÇA PANTALONA BOLSO FRONTAL CINZA GG E CROPPED M': [
+    { modelKey: 'calca-pantalona-viscolycra', color: 'Cinza', size: 'GG' },
+    { modelKey: 'cropped-canelado',           color: 'Cinza', size: 'M'  },
+  ],
+};
+
+const normalizarTitulo = t => String(t || '').toUpperCase().replace(/\s+/g, ' ').trim();
+
+/**
+ * Expande um line_item nas peças que a produção precisa fazer.
+ * Devolve SEMPRE uma lista (vazia = item ignorado). Existe para dar conta dos itens
+ * manuais com tamanho por peça; o resto continua passando pelo parseLineItem de sempre.
+ */
+function parseLineItemMulti(item, orderName, ignorados, usarQuantidadeTotal) {
+  const qty = usarQuantidadeTotal ? (item.quantity ?? 0) : (item.fulfillable_quantity ?? 0);
+  if (qty <= 0) return [];
+
+  const manual = ITENS_MANUAIS[normalizarTitulo(item.title)];
+  if (manual) {
+    return manual.map(p => ({
+      modelKey: p.modelKey,
+      color:    p.color,
+      sizeIdx:  SIZES.indexOf(p.size),
+      qty,
+      via:      'item-manual',
+    })).filter(p => p.sizeIdx >= 0);
+  }
+
+  const p = parseLineItem(item, orderName, ignorados, usarQuantidadeTotal);
+  return p ? [p] : [];
+}
+
+/**
  * Faz o parsing de um único line_item → { modelKey, color, sizeIdx, qty }.
  * Retorna null se o item deve ser ignorado (e registra o motivo em `ignorados`).
  */
@@ -383,8 +431,8 @@ export async function onRequest(context) {
     for (const order of orders) {
       const itensPedido = [];
       for (const item of order.line_items || []) {
-        const parsed = parseLineItem(item, order.name, ignorados);
-        if (!parsed) continue;
+        // Multi: um item pode render mais de uma peça, cada uma no seu tamanho (item manual)
+        for (const parsed of parseLineItemMulti(item, order.name, ignorados)) {
         const { modelKey, color, sizeIdx, qty } = parsed;
 
         // Agregação por modelo/cor/tamanho (comportamento existente)
@@ -394,6 +442,7 @@ export async function onRequest(context) {
 
         // Detalhe por pedido
         itensPedido.push({ modelKey, cor: color, tam: sizeIdx, qtd: qty });
+        }
       }
 
       if (itensPedido.length > 0) {
@@ -426,8 +475,9 @@ export async function onRequest(context) {
           if (f.status && f.status !== 'success') continue;
           const itens = [];
           for (const item of f.line_items || []) {
-            const parsed = parseLineItem(item, o.name, [], true);
-            if (parsed) itens.push({ modelKey: parsed.modelKey, cor: parsed.color, tam: parsed.sizeIdx, qtd: parsed.qty });
+            for (const parsed of parseLineItemMulti(item, o.name, [], true)) {
+              itens.push({ modelKey: parsed.modelKey, cor: parsed.color, tam: parsed.sizeIdx, qtd: parsed.qty });
+            }
           }
           if (itens.length === 0) continue;
           processados.push({

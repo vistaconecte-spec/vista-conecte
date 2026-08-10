@@ -18,8 +18,8 @@ const raiz = join(dirname(fileURLToPath(import.meta.url)), '..');
 const src  = readFileSync(join(raiz, 'functions/api/shopify-orders.js'), 'utf8');
 // Carrega só as constantes e funções puras (corta o handler HTTP)
 const puro = src.slice(0, src.indexOf('export async function onRequest'));
-const { parseLineItem, EXACT_TITLE_MAP, PRODUCT_MAP, normalizeColor } =
-  new Function(puro + '; return { parseLineItem, EXACT_TITLE_MAP, PRODUCT_MAP, normalizeColor };')();
+const { parseLineItem, parseLineItemMulti, EXACT_TITLE_MAP, PRODUCT_MAP, normalizeColor, ITENS_MANUAIS } =
+  new Function(puro + '; return { parseLineItem, parseLineItemMulti, EXACT_TITLE_MAP, PRODUCT_MAP, normalizeColor, ITENS_MANUAIS };')();
 
 const MODELOS = new Function(readFileSync(join(raiz, 'data.js'), 'utf8') + '; return MODELOS;')();
 
@@ -95,6 +95,42 @@ for (const [titulo, regra] of Object.entries(EXACT_TITLE_MAP)) {
 console.log('\n8) Todo modelKey citado no PRODUCT_MAP existe no data.js');
 const orfaos = [...new Set(Object.values(PRODUCT_MAP))].filter(k => !MODELOS[k]);
 ok('sem modelKey órfão', orfaos, []);
+
+console.log('\n9) Item montado à mão no pedido, com tamanho por peça');
+// #8719: item digitado direto no pedido (sem produto na Shopify, variante null) juntando
+// DUAS peças em tamanhos DIFERENTES. Sem mapa vira "produto não mapeado", o pedido some da
+// produção e ninguém corta a peça. Conjunto normal não resolve: lá o tamanho escolhido vale
+// para todas as peças. Modelos confirmados com a Bárbara em 10/08/2026.
+const TITULO_8719 = 'CONJUNTO CALÇA PANTALONA BOLSO FRONTAL CINZA GG E CROPPED M';
+const multi = (title, fq = 1) =>
+  parseLineItemMulti({ title, variant_title: null, fulfillable_quantity: fq }, '#8719', [])
+    .map(r => ({ modelo: r.modelKey, cor: r.color, tam: r.sizeIdx }));
+
+ok('#8719 vira DUAS peças', multi(TITULO_8719).length, 2);
+ok('a calça é a Pantalona Viscolycra Cinza GG',
+   multi(TITULO_8719)[0], { modelo: 'calca-pantalona-viscolycra', cor: 'Cinza', tam: 4 });
+ok('o cropped é o Canelado Cinza M — tamanho DIFERENTE da calça',
+   multi(TITULO_8719)[1], { modelo: 'cropped-canelado', cor: 'Cinza', tam: 2 });
+ok('caixa e espaço extra não quebram o mapa',
+   multi('conjunto  calça pantalona bolso frontal cinza gg e cropped m ').length, 2);
+ok('item devolvido (nada a enviar) não vira peça', multi(TITULO_8719, 0).length, 0);
+ok('item normal continua passando pelo parser de sempre',
+   parseLineItemMulti({ title: 'Conjunto Peace', variant_title: 'Preto / M', fulfillable_quantity: 1 }, '#T', [])
+     .map(r => ({ modelo: r.modelKey, cor: r.color, tam: r.sizeIdx })),
+   [{ modelo: 'conjunto-peace', cor: 'Preto', tam: 2 }]);
+ok('produto realmente desconhecido continua sendo denunciado', (() => {
+  const ig = [];
+  parseLineItemMulti({ title: 'PRODUTO QUE NAO EXISTE XPTO', variant_title: 'Preto / M', fulfillable_quantity: 1 }, '#T', ig);
+  return ig.length > 0;
+})(), true);
+// Modelo e tamanho declarados no mapa precisam existir de verdade
+Object.entries(ITENS_MANUAIS).forEach(([, pecas]) => {
+  pecas.forEach(p => {
+    ok(`${p.modelKey} existe no data.js`, !!MODELOS[p.modelKey], true);
+    const grade = (MODELOS[p.modelKey] && MODELOS[p.modelKey].tamanhos) || ['PP', 'P', 'M', 'G', 'GG'];
+    ok(`tamanho ${p.size} existe na grade de ${p.modelKey}`, grade.includes(p.size), true);
+  });
+});
 
 console.log(`\n${falhas === 0 ? '✅ TODOS OS TESTES PASSARAM' : '❌ ' + falhas + ' FALHA(S)'} — ${total - falhas}/${total}\n`);
 process.exit(falhas === 0 ? 0 : 1);
