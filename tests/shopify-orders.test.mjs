@@ -96,6 +96,41 @@ console.log('\n8) Todo modelKey citado no PRODUCT_MAP existe no data.js');
 const orfaos = [...new Set(Object.values(PRODUCT_MAP))].filter(k => !MODELOS[k]);
 ok('sem modelKey órfão', orfaos, []);
 
+console.log('\n8b) Conjunto com título próprio não pode casar com o conjunto errado');
+// #8748: "Conjunto Cropped Canelado + Calça Pantalona Cinza" (variante só com o tamanho).
+// O casamento por prefixo é ganancioso e casou com o Conjunto Calça Pantalona + Cropped
+// MOLETOM, jogando todo o resto do título para dentro da "cor". Resultado: três avisos de
+// cor inexistente e — o que importa — a peça ERRADA indo para a produção (moletom no lugar
+// de canelado). Confirmado com a Bárbara em 10/08/2026.
+const conj = (title, variant_title) =>
+  parseLineItemMulti({ title, variant_title, fulfillable_quantity: 1 }, '#8748', [])
+    .map(r => ({ modelo: r.modelKey, cor: r.color, tam: r.sizeIdx }));
+
+ok('#8748 vira as DUAS peças certas',
+   conj('Conjunto Cropped Canelado + Calça Pantalona Cinza', 'G'),
+   [{ modelo:'cropped-canelado', cor:'Cinza', tam:3 },
+    { modelo:'calca-pantalona-viscolycra', cor:'Cinza', tam:3 }]);
+ok('NÃO vira o conjunto do cropped moletom',
+   conj('Conjunto Cropped Canelado + Calça Pantalona Cinza', 'G')
+     .some(p => p.modelo === 'conjunto-calca-pantalona-cropped' || p.modelo === 'cropped-moletom'), false);
+ok('a cor sai do título e volta ao formato do cadastro (não "CINZA")',
+   conj('Conjunto Cropped Canelado + Calça Pantalona Cinza', 'G')[0].cor, 'Cinza');
+ok('cor de duas palavras também',
+   conj('Conjunto Cropped Canelado + Calça Pantalona Off White', 'P')[0].cor, 'Off White');
+ok('se a cor vier na variante, ela manda',
+   conj('Conjunto Cropped Canelado + Calça Pantalona', 'Marsala / GG')[0].cor, 'Marsala');
+ok('o conjunto do cropped MOLETOM continua funcionando como antes',
+   conj('Conjunto Calça Pantalona com Cropped moletom', 'Cinza / G'),
+   [{ modelo:'conjunto-calca-pantalona-cropped', cor:'Cinza', tam:3 }]);
+ok('Cinza foi cadastrado no Cropped Canelado (pedidos #8719 e #8748)',
+   (MODELOS['cropped-canelado'].cores || []).includes('Cinza'), true);
+// Toda peça declarada nesses conjuntos tem que existir de verdade
+const CONJ_TITULO = new Function(puro + '; return CONJUNTOS_POR_TITULO;')();
+Object.entries(CONJ_TITULO).forEach(([titulo, pecas]) => {
+  pecas.forEach(k => ok(`${k} existe no data.js`, !!MODELOS[k], true));
+  ok(`"${titulo.slice(0, 28)}…" tem 2+ peças`, pecas.length >= 2, true);
+});
+
 console.log('\n9) Item montado à mão no pedido, com tamanho por peça');
 // #8719: item digitado direto no pedido (sem produto na Shopify, variante null) juntando
 // DUAS peças em tamanhos DIFERENTES. Sem mapa vira "produto não mapeado", o pedido some da

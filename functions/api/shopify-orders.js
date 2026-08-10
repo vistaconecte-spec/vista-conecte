@@ -298,6 +298,21 @@ const ITENS_MANUAIS = {
 const normalizarTitulo = t => String(t || '').toUpperCase().replace(/\s+/g, ' ').trim();
 
 /**
+ * CONJUNTOS VENDIDOS COM TÍTULO PRÓPRIO cujas peças não batem com nenhum conjunto cadastrado.
+ *
+ * O casamento por prefixo do PRODUCT_MAP é ganancioso: "Conjunto Cropped Canelado + Calça
+ * Pantalona Cinza" (#8748) casou com o Conjunto Calça Pantalona + Cropped MOLETOM e todo o
+ * resto do título virou "cor" — daí os avisos de cor inexistente e, pior, a peça errada indo
+ * para a produção (moletom no lugar de canelado).
+ *
+ * A chave é o título SEM a cor (o que sobra vira a cor). As duas peças herdam a cor e o
+ * tamanho do item, como em qualquer conjunto.
+ */
+const CONJUNTOS_POR_TITULO = {
+  'CONJUNTO CROPPED CANELADO + CALÇA PANTALONA': ['cropped-canelado', 'calca-pantalona-viscolycra'],
+};
+
+/**
  * Expande um line_item nas peças que a produção precisa fazer.
  * Devolve SEMPRE uma lista (vazia = item ignorado). Existe para dar conta dos itens
  * manuais com tamanho por peça; o resto continua passando pelo parseLineItem de sempre.
@@ -318,7 +333,12 @@ function parseLineItemMulti(item, orderName, ignorados, usarQuantidadeTotal) {
   }
 
   const p = parseLineItem(item, orderName, ignorados, usarQuantidadeTotal);
-  return p ? [p] : [];
+  if (!p) return [];
+  // Conjunto com título próprio: uma linha do pedido vira as duas peças, mesma cor e tamanho
+  if (p.multi) {
+    return p.multi.map(key => ({ modelKey: key, color: p.color, sizeIdx: p.sizeIdx, qty: p.qty, via: 'conjunto-por-titulo' }));
+  }
+  return [p];
 }
 
 /**
@@ -388,6 +408,23 @@ function parseLineItem(item, orderName, ignorados, usarQuantidadeTotal) {
   // Depois da unificação de produtos por cor, o título perdeu a cor ("Conjunto Peace") e ela
   // passou a vir na variante ("Preto / M") — título e EXACT_TITLE_MAP só valem como fallback,
   // senão um pedido Preto era lido como Off White (e reservava/produzia a cor errada).
+
+  // 0. Conjunto com título próprio → duas peças. Tem que vir ANTES do casamento por
+  //    prefixo, que é ganancioso e casaria com o conjunto errado (ver CONJUNTOS_POR_TITULO).
+  const tNorm = normalizarTitulo(titleForParsing);
+  for (const [prefixo, pecas] of Object.entries(CONJUNTOS_POR_TITULO)) {
+    if (!tNorm.startsWith(prefixo)) continue;
+    // O resto vem do título já em CAIXA ALTA; sem devolver ao formato do cadastro a cor
+    // viraria "CINZA" e abriria um balde separado de "Cinza" nas telas.
+    const resto = tNorm.slice(prefixo.length).trim()
+      .toLowerCase().replace(/(^|\s)\p{L}/gu, m => m.toUpperCase());
+    const cor = colorFromVariant || resto;
+    if (!cor) {
+      ignorados.push(`${orderName} | "${item.title}" | conjunto sem cor no título nem na variante`);
+      return null;
+    }
+    return { multi: pecas, color: normalizeColor(cor), sizeIdx, qty };
+  }
 
   // 1. Mapa de títulos exatos (pedidos sem cor separada)
   const exact = EXACT_TITLE_MAP[titleForParsing];

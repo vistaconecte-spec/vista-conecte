@@ -61,7 +61,7 @@ const MODELOS = {
   'regata-oversized':{nome:'Regata Oversized',tecido:'Malha',consumo:0.8,preco:15,componentes:'1 Frente – 1 Costas',obs:'',cores:['Preto','Off White'],aberto:{'Preto':[0,0,0,0,0],'Off White':[0,0,0,0,0]}},
   'regata-canelada':{nome:'Regata Canelada',tecido:'Canelado',consumo:0.7,preco:19,componentes:'1 Frente – 1 Costas',obs:'',cores:['Preto','Nude'],aberto:{'Preto':[0,0,0,0,0],'Nude':[0,0,0,0,0]}},
   'cropped-mini-saia':{nome:'Cropped + Mini Saia Canelada',tecido:'Canelado',consumo:1.2,preco:19,componentes:'',obs:'',cores:['Preto','Off White','Branco','Marrom'],aberto:{'Preto':[0,0,0,0,0],'Off White':[0,0,0,0,0],'Branco':[0,0,0,0,0],'Marrom':[0,0,0,0,0]}},
-  'cropped-canelado':{nome:'Cropped Canelado',tecido:'Canelado',consumo:0.6,preco:19,componentes:'1 Frente – 1 Costas',obs:'',cores:['Preto','Off White','Branco','Marrom','Nude'],aberto:{'Preto':[0,0,0,0,0],'Off White':[0,0,0,0,0],'Branco':[0,0,0,0,0],'Marrom':[0,0,0,0,0],'Nude':[0,0,0,0,0]},croquiFrente:'/croqui-cropped-canelado-frente.jpg?v=2026061601'},
+  'cropped-canelado':{nome:'Cropped Canelado',tecido:'Canelado',consumo:0.6,preco:19,componentes:'1 Frente – 1 Costas',obs:'',cores:['Preto','Off White','Branco','Marrom','Nude','Cinza'],aberto:{'Preto':[0,0,0,0,0],'Off White':[0,0,0,0,0],'Branco':[0,0,0,0,0],'Marrom':[0,0,0,0,0],'Nude':[0,0,0,0,0]},croquiFrente:'/croqui-cropped-canelado-frente.jpg?v=2026061601'},
 
   'cropped-peace':{nome:'Cropped Peace',tecido:'Canelado',consumo:0.8,preco:19,componentes:'',obs:'',cores:['Nude','Preto','Off White','Marsala'],aberto:{'Nude':[0,0,0,0,0],'Preto':[0,0,0,0,0],'Off White':[0,0,0,0,0],'Marsala':[0,0,0,0,0]},croquiFrente:'/croqui-cropped-peace-frente.jpg',croquiCostas:'/croqui-cropped-peace-costas.jpg'},
 
