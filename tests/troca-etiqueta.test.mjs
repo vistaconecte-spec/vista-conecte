@@ -64,6 +64,8 @@ function ok(nome, real, esperado) {
   else console.log(`  ✓ ${nome}`);
 }
 const numeros = r => r.liberaveis.map(p => p.numero);
+// [numero, podeSairJUNTO com os demais] — false = disputa a peça com um pedido mais antigo
+const simultaneidade = r => r.liberaveis.map(p => [p.numero, !!p.simultaneo]);
 const trocas  = r => r.liberaveis.map(p => p.planos.map(pl => pl.trocas.map(t => `${t.de}->${t.para}x${t.qtd}`).join(',')).join('|'));
 
 console.log('\n1) Só tamanho vizinho (±1)');
@@ -114,17 +116,28 @@ ok('falta 2 peças, 1 no P e 1 no G → libera somando os dois vizinhos',
    trocas(rodar([pedido('#1', 30, [falta('calca','Preto',M,2)])], { calca: { Preto: [0,1,0,1,0,0] } })),
    ['1->2x1,3->2x1']);
 
-console.log('\n5) A mesma peça não é prometida a dois pedidos');
-ok('dois pedidos disputando 1 peça → o mais parado leva',
-   numeros(rodar(
-     [pedido('#novo', 5, [falta('calca','Preto',M,1)]), pedido('#antigo', 45, [falta('calca','Preto',M,1)])],
-     { calca: { Preto: [0,0,0,1,0,0] } })),
-   ['#antigo']);
-ok('duas peças na arara → os dois pedidos saem',
-   numeros(rodar(
-     [pedido('#novo', 5, [falta('calca','Preto',M,1)]), pedido('#antigo', 45, [falta('calca','Preto',M,1)])],
-     { calca: { Preto: [0,0,0,2,0,0] } })),
+console.log('\n5) O saldo é oferecido a TODOS, com a disputa marcada');
+const doisQuerendoOMesmoG = [pedido('#novo', 5, [falta('calca','Preto',M,1)]),
+                             pedido('#antigo', 45, [falta('calca','Preto',M,1)])];
+ok('dois pedidos e 1 peça → os DOIS aparecem (a dona escolhe)',
+   numeros(rodar(doisQuerendoOMesmoG, { calca: { Preto: [0,0,0,1,0,0] } })),
    ['#antigo', '#novo']);
+ok('só um deles pode sair de fato — o mais parado é o simultâneo',
+   simultaneidade(rodar(doisQuerendoOMesmoG, { calca: { Preto: [0,0,0,1,0,0] } })),
+   [['#antigo', true], ['#novo', false]]);
+ok('o que ficou em disputa aponta com quem disputa',
+   rodar(doisQuerendoOMesmoG, { calca: { Preto: [0,0,0,1,0,0] } }).liberaveis.find(p => !p.simultaneo).disputaCom,
+   ['#antigo']);
+ok('conta de quantos podem sair juntos',
+   rodar(doisQuerendoOMesmoG, { calca: { Preto: [0,0,0,1,0,0] } }).simultaneos, 1);
+ok('duas peças na arara → os dois saem juntos, sem disputa',
+   simultaneidade(rodar(doisQuerendoOMesmoG, { calca: { Preto: [0,0,0,2,0,0] } })),
+   [['#antigo', true], ['#novo', true]]);
+ok('pedido que ninguém disputa nunca é marcado como disputa',
+   simultaneidade(rodar(
+     [pedido('#a', 30, [falta('calca','Preto',M,1)]), pedido('#b', 20, [falta('blusa','Nude',M,1)])],
+     { calca: { Preto: [0,0,0,1,0,0] }, blusa: { Nude: [0,0,0,1,0] } })),
+   [['#a', true], ['#b', true]]);
 ok('cor diferente não serve de vizinho',
    numeros(rodar([pedido('#1', 40, [falta('calca','Preto',M,1)])], { calca: { Nude: [0,0,0,5,0,0] } })),
    []);

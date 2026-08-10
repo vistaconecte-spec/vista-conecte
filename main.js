@@ -4046,13 +4046,13 @@ function planejarTrocaEtiqueta(pendentes, livre, modelos, semTroca, diasDe, brut
   let parciais = 0;         // a troca resolve parte das faltas, mas o pedido continua travado
   let travadosSemTroca = 0; // sairiam na troca, só que uma das peças não aceita remarcar
 
-  // PASSO 2 — casamento. Agora só se mexe no saldo disponível.
-  for (const p of fila) {
+  // Mede um pedido contra um saldo, SEM gravar nada. Quem grava é o chamador.
+  const avaliar = (p, ler) => {
     const faltas = p.faltas || [];
-    if (!faltas.length) continue;
+    if (!faltas.length) return null;
 
     const planos = [];
-    const hold   = []; // reserva provisória — só vai pro ledger se o pedido inteiro fechar
+    const hold   = []; // reserva provisória do próprio pedido
     const usado  = (key, cor, i) => hold.reduce((s, h) => s + (h.key === key && h.cor === cor && h.i === i ? h.qtd : 0), 0);
     let cobriuTudo = true, cobriuAlguma = false, barradoPorModelo = false;
 
@@ -4064,7 +4064,7 @@ function planejarTrocaEtiqueta(pendentes, livre, modelos, semTroca, diasDe, brut
       for (const viz of [f.tam - 1, f.tam + 1]) {
         if (resta <= 0) break;
         if (viz < 0 || viz >= nSz) continue;
-        const sobra = disp(f.key, f.cor, viz) - usado(f.key, f.cor, viz);
+        const sobra = ler(f.key, f.cor, viz) - usado(f.key, f.cor, viz);
         if (sobra <= 0) continue;
         const q = Math.min(resta, sobra);
         hold.push({ key: f.key, cor: f.cor, i: viz, qtd: q });
@@ -4075,17 +4075,49 @@ function planejarTrocaEtiqueta(pendentes, livre, modelos, semTroca, diasDe, brut
       if (resta > 0) cobriuTudo = false;
       else planos.push({ ...f, trocas });
     }
+    return { planos, hold, cobriuTudo, cobriuAlguma, barradoPorModelo };
+  };
 
-    if (!cobriuTudo) {
-      if (barradoPorModelo && cobriuAlguma) travadosSemTroca++;
-      else if (cobriuAlguma) parciais++;
+  // PASSO 2 — o saldo é oferecido a TODOS os pedidos. Cada um é medido contra o saldo
+  // INTEIRO, sem reservar nada: assim um pedido não some da lista só porque outro
+  // também serviria para a mesma peça. Quem escolhe qual atender é a dona.
+  for (const p of fila) {
+    const r = avaliar(p, disp);
+    if (!r) continue;
+    if (!r.cobriuTudo) {
+      if (r.barradoPorModelo && r.cobriuAlguma) travadosSemTroca++;
+      else if (r.cobriuAlguma) parciais++;
       continue;
     }
-    hold.forEach(h => { ledger[h.key][h.cor][h.i] -= h.qtd; });
-    liberaveis.push({ ...p, planos });
+    liberaveis.push({ ...p, planos: r.planos });
   }
 
-  return { liberaveis, parciais, travadosSemTroca };
+  // PASSO 3 — quais dão para fazer AO MESMO TEMPO. Do mais parado para o mais novo,
+  // agora dando baixa de verdade. Quem não couber CONTINUA na lista, marcado como
+  // disputa: a peça é a mesma, então sai um OU outro — a lista mostra a escolha.
+  const chave   = (k, c, i) => k + '|' + c + '|' + i;
+  const tomador = {}; // peça → pedidos que já a levaram nesta simulação
+  for (const p of liberaveis) {
+    const r = avaliar(p, disp);
+    if (r && r.cobriuTudo) {
+      r.hold.forEach(h => {
+        ledger[h.key][h.cor][h.i] -= h.qtd;
+        const c = chave(h.key, h.cor, h.i);
+        (tomador[c] = tomador[c] || []).push(p.numero);
+      });
+      p.simultaneo = true;
+      p.planos = r.planos; // o que realmente sobrou para ele
+    } else {
+      p.simultaneo = false;
+      const donos = new Set();
+      p.planos.forEach(pl => pl.trocas.forEach(t =>
+        (tomador[chave(pl.key, pl.cor, t.de)] || []).forEach(n => donos.add(n))));
+      p.disputaCom = Array.from(donos);
+    }
+  }
+
+  const simultaneos = liberaveis.filter(p => p.simultaneo).length;
+  return { liberaveis, parciais, travadosSemTroca, simultaneos };
 }
 
 function renderTrocaEtiqueta() {
@@ -4096,7 +4128,7 @@ function renderTrocaEtiqueta() {
 
   const sizeLabel = (key, i) => ((MODELOS[key] && MODELOS[key].tamanhos) || ['PP','P','M','G','GG'])[i] || '—';
 
-  const { liberaveis, parciais, travadosSemTroca } = planejarTrocaEtiqueta(
+  const { liberaveis, parciais, travadosSemTroca, simultaneos } = planejarTrocaEtiqueta(
     window._pedidosPendentes || [], window._estoqueLivre || {}, MODELOS, SEM_TROCA_ETIQUETA,
     diasDesde, window._estoqueBruto || {});
 
@@ -4104,10 +4136,13 @@ function renderTrocaEtiqueta() {
   if (liberaveis.length === 0) { el.innerHTML = ''; if (totEl) totEl.textContent = ''; return; }
 
   const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c]));
-  const totPecas = liberaveis.reduce((s, p) => s + p.planos.reduce((t, pl) => t + pl.trocas.reduce((u, tr) => u + tr.qtd, 0), 0), 0);
+  const totPecas = liberaveis.filter(p => p.simultaneo)
+    .reduce((s, p) => s + p.planos.reduce((t, pl) => t + pl.trocas.reduce((u, tr) => u + tr.qtd, 0), 0), 0);
   const atrasados = liberaveis.filter(p => p.dias >= PARADO_ATENCAO).length;
+  const emDisputa = liberaveis.length - simultaneos;
 
-  if (totEl) totEl.textContent = `${liberaveis.length} pedido${liberaveis.length > 1 ? 's' : ''} · ${totPecas} etiqueta${totPecas > 1 ? 's' : ''}`;
+  if (totEl) totEl.textContent = `${liberaveis.length} pedido${liberaveis.length > 1 ? 's' : ''} · ${totPecas} etiqueta${totPecas === 1 ? '' : 's'}`
+    + (emDisputa ? ` · ${emDisputa} em disputa` : '');
 
   el.innerHTML = `
     <div style="font-size:11px;color:var(--text-sec);margin-bottom:8px">
@@ -4119,6 +4154,13 @@ function renderTrocaEtiqueta() {
       ${atrasados ? `<b style="color:#0d9488">${atrasados} ${atrasados > 1 ? 'estão parados' : 'está parado'} há ${PARADO_ATENCAO} dias ou mais.</b>` : ''}
       <span style="color:var(--text-ter)">Macaquinho Amplo fica de fora (etiqueta não pode ser trocada).</span>
     </div>
+    ${emDisputa ? `
+      <div style="background:rgba(217,119,6,.10);border-radius:8px;padding:8px 10px;margin-bottom:8px;font-size:11px;line-height:1.6">
+        <b style="color:#b45309"><i class="ti ti-arrows-split"></i> ${emDisputa} pedido(s) marcados como DISPUTA</b> —
+        a lista mostra <b>todos</b> os pedidos que essa peça atenderia, não só o mais antigo. Quando dois
+        aparecem disputando a mesma peça, só <b>um</b> pode levar: escolha qual e o outro volta a esperar produção.
+        ${simultaneos ? `Os ${simultaneos} sem marca de disputa podem sair <b>todos juntos</b>.` : ''}
+      </div>` : ''}
     ${(parciais || travadosSemTroca) ? `
       <div style="font-size:11px;color:var(--text-ter);margin-bottom:8px">
         ${parciais ? `${parciais} pedido(s) a troca resolveria só em parte — continuam esperando produção.` : ''}
@@ -4142,10 +4184,13 @@ function renderTrocaEtiqueta() {
             ).join(' · ');
             return `<div style="padding:2px 0">${esc(nome)} <span style="color:var(--text-sec)">${esc(pl.cor)}</span> — ${trs}</div>`;
           }).join('');
-          return `<tr>
+          // Disputa: a peça que atende este pedido também atende outro. Sai um OU outro.
+          const badgeDisputa = p.simultaneo ? '' :
+            ` <span style="font-size:9px;background:rgba(217,119,6,.15);color:#b45309;border-radius:3px;padding:1px 5px;font-weight:700;white-space:nowrap" title="${esc((p.disputaCom || []).join(', '))}">DISPUTA${(p.disputaCom || []).length ? ' C/ ' + esc(p.disputaCom.slice(0, 2).join(', ')) : ''}</span>`;
+          return `<tr${p.simultaneo ? '' : ' style="background:rgba(217,119,6,.04)"'}>
             <td style="font-weight:600">${p.url
               ? `<a href="${esc(p.url)}" target="_blank" rel="noopener" style="color:#0d9488;text-decoration:none">${esc(p.numero)} <i class="ti ti-external-link" style="font-size:11px;vertical-align:-1px"></i></a>`
-              : esc(p.numero)}${p.parcial ? ' <span style="font-size:9px;background:rgba(124,58,237,.12);color:#7C3AED;border-radius:3px;padding:1px 5px">PARCIAL</span>' : ''}</td>
+              : esc(p.numero)}${p.parcial ? ' <span style="font-size:9px;background:rgba(124,58,237,.12);color:#7C3AED;border-radius:3px;padding:1px 5px">PARCIAL</span>' : ''}${badgeDisputa}</td>
             <td style="font-size:11px">${esc(p.cliente || 'Cliente')}</td>
             <td style="text-align:center;font-weight:700;white-space:nowrap;color:${critico ? '#dc2626' : p.dias >= PARADO_ATENCAO ? '#d97706' : 'var(--text-sec)'}">${p.dias} ${p.dias === 1 ? 'dia' : 'dias'}</td>
             <td style="font-size:11px;line-height:1.7;text-align:left">${linhas}</td>
