@@ -238,12 +238,39 @@ async function fetchAllOrders(store, token) {
 }
 
 /**
+ * Pedidos JÁ PROCESSADOS (enviados) desde uma data — alimenta a baixa automática de estoque.
+ *
+ * POR QUE PELA SHOPIFY: o processamento é feito lá, não no app. Perguntar direto "o que foi
+ * enviado" é a fonte da verdade; deduzir por sumiço da lista de não-enviados confunde envio
+ * com cancelamento (o cancelado some igual, e a peça dele continua na arara).
+ */
+async function fetchProcessados(store, token, desdeISO) {
+  const orders = [];
+  const fields = 'id,name,created_at,updated_at,cancelled_at,fulfillment_status,line_items,fulfillments,shipping_address';
+  let url = `https://${store}/admin/api/2024-04/orders.json?status=any&fulfillment_status=shipped`
+    + `&updated_at_min=${encodeURIComponent(desdeISO)}&limit=250&fields=${fields}`;
+  while (url) {
+    const res = await fetch(url, { headers: { 'X-Shopify-Access-Token': token } });
+    if (!res.ok) throw new Error(`Shopify API error (processados): ${res.status}`);
+    const data = await res.json();
+    orders.push(...(data.orders || []));
+    const link = res.headers.get('Link') || '';
+    const next = link.match(/<([^>]+)>;\s*rel="next"/);
+    url = next ? next[1] : null;
+  }
+  // Cancelado nunca dá baixa: a peça voltou (ou nem saiu) — subtrair aqui sumiria com estoque real.
+  return orders.filter(o => !o.cancelled_at);
+}
+
+/**
  * Faz o parsing de um único line_item → { modelKey, color, sizeIdx, qty }.
  * Retorna null se o item deve ser ignorado (e registra o motivo em `ignorados`).
  */
-function parseLineItem(item, orderName, ignorados) {
-  // fulfillable_quantity = 0 → item removido/reembolsado → ignorar
-  const qty = item.fulfillable_quantity ?? 0;
+function parseLineItem(item, orderName, ignorados, usarQuantidadeTotal) {
+  // Em pedido JÁ PROCESSADO a Shopify zera fulfillable_quantity — ali o que vale é a
+  // quantidade enviada. Nos pedidos em aberto continua valendo o fulfillable (item
+  // removido/reembolsado tem fulfillable 0 e precisa ser ignorado).
+  const qty = usarQuantidadeTotal ? (item.quantity ?? 0) : (item.fulfillable_quantity ?? 0);
   if (qty <= 0) return null;
 
   // Correção manual — pedido #8406 "Conjunto cozy marrom" chegou sem variant_title (null) no
@@ -372,8 +399,28 @@ export async function onRequest(context) {
       }
     }
 
+    // Pedidos PROCESSADOS na Shopify — é daqui que sai a baixa automática de estoque do app.
+    // Janela de 7 dias: o app tem registro próprio do que já baixou, então uma janela folgada
+    // só serve para não perder envio nenhum se ficar dias sem ninguém abrir o sistema.
+    let processados = [];
+    try {
+      const desde = new Date(Date.now() - 7 * 86400000).toISOString();
+      processados = (await fetchProcessados(store, token, desde)).map(o => {
+        const itens = [];
+        for (const item of o.line_items || []) {
+          const parsed = parseLineItem(item, o.name, [], true);
+          if (parsed) itens.push({ modelKey: parsed.modelKey, cor: parsed.color, tam: parsed.sizeIdx, qtd: parsed.qty });
+        }
+        const envios = (o.fulfillments || []).map(f => f.created_at).filter(Boolean).sort();
+        return { id: String(o.id), numero: o.name, enviado_em: envios[0] || o.updated_at, itens };
+      }).filter(p => p.itens.length > 0);
+    } catch (e) {
+      // Falhar aqui não pode derrubar a lista de pedidos em aberto — a tela inteira vive dela.
+      processados = [];
+    }
+
     // Inclui log de ignorados para diagnóstico
-    return new Response(JSON.stringify({ pedidos: result, detalhados, ignorados, pulados, total_pedidos: orders.length }), { headers });
+    return new Response(JSON.stringify({ pedidos: result, detalhados, processados, ignorados, pulados, total_pedidos: orders.length }), { headers });
 
   } catch (err) {
     return new Response(JSON.stringify({ erro: err.message }), { headers });

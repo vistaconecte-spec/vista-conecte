@@ -6400,6 +6400,8 @@ async function carregarPedidosShopify() {
     window._shopifyTotalPedidos = resp.total_pedidos || 0;
     // Guarda detalhe por pedido (número, cliente, data, itens) p/ card "Prontos para envio"
     window._shopifyDetalhados = resp.detalhados || [];
+    // Pedidos que a Shopify já processou (envio criado) — fonte da baixa de estoque
+    window._shopifyProcessados = resp.processados || [];
 
     // Zera aberto de todos os modelos antes de preencher
     for (const key of Object.keys(MODELOS)) {
@@ -6646,6 +6648,10 @@ function salvarSnapshotAberto() {
   saveLocal('vc:aberto-snapshot', snapshot);
 }
 
+// Conferência MANUAL (botão "conferir envios" no card de prontos). A baixa do dia a dia é
+// automática — isto aqui é a rede de segurança: compara o total de pedidos em aberto com a
+// última foto e mostra o que saiu sem ter tido baixa, para confirmar na mão. Serve para o
+// que escapar da automação e para a virada da regra, em 10/08/2026.
 async function verificarEnvios() {
   const snapshot = loadLocal('vc:aberto-snapshot');
   await carregarPedidosShopify();
@@ -6719,26 +6725,27 @@ function ignorarEnvios() {
   document.getElementById('modal-envios').style.display = 'none';
 }
 
-// ─── BAIXA IMEDIATA DE ESTOQUE, PEDIDO A PEDIDO ──────────────────────────────
-// Até 10/08/2026 a baixa acontecia UMA VEZ POR DIA, às 16h, e só depois de a dona
+// ─── BAIXA DE ESTOQUE NA HORA DO PROCESSAMENTO ───────────────────────────────
+// Até 10/08/2026 a baixa acontecia UMA VEZ POR DIA, às 16h, e ainda dependia de a dona
 // confirmar num modal. No intervalo o pedido processado já tinha saído de "pedidos em
 // aberto" (some do filtro unfulfilled) mas o estoque continuava cheio — então
 // "estoque − pedidos em aberto" inflava e a peça aparecia como saldo livre para outro
-// pedido. Foi o que aconteceu com o Vestido Amplo PP. Agora a baixa sai na hora, a cada
-// processamento detectado.
+// pedido. Foi o que aconteceu com o Vestido Amplo PP.
 //
-// A detecção é por PEDIDO (não pelo total agregado por cor/tamanho): guardamos os
-// pedidos abertos e, quando um some, olhamos o que ele tinha dentro. Some por dois
-// motivos — enviado ou cancelado — e só o enviado dá baixa; por isso a confirmação
-// em /api/shopify-status-pedidos. Cancelado não tira peça da arara.
-const SNAP_PEDIDOS = 'vc:pedidos-abertos';
+// O processamento é feito NA SHOPIFY, não aqui. Então a fonte da verdade é ela: o
+// /api/shopify-orders devolve `processados` (pedidos com envio criado, cancelados já
+// filtrados) e a baixa aplica esses. Deduzir por "sumiu da lista de não-enviados" seria
+// pior — o cancelado some igual e a peça dele continua na arara.
+//
+// Registro do que JÁ foi baixado, guardado na NUVEM (vc_modelos id=baixas-estoque).
+// Precisa ser compartilhado: se ficasse só no localStorage, abrir o app no celular e no
+// computador daria baixa duas vezes no mesmo pedido — o estoque é o mesmo lá e cá.
+const LEDGER_BAIXAS = 'baixas-estoque';
+const LEDGER_LOCAL  = 'vc:' + LEDGER_BAIXAS;
 
-function salvarSnapshotPedidos() {
-  const snap = {};
-  for (const p of (window._shopifyDetalhados || [])) {
-    snap[String(p.id)] = { numero: p.numero, itens: p.itens || [] };
-  }
-  saveLocal(SNAP_PEDIDOS, snap);
+function lerLedgerBaixas() {
+  const l = loadLocal(LEDGER_LOCAL);
+  return (l && typeof l === 'object' && l.pedidos) ? l : null;
 }
 
 // Aplica a baixa das peças de um pedido. Devolve o que foi baixado, para o aviso.
@@ -6767,44 +6774,50 @@ function baixarEstoqueDoPedido(itens) {
 let _ultimaBaixaAuto = null; // { quando, pedidos:[], pecas:[] } — alimenta o aviso do dashboard
 
 async function baixaImediataDeProcessados() {
-  const snap = loadLocal(SNAP_PEDIDOS);
-  // Primeira execução: só fotografa. Sem foto anterior não dá para saber o que saiu,
-  // e chutar aqui significaria subtrair estoque no escuro.
-  if (!snap) { salvarSnapshotPedidos(); return; }
+  const processados = window._shopifyProcessados || [];
 
-  const agora = new Set((window._shopifyDetalhados || []).map(p => String(p.id)));
-  const sumiram = Object.keys(snap).filter(id => !agora.has(id));
-  if (sumiram.length === 0) { salvarSnapshotPedidos(); return; }
-
-  let confirmados;
-  try {
-    const res = await fetch('/api/shopify-status-pedidos?ids=' + sumiram.slice(0, 50).join(','));
-    if (!res.ok) return; // sem confirmação não mexe no estoque — tenta de novo no próximo ciclo
-    const data = await res.json();
-    if (data.erro) return;
-    confirmados = data.pedidos || [];
-  } catch { return; } // offline: NÃO dá baixa e NÃO atualiza a foto
-
-  const enviados = confirmados.filter(p => p.enviado);
-  const pecas = [], numeros = [];
-  for (const p of enviados) {
-    const guardado = snap[p.id];
-    if (!guardado) continue;
-    const b = baixarEstoqueDoPedido(guardado.itens);
-    if (b.length) { pecas.push(...b); numeros.push(guardado.numero || p.numero); }
+  let ledger = lerLedgerBaixas();
+  if (!ledger) {
+    // PRIMEIRA VEZ: não baixa nada, só registra o que já existe.
+    //
+    // A janela da API traz 7 dias de envios, e esses já tiveram baixa pela rotina antiga
+    // das 16h (e pelo acerto manual do dia da virada — em 10/08/2026 o modal foi
+    // confirmado às 17h41). Reaplicar aqui subtrairia o mesmo envio duas vezes, e estoque
+    // subtraído a mais só reaparece se alguém contar a arara na mão.
+    //
+    // Na dúvida entre baixar duas vezes e não baixar, o certo é não baixar: o que ficar
+    // de fora aparece na conferência do dia; o que for subtraído a mais some sem rastro.
+    ledger = { desde: new Date().toISOString(), pedidos: {} };
+    for (const p of processados) {
+      ledger.pedidos[p.id] = { numero: p.numero, em: p.enviado_em, aplicado: null, pecas: 0, nota: 'anterior ao registro' };
+    }
+    saveLocal(LEDGER_LOCAL, ledger);
+    await salvarNuvem(LEDGER_BAIXAS, ledger);
+    return;
   }
 
-  // Só tira da foto quem a Shopify confirmou (enviado OU cancelado). Pedido que ela não
-  // devolveu continua na foto para ser reavaliado depois, em vez de sumir sem baixa.
-  const resolvidos = new Set(confirmados.map(p => p.id));
-  const novaFoto = {};
-  for (const p of (window._shopifyDetalhados || [])) novaFoto[String(p.id)] = { numero: p.numero, itens: p.itens || [] };
-  for (const id of sumiram) if (!resolvidos.has(id)) novaFoto[id] = snap[id];
-  saveLocal(SNAP_PEDIDOS, novaFoto);
+  const novos = processados.filter(p =>
+    !ledger.pedidos[p.id] &&
+    p.enviado_em && p.enviado_em >= ledger.desde
+  );
+  if (novos.length === 0) return;
+
+  const pecas = [], numeros = [];
+  for (const p of novos) {
+    const b = baixarEstoqueDoPedido(p.itens);
+    ledger.pedidos[p.id] = { numero: p.numero, em: p.enviado_em, aplicado: new Date().toISOString(), pecas: b.length };
+    if (b.length) { pecas.push(...b); numeros.push(p.numero); }
+  }
+
+  // Poda: 60 dias bastam para a idempotência (a janela da API é de 7)
+  const corte = new Date(Date.now() - 60 * 86400000).toISOString();
+  for (const [id, r] of Object.entries(ledger.pedidos)) if (r.em && r.em < corte) delete ledger.pedidos[id];
+
+  saveLocal(LEDGER_LOCAL, ledger);
+  await salvarNuvem(LEDGER_BAIXAS, ledger);
 
   if (pecas.length) {
     _ultimaBaixaAuto = { quando: new Date().toISOString(), pedidos: numeros, pecas };
-    salvarSnapshotAberto(); // mantém o snapshot antigo alinhado (usado pela via de recuperação)
     if (modeloAtual === '__dashboard__') renderDashboard();
     else if (MODELOS[modeloAtual]) renderModelo(modeloAtual);
   }
@@ -7456,12 +7469,7 @@ carregarTodosNuvem().then(() => carregarPedidosShopify()).then(async () => {
   // Na primeira carga do dia, salva snapshot se não existir
   if (!loadLocal('vc:aberto-snapshot')) salvarSnapshotAberto();
 
-  // Virada da regra das 16h → baixa imediata: pedidos processados ANTES deste código
-  // existir não estão na foto por pedido, então a baixa deles ficou pendente. Esse
-  // atraso é oferecido UMA vez no modal antigo, para conferir e confirmar, em vez de
-  // sair subtraindo estoque no escuro. Depois disso a foto assume e é tudo automático.
-  const primeiraVez = !loadLocal(SNAP_PEDIDOS);
-  if (primeiraVez) { try { await verificarEnvios(); } catch {} }
+  // Baixa de estoque dos pedidos que a Shopify já processou (inclusive o atraso de hoje).
   await baixaImediataDeProcessados().catch(() => {});
 
   _renderInicial();
