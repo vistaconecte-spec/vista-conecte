@@ -3290,11 +3290,33 @@ function verificarAvisosStatus() {
   }).join('');
 }
 
+// Aviso do que a baixa automática tirou do estoque. A baixa é automática de propósito
+// (a peça já saiu fisicamente), mas nunca silenciosa: o estoque é editável à mão, então
+// se algo aqui estiver errado dá para corrigir na tabela do modelo.
+function renderAvisoBaixaAuto() {
+  const el = document.getElementById('aviso-baixa-auto');
+  if (!el) return;
+  const b = _ultimaBaixaAuto;
+  if (!b || !b.pecas.length) { el.style.display = 'none'; el.innerHTML = ''; return; }
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c]));
+  const sizeLabel = (key, i) => (MODELOS[key] && MODELOS[key].tamanhoUnico) ? 'Único'
+    : (((MODELOS[key] && MODELOS[key].tamanhos) || ['PP','P','M','G','GG'])[i] || '—');
+  const hora = new Date(b.quando).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+  el.style.display = '';
+  el.innerHTML = `
+    <div style="background:rgba(22,163,74,.08);border-left:3px solid #16a34a;border-radius:8px;padding:8px 12px;font-size:11px;line-height:1.7">
+      <b style="color:#16a34a"><i class="ti ti-package-export"></i> BAIXA DE ESTOQUE APLICADA ${esc(hora)}</b>
+      — pedido(s) ${esc(b.pedidos.join(', '))} foram processados e as peças saíram do estoque:
+      ${b.pecas.map(p => `<b>${esc(p.nome)}</b> ${esc(p.cor)} ${esc(sizeLabel(p.key, p.tam))}${p.qtd > 1 ? ' ×' + p.qtd : ''}`).join(' · ')}
+    </div>`;
+}
+
 function renderDashboard() {
   document.getElementById('model-title').innerHTML = '';
   document.getElementById('model-sub').textContent = '';
   document.getElementById('topbar-actions').style.display = 'none';
   document.getElementById('tabs-modelo').style.display = 'none';
+  renderAvisoBaixaAuto();
 
   const modelData = [];
   for (const [key, def] of Object.entries(MODELOS)) {
@@ -4204,15 +4226,29 @@ function renderTrocaEtiqueta() {
 // Lista os pedidos da Shopify cujos itens TODOS têm estoque disponível.
 // Aloca o estoque do pedido mais antigo para o mais recente, então a lista
 // reflete o que pode realmente ser enviado em sequência (sem disputar a mesma peça).
+// Expande um item do pedido em requisitos de estoque (conjuntos → peças individuais).
+// FONTE ÚNICA: usada pelo card de prontos para envio E pela baixa automática de estoque.
+// Se as duas contas divergirem, um pedido pode dar baixa numa cor e procurar estoque em
+// outra — e ficar travado para sempre.
+// Branca → Branco (cor própria, NÃO off white). As demais diferenças de caixa/acento são
+// resolvidas por corCanonica — senão "CINZA" do pedido não acha o estoque de "Cinza".
+const COR_ALIASES_DIST = { 'Branca': 'Branco' };
+
+function requisitosDoItem(item) {
+  const { modelKey, cor, tam, qtd } = item;
+  if (CONJUNTO_PECAS[modelKey]) {
+    return pecasDoConjunto(modelKey, cor).map(p => ({ key: p.key, cor: p.cor, tam, qtd }));
+  }
+  if (MODELOS[modelKey]) {
+    return [{ key: modelKey, cor: corCanonica(MODELOS[modelKey], COR_ALIASES_DIST[cor] || cor), tam, qtd }];
+  }
+  return [];
+}
+
 function renderProntosParaEnvio() {
   const el    = document.getElementById('dash-prontos');
   const totEl = document.getElementById('dash-prontos-total');
   if (!el) return;
-
-  // Branca → Branco (cor própria, NÃO off white). As demais diferenças de caixa/acento
-  // são resolvidas por corCanonica — senão "CINZA" do pedido não acha o estoque de "Cinza"
-  // e o pedido fica travado para sempre mesmo com peça na arara.
-  const COR_ALIASES_DIST = { 'Branca': 'Branco' };
 
   // Estoque de trabalho: cópia do estoque atual (será decrementado conforme aloca)
   const stock = {};
@@ -4247,19 +4283,7 @@ function renderProntosParaEnvio() {
     stock[key][cor][i] = ((stock[key][cor][i]) || 0) - q;
   };
 
-  // Expande um item do pedido em requisitos de estoque (conjuntos → peças individuais).
-  // Usa a MESMA regra da distribuição de pedidos (pecasDoConjunto), senão um pedido pode
-  // contar produção numa cor e procurar estoque em outra — e nunca liberar.
-  const reqsDoItem = (item) => {
-    const { modelKey, cor, tam, qtd } = item;
-    if (CONJUNTO_PECAS[modelKey]) {
-      return pecasDoConjunto(modelKey, cor).map(p => ({ key: p.key, cor: p.cor, tam, qtd }));
-    }
-    if (MODELOS[modelKey]) {
-      return [{ key: modelKey, cor: corCanonica(MODELOS[modelKey], COR_ALIASES_DIST[cor] || cor), tam, qtd }];
-    }
-    return [];
-  };
+  const reqsDoItem = requisitosDoItem;
 
   // Só pedidos PAGOS entram (exclui pendentes, autorizados, expirados, estornados, etc.)
   // 'paid' = pago integral | 'partially_refunded' = pago e com reembolso parcial (ainda enviável)
@@ -4442,8 +4466,10 @@ async function marcarProcessado(orderId, numero, btn) {
     btn.style.background = '#0f7a37';
     btn.style.borderColor = '#0f7a37';
 
-    // Recarrega pedidos da Shopify (o pedido cumprido sai do filtro "unshipped") e re-renderiza
+    // Recarrega pedidos da Shopify (o pedido cumprido sai do filtro "unshipped") e re-renderiza.
+    // A baixa do estoque sai JUNTO, aqui — este é o momento em que a peça deixou a arara.
     await carregarPedidosShopify();
+    await baixaImediataDeProcessados().catch(() => {});
     if (modeloAtual === '__dashboard__') renderDashboard();
   } catch (err) {
     alert(`Falha de conexão ao processar o pedido ${numero}.\n\n${err.message}`);
@@ -6693,17 +6719,95 @@ function ignorarEnvios() {
   document.getElementById('modal-envios').style.display = 'none';
 }
 
-function agendarVerificacaoEnvios() {
-  const agora = new Date();
-  const proximas16 = new Date();
-  proximas16.setHours(16, 0, 0, 0);
-  if (agora >= proximas16) proximas16.setDate(proximas16.getDate() + 1);
-  const msAte16 = proximas16 - agora;
-  setTimeout(async () => {
-    await verificarEnvios();
-    // Reagenda para o próximo dia
-    agendarVerificacaoEnvios();
-  }, msAte16);
+// ─── BAIXA IMEDIATA DE ESTOQUE, PEDIDO A PEDIDO ──────────────────────────────
+// Até 10/08/2026 a baixa acontecia UMA VEZ POR DIA, às 16h, e só depois de a dona
+// confirmar num modal. No intervalo o pedido processado já tinha saído de "pedidos em
+// aberto" (some do filtro unfulfilled) mas o estoque continuava cheio — então
+// "estoque − pedidos em aberto" inflava e a peça aparecia como saldo livre para outro
+// pedido. Foi o que aconteceu com o Vestido Amplo PP. Agora a baixa sai na hora, a cada
+// processamento detectado.
+//
+// A detecção é por PEDIDO (não pelo total agregado por cor/tamanho): guardamos os
+// pedidos abertos e, quando um some, olhamos o que ele tinha dentro. Some por dois
+// motivos — enviado ou cancelado — e só o enviado dá baixa; por isso a confirmação
+// em /api/shopify-status-pedidos. Cancelado não tira peça da arara.
+const SNAP_PEDIDOS = 'vc:pedidos-abertos';
+
+function salvarSnapshotPedidos() {
+  const snap = {};
+  for (const p of (window._shopifyDetalhados || [])) {
+    snap[String(p.id)] = { numero: p.numero, itens: p.itens || [] };
+  }
+  saveLocal(SNAP_PEDIDOS, snap);
+}
+
+// Aplica a baixa das peças de um pedido. Devolve o que foi baixado, para o aviso.
+function baixarEstoqueDoPedido(itens) {
+  const baixado = [];
+  for (const item of (itens || [])) {
+    for (const r of requisitosDoItem(item)) {
+      const saved = loadLocal('vc:' + r.key);
+      // Sem estoque cadastrado para esta cor não há o que baixar (e criar entrada
+      // zerada aqui inventaria linha de estoque que a dona nunca lançou).
+      if (!saved || !saved.est || !saved.est[r.cor]) continue;
+      const i = (MODELOS[r.key] && MODELOS[r.key].tamanhoUnico) ? 0 : r.tam;
+      const antes = saved.est[r.cor][i] || 0;
+      if (antes <= 0) continue;
+      const tirar = Math.min(antes, r.qtd);
+      saved.est[r.cor][i] = antes - tirar;
+      saved.est_at = saved.updated_at = new Date().toISOString();
+      saveLocal('vc:' + r.key, saved);
+      salvarNuvem(r.key, saved);
+      baixado.push({ key: r.key, nome: (MODELOS[r.key] && MODELOS[r.key].nome) || r.key, cor: r.cor, tam: i, qtd: tirar });
+    }
+  }
+  return baixado;
+}
+
+let _ultimaBaixaAuto = null; // { quando, pedidos:[], pecas:[] } — alimenta o aviso do dashboard
+
+async function baixaImediataDeProcessados() {
+  const snap = loadLocal(SNAP_PEDIDOS);
+  // Primeira execução: só fotografa. Sem foto anterior não dá para saber o que saiu,
+  // e chutar aqui significaria subtrair estoque no escuro.
+  if (!snap) { salvarSnapshotPedidos(); return; }
+
+  const agora = new Set((window._shopifyDetalhados || []).map(p => String(p.id)));
+  const sumiram = Object.keys(snap).filter(id => !agora.has(id));
+  if (sumiram.length === 0) { salvarSnapshotPedidos(); return; }
+
+  let confirmados;
+  try {
+    const res = await fetch('/api/shopify-status-pedidos?ids=' + sumiram.slice(0, 50).join(','));
+    if (!res.ok) return; // sem confirmação não mexe no estoque — tenta de novo no próximo ciclo
+    const data = await res.json();
+    if (data.erro) return;
+    confirmados = data.pedidos || [];
+  } catch { return; } // offline: NÃO dá baixa e NÃO atualiza a foto
+
+  const enviados = confirmados.filter(p => p.enviado);
+  const pecas = [], numeros = [];
+  for (const p of enviados) {
+    const guardado = snap[p.id];
+    if (!guardado) continue;
+    const b = baixarEstoqueDoPedido(guardado.itens);
+    if (b.length) { pecas.push(...b); numeros.push(guardado.numero || p.numero); }
+  }
+
+  // Só tira da foto quem a Shopify confirmou (enviado OU cancelado). Pedido que ela não
+  // devolveu continua na foto para ser reavaliado depois, em vez de sumir sem baixa.
+  const resolvidos = new Set(confirmados.map(p => p.id));
+  const novaFoto = {};
+  for (const p of (window._shopifyDetalhados || [])) novaFoto[String(p.id)] = { numero: p.numero, itens: p.itens || [] };
+  for (const id of sumiram) if (!resolvidos.has(id)) novaFoto[id] = snap[id];
+  saveLocal(SNAP_PEDIDOS, novaFoto);
+
+  if (pecas.length) {
+    _ultimaBaixaAuto = { quando: new Date().toISOString(), pedidos: numeros, pecas };
+    salvarSnapshotAberto(); // mantém o snapshot antigo alinhado (usado pela via de recuperação)
+    if (modeloAtual === '__dashboard__') renderDashboard();
+    else if (MODELOS[modeloAtual]) renderModelo(modeloAtual);
+  }
 }
 
 // ─── ABA MODELAGEM (pastas por modelo: croqui, arquivo Audaces, consumo, alterações) ──────────
@@ -7348,9 +7452,18 @@ const _renderInicial = () => {
   else if (modeloAtual === '__modelagem__') { if (sessionStorage.getItem('mdl-ok') === '1') mdlCarregarLista(); }
   else renderModelo(modeloAtual);
 };
-carregarTodosNuvem().then(() => carregarPedidosShopify()).then(() => {
+carregarTodosNuvem().then(() => carregarPedidosShopify()).then(async () => {
   // Na primeira carga do dia, salva snapshot se não existir
   if (!loadLocal('vc:aberto-snapshot')) salvarSnapshotAberto();
+
+  // Virada da regra das 16h → baixa imediata: pedidos processados ANTES deste código
+  // existir não estão na foto por pedido, então a baixa deles ficou pendente. Esse
+  // atraso é oferecido UMA vez no modal antigo, para conferir e confirmar, em vez de
+  // sair subtraindo estoque no escuro. Depois disso a foto assume e é tudo automático.
+  const primeiraVez = !loadLocal(SNAP_PEDIDOS);
+  if (primeiraVez) { try { await verificarEnvios(); } catch {} }
+  await baixaImediataDeProcessados().catch(() => {});
+
   _renderInicial();
   verificarAvisosStatus();
 }).catch(() => {
@@ -7360,7 +7473,10 @@ carregarTodosNuvem().then(() => carregarPedidosShopify()).then(() => {
 
 // 3. Atualiza pedidos Shopify automaticamente a cada 1 minuto
 setInterval(() => {
-  carregarPedidosShopify().then(() => {
+  carregarPedidosShopify().then(async () => {
+    // Baixa de estoque na hora: se algum pedido foi processado desde o ciclo anterior,
+    // a peça sai do estoque agora, não às 16h.
+    await baixaImediataDeProcessados().catch(() => {});
     if (modeloAtual === '__dashboard__') renderDashboard();
     else if (!estEditado && !prodEditado && MODELOS[modeloAtual]) renderModelo(modeloAtual); // só modelos reais; pula precos/financeiro
   }).catch(() => {});
@@ -7421,8 +7537,8 @@ function mostrarFaixaVersaoNova(versaoNova) {
 setInterval(checarVersaoNova, 60 * 1000);   // 1x por minuto
 checarVersaoNova();
 
-// 4. Agendamento da verificação de envios às 16h
-agendarVerificacaoEnvios();
+// 4. Baixa de estoque: não existe mais horário marcado — ver baixaImediataDeProcessados,
+// que roda junto com cada atualização de pedidos (startup, ciclo de 1 min e após processar).
 
 // Resincroniza alturas ao redimensionar janela
 // Força save ao fechar/atualizar página se houver edições pendentes
