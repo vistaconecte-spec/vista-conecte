@@ -3803,18 +3803,11 @@ function renderDashboard() {
   }
   // ─────────────────────────────────────────────────────────────────────────────
 
-  // Exclui conjuntos do total de pedidos (suas peças já são contadas individualmente após distribuição)
-  const totalPedidos  = modelData.filter(m => !CONJUNTO_PECAS[m.key]).reduce((s,m) => s + m.pedidos, 0);
-  const comPedidos    = modelData.filter(m => m.pedidos > 0 && !CONJUNTO_PECAS[m.key]).length;
-  const totalProduzir = modelData.filter(m => !CONJUNTO_PECAS[m.key]).reduce((s,m) => s + m.produzir, 0);
-  const urgentes      = modelData.filter(m => m.produzir > 0 && !CONJUNTO_PECAS[m.key]).length;
+  // Total de PEÇAS em aberto — a fita de métricas que mostrava este número saiu do
+  // painel, mas ele continua sendo a linha de baixo do mini card PEDIDOS EM ABERTO.
+  // Exclui conjuntos (suas peças já são contadas individualmente após a distribuição).
+  const totalPedidos = modelData.filter(m => !CONJUNTO_PECAS[m.key]).reduce((s,m) => s + m.pedidos, 0);
 
-  document.getElementById('dash-m-pedidos').textContent  = totalPedidos;
-  document.getElementById('dash-m-produzir').textContent = totalProduzir;
-  document.getElementById('dash-m-alertas').textContent  = urgentes;
-  const ign = (window._shopifyIgnorados || []).length;
-  const ignEl = document.getElementById('dash-m-ignorados');
-  if (ignEl) { ignEl.textContent = ign; ignEl.style.color = ign > 0 ? '#dc2626' : '#16a34a'; }
   verificarAvisosStatus();
 
   // Mais vendidos (top 5)
@@ -4534,10 +4527,10 @@ function requisitosDoItem(item) {
 // semana e quanto ainda falta sair. Em cada um o número grande é PEDIDO e a linha
 // de baixo é PEÇA.
 //
-// "Semana" começa na TERÇA (é o dia em que a Bárbara fecha a conta), então o card
-// mostra da terça mais recente 00:00 até agora. Na própria terça os dois cards de
-// liberados mostram o mesmo número, e é isso mesmo — o da semana só se separa na
-// quarta. A janela do /api/shopify-orders é de 7 dias, e "última terça" nunca passa disso.
+// "Semana" começa na SEGUNDA, então o card mostra da segunda mais recente 00:00 até
+// agora. Na própria segunda os dois cards de liberados mostram o mesmo número, e é
+// isso mesmo — eles só se separam na terça. A janela do /api/shopify-orders é de 7
+// dias, e "última segunda" nunca passa disso (no domingo dá 6 dias e pouco).
 //
 // Liberado = ENVIO (fulfillment) criado na Shopify, mesma fonte da baixa de estoque:
 // remessa cancelada não entra e pedido enviado em duas remessas conta uma vez só no
@@ -4545,10 +4538,10 @@ function requisitosDoItem(item) {
 //
 // Conjunto conta como as PEÇAS dele (requisitosDoItem, o mesmo distribuidor da baixa):
 // um Conjunto Pantalona + Blusa que saiu são duas peças da arara, não uma.
-function inicioDaSemanaTerca() {
+function inicioDaSemana() {
   const d = new Date();
   d.setHours(0, 0, 0, 0);
-  d.setDate(d.getDate() - ((d.getDay() - 2 + 7) % 7)); // 2 = terça
+  d.setDate(d.getDate() - ((d.getDay() - 1 + 7) % 7)); // 1 = segunda (domingo volta 6 dias)
   return d;
 }
 
@@ -4572,11 +4565,11 @@ function renderMiniCards(pecasEmAberto) {
   const hoje = diaLocal(Date.now());
   preencher('mini-hoje-ped', 'mini-hoje-sub', enviados.filter(p => diaLocal(p.enviado_em) === hoje));
 
-  // ── Liberados da terça até agora ──
-  const desde = inicioDaSemanaTerca();
+  // ── Liberados da segunda até agora ──
+  const desde = inicioDaSemana();
   preencher('mini-lib-ped', 'mini-lib-sub',
     enviados.filter(p => Date.parse(p.enviado_em) >= desde.getTime()),
-    ` · desde ter ${desde.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}`);
+    ` · desde seg ${desde.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}`);
 
   // ── Pedidos ainda em aberto ──
   // A contagem sai de _shopifyDetalhados (um item por pedido não enviado com produto
@@ -7020,7 +7013,11 @@ function verificarLeituraPedidos() {
   const html =
     `<div style="display:flex;align-items:flex-start;gap:12px;flex-wrap:wrap">
        <div style="flex:1;min-width:260px">
-         <div style="font-weight:700;margin-bottom:4px"><i class="ti ti-alert-triangle"></i> Confira a leitura dos pedidos (${avisos.length})</div>
+         <div style="font-weight:700;margin-bottom:4px">
+           <i class="ti ti-alert-triangle"></i> Confira a leitura dos pedidos (${avisos.length})
+           <button onclick="verIgnoradosShopify()" title="Abre a lista completa de itens que a leitura não reconheceu"
+                   style="background:transparent;border:0;color:#fff;text-decoration:underline;font-size:11px;font-weight:600;cursor:pointer;padding:0 0 0 8px">ver diagnóstico</button>
+         </div>
          <div style="font-size:12px;line-height:1.6">${linhas}
          ${avisos.length > 8 ? `<div style="padding-top:4px"><i>…e mais ${avisos.length - 8}</i></div>` : ''}</div>
          <div style="font-size:11px;margin-top:6px;opacity:.85">Enquanto isso não for resolvido, esses pedidos podem estar na cor errada ou fora da conta de produção. O "conferido" vale para este pedido e some no celular também.</div>
