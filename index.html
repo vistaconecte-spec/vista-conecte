@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Bodoni+Moda:ital,opsz,wght@0,6..96,700;0,6..96,900&family=Bebas+Neue&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css">
-<link rel="stylesheet" href="style.css?v=2026081123">
+<link rel="stylesheet" href="style.css?v=2026081124">
 </head>
 <body>
 
@@ -102,8 +102,13 @@
         </div>
         <div class="mini-cards">
           <div class="mini-card" style="border-left:3px solid #0891b2">
-            <div class="mini-label"><i class="ti ti-package-export"></i> LIBERADOS NA SEMANA</div>
-            <div class="mini-val" style="color:#0891b2" id="mini-lib-ped">—</div>
+            <div class="mini-label"><i class="ti ti-package-export"></i> LIBERADOS HOJE</div>
+            <div class="mini-val" style="color:#0891b2" id="mini-hoje-ped">—</div>
+            <div class="mini-sub" id="mini-hoje-sub">—</div>
+          </div>
+          <div class="mini-card" style="border-left:3px solid #7C3AED">
+            <div class="mini-label"><i class="ti ti-calendar-week"></i> LIBERADOS NA SEMANA</div>
+            <div class="mini-val" style="color:#7C3AED" id="mini-lib-ped">—</div>
             <div class="mini-sub" id="mini-lib-sub">—</div>
           </div>
           <div class="mini-card" style="border-left:3px solid #d97706">
@@ -881,8 +886,8 @@
     </div>
   </div>
 </div>
-<script src="data.js?v=2026081123"></script>
-<script src="main.js?v=2026081123"></script>
+<script src="data.js?v=2026081124"></script>
+<script src="main.js?v=2026081124"></script>
 <script async src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js" onload="initSupabase()"></script>
 </body>
 </html>

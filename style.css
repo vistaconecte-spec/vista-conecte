@@ -260,12 +260,12 @@ body { font-family: 'Inter', system-ui, sans-serif; background: var(--bg); color
 .tab-panel { display: none; }
 .tab-panel.active { display: block; }
 
-/* ── MINI CARDS (dois lado a lado: liberados na semana / pedidos em aberto) ──
-   Sempre 2 colunas, inclusive no celular: são dois números curtos e ficam bem
-   um do lado do outro em 375px. */
+/* ── MINI CARDS (liberados hoje / liberados na semana / pedidos em aberto) ──
+   Sempre 3 colunas, inclusive no celular: são três números curtos e cabem
+   lado a lado em 375px com a tipografia reduzida do media query. */
 .mini-cards {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(3, 1fr);
   gap: 8px;
   margin-bottom: 12px;
 }
@@ -761,12 +761,13 @@ select:focus, input:not(.ci):focus { outline: none; border-color: var(--gold); b
   /* Content */
   .content { padding: 10px 10px; }
 
-  /* Mini cards */
-  .mini-cards { gap: 6px; }
-  .mini-card { padding: 9px 11px; }
-  .mini-card .mini-label { font-size: 9px; letter-spacing: 0.04em; }
-  .mini-card .mini-val { font-size: 22px; }
-  .mini-card .mini-sub { font-size: 10px; }
+  /* Mini cards — três colunas em 375px: o rótulo é o que aperta, então perde
+     o espaçamento entre letras e a linha de baixo encolhe junto. */
+  .mini-cards { gap: 5px; }
+  .mini-card { padding: 8px 8px; }
+  .mini-card .mini-label { font-size: 8.5px; letter-spacing: 0; line-height: 1.25; }
+  .mini-card .mini-val { font-size: 20px; }
+  .mini-card .mini-sub { font-size: 9.5px; line-height: 1.3; }
 
   /* Metrics 2x2 */
   .metrics { grid-template-columns: 1fr 1fr; gap: 6px; }

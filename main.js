@@ -4529,13 +4529,15 @@ function requisitosDoItem(item) {
   return [];
 }
 
-// ─── MINI CARDS: LIBERADOS NA SEMANA · PEDIDOS EM ABERTO ─────────────────────
-// Dois números de cabeceira, sem lista de peças: quanto saiu na semana e quanto
-// ainda falta sair. Em cada um o número grande é PEDIDO e a linha de baixo é PEÇA.
+// ─── MINI CARDS: LIBERADOS HOJE · LIBERADOS NA SEMANA · PEDIDOS EM ABERTO ────
+// Três números de cabeceira, sem lista de peças: quanto saiu hoje, quanto saiu na
+// semana e quanto ainda falta sair. Em cada um o número grande é PEDIDO e a linha
+// de baixo é PEÇA.
 //
 // "Semana" começa na TERÇA (é o dia em que a Bárbara fecha a conta), então o card
-// mostra da terça mais recente 00:00 até agora. Na própria terça o período é só o dia.
-// A janela do /api/shopify-orders é de 7 dias, e "última terça" nunca passa disso.
+// mostra da terça mais recente 00:00 até agora. Na própria terça os dois cards de
+// liberados mostram o mesmo número, e é isso mesmo — o da semana só se separa na
+// quarta. A janela do /api/shopify-orders é de 7 dias, e "última terça" nunca passa disso.
 //
 // Liberado = ENVIO (fulfillment) criado na Shopify, mesma fonte da baixa de estoque:
 // remessa cancelada não entra e pedido enviado em duas remessas conta uma vez só no
@@ -4553,24 +4555,34 @@ function inicioDaSemanaTerca() {
 function renderMiniCards(pecasEmAberto) {
   const set = (id, txt) => { const e = document.getElementById(id); if (e) e.textContent = txt; };
   const plural = (n, s, p) => `${n} ${n === 1 ? s : p}`;
+  const pecasDe = remessas => remessas.reduce((s, p) =>
+    s + (p.itens || []).flatMap(requisitosDoItem).reduce((t, r) => t + (r.qtd || 0), 0), 0);
+  const preencher = (idPed, idSub, remessas, sufixo) => {
+    set(idPed, new Set(remessas.map(p => p.numero)).size);
+    set(idSub, plural(pecasDe(remessas), 'peça', 'peças') + (sufixo || ''));
+  };
+
+  const enviados = (window._shopifyProcessados || []).filter(p => p.enviado_em);
+
+  // ── Liberados hoje ──
+  // Dia comparado por data LOCAL formatada (sv-SE dá AAAA-MM-DD), nunca por recorte de
+  // texto do ISO: o carimbo da Shopify vem com fuso ("...-03:00") e cortar os 10
+  // primeiros caracteres jogaria o envio da madrugada para o dia anterior.
+  const diaLocal = d => new Date(d).toLocaleDateString('sv-SE');
+  const hoje = diaLocal(Date.now());
+  preencher('mini-hoje-ped', 'mini-hoje-sub', enviados.filter(p => diaLocal(p.enviado_em) === hoje));
 
   // ── Liberados da terça até agora ──
   const desde = inicioDaSemanaTerca();
-  const liberados = (window._shopifyProcessados || [])
-    .filter(p => p.enviado_em && Date.parse(p.enviado_em) >= desde.getTime());
-  const libPedidos = new Set(liberados.map(p => p.numero)).size;
-  const libPecas   = liberados.reduce((s, p) =>
-    s + (p.itens || []).flatMap(requisitosDoItem).reduce((t, r) => t + (r.qtd || 0), 0), 0);
-
-  set('mini-lib-ped', libPedidos);
-  set('mini-lib-sub', `${plural(libPecas, 'peça', 'peças')} · desde ter ${desde.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}`);
+  preencher('mini-lib-ped', 'mini-lib-sub',
+    enviados.filter(p => Date.parse(p.enviado_em) >= desde.getTime()),
+    ` · desde ter ${desde.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}`);
 
   // ── Pedidos ainda em aberto ──
   // A contagem sai de _shopifyDetalhados (um item por pedido não enviado com produto
   // reconhecido). As peças vêm do mesmo total da métrica PEÇAS EM ABERTO, para os dois
   // números do painel nunca discordarem.
-  const abPedidos = (window._shopifyDetalhados || []).length;
-  set('mini-ab-ped', abPedidos);
+  set('mini-ab-ped', (window._shopifyDetalhados || []).length);
   set('mini-ab-sub', `${plural(pecasEmAberto || 0, 'peça', 'peças')} a enviar`);
 }
 
