@@ -4,12 +4,17 @@ let saveTimer = null;
 // ── Supabase ──────────────────────────────────────────────────────────────────
 const SUPABASE_URL  = 'https://hckzsblwyabmhzbjdjgx.supabase.co';
 const SUPABASE_KEY  = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imhja3pzYmx3eWFibWh6Ympkamd4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkxNTEyOTIsImV4cCI6MjA5NDcyNzI5Mn0.guif8jtidWmfqykhgDgPJiaRbWLoEEDMp1usTlAs1dQ';
-let   supabase      = null;
+// NÃO chamar de `supabase`: a biblioteca do CDN declara `var supabase` no escopo global e
+// `var` não pode redeclarar um `let` que já existe. O script do CDN morria com
+// "Identifier 'supabase' has already been declared", window.supabase nunca aparecia e o
+// Realtime NUNCA subiu — os aparelhos só se falavam pela varredura de 15s, que não roda
+// em celular dormindo. Foi o pano de fundo da bagunça de estoque de 11/08/2026.
+let   supabaseCli   = null;
 
 function initSupabase() {
   try {
     if (window.supabase && SUPABASE_KEY !== '__SUPABASE_ANON_KEY__') {
-      supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+      supabaseCli = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
       iniciarRealtime();
       // CDN carregou → Realtime já ativo, carregarTodosNuvem já sincronizou tudo
       // Não chamar renderModeloNuvem aqui pois sobrescreveria edições locais não salvas
@@ -272,8 +277,8 @@ function showCloudError() {
 }
 
 function iniciarRealtime() {
-  if (!supabase) return;
-  supabase
+  if (!supabaseCli) return;
+  supabaseCli
     .channel('vc_modelos_changes')
     .on('postgres_changes', { event: '*', schema: 'public', table: 'vc_modelos' }, payload => {
       const row = payload.new;
