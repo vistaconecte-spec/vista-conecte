@@ -3928,7 +3928,7 @@ function renderDashboard() {
   }
   window._tabelaRowsAll = sorted;
 
-  renderProcessadosHoje();
+  renderMiniCards(totalPedidos);
   renderProntosParaEnvio();
   renderCorteCostura();
 }
@@ -4529,81 +4529,49 @@ function requisitosDoItem(item) {
   return [];
 }
 
-// ─── CARD: PROCESSADOS HOJE ──────────────────────────────────────────────────
-// Quantas peças saíram da arara hoje. A fonte é a mesma da baixa de estoque: os
-// ENVIOS (fulfillments) que a Shopify criou, não os pedidos — um pedido enviado em
-// duas remessas conta cada remessa no dia em que ela saiu, e remessa cancelada não
-// entra (o /api/shopify-orders já filtra status !== 'success').
+// ─── MINI CARDS: LIBERADOS NA SEMANA · PEDIDOS EM ABERTO ─────────────────────
+// Dois números de cabeceira, sem lista de peças: quanto saiu na semana e quanto
+// ainda falta sair. Em cada um o número grande é PEDIDO e a linha de baixo é PEÇA.
 //
-// O dia é comparado por data LOCAL formatada (sv-SE dá AAAA-MM-DD), nunca por recorte
-// de texto do ISO: o carimbo da Shopify vem com fuso ("...-03:00") e cortar os 10
-// primeiros caracteres joga o envio da madrugada para o dia anterior.
+// "Semana" começa na TERÇA (é o dia em que a Bárbara fecha a conta), então o card
+// mostra da terça mais recente 00:00 até agora. Na própria terça o período é só o dia.
+// A janela do /api/shopify-orders é de 7 dias, e "última terça" nunca passa disso.
 //
-// Conjunto conta como as PEÇAS dele (requisitosDoItem, o mesmo distribuidor da baixa de
-// estoque): um Conjunto Pantalona + Blusa que saiu são duas peças da arara, não uma.
-// Contar por linha do pedido daria um número menor do que o que saiu de verdade.
-function renderProcessadosHoje() {
-  const el    = document.getElementById('dash-processados');
-  const totEl = document.getElementById('dash-proc-total');
-  if (!el) return;
+// Liberado = ENVIO (fulfillment) criado na Shopify, mesma fonte da baixa de estoque:
+// remessa cancelada não entra e pedido enviado em duas remessas conta uma vez só no
+// total de pedidos (por isso o Set de números), mas as peças das duas somam.
+//
+// Conjunto conta como as PEÇAS dele (requisitosDoItem, o mesmo distribuidor da baixa):
+// um Conjunto Pantalona + Blusa que saiu são duas peças da arara, não uma.
+function inicioDaSemanaTerca() {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  d.setDate(d.getDate() - ((d.getDay() - 2 + 7) % 7)); // 2 = terça
+  return d;
+}
 
-  const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c]));
-  const diaLocal = d => new Date(d).toLocaleDateString('sv-SE');
-  const sizeLabel = (key, i) => (MODELOS[key] && MODELOS[key].tamanhoUnico) ? 'Único'
-    : (((MODELOS[key] && MODELOS[key].tamanhos) || ['PP','P','M','G','GG'])[i] || '—');
+function renderMiniCards(pecasEmAberto) {
+  const set = (id, txt) => { const e = document.getElementById(id); if (e) e.textContent = txt; };
+  const plural = (n, s, p) => `${n} ${n === 1 ? s : p}`;
 
-  const hoje = diaLocal(Date.now());
-  const doDia = (window._shopifyProcessados || [])
-    .filter(p => p.enviado_em && diaLocal(p.enviado_em) === hoje)
-    .sort((a, b) => Date.parse(b.enviado_em) - Date.parse(a.enviado_em))
-    .map(p => {
-      const pecas = (p.itens || []).flatMap(requisitosDoItem);
-      return { ...p, pecas, qtd: pecas.reduce((t, r) => t + (r.qtd || 0), 0) };
-    });
+  // ── Liberados da terça até agora ──
+  const desde = inicioDaSemanaTerca();
+  const liberados = (window._shopifyProcessados || [])
+    .filter(p => p.enviado_em && Date.parse(p.enviado_em) >= desde.getTime());
+  const libPedidos = new Set(liberados.map(p => p.numero)).size;
+  const libPecas   = liberados.reduce((s, p) =>
+    s + (p.itens || []).flatMap(requisitosDoItem).reduce((t, r) => t + (r.qtd || 0), 0), 0);
 
-  const totalPecas = doDia.reduce((s, p) => s + p.qtd, 0);
-  const pedidos    = new Set(doDia.map(p => p.numero)).size;
+  set('mini-lib-ped', libPedidos);
+  set('mini-lib-sub', `${plural(libPecas, 'peça', 'peças')} · desde ter ${desde.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}`);
 
-  if (totEl) {
-    totEl.textContent = totalPecas === 0 ? ''
-      : `${totalPecas} peça${totalPecas > 1 ? 's' : ''} · ${pedidos} pedido${pedidos > 1 ? 's' : ''}`;
-  }
-
-  if (doDia.length === 0) {
-    el.innerHTML = '<div style="font-size:12px;color:var(--text-ter);padding:8px 0">'
-      + 'Nenhuma peça processada hoje ainda.</div>';
-    return;
-  }
-
-  el.innerHTML = `
-    <table>
-      <thead><tr>
-        <th style="text-align:left">Hora</th>
-        <th style="text-align:left">Pedido</th>
-        <th style="text-align:left">Peças</th>
-        <th>Qtd</th>
-      </tr></thead>
-      <tbody>
-        ${doDia.map(p => {
-          const qtd = p.qtd;
-          const pecas = p.pecas.map(r =>
-            `<b>${esc((MODELOS[r.key] && MODELOS[r.key].nome) || r.key)}</b> `
-            + `${esc(r.cor)} ${esc(sizeLabel(r.key, r.tam))}${r.qtd > 1 ? ' ×' + r.qtd : ''}`
-          ).join(' · ');
-          return `
-            <tr>
-              <td style="font-size:11px;color:var(--text-sec);white-space:nowrap">${esc(new Date(p.enviado_em).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }))}</td>
-              <td style="font-weight:600;white-space:nowrap">${esc(p.numero || '—')}</td>
-              <td style="font-size:11px;line-height:1.6">${pecas}</td>
-              <td style="text-align:center;font-weight:700">${qtd}</td>
-            </tr>`;
-        }).join('')}
-      </tbody>
-      <tfoot><tr class="total-row">
-        <td colspan="3">Total do dia</td>
-        <td style="text-align:center">${totalPecas}</td>
-      </tr></tfoot>
-    </table>`;
+  // ── Pedidos ainda em aberto ──
+  // A contagem sai de _shopifyDetalhados (um item por pedido não enviado com produto
+  // reconhecido). As peças vêm do mesmo total da métrica PEÇAS EM ABERTO, para os dois
+  // números do painel nunca discordarem.
+  const abPedidos = (window._shopifyDetalhados || []).length;
+  set('mini-ab-ped', abPedidos);
+  set('mini-ab-sub', `${plural(pecasEmAberto || 0, 'peça', 'peças')} a enviar`);
 }
 
 function renderProntosParaEnvio() {

@@ -260,6 +260,45 @@ body { font-family: 'Inter', system-ui, sans-serif; background: var(--bg); color
 .tab-panel { display: none; }
 .tab-panel.active { display: block; }
 
+/* ── MINI CARDS (dois lado a lado: liberados na semana / pedidos em aberto) ──
+   Sempre 2 colunas, inclusive no celular: são dois números curtos e ficam bem
+   um do lado do outro em 375px. */
+.mini-cards {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.mini-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 10px 14px;
+  box-shadow: var(--shadow-sm);
+}
+
+.mini-card .mini-label {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-ter);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.mini-card .mini-val {
+  font-size: 26px;
+  font-weight: 700;
+  line-height: 1.15;
+  margin: 3px 0 1px;
+}
+
+.mini-card .mini-sub {
+  font-size: 11px;
+  color: var(--text-sec);
+  line-height: 1.4;
+}
+
 /* ── METRIC CARDS ── */
 .metrics {
   display: grid;
@@ -721,6 +760,13 @@ select:focus, input:not(.ci):focus { outline: none; border-color: var(--gold); b
 
   /* Content */
   .content { padding: 10px 10px; }
+
+  /* Mini cards */
+  .mini-cards { gap: 6px; }
+  .mini-card { padding: 9px 11px; }
+  .mini-card .mini-label { font-size: 9px; letter-spacing: 0.04em; }
+  .mini-card .mini-val { font-size: 22px; }
+  .mini-card .mini-sub { font-size: 10px; }
 
   /* Metrics 2x2 */
   .metrics { grid-template-columns: 1fr 1fr; gap: 6px; }
