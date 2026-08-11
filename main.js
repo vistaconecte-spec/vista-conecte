@@ -33,8 +33,143 @@ async function renderModeloNuvem(key) {
   renderModelo(key);
 }
 
+// ─── HISTÓRICO: TODA GRAVAÇÃO VIRA UMA VERSÃO QUE DÁ PRA VOLTAR ──────────────
+// salvarNuvem é o funil de TUDO (modelos, financeiro, fluxo de caixa, precificação,
+// atendimento…), então gravar a versão aqui cobre o sistema inteiro de uma vez.
+//
+// Em 11/08/2026 a dona desfez sem querer várias trocas de etiqueta e só deu para
+// reconstruir porque havia cópias soltas do estoque tiradas por acaso naquela noite.
+// Isso não pode depender de sorte.
+//
+// A versão fica numa linha `hist:<id>` da MESMA tabela (igual precificacao e
+// baixas-estoque já fazem) — sem tabela nova, sem migração.
+const HIST_PREFIXO = 'hist:';
+const HIST_MAX = 25; // versões guardadas por chave
+
+function ehChaveHistorico(key) {
+  return String(key || '').startsWith(HIST_PREFIXO);
+}
+
+// Nunca deixa o histórico atrapalhar o salvamento de verdade: roda solto e engole erro.
+async function registrarVersao(key, dados) {
+  if (ehChaveHistorico(key)) return;
+  try {
+    const hk = HIST_PREFIXO + key;
+    const atual = await carregarNuvem(hk);
+    const v = (atual && Array.isArray(atual.v)) ? atual.v : [];
+    const novo = JSON.stringify(dados);
+    if (v.length && JSON.stringify(v[0].d) === novo) return; // nada mudou
+    v.unshift({ t: new Date().toISOString(), d: JSON.parse(novo) });
+    await salvarNuvemREST(hk, { v: v.slice(0, HIST_MAX) });
+  } catch (_) {}
+}
+
 async function salvarNuvem(key, dados) {
   await salvarNuvemREST(key, dados);
+  registrarVersao(key, dados); // sem await: histórico nunca segura a tela
+}
+
+// Resumo do que mudou de uma versão para a outra, em português — sem isso a lista de
+// versões vira um monte de horário igual e não dá para escolher para onde voltar.
+function resumirDiferenca(velho, novo, key) {
+  // A mais antiga da lista não tem com o que comparar: descrever "tudo que existe" ali
+  // seria um despejo inútil de dezenas de linhas.
+  if (!velho) return 'primeira versão guardada — ponto de partida';
+  const def = MODELOS[key];
+  const SZ = (def && def.tamanhos) || ['PP','P','M','G','GG'];
+  const rot = i => (def && def.tamanhoUnico) ? 'Único' : (SZ[i] || '?');
+  const partes = [];
+  for (const campo of ['est', 'prod', 'prod2']) {
+    const a = (velho && velho[campo]) || {}, b = (novo && novo[campo]) || {};
+    const nome = { est: 'estoque', prod: 'leva 1', prod2: 'leva 2' }[campo];
+    for (const cor of new Set([...Object.keys(a), ...Object.keys(b)])) {
+      const va = a[cor] || [], vb = b[cor] || [];
+      const n = Math.max(va.length, vb.length, SZ.length);
+      for (let i = 0; i < n; i++) {
+        const d = (vb[i] || 0) - (va[i] || 0);
+        if (d) partes.push(`${nome} ${cor} ${rot(i)} ${d > 0 ? '+' : ''}${d}`);
+      }
+    }
+  }
+  for (const campo of ['nome', 'tecido', 'consumo', 'preco', 'status', 'status2', 'prazo', 'obs', 'componentes']) {
+    const a = velho ? velho[campo] : undefined, b = novo ? novo[campo] : undefined;
+    if (JSON.stringify(a) !== JSON.stringify(b)) partes.push(`${campo}: ${JSON.stringify(a) ?? '—'} → ${JSON.stringify(b) ?? '—'}`);
+  }
+  const ca = JSON.stringify((velho && velho.cores) || []), cb = JSON.stringify((novo && novo.cores) || []);
+  if (ca !== cb) partes.push('lista de cores mudou');
+  if (!partes.length) return 'outros campos';
+  return partes.slice(0, 6).join(' · ') + (partes.length > 6 ? ` · +${partes.length - 6}` : '');
+}
+
+// Abre o histórico de QUALQUER chave do sistema (modelo, financeiro, fluxo, precificação…)
+async function abrirHistorico(key, titulo) {
+  const modal = document.getElementById('modal-historico');
+  const corpo = document.getElementById('hist-corpo');
+  const tit   = document.getElementById('hist-titulo');
+  if (!modal) return;
+  window._histKey = key;
+  tit.textContent = 'Histórico — ' + (titulo || key);
+  corpo.innerHTML = '<div style="padding:14px;color:var(--text-ter);font-size:12px">carregando…</div>';
+  modal.style.display = 'flex';
+
+  const h = await carregarNuvem(HIST_PREFIXO + key);
+  const v = (h && Array.isArray(h.v)) ? h.v : [];
+  window._histVersoes = v;
+
+  if (!v.length) {
+    corpo.innerHTML = '<div style="padding:14px;color:var(--text-ter);font-size:12px">'
+      + 'Ainda não há versões guardadas para esta tela. A partir de agora, cada gravação vira uma versão aqui.</div>';
+    return;
+  }
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c]));
+  const fmt = t => { const d = new Date(t); return d.toLocaleDateString('pt-BR', { day:'2-digit', month:'2-digit' })
+    + ' às ' + d.toLocaleTimeString('pt-BR', { hour:'2-digit', minute:'2-digit' }); };
+
+  corpo.innerHTML = `
+    <div style="font-size:11px;color:var(--text-sec);padding:0 2px 10px">
+      Cada linha é como esta tela estava depois de uma gravação, da mais recente para a mais antiga.
+      <b>Restaurar</b> devolve exatamente aquele estado — e a versão de agora continua guardada,
+      então dá para voltar de novo.
+    </div>
+    <table style="width:100%">
+      <thead><tr>
+        <th style="text-align:left">Quando</th>
+        <th style="text-align:left">O que mudou nessa gravação</th>
+        <th style="text-align:center;width:90px"></th>
+      </tr></thead>
+      <tbody>
+        ${v.map((ver, i) => {
+          const anterior = v[i + 1] ? v[i + 1].d : null;
+          return `<tr>
+            <td style="white-space:nowrap;font-weight:600">${esc(fmt(ver.t))}${i === 0 ? ' <span style="font-size:9px;background:rgba(22,163,74,.15);color:#16a34a;border-radius:3px;padding:1px 5px;font-weight:700">ATUAL</span>' : ''}</td>
+            <td style="font-size:11px;color:var(--text-sec);line-height:1.6">${esc(resumirDiferenca(anterior, ver.d, key))}</td>
+            <td style="text-align:center">${i === 0 ? '' :
+              `<button class="btn-primary" style="font-size:10px;padding:5px 10px" onclick="restaurarVersao(${i}, this)">restaurar</button>`}</td>
+          </tr>`;
+        }).join('')}
+      </tbody>
+    </table>`;
+}
+
+function fecharHistorico() {
+  const m = document.getElementById('modal-historico');
+  if (m) m.style.display = 'none';
+}
+
+async function restaurarVersao(i, btn) {
+  const key = window._histKey;
+  const ver = (window._histVersoes || [])[i];
+  if (!key || !ver) return;
+  const quando = new Date(ver.t).toLocaleString('pt-BR');
+  if (!confirm(`Restaurar como estava em ${quando}?\n\nO estado de agora continua guardado no histórico, então dá para voltar depois.`)) return;
+  if (btn) { btn.disabled = true; btn.textContent = '…'; }
+
+  saveLocal('vc:' + key, ver.d);
+  await salvarNuvem(key, ver.d); // entra no histórico como versão nova: nada se perde
+  fecharHistorico();
+
+  if (MODELOS[key]) { modeloAtual = key; renderModelo(key); }
+  else location.reload(); // telas fora do fluxo de modelo (financeiro, fluxo, precificação…)
 }
 
 async function carregarNuvem(key) {
@@ -53,14 +188,17 @@ async function carregarNuvem(key) {
 // Carrega TODOS os modelos da nuvem — só atualiza se local estiver vazio ou nuvem for ESTRITAMENTE mais recente
 async function carregarTodosNuvem() {
   try {
+    // not.like hist:* — o histórico mora na mesma tabela e é pesado; só é buscado
+    // quando a dona abre a tela de versões, nunca no carregamento da página.
     const res = await fetch(
-      `${SUPABASE_URL}/rest/v1/vc_modelos?select=id,dados`,
+      `${SUPABASE_URL}/rest/v1/vc_modelos?select=id,dados&id=not.like.${encodeURIComponent(HIST_PREFIXO + '*')}`,
       { headers: { 'apikey': SUPABASE_KEY, 'Authorization': 'Bearer ' + SUPABASE_KEY }, cache: 'no-store' }
     );
     if (!res.ok) return;
     const rows = await res.json();
     rows.forEach(row => {
       if (!row.id || !row.dados) return;
+      if (ehChaveHistorico(row.id)) return;
       // Nunca sobrescreve se o usuário tem edições pendentes no modelo aberto
       if (row.id === modeloAtual && (estEditado || prodEditado || cfgEditado)) return;
       // Na carga da página, a NUVEM é a fonte da verdade (evita problema de relógio
