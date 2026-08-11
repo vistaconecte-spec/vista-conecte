@@ -46,6 +46,10 @@ async function renderModeloNuvem(key) {
 const HIST_PREFIXO = 'hist:';
 const HIST_MAX = 25; // versões guardadas por chave
 
+// Declarado aqui em cima, e não junto de checarVersaoNova lá embaixo, porque a baixa de
+// estoque consulta esta trava e roda antes daquele trecho do arquivo.
+let _versaoAvisada = false;
+
 function ehChaveHistorico(key) {
   return String(key || '').startsWith(HIST_PREFIXO);
 }
@@ -56,6 +60,9 @@ async function registrarVersao(key, dados) {
   try {
     const hk = HIST_PREFIXO + key;
     const atual = await carregarNuvem(hk);
+    // Leitura falhou (undefined): NÃO grava. Gravar aqui trocaria a lista inteira por
+    // uma versão só — foi o que apagou 9 versões do Macacão Amplo em 11/08/2026.
+    if (atual === undefined) return;
     const v = (atual && Array.isArray(atual.v)) ? atual.v : [];
     const novo = JSON.stringify(dados);
     if (v.length && JSON.stringify(v[0].d) === novo) return; // nada mudou
@@ -113,6 +120,12 @@ async function abrirHistorico(key, titulo) {
   modal.style.display = 'flex';
 
   const h = await carregarNuvem(HIST_PREFIXO + key);
+  if (h === undefined) {
+    corpo.innerHTML = '<div style="padding:14px;color:#dc2626;font-size:12px">'
+      + 'Não deu para falar com a nuvem agora. Tente de novo em instantes — o histórico está lá, só não foi possível ler.</div>';
+    window._histVersoes = [];
+    return;
+  }
   const v = (h && Array.isArray(h.v)) ? h.v : [];
   window._histVersoes = v;
 
@@ -172,17 +185,22 @@ async function restaurarVersao(i, btn) {
   else location.reload(); // telas fora do fluxo de modelo (financeiro, fluxo, precificação…)
 }
 
+// Devolve os dados da nuvem, ou `undefined` se NÃO deu para falar com a nuvem.
+// A diferença importa: quem grava por cima precisa saber que leu de verdade. Sem isso,
+// uma leitura que falhou vira "não existe" e o gravador escreve em cima do que está lá.
 async function carregarNuvem(key) {
   // Usa REST direto — não depende do CDN do Supabase
   try {
     const res = await fetch(
       `${SUPABASE_URL}/rest/v1/vc_modelos?id=eq.${encodeURIComponent(key)}&select=dados`,
-      { headers: { 'apikey': SUPABASE_KEY, 'Authorization': 'Bearer ' + SUPABASE_KEY } }
+      // no-store: sem isso o navegador pode servir uma resposta de minutos atrás. Era o
+      // que truncava o histórico de versões (a lista velha voltava e as novas sumiam).
+      { headers: { 'apikey': SUPABASE_KEY, 'Authorization': 'Bearer ' + SUPABASE_KEY }, cache: 'no-store' }
     );
-    if (!res.ok) return null;
+    if (!res.ok) return undefined;
     const rows = await res.json();
     return rows[0]?.dados || null;
-  } catch(e) { return null; }
+  } catch(e) { return undefined; }
 }
 
 // Carrega TODOS os modelos da nuvem — só atualiza se local estiver vazio ou nuvem for ESTRITAMENTE mais recente
@@ -7036,7 +7054,11 @@ function pecasDoConjunto(conjuntoKey, cor) {
 async function verificarEnvios() {
   await carregarPedidosShopify();
 
-  const ledger = lerLedgerBaixas();
+  const ledger = await lerLedgerBaixas();
+  if (ledger === undefined) {
+    alert('Não deu para ler o registro de baixas na nuvem agora. Tente de novo em instantes.');
+    return;
+  }
   if (!ledger) {
     alert('O registro de baixas ainda está sendo criado. Recarregue a página e tente de novo.');
     return;
@@ -7083,8 +7105,8 @@ async function confirmarBaixaEstoque() {
   document.getElementById('modal-envios').style.display = 'none';
   if (!pend || !pend.ids || !pend.ids.length) return;
 
-  const ledger = lerLedgerBaixas();
-  if (!ledger) return;
+  const ledger = await lerLedgerBaixas();
+  if (!ledger) return; // inclui undefined: sem confirmar na nuvem, não baixa
 
   const porId = Object.fromEntries((window._shopifyProcessados || []).map(p => [p.id, p]));
   const pecas = [];
@@ -7092,7 +7114,7 @@ async function confirmarBaixaEstoque() {
     if (ledger.envios[id]) continue; // já aplicada nesse meio-tempo
     const p = porId[id];
     if (!p) continue;
-    const b = baixarEstoqueDoPedido(p.itens);
+    const b = await baixarEstoqueDoPedido(p.itens);
     ledger.envios[id] = { numero: p.numero, em: p.enviado_em, aplicado: new Date().toISOString(), pecas: b.length, nota: 'conferência manual' };
     pecas.push(...b);
   }
@@ -7116,8 +7138,8 @@ async function ignorarEnvios() {
   const pend = _enviosPendentes;
   document.getElementById('modal-envios').style.display = 'none';
   if (!pend || !pend.ids) return;
-  const ledger = lerLedgerBaixas();
-  if (!ledger) return;
+  const ledger = await lerLedgerBaixas();
+  if (!ledger) return; // inclui undefined: sem ler a nuvem não dá para marcar nada
   for (const id of pend.ids) {
     if (ledger.envios[id]) continue;
     const p = (window._shopifyProcessados || []).find(x => x.id === id);
@@ -7150,9 +7172,23 @@ const LEDGER_LOCAL  = 'vc:' + LEDGER_BAIXAS;
 // tratado como inexistente: volta a semear do zero, sem baixar nada.
 const LEDGER_CHAVE = 'fulfillment';
 
-function lerLedgerBaixas() {
-  const l = loadLocal(LEDGER_LOCAL);
-  return (l && typeof l === 'object' && l.envios && l.chave === LEDGER_CHAVE) ? l : null;
+// Lê o registro DIRETO DA NUVEM, nunca do localStorage. Um aparelho que ficou horas
+// dormindo (celular na tela bloqueada, aba velha aberta) tem uma cópia de antes das
+// baixas do dia: para ele TODA remessa é nova e o estoque sai duas vezes. Foi o que
+// aconteceu em 11/08/2026 às 19:00 — 18 envios já baixados foram baixados de novo.
+//
+// Três respostas diferentes, e cada uma quer um comportamento:
+//   objeto    → registro válido, pode usar
+//   null      → ainda não existe (ou está em formato antigo) → semear, sem baixar nada
+//   undefined → não deu para ler a nuvem → NÃO fazer nada (o lado seguro é não baixar)
+async function lerLedgerBaixas() {
+  const l = await carregarNuvem(LEDGER_BAIXAS);
+  if (l === undefined) return undefined;
+  if (l && typeof l === 'object' && l.envios && l.chave === LEDGER_CHAVE) {
+    saveLocal(LEDGER_LOCAL, l); // espelho local só para leitura offline; não manda mais
+    return l;
+  }
+  return null;
 }
 
 // Datas da Shopify vêm com fuso ("...-03:00") e as nossas em Z. Comparar como TEXTO dá
@@ -7165,11 +7201,15 @@ function maisNovoQue(iso, refISO) {
 }
 
 // Aplica a baixa das peças de um pedido. Devolve o que foi baixado, para o aviso.
-function baixarEstoqueDoPedido(itens) {
+async function baixarEstoqueDoPedido(itens) {
   const baixado = [];
   for (const item of (itens || [])) {
     for (const r of requisitosDoItem(item)) {
-      const saved = loadLocal('vc:' + r.key);
+      // Sempre da NUVEM. Ler o local e devolver o objeto inteiro para a nuvem faz este
+      // aparelho gravar por cima do que os outros mexeram: em 11/08/2026 isso apagou as
+      // contagens de estoque de uma tarde inteira e ressuscitou uma leva já concluída.
+      const saved = await carregarNuvem(r.key);
+      if (saved === undefined) continue; // nuvem fora do ar: não inventa baixa
       // Sem estoque cadastrado para esta cor não há o que baixar (e criar entrada
       // zerada aqui inventaria linha de estoque que a dona nunca lançou).
       if (!saved || !saved.est || !saved.est[r.cor]) continue;
@@ -7188,11 +7228,28 @@ function baixarEstoqueDoPedido(itens) {
 }
 
 let _ultimaBaixaAuto = null; // { quando, pedidos:[], pecas:[] } — alimenta o aviso do dashboard
+let _baixaRodando = false;   // trava: agora a baixa espera a nuvem e o ciclo de 1 min pode alcançá-la
 
 async function baixaImediataDeProcessados() {
+  // Página desatualizada não mexe mais em estoque. A faixa vermelha depende de alguém
+  // clicar em "Recarregar", e até clicarem o código velho continuava rodando o ciclo de
+  // 1 minuto — que é exatamente por onde o estrago entra.
+  if (_versaoAvisada) return;
+  if (_baixaRodando) return; // duas rodadas ao mesmo tempo baixariam a mesma remessa duas vezes
+  _baixaRodando = true;
+  try {
+    await _baixaImediataDeProcessados();
+  } finally {
+    _baixaRodando = false;
+  }
+}
+
+async function _baixaImediataDeProcessados() {
   const processados = window._shopifyProcessados || [];
 
-  let ledger = lerLedgerBaixas();
+  let ledger = await lerLedgerBaixas();
+  // Nuvem fora do ar: sai sem fazer nada. Semear aqui apagaria o registro de verdade.
+  if (ledger === undefined) return;
   if (!ledger) {
     // PRIMEIRA VEZ: não baixa nada, só registra o que já existe.
     //
@@ -7219,7 +7276,7 @@ async function baixaImediataDeProcessados() {
 
   const pecas = [], numeros = [];
   for (const p of novos) {
-    const b = baixarEstoqueDoPedido(p.itens);
+    const b = await baixarEstoqueDoPedido(p.itens);
     ledger.envios[p.id] = { numero: p.numero, em: p.enviado_em, aplicado: new Date().toISOString(), pecas: b.length };
     if (b.length) { pecas.push(...b); if (!numeros.includes(p.numero)) numeros.push(p.numero); }
   }
@@ -8077,7 +8134,7 @@ window.addEventListener('pageshow', () => sincronizarNuvem());
 // servidor e avisa. Fonte da verdade: o ?v= do index.html, que já é bumpado a cada
 // deploy — sem arquivo de versão separado para esquecer de atualizar.
 const APP_VERSAO = ((document.querySelector('script[src*="main.js"]') || {}).src || '').match(/[?&]v=(\d+)/)?.[1] || '';
-let _versaoAvisada = false;
+// _versaoAvisada é declarado lá no topo do arquivo (a baixa de estoque consulta antes daqui)
 
 async function checarVersaoNova() {
   if (_versaoAvisada || !APP_VERSAO) return;
