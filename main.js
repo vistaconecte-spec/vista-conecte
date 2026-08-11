@@ -7302,7 +7302,69 @@ async function mdlCarregarLista() {
   }
 }
 
+// O valor do ajuste é digitado livre ("50", "50,00", "R$ 50,00", "1.250,00"), então a
+// soma não pode confiar em parseFloat direto — em pt-BR a vírgula é o decimal e o ponto
+// costuma ser milhar. Texto que não vira número conta como 0 e é sinalizado na tela.
+function mdlValorNum(txt) {
+  let s = String(txt == null ? '' : txt).replace(/r\$/i, '').replace(/\s/g, '').trim();
+  if (!s) return 0;
+  const temVirgula = s.includes(','), temPonto = s.includes('.');
+  if (temVirgula && temPonto) s = s.replace(/\./g, '').replace(',', '.'); // 1.250,00
+  else if (temVirgula) s = s.replace(',', '.');                            // 50,00
+  const n = parseFloat(s);
+  return isFinite(n) ? n : 0;
+}
+
+// Soma de dinheiro em ponto flutuante acumula lixo (10,10 + 10,20 + 10,70 = 30,999…).
+// Fechar em centavos evita total esquisito e diferença contra a conta feita na mão.
+const mdlSomaValores = arr => Math.round(arr.reduce((s, v) => s + v, 0) * 100) / 100;
+const mdlBRL = n => n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+
+// Quanto se deve à modelista somando o valor lançado em cada projeto.
+function mdlRenderTotalModelista() {
+  const el = document.getElementById('mdl-total-modelista');
+  if (!el) return;
+  const comValor = (mdlProjetos || [])
+    .map(p => ({ ...p, num: mdlValorNum(p.valorAjuste) }))
+    .filter(p => (p.valorAjuste || '').trim() !== '');
+  const validos    = comValor.filter(p => p.num > 0).sort((a, b) => b.num - a.num);
+  const ilegiveis  = comValor.filter(p => p.num === 0);
+  const total      = mdlSomaValores(validos.map(p => p.num));
+  const semValor   = (mdlProjetos || []).length - comValor.length;
+
+  if (!comValor.length) { el.style.display = 'none'; el.innerHTML = ''; return; }
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c]));
+  el.style.display = '';
+  el.innerHTML = `
+    <div class="card" style="border-left:3px solid #16a34a">
+      <div class="card-header">
+        <div class="card-title" style="color:#16a34a"><i class="ti ti-cash"></i> A PAGAR À MODELISTA</div>
+        <span style="font-size:16px;font-weight:800;color:#16a34a">${mdlBRL(total)}</span>
+      </div>
+      <div style="font-size:11px;color:var(--text-sec);margin-bottom:8px">
+        Soma dos valores lançados em <b>Valor do ajuste</b> de cada modelo.
+        ${validos.length} modelo${validos.length > 1 ? 's' : ''} com valor${semValor > 0 ? ` · ${semValor} ainda sem valor lançado` : ''}.
+      </div>
+      <table style="width:100%">
+        <thead><tr><th style="text-align:left">Modelo</th><th style="text-align:right;width:120px">Valor</th></tr></thead>
+        <tbody>
+          ${validos.map(p => `<tr style="cursor:pointer" onclick="mdlAbrirDetalhe(${p.id})">
+            <td style="text-align:left;font-weight:600">${esc(p.title || '(sem nome)')}</td>
+            <td style="text-align:right;font-weight:700">${mdlBRL(p.num)}</td></tr>`).join('')}
+        </tbody>
+        <tfoot><tr class="total-row">
+          <td style="text-align:left">Total</td>
+          <td style="text-align:right;color:#16a34a">${mdlBRL(total)}</td>
+        </tr></tfoot>
+      </table>
+      ${ilegiveis.length ? `<div style="font-size:11px;color:#b45309;margin-top:8px">
+        <i class="ti ti-alert-triangle"></i> ${ilegiveis.length} modelo(s) com valor que não dá para somar
+        (${ilegiveis.map(p => esc(p.title) + ': "' + esc(p.valorAjuste) + '"').join(' · ')}) — ficaram de fora do total.</div>` : ''}
+    </div>`;
+}
+
 function mdlRenderLista() {
+  mdlRenderTotalModelista();
   const grid = document.getElementById('mdl-grid');
   const busca = (document.getElementById('mdl-busca').value || '').toLowerCase().trim();
   const nPend = p => (p.alteracoesPendentes || 0); // grade destaca só alterações/ajustes no projeto (consumo e pendências antigas não contam)
@@ -7358,6 +7420,7 @@ function mdlVoltarLista() {
   mdlProjetoAtual = null;
   document.getElementById('mdl-detalhe').style.display = 'none';
   document.getElementById('mdl-lista').style.display = '';
+  mdlRenderLista(); // recalcula o total a pagar com o valor que acabou de ser lançado
 }
 
 async function mdlAbrirDetalhe(id) {
@@ -7691,6 +7754,9 @@ async function mdlSalvarValorAjuste(id) {
     const data = await res.json();
     if (data.erro) throw new Error(data.erro);
     if (mdlProjetoAtual && mdlProjetoAtual.projeto) { mdlProjetoAtual.projeto.valorAjuste = valorAjuste; mdlRenderDetalhe(); }
+    // mantém a listagem em dia para o total a pagar não ficar defasado até o próximo carregamento
+    const naLista = (mdlProjetos || []).find(p => p.id === id);
+    if (naLista) naLista.valorAjuste = valorAjuste;
     showSaved();
   } catch (e) {
     alert('Erro ao salvar valor: ' + e.message);

@@ -1,7 +1,7 @@
 /**
  * Cloudflare Pages Function: /api/modelagem-list
  * Lista os modelos (projetos) como "pastas" pra grid da aba Modelagem.
- * GET → { projetos: [{ id, title, category, status, croquiKey, alteracoesPendentes, temAudaces, pendenciasAbertas, semConsumo }] }
+ * GET → { projetos: [{ id, title, category, status, croquiKey, alteracoesPendentes, temAudaces, pendenciasAbertas, semConsumo, valorAjuste }] }
  */
 const SB_URL = 'https://hckzsblwyabmhzbjdjgx.supabase.co';
 
@@ -26,7 +26,7 @@ export async function onRequest(context) {
 
   try {
     const [projRes, croquiRes, changesRes, filesRes, pendenciasRes, consumoRes] = await Promise.all([
-      fetch(`${SB_URL}/rest/v1/projects?select=id,title,category,status,createdAt&order=title.asc`, { headers: sbHeaders(env) }),
+      fetch(`${SB_URL}/rest/v1/projects?select=id,title,category,status,createdAt,valorAjuste&order=title.asc`, { headers: sbHeaders(env) }),
       fetch(`${SB_URL}/rest/v1/project_croquis?select=projectId,fileKey,createdAt&order=createdAt.desc`, { headers: sbHeaders(env) }),
       fetch(`${SB_URL}/rest/v1/project_changes?select=projectId,status`, { headers: sbHeaders(env) }),
       fetch(`${SB_URL}/rest/v1/project_files?select=projectId,category`, { headers: sbHeaders(env) }),
@@ -68,6 +68,9 @@ export async function onRequest(context) {
       temAudaces: !!audacesPorProjeto[p.id],
       pendenciasAbertas: pendenciasAbertasPorProjeto[p.id] || 0,
       semConsumo: !consumoPreenchidoPorProjeto[p.id],
+      // Valor cobrado pela modelista por este projeto (texto livre, ex.: "50,00").
+      // Vai na listagem para a tela somar quanto se deve no total.
+      valorAjuste: p.valorAjuste || '',
     }));
 
     return new Response(JSON.stringify({ projetos: out }), { headers });
