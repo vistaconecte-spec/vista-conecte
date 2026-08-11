@@ -4899,8 +4899,13 @@ function renderResumoProducao() {
       // também, e não dá para trocar a etiqueta de peça que ainda não foi costurada.
       if (aceitaTroca) {
         const livre = ab.map((a, i) => Math.max(0, (ev[i] || 0) - a));
-        const falta = saldos.map(v => v > 0 ? v : 0);
-        casarVizinhos(falta, livre, SIZES.length).forEach(t => economia.push({ cor, ...t }));
+        // A falta aqui é PEDIDOS − ESTOQUE, de propósito SEM descontar a leva: a peça que
+        // já está na leva é justamente a que se quer evitar costurar. Descontando, um G que
+        // já foi jogado na produção zerava a falta e a troca nunca era oferecida — foi o
+        // caso da Calça Básica Moletom Off White (10/08/2026).
+        const falta = ab.map((a, i) => Math.max(0, a - (ev[i] || 0)));
+        casarVizinhos(falta, livre, SIZES.length).forEach(t =>
+          economia.push({ cor, ...t, naLeva: Math.min(t.qtd, pv[t.para] || 0) }));
       }
 
       const temFalta  = saldos.some(v => v > 0);
@@ -4971,10 +4976,12 @@ function renderEconomiaTroca(economia, SIZES) {
 
   el.innerHTML = `
     <div style="font-size:11px;color:var(--text-sec);margin-bottom:8px">
-      Estas peças estão na fila de produção, mas já existe uma <b>pronta na arara</b> no tamanho
-      vizinho, sem pedido em cima dela. Trocando a etiqueta você economiza a confecção — e o
-      tecido, se ainda não comprou. A peça sai de um tamanho e entra no outro: o total do
-      modelo não muda.
+      Estas peças precisam ser feitas para atender os pedidos, mas já existe uma
+      <b>pronta na arara</b> no tamanho vizinho, sem pedido em cima dela. Trocando a etiqueta
+      você economiza a confecção — e o tecido, se ainda não comprou. A peça sai de um tamanho e
+      entra no outro: o total do modelo não muda. Onde aparecer o aviso em laranja, a peça já
+      tinha sido jogada numa leva: <b>tire ela da leva</b> depois de trocar, senão vira produção
+      repetida.
     </div>
     <table style="table-layout:fixed;width:100%">
       <colgroup><col style="width:26%"><col style="width:40%"><col style="width:14%"><col style="width:20%"></colgroup>
@@ -4993,6 +5000,8 @@ function renderEconomiaTroca(economia, SIZES) {
               <i class="ti ti-arrow-right" style="font-size:11px;vertical-align:-1px;color:#0d9488"></i>
               <b style="color:#0d9488">${esc(SIZES[e.para] || '?')}</b>
               <span style="color:var(--text-ter);font-size:11px"> — deixa de produzir ${esc(SIZES[e.para] || '?')}</span>
+              ${e.naLeva > 0 ? `<div style="font-size:10px;color:#b45309;font-weight:700;padding-top:2px">
+                <i class="ti ti-alert-triangle"></i> ${e.naLeva} já está na leva — tire de lá depois de trocar</div>` : ''}
             </td>
             <td style="text-align:center;font-weight:700">${e.qtd}</td>
             <td style="text-align:center">

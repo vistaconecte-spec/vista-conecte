@@ -243,31 +243,35 @@ console.log('\n10) ECONOMIA DE PRODUÇÃO — não costurar o que já existe no 
 const casarVizinhos = new Function(
   main.slice(main.indexOf('function casarVizinhos'), main.indexOf('\n}', main.indexOf('function casarVizinhos'))) + '\n}'
   + '; return casarVizinhos;')();
-const cenarioReal = () => {
-  const ab = [1,0,5,1,1], ev = [0,0,5,0,2], pv = [0,0,0,0,0];
-  const falta = ab.map((a,k) => Math.max(0, a - ev[k] - pv[k]));
+// A conta do card: falta = PEDIDOS − ESTOQUE (a leva NÃO entra, ver abaixo);
+// livre = ESTOQUE − PEDIDOS (peça pronta sem dono).
+const simular = (ab, ev, pv = [0,0,0,0,0]) => {
+  const falta = ab.map((a,k) => Math.max(0, a - ev[k]));
   const livre = ab.map((a,k) => Math.max(0, ev[k] - a));
-  return casarVizinhos(falta, livre, 5);
+  return casarVizinhos(falta, livre, 5)
+    .map(t => ({ ...t, naLeva: Math.min(t.qtd, pv[t.para] || 0) }));
 };
 ok('Macacão Amplo Marsala: usa o GG pronto no lugar de produzir o G',
-   cenarioReal(), [{ de: 4, para: 3, qtd: 1 }]);
+   simular([1,0,5,1,1], [0,0,5,0,2]), [{ de: 4, para: 3, qtd: 1, naLeva: 0 }]);
 ok('o PP que falta continua na produção (não tem vizinho livre)',
-   cenarioReal().some(t => t.para === 0), false);
+   simular([1,0,5,1,1], [0,0,5,0,2]).some(t => t.para === 0), false);
 
-// A fonte é ESTOQUE − PEDIDOS, nunca o saldo da tabela (que desconta produção também):
-// não se troca etiqueta de peça que ainda não foi costurada.
-ok('peça que está só em PRODUÇÃO não vira sugestão', (() => {
-  const ab = [0,0,0,1,0], ev = [0,0,0,0,0], pv = [0,0,0,0,1]; // GG só na leva, arara vazia
-  const falta = ab.map((a,k) => Math.max(0, a - ev[k] - pv[k]));
-  const livre = ab.map((a,k) => Math.max(0, ev[k] - a));
-  return casarVizinhos(falta, livre, 5);
-})(), []);
-ok('peça livre reservada a um pedido não é oferecida', (() => {
-  const ab = [0,0,0,1,2], ev = [0,0,0,0,2], pv = [0,0,0,0,0]; // 2 GG na arara, 2 pedidos GG
-  const falta = ab.map((a,k) => Math.max(0, a - ev[k] - pv[k]));
-  const livre = ab.map((a,k) => Math.max(0, ev[k] - a));
-  return casarVizinhos(falta, livre, 5);
-})(), []);
+// FURO ACHADO 10/08/2026 — Calça Básica Moletom Off White: 2 pedidos no G, 1 G no estoque
+// e 1 G JÁ JOGADO NA LEVA. Descontando a leva a falta dava zero e a troca nunca aparecia —
+// mas a peça da leva é justamente a que se quer evitar costurar. Há 2 M livres na arara.
+ok('peça já jogada na leva NÃO esconde a troca',
+   simular([0,0,0,2,0], [0,1,2,1,0], [0,0,0,1,0]),
+   [{ de: 2, para: 3, qtd: 1, naLeva: 1 }]);
+ok('e ela vem marcada como "já está na leva", pra ser tirada de lá',
+   simular([0,0,0,2,0], [0,1,2,1,0], [0,0,0,1,0])[0].naLeva, 1);
+ok('sem nada na leva, não marca',
+   simular([0,0,0,2,0], [0,1,2,1,0])[0].naLeva, 0);
+
+// Peça que só existe na leva não é peça pronta: não dá pra trocar etiqueta do que não foi cortado
+ok('peça que está só em PRODUÇÃO não vira origem de troca',
+   simular([0,0,0,1,0], [0,0,0,0,0], [0,0,0,0,1]), []);
+ok('peça livre reservada a um pedido não é oferecida',
+   simular([0,0,0,1,2], [0,0,0,0,2]), []);
 ok('a mesma peça livre não é prometida a dois tamanhos',
    casarVizinhos([0,1,0,1,0], [0,0,1,0,0], 5), [{ de: 2, para: 1, qtd: 1 }]);
 ok('não estoura a grade no primeiro tamanho', casarVizinhos([1,0,0,0,0], [0,1,0,0,0], 5), [{ de: 1, para: 0, qtd: 1 }]);
