@@ -18,6 +18,7 @@ import { dirname, join } from 'node:path';
 
 const raiz = join(dirname(fileURLToPath(import.meta.url)), '..');
 const main = readFileSync(join(raiz, 'main.js'), 'utf8');
+const css  = readFileSync(join(raiz, 'style.css'), 'utf8');
 
 function extrair(nome) {
   const i = main.indexOf(`function ${nome}(`);
@@ -292,6 +293,24 @@ ok('a página do modelo usa a mesma função',
    /const aceitaTroca = modeloAceitaTrocaEtiqueta\(def, modeloAtual, SEM_TROCA_ETIQUETA\)/.test(main), true);
 ok('os dois botões usam a mesma transferência',
    (main.match(/await transferirTamanhoEstoque\(/g) || []).length >= 2, true);
+
+console.log('\n12) Cor vinda de pedido não vira cor permanente do modelo');
+// Causa raiz do estrago de 10/08/2026: o #8748 foi lido errado e a cor inventada
+// "Canelado + Calça Pantalona Cinza" entrou nas tags do modelo. Como o save gravava TODAS
+// as tags, ela virou cor permanente da Calça Pantalona Moletom — e levou junto 1 peça
+// para a leva 1, sem pedido nenhum atrás.
+const rct = main.slice(main.indexOf('function renderCoresTags'), main.indexOf('function addCor'));
+const gct = main.slice(main.indexOf('function getCoresTags'), main.indexOf('\n}', main.indexOf('function getCoresTags')));
+ok('só grava cor marcada como fixa', /\.cor-tag\[data-fixa="1"\] span/.test(gct), true);
+ok('cor do catálogo/já cadastrada nasce fixa', /const fixa = !fixas \|\| fixas\.has\(chaveCor\(cor\)\)/.test(rct), true);
+ok('cor de pedido nasce provisória', /tag\.dataset\.fixa = fixa \? '1' : '0'/.test(rct), true);
+ok('provisória é visualmente diferente', /cor-tag-prov/.test(rct) && /cor-tag-prov/.test(css), true);
+ok('provisória oferece CADASTRAR (+), não remover (×)', /onclick="fixarCor\(this\)"/.test(rct), true);
+ok('cor digitada pela dona nasce fixa',
+   /tag\.dataset\.fixa = '1'; \/\/ digitada pela dona/.test(main), true);
+ok('fixar a cor grava na hora', /function fixarCor[\s\S]{0,400}autoSave\(\)/.test(main), true);
+ok('as fixas saem do catálogo + do que já estava salvo',
+   /new Set\(\[\.\.\.\(def\.cores \|\| \[\]\), \.\.\.\(\(d\.cores\) \|\| \[\]\)\]\.map\(chaveCor\)\)/.test(main), true);
 
 console.log(`\n${falhas === 0 ? '✓ TODOS OS TESTES PASSARAM' : '✗ ' + falhas + ' FALHA(S)'} — ${total - falhas}/${total}\n`);
 process.exit(falhas === 0 ? 0 : 1);

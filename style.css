@@ -782,6 +782,17 @@ select:focus, input:not(.ci):focus { outline: none; border-color: var(--gold); b
 }
 .cor-tag button:hover { color: var(--red); }
 
+/* Cor que veio de um pedido e NÃO está cadastrada no modelo: aparece, mas não é gravada.
+   Borda tracejada para não ser confundida com as cores de verdade do modelo. */
+.cor-tag-prov {
+  border-style: dashed;
+  border-color: #d97706;
+  color: #b45309;
+  background: rgba(217, 119, 6, 0.06);
+}
+.cor-tag-prov button { color: #16a34a; font-weight: 700; }
+.cor-tag-prov button:hover { color: #15803d; }
+
 /* ── PRECIFICAÇÃO EM LARGURA TOTAL (menu lateral oculto) ── */
 body.precos-mode .sidebar { display: none; }
 body.precos-mode .sidebar.open {

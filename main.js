@@ -338,8 +338,10 @@ function salvarModelo() {
   });
 }
 
+// Só as cores FIXAS são gravadas. Cor provisória (veio de um pedido, não cadastrada) fica
+// de fora de propósito — ver renderCoresTags.
 function getCoresTags() {
-  return Array.from(document.querySelectorAll('#cores-tags .cor-tag span')).map(s => s.textContent);
+  return Array.from(document.querySelectorAll('#cores-tags .cor-tag[data-fixa="1"] span')).map(s => s.textContent);
 }
 
 function buildSidebar() {
@@ -4697,7 +4699,10 @@ function renderModelo(key) {
   document.getElementById('cfg-componentes').value = d.componentes || def.componentes;
   document.getElementById('cfg-obs').value = d.obs || def.obs;
 
-  renderCoresTags(cores);
+  // Fixas = as do catálogo do modelo + as que a dona já cadastrou. O resto veio de pedido
+  // e fica provisório, para uma leitura errada não virar cor permanente do modelo.
+  const coresFixas = new Set([...(def.cores || []), ...((d.cores) || [])].map(chaveCor));
+  renderCoresTags(cores, coresFixas);
 
   // Mostra croquis embutidos na aba Arquivos se não houver upload manual
   ['frente', 'costas'].forEach(lado => {
@@ -5036,15 +5041,38 @@ async function aplicarEconomiaTroca(i, btn) {
   renderModelo(modeloAtual);
 }
 
-function renderCoresTags(cores) {
+// Cor PROVISÓRIA = apareceu porque um pedido caiu nela, mas não está cadastrada no modelo.
+// Ela é mostrada (senão as peças do pedido sumiriam das tabelas), mas NÃO é gravada: quando
+// a leitura do pedido está errada, a cor inventada virava cor permanente do modelo assim que
+// qualquer coisa fosse salva naquela tela — foi assim que "Canelado + Calça Pantalona Cinza"
+// entrou na Calça Pantalona Moletom e levou junto 1 peça para a leva (10/08/2026).
+// Para cadastrar de vez existe o botão +.
+function renderCoresTags(cores, fixas) {
   const container = document.getElementById('cores-tags');
   container.innerHTML = '';
   cores.forEach(cor => {
+    const fixa = !fixas || fixas.has(chaveCor(cor));
     const tag = document.createElement('div');
-    tag.className = 'cor-tag';
-    tag.innerHTML = `<span>${cor}</span><button onclick="removerCor(this)" title="Remover">×</button>`;
+    tag.className = 'cor-tag' + (fixa ? '' : ' cor-tag-prov');
+    tag.dataset.fixa = fixa ? '1' : '0';
+    if (!fixa) tag.title = 'Cor que veio de um pedido e não está cadastrada neste modelo. '
+      + 'Não fica salva — some sozinha se a leitura do pedido for corrigida. Clique em + para cadastrar de vez.';
+    tag.innerHTML = `<span>${cor}</span>` + (fixa
+      ? `<button onclick="removerCor(this)" title="Remover">×</button>`
+      : `<button onclick="fixarCor(this)" title="Cadastrar esta cor no modelo">+</button>`);
     container.appendChild(tag);
   });
+}
+
+// Promove uma cor provisória a cor do modelo (aí sim ela é gravada)
+function fixarCor(btn) {
+  const tag = btn.parentElement;
+  const cor = tag.querySelector('span').textContent;
+  tag.dataset.fixa = '1';
+  tag.className = 'cor-tag';
+  tag.removeAttribute('title');
+  tag.innerHTML = `<span>${cor}</span><button onclick="removerCor(this)" title="Remover">×</button>`;
+  autoSave();
 }
 
 function addCor() {
@@ -5053,6 +5081,7 @@ function addCor() {
   if (!val) return;
   const tag = document.createElement('div');
   tag.className = 'cor-tag';
+  tag.dataset.fixa = '1'; // digitada pela dona: é cor do modelo
   tag.innerHTML = `<span>${val}</span><button onclick="removerCor(this)" title="Remover">×</button>`;
   document.getElementById('cores-tags').appendChild(tag);
   inp.value = '';
