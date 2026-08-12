@@ -1,0 +1,60 @@
+# Guardião anti "deploy direto": a cada 15 min compara a PRODUÇÃO com o git.
+# Se alguém publicou por wrangler direto (fora do git), republica a versão do git
+# por cima e abre/comenta uma issue para o trabalho divergente não se perder em
+# silêncio (ele continua na árvore local de quem publicou — basta commitar+pushar).
+name: Guardiao producao = git
+on:
+  schedule:
+    - cron: '*/15 * * * *'
+  workflow_dispatch: {}
+permissions:
+  contents: read
+  issues: write
+concurrency: guardiao
+jobs:
+  conferir:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Comparar produção com o git
+        id: cmp
+        run: |
+          > /tmp/guard-divergentes.txt
+          for f in index.html main.js data.js style.css; do
+            if [ "$f" = "index.html" ]; then url="https://vistaconecte.pages.dev/"; else url="https://vistaconecte.pages.dev/$f"; fi
+            curl -sL -H 'Cache-Control: no-cache' "$url?guard=$(date +%s)" -o "/tmp/prod-$f"
+            if ! cmp -s "/tmp/prod-$f" "$f"; then echo "$f" >> /tmp/guard-divergentes.txt; fi
+          done
+          if [ -s /tmp/guard-divergentes.txt ]; then
+            echo "divergiu=true" >> "$GITHUB_OUTPUT"
+            echo "arquivos=$(paste -sd, /tmp/guard-divergentes.txt)" >> "$GITHUB_OUTPUT"
+            echo "v_prod=$(grep -o 'main.js?v=[0-9]*' /tmp/prod-index.html | head -1)" >> "$GITHUB_OUTPUT"
+            echo "v_git=$(grep -o 'main.js?v=[0-9]*' index.html | head -1)" >> "$GITHUB_OUTPUT"
+          else
+            echo "divergiu=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Republicar a versão do git por cima
+        if: steps.cmp.outputs.divergiu == 'true'
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy . --project-name=vistaconecte --branch=main
+
+      - name: Avisar em issue (para ninguém perder trabalho sem saber)
+        if: steps.cmp.outputs.divergiu == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          titulo="Deploy direto detectado — produção divergiu do git e foi republicada"
+          corpo="O guardião encontrou a produção diferente do git em: ${{ steps.cmp.outputs.arquivos }} (produção estava em \`${{ steps.cmp.outputs.v_prod }}\`, git em \`${{ steps.cmp.outputs.v_git }}\`). A versão do git foi republicada por cima.
+
+          Se essa divergência era trabalho novo feito fora do git: o trabalho NÃO se perdeu — está na árvore local de quem publicou. Para pô-lo no ar, na pasta do projeto: git add -A && git commit -m 'descrição' && git pull --rebase origin main && git push origin main. O deploy é automático. NÃO usar wrangler pages deploy manual — o guardião desfaz em até 15 minutos."
+          numero=$(gh issue list --state open --search "Deploy direto detectado" --json number --jq '.[0].number' || true)
+          if [ -n "$numero" ] && [ "$numero" != "null" ]; then
+            gh issue comment "$numero" --body "$corpo"
+          else
+            gh issue create --title "$titulo" --body "$corpo"
+          fi

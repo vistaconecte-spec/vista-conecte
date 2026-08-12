@@ -15,7 +15,12 @@ pelo GitHub Actions a cada push na `main`.
    git commit -m "descrição clara do que mudou"
    git push origin main
    ```
-   O deploy é automático (GitHub Actions, ~30s). NÃO usar `wrangler pages deploy` manualmente.
+   O deploy é automático (GitHub Actions, ~30s). NÃO usar `wrangler pages deploy` manualmente —
+   um GUARDIÃO agendado compara a produção com o git e REPUBLICA a versão do git por cima de
+   qualquer deploy direto (avisando o Álvaro). Deploy manual, portanto, não fica no ar por muito
+   tempo e será desfeito: o único caminho durável é commit+push. (Guardião hoje: cron no Mac do
+   Álvaro; versão GitHub-hosted pronta em `.github/guardiao-workflow-pendente.yml`, aguardando
+   escopo `workflow` no gh para ser movida para `.github/workflows/`.)
 4. **Se o push for rejeitado** (non-fast-forward): é normal — a outra pessoa publicou antes.
    `git pull --rebase origin main` e push de novo. Nunca usar `--force`.
 5. **Nunca deixar trabalho commitado sem push** ao encerrar — trabalho não-pushado não
