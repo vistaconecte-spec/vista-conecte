@@ -4613,7 +4613,136 @@ function requisitosDoItem(item) {
 // A tela do cortador: as levas que estão com tecido sendo comprado ou já em corte,
 // cada uma com a ficha para ele mesmo abrir e salvar. Antes disso a ficha só saía com
 // o modelo aberto na tela da dona, e ela mandava uma a uma no WhatsApp.
-const CORTE_STATUS = ['Comprando tecido', 'Em corte'];
+
+// Enquanto o tecido está sendo comprado não há ficha por modelo para o cortador: ele vê
+// UM total consolidado, agrupado por tecido e cor, como a Ficha de Compra do painel.
+// Sem valores — a do painel tem preço do metro, subtotal e total gasto, que é conversa
+// com fornecedor, não com quem corta.
+//
+// A regra de quantidade é a mesma da Ficha de Compra: leva com quantidade digitada usa o
+// que está lá; leva 1 sem nada digitado cai no fallback Pedidos − Estoque − 2ª leva.
+function comprandoTecidoConsolidado() {
+  const grupos = {};   // chaveTecido → { label, cores: { cor: { pecas, metros, modelos:Set } } }
+  for (const [key, def] of Object.entries(MODELOS)) {
+    if (CONJUNTO_PECAS[key]) continue;
+    const saved = loadLocal('vc:' + key) || {};
+    const l1 = saved.status  === 'Comprando tecido';
+    const l2 = saved.status2 === 'Comprando tecido';
+    if (!l1 && !l2) continue;
+    const consumo = saved.consumo || def.consumo || 0;
+    const tecido  = (saved.tecido || def.tecido || 'Não especificado').trim();
+    const chave   = normalizarTecido(tecido);
+    const tu      = !!def.tamanhoUnico;
+    if (!grupos[chave]) grupos[chave] = { label: labelTecido(tecido), cores: {} };
+    coresDoModelo(def, saved).forEach(cor => {
+      let pecas = 0;
+      if (l1) {
+        const pv = saved.prod && saved.prod[cor];
+        if (pv) pecas += pv.reduce((a, b) => a + (b || 0), 0);
+        else {
+          const ab = def.aberto[cor] || [0,0,0,0,0];
+          const ev = (saved.est && saved.est[cor]) || [0,0,0,0,0];
+          const p2 = (saved.prod2 && saved.prod2[cor]) || [];
+          pecas += calcFaltaLeva(ab, ev, p2, tu);
+        }
+      }
+      if (l2) {
+        const pv2 = saved.prod2 && saved.prod2[cor];
+        if (pv2) pecas += pv2.reduce((a, b) => a + (b || 0), 0);
+      }
+      if (pecas === 0) return;
+      const c = grupos[chave].cores[cor] || (grupos[chave].cores[cor] = { pecas: 0, metros: 0, modelos: new Set() });
+      c.pecas  += pecas;
+      c.metros += pecas * consumo;
+      c.modelos.add(saved.nome || def.nome);
+    });
+  }
+  const lista = Object.values(grupos)
+    .map(g => ({
+      tecido: g.label,
+      cores: Object.entries(g.cores).map(([cor, c]) => ({ cor, ...c, modelos: [...c.modelos] }))
+                                     .sort((a, b) => b.pecas - a.pecas),
+    }))
+    .filter(g => g.cores.length);
+  lista.forEach(g => {
+    g.pecas  = g.cores.reduce((s, c) => s + c.pecas, 0);
+    g.metros = g.cores.reduce((s, c) => s + c.metros, 0);
+  });
+  lista.sort((a, b) => b.metros - a.metros);
+  return lista;
+}
+
+function gerarFichaCorteTotal() {
+  const grupos = comprandoTecidoConsolidado();
+  if (!grupos.length) { alert('Nenhum modelo com tecido sendo comprado no momento.'); return; }
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c]));
+  const hoje = new Date().toLocaleDateString('pt-BR');
+  const nMetros = v => v.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+  const totalPecas  = grupos.reduce((s, g) => s + g.pecas, 0);
+  const totalMetros = grupos.reduce((s, g) => s + g.metros, 0);
+
+  const secoes = grupos.map(g => `
+    <div class="sec">
+      <div class="sec-hd">
+        <span>${esc(g.tecido)}</span>
+        <span class="sec-tot">${g.pecas} peças · ${nMetros(g.metros)}m</span>
+      </div>
+      <table>
+        <thead><tr><th style="text-align:left">Cor</th><th style="text-align:left">Modelos</th><th>Peças</th><th>Metros</th></tr></thead>
+        <tbody>
+          ${g.cores.map((c, i) => `
+            <tr style="background:${i % 2 ? '#faf8f5' : '#fff'}">
+              <td style="font-weight:700">${esc(c.cor)}</td>
+              <td style="font-size:11px;color:#666">${esc(c.modelos.join(' · '))}</td>
+              <td style="text-align:center;font-weight:700">${c.pecas}</td>
+              <td style="text-align:right;font-weight:700">${nMetros(c.metros)}m</td>
+            </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>`).join('');
+
+  const html = `<!DOCTYPE html>
+<html lang="pt-BR"><head><meta charset="UTF-8"><title>Corte — Total (${esc(hoje)})</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:Arial,sans-serif;color:#111;background:#fff;font-size:13px}
+  .header{background:#111;color:#fff;padding:20px 32px 16px;display:flex;justify-content:space-between;align-items:flex-end}
+  .brand{font-size:8px;font-weight:700;letter-spacing:.18em;color:#C4A882;margin-bottom:6px;text-transform:uppercase}
+  .titulo{font-size:26px;font-weight:900;letter-spacing:.06em;line-height:1}
+  .header-meta{text-align:right;font-size:11px;color:#aaa;line-height:1.9}
+  .header-meta strong{color:#C4A882}
+  .resumo{background:#F5F0E8;border-bottom:2px solid #C4A882;padding:14px 32px;display:flex;gap:40px;flex-wrap:wrap}
+  .rl{font-size:8px;font-weight:800;letter-spacing:.1em;color:#9a8870;text-transform:uppercase;margin-bottom:2px}
+  .rv{font-size:15px;font-weight:900;color:#111}
+  .body{padding:20px 32px}
+  .sec{margin-bottom:22px;break-inside:avoid}
+  .sec-hd{display:flex;justify-content:space-between;align-items:baseline;border-bottom:2px solid #111;padding-bottom:5px;margin-bottom:8px}
+  .sec-hd span:first-child{font-size:15px;font-weight:900;letter-spacing:.04em;text-transform:uppercase}
+  .sec-tot{font-size:12px;font-weight:700;color:#9A7A56}
+  table{width:100%;border-collapse:collapse}
+  th{font-size:8px;font-weight:800;letter-spacing:.1em;color:#9a8870;text-transform:uppercase;padding:6px 10px;border-bottom:1px solid #e5ded2;text-align:center}
+  td{padding:8px 10px;border-bottom:1px solid #f0ece6}
+  .footer{background:#111;color:#666;font-size:8px;padding:8px 32px;display:flex;justify-content:space-between;letter-spacing:.06em}
+  @media print{.no-print{display:none}}
+</style></head><body>
+  <div class="header">
+    <div><div class="brand">Vista Conecte</div><div class="titulo">CORTE — TOTAL</div></div>
+    <div class="header-meta">Data <strong>${esc(hoje)}</strong><br>Tecido sendo comprado</div>
+  </div>
+  <div class="resumo">
+    <div><div class="rl">Total de peças</div><div class="rv">${totalPecas}</div></div>
+    <div><div class="rl">Total de metros</div><div class="rv">${nMetros(totalMetros)}m</div></div>
+    <div><div class="rl">Tecidos</div><div class="rv">${grupos.length}</div></div>
+  </div>
+  <div class="body">${secoes}</div>
+  <div class="footer"><span>VISTA CONECTE · CORTE</span><span>${esc(hoje)}</span></div>
+  <script>window.onload = () => window.print();<\/script>
+</body></html>`;
+
+  const win = window.open('', '_blank');
+  win.document.write(html);
+  win.document.close();
+}
 
 function abrirCorte(item) {
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
@@ -4641,6 +4770,7 @@ function renderCorte() {
   if (!el) return;
   const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c]));
 
+  // Ficha por modelo é só de quem já está EM CORTE — é o que ele corta agora.
   const levas = [];
   for (const [key, def] of Object.entries(MODELOS)) {
     if (CONJUNTO_PECAS[key]) continue; // conjunto não é peça de corte
@@ -4648,7 +4778,7 @@ function renderCorte() {
     const SZ = tamanhosDe(def);
     [{ prod: saved.prod,  status: saved.status,  at: saved.status_at,  prazo: saved.prazo,  n: 1 },
      { prod: saved.prod2, status: saved.status2, at: saved.status2_at, prazo: saved.prazo2, n: 2 }].forEach(l => {
-      if (!CORTE_STATUS.includes(l.status) || !l.prod) return;
+      if (l.status !== 'Em corte' || !l.prod) return;
       const linhas = [];
       let total = 0;
       Object.entries(l.prod).forEach(([cor, vals]) => {
@@ -4665,22 +4795,60 @@ function renderCorte() {
     });
   }
 
-  // Em corte primeiro (é o que ele corta agora), e dentro de cada grupo o mais parado no topo
-  const ordem = { 'Em corte': 0, 'Comprando tecido': 1 };
-  levas.sort((a, b) => (ordem[a.status] - ordem[b.status]) || ((b.dias ?? -1) - (a.dias ?? -1)));
+  levas.sort((a, b) => (b.dias ?? -1) - (a.dias ?? -1)); // o mais parado no topo
+
+  // Tecido em compra: um bloco só, consolidado, sem ficha por modelo
+  const compra = comprandoTecidoConsolidado();
+  const compraPecas  = compra.reduce((s, g) => s + g.pecas, 0);
+  const compraMetros = compra.reduce((s, g) => s + g.metros, 0);
+  const nMetros = v => v.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
 
   const totalPecas = levas.reduce((s, l) => s + l.total, 0);
-  if (totEl) totEl.textContent = levas.length ? `${levas.length} ficha${levas.length > 1 ? 's' : ''} · ${totalPecas} peças` : '';
+  if (totEl) {
+    totEl.textContent = levas.length
+      ? `${levas.length} ficha${levas.length > 1 ? 's' : ''} para cortar · ${totalPecas} peças`
+      : (compra.length ? 'nada para cortar ainda' : '');
+  }
+
+  const blocoCompra = compra.length === 0 ? '' : `
+    <div style="border:1px solid var(--border);border-left:3px solid var(--gold-dark);border-radius:8px;padding:10px 12px;margin-bottom:14px;background:rgba(196,168,130,0.06)">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:8px">
+        <div>
+          <div style="font-size:13px;font-weight:700"><i class="ti ti-shopping-cart"></i> TECIDO SENDO COMPRADO</div>
+          <div style="font-size:11px;color:var(--text-sec);margin-top:2px">Ainda não é para cortar — é o total que vem por aí</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px">
+          <div style="font-size:20px;font-weight:700;line-height:1">${compraPecas}<span style="font-size:10px;font-weight:600;color:var(--text-sec)"> ${compraPecas === 1 ? 'peça' : 'peças'} · ${nMetros(compraMetros)}m</span></div>
+          <button class="btn-outline" style="font-size:11px;padding:6px 12px" onclick="gerarFichaCorteTotal()">
+            <i class="ti ti-file-text"></i> Ficha total
+          </button>
+        </div>
+      </div>
+      <div style="overflow-x:auto">
+        <table style="width:100%;border-collapse:collapse;font-size:12px">
+          <thead><tr><th style="text-align:left">Tecido</th><th style="text-align:left">Cores</th><th>Peças</th><th>Metros</th></tr></thead>
+          <tbody>
+            ${compra.map(g => `
+              <tr>
+                <td style="text-align:left;font-weight:600">${esc(g.tecido)}</td>
+                <td style="text-align:left;font-size:11px;color:var(--text-sec)">${esc(g.cores.map(c => c.cor).join(' · '))}</td>
+                <td style="text-align:center;font-weight:700">${g.pecas}</td>
+                <td style="text-align:right;font-weight:700">${nMetros(g.metros)}m</td>
+              </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>`;
 
   if (levas.length === 0) {
-    el.innerHTML = '<div style="font-size:12px;color:var(--text-ter);padding:10px 0">'
-      + 'Nenhuma ficha para cortar no momento. 👍</div>';
+    el.innerHTML = blocoCompra + '<div style="font-size:12px;color:var(--text-ter);padding:10px 0">'
+      + (compra.length ? 'Nenhuma ficha em corte no momento — assim que o tecido chegar, as fichas aparecem aqui.'
+                       : 'Nenhuma ficha para cortar no momento. 👍') + '</div>';
     return;
   }
 
-  el.innerHTML = levas.map(l => {
-    const emCorte = l.status === 'Em corte';
-    const cor = emCorte ? '#7C3AED' : 'var(--gold-dark)';
+  el.innerHTML = blocoCompra + levas.map(l => {
+    const cor = '#7C3AED'; // roxo do "Em corte", igual ao resto do app
     const prazoTxt = l.prazo ? new Date(l.prazo + 'T12:00:00').toLocaleDateString('pt-BR') : '—';
     return `
       <div style="border:1px solid var(--border);border-left:3px solid ${cor};border-radius:8px;padding:10px 12px;margin-bottom:10px">
