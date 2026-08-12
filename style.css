@@ -273,6 +273,7 @@ body { font-family: 'Inter', system-ui, sans-serif; background: var(--bg); color
 .mini-card {
   background: var(--surface);
   border: 1px solid var(--border);
+  border-left: 3px solid var(--text);
   border-radius: var(--radius);
   padding: 10px 14px;
   box-shadow: var(--shadow-sm);
@@ -291,6 +292,7 @@ body { font-family: 'Inter', system-ui, sans-serif; background: var(--bg); color
   font-weight: 700;
   line-height: 1.15;
   margin: 3px 0 1px;
+  color: var(--text);
 }
 
 .mini-card .mini-sub {
