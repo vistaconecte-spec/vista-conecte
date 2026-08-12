@@ -68,7 +68,7 @@ const CORTE_HASH   = 'dc724e621cb75ef606aee3461561062996817e52083c466920a90f7e45
 // As abas que já eram protegidas usam a MESMA senha da dona. Entrar como dona libera
 // todas de uma vez e o desbloqueio fica guardado no aparelho — antes era sessionStorage
 // com uma chave por aba, então era redigitar em cada uma e a cada vez que reabria o app.
-const ABAS_DA_DONA = ['fin-ok', 'flx-ok', 'prc-ok', 'traf-ok', 'atd-ok'];
+const ABAS_DA_DONA = ['fin-ok', 'flx-ok', 'prc-ok', 'traf-ok', 'atd-ok', 'conf-ok'];
 
 function perfilAtual() {
   try { return localStorage.getItem(PERFIL_KEY) || null; } catch (e) { return null; }
@@ -608,6 +608,31 @@ function buildSidebar() {
   };
   nav.appendChild(dashItem);
 
+  // ── CONFECÇÃO logo abaixo de INÍCIO: é o que ela abre o dia inteiro, então fica
+  // no topo. Trancada, o título vira botão de cadeado e a lista de modelos nem é
+  // montada — sem item para clicar, não tem como chegar num modelo pela lateral.
+  const confTitle = document.createElement('div');
+  confTitle.className = 'sidebar-section';
+  if (confLiberada()) {
+    confTitle.innerHTML = '<i class="ti ti-needle-thread"></i> CONFECÇÃO';
+  } else {
+    confTitle.innerHTML = '<i class="ti ti-lock"></i> CONFECÇÃO';
+    confTitle.style.cursor = 'pointer';
+    confTitle.title = 'Digite a senha para abrir a confecção';
+    confTitle.onclick = () => abrirConfeccao(null);
+  }
+  nav.appendChild(confTitle);
+
+  if (confLiberada()) {
+    SIDEBAR_ESTRUTURA.forEach(grupo => {
+      const title = document.createElement('div');
+      title.className = 'sidebar-title';
+      title.textContent = grupo.titulo;
+      nav.appendChild(title);
+      grupo.modelos.forEach(key => montarItemModelo(nav, key));
+    });
+  }
+
   // Botão Financeiro (protegido por senha)
   const finItem = document.createElement('div');
   finItem.className = 'nav-item nav-dashboard' + (modeloAtual === '__financeiro__' ? ' active' : '');
@@ -664,18 +689,10 @@ function buildSidebar() {
   sairItem.onclick = appSair;
   nav.appendChild(sairItem);
 
-  // Título de seção: separa as ferramentas (acima) do catálogo de modelos (abaixo)
-  const confTitle = document.createElement('div');
-  confTitle.className = 'sidebar-section';
-  confTitle.innerHTML = '<i class="ti ti-needle-thread"></i> CONFECÇÃO';
-  nav.appendChild(confTitle);
+}
 
-  SIDEBAR_ESTRUTURA.forEach(grupo => {
-    const title = document.createElement('div');
-    title.className = 'sidebar-title';
-    title.textContent = grupo.titulo;
-    nav.appendChild(title);
-    grupo.modelos.forEach(key => {
+// Um item de modelo da lateral, com os selos de etapa das duas levas.
+function montarItemModelo(nav, key) {
       const def = MODELOS[key];
       if (!def) return;
       const saved  = loadLocal('vc:' + key) || {};
@@ -727,8 +744,6 @@ function buildSidebar() {
       }
       item.onclick = () => selectModel(item, key);
       nav.appendChild(item);
-    });
-  });
 }
 
 // ─── ABA FINANCEIRA ──────────────────────────────────────────────────────────
@@ -836,6 +851,45 @@ async function finUnlock() {
     document.getElementById('fin-erro').textContent = 'Senha incorreta';
   }
 }
+// ── Confecção (mesma senha do Financeiro) ────────────────────────────────────
+// O catálogo de modelos abre estoque, produção e pedidos de cada peça, então passou a
+// ter cadeado como as outras áreas. Entrando como dona ele já vem aberto (ABAS_DA_DONA);
+// a tela abaixo só aparece se alguém trancar de propósito ou entrar por outro perfil.
+function confLiberada() { return sessionStorage.getItem('conf-ok') === '1'; }
+
+function abrirConfeccao(item) {
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  if (item) item.classList.add('active');
+  modeloAtual = '__confeccao__';
+  document.getElementById('model-title').innerHTML = '<span style="font-family:\'Bebas Neue\',\'Arial Narrow\',sans-serif;font-weight:400;font-size:26px;letter-spacing:0.1em">CONFECÇÃO</span>';
+  document.getElementById('model-sub').textContent = '';
+  document.getElementById('topbar-actions').style.display = 'none';
+  document.getElementById('tabs-modelo').style.display = 'none';
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  document.getElementById('panel-confeccao').classList.add('active');
+  document.body.classList.remove('precos-mode');
+  setTimeout(() => document.getElementById('conf-senha')?.focus(), 60);
+  closeSidebar();
+}
+
+async function confUnlock() {
+  const v = document.getElementById('conf-senha').value;
+  if (await sha256(v) !== FIN_HASH) {
+    document.getElementById('conf-erro').textContent = 'Senha incorreta';
+    return;
+  }
+  sessionStorage.setItem('conf-ok', '1');
+  document.getElementById('conf-senha').value = '';
+  document.getElementById('conf-erro').textContent = '';
+  modeloAtual = '__dashboard__';
+  location.hash = '';
+  buildSidebar();          // agora com a lista de modelos
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  document.getElementById('panel-dashboard').classList.add('active');
+  document.getElementById('tabs-modelo').style.display = 'none';
+  renderDashboard();
+}
+
 function finLock() {
   sessionStorage.removeItem('fin-ok');
   document.getElementById('fin-gate').style.display = '';
@@ -8511,9 +8565,13 @@ const _ESPECIAIS = { precos: '__precos__', financeiro: '__financeiro__', trafego
 modeloAtual = _ESPECIAIS[_hashKey] || ((_hashKey && MODELOS[_hashKey]) ? _hashKey : '__dashboard__');
 // Perfil do corte não escolhe tela: entra direto na aba CORTE e fica nela
 if (ehPerfilCorte()) modeloAtual = '__corte__';
+// #macacao-amplo na URL não pode furar o cadeado da confecção
+if (MODELOS[modeloAtual] && !confLiberada()) modeloAtual = '__confeccao__';
 buildSidebar();
 
-if (modeloAtual === '__corte__') {
+if (modeloAtual === '__confeccao__') {
+  abrirConfeccao(null);
+} else if (modeloAtual === '__corte__') {
   abrirCorte(null);
 } else if (modeloAtual === '__precos__') {
   abrirPrecos(null); // restaura a aba Precificação após F5 (mantém o gate de senha)
@@ -8538,6 +8596,7 @@ if (modeloAtual === '__corte__') {
 // 2. Sincroniza todos os modelos da nuvem → depois carrega Shopify e renderiza
 const _renderInicial = () => {
   if (modeloAtual === '__corte__') renderCorte();
+  else if (modeloAtual === '__confeccao__') { /* só o cadeado, nada a renderizar */ }
   else if (modeloAtual === '__dashboard__') renderDashboard();
   else if (modeloAtual === '__precos__') { if (sessionStorage.getItem('fin-ok') === '1') renderPrecos(); }
   else if (modeloAtual === '__financeiro__') { if (sessionStorage.getItem('fin-ok') === '1') renderFinanceiro(); }
