@@ -608,30 +608,15 @@ function buildSidebar() {
   };
   nav.appendChild(dashItem);
 
-  // ── CONFECÇÃO logo abaixo de INÍCIO: é o que ela abre o dia inteiro, então fica
-  // no topo. Trancada, o título vira botão de cadeado e a lista de modelos nem é
-  // montada — sem item para clicar, não tem como chegar num modelo pela lateral.
-  const confTitle = document.createElement('div');
-  confTitle.className = 'sidebar-section';
-  if (confLiberada()) {
-    confTitle.innerHTML = '<i class="ti ti-needle-thread"></i> CONFECÇÃO';
-  } else {
-    confTitle.innerHTML = '<i class="ti ti-lock"></i> CONFECÇÃO';
-    confTitle.style.cursor = 'pointer';
-    confTitle.title = 'Digite a senha para abrir a confecção';
-    confTitle.onclick = () => abrirConfeccao(null);
-  }
-  nav.appendChild(confTitle);
-
-  if (confLiberada()) {
-    SIDEBAR_ESTRUTURA.forEach(grupo => {
-      const title = document.createElement('div');
-      title.className = 'sidebar-title';
-      title.textContent = grupo.titulo;
-      nav.appendChild(title);
-      grupo.modelos.forEach(key => montarItemModelo(nav, key));
-    });
-  }
+  // ── CONFECÇÃO logo abaixo de INÍCIO: abre o CATÁLOGO de modelos (aba própria).
+  // A lista de modelos saiu da lateral (pedido do Álvaro 03/08) — o menu fica só
+  // com as áreas; os modelos vivem dentro da aba Confecção.
+  const confItem = document.createElement('div');
+  confItem.id = 'nav-confeccao';
+  confItem.className = 'nav-item nav-dashboard' + ((modeloAtual === '__confeccao__' || MODELOS[modeloAtual]) ? ' active' : '');
+  confItem.innerHTML = `<i class="ti ${confLiberada() ? 'ti-needle-thread' : 'ti-lock'}"></i> CONFECÇÃO`;
+  confItem.onclick = () => abrirConfeccao(confItem);
+  nav.appendChild(confItem);
 
   // Botão Financeiro (protegido por senha)
   const finItem = document.createElement('div');
@@ -691,15 +676,14 @@ function buildSidebar() {
 
 }
 
-// Um item de modelo da lateral, com os selos de etapa das duas levas.
-function montarItemModelo(nav, key) {
+// Rótulo de um modelo (nome + selos de etapa das duas levas) — usado pelos cards
+// do catálogo da aba Confecção (antes era o item da lateral).
+function modeloLabelHtml(key) {
       const def = MODELOS[key];
-      if (!def) return;
+      if (!def) return '';
       const saved  = loadLocal('vc:' + key) || {};
       const status = saved.status || '';
-      const item   = document.createElement('div');
-      item.className  = 'nav-item' + (key === modeloAtual ? ' active' : '');
-      item.dataset.key = key;
+      const item   = { innerHTML: '' }; // acumula o HTML no mesmo formato do antigo item da lateral
       const nome      = saved.nome || def.nome;
       const statusAt  = saved.status_at ? new Date(saved.status_at).getTime() : null;
       const horas     = statusAt ? Math.floor((Date.now() - statusAt) / 3600000) : 0;
@@ -729,7 +713,7 @@ function montarItemModelo(nav, key) {
           : `<span style="font-size:9px;background:${bg};color:${cor};border-radius:3px;padding:1px 5px;letter-spacing:0.04em;vertical-align:middle">COSTURA 🧵</span>`;
         item.innerHTML = `<span style="color:${cor};font-weight:600">${nome}</span>&nbsp;${badge}`;
       } else {
-        item.textContent = nome;
+        item.innerHTML = nome;
       }
       // Badge da 2ª leva (status próprio, independente da leva principal)
       const status2 = saved.status2 || '';
@@ -742,8 +726,18 @@ function montarItemModelo(nav, key) {
         const [c2, bg2, lb2] = BADGE2[status2];
         item.innerHTML += `&nbsp;<span style="font-size:9px;background:${bg2};color:${c2};border-radius:3px;padding:1px 5px;letter-spacing:0.04em;vertical-align:middle">${lb2}</span>`;
       }
-      item.onclick = () => selectModel(item, key);
-      nav.appendChild(item);
+      return item.innerHTML;
+}
+
+// Abre um modelo pelo NOME exibido — substitui o antigo "clique no item da lateral"
+// usado pelas tabelas do dashboard (a lateral não lista mais os modelos).
+function abrirModeloPorNome(nome) {
+  const alvo = String(nome || '').trim();
+  if (!alvo) return;
+  for (const [key, def] of Object.entries(MODELOS)) {
+    const n = String(((loadLocal('vc:' + key) || {}).nome || def.nome)).trim();
+    if (n === alvo || alvo.startsWith(n)) { selectModel(null, key); return; }
+  }
 }
 
 // ─── ABA FINANCEIRA ──────────────────────────────────────────────────────────
@@ -859,8 +853,13 @@ function confLiberada() { return sessionStorage.getItem('conf-ok') === '1'; }
 
 function abrirConfeccao(item) {
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
-  if (item) item.classList.add('active');
+  ((item) || document.getElementById('nav-confeccao'))?.classList.add('active');
+  if (MODELOS[modeloAtual] && (estEditado || prodEditado || prod2Editado || cfgEditado)) {
+    clearTimeout(saveTimer); salvarModelo();
+  }
+  estEditado = false; prodEditado = false; prod2Editado = false; cfgEditado = false; esconderBtnSalvar();
   modeloAtual = '__confeccao__';
+  location.hash = 'confeccao';
   document.getElementById('model-title').innerHTML = '<span style="font-family:\'Bebas Neue\',\'Arial Narrow\',sans-serif;font-weight:400;font-size:26px;letter-spacing:0.1em">CONFECÇÃO</span>';
   document.getElementById('model-sub').textContent = '';
   document.getElementById('topbar-actions').style.display = 'none';
@@ -868,7 +867,10 @@ function abrirConfeccao(item) {
   document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
   document.getElementById('panel-confeccao').classList.add('active');
   document.body.classList.remove('precos-mode');
-  setTimeout(() => document.getElementById('conf-senha')?.focus(), 60);
+  const ok = confLiberada();
+  document.getElementById('conf-gate').style.display = ok ? 'none' : '';
+  document.getElementById('conf-content').style.display = ok ? '' : 'none';
+  if (ok) renderConfeccao(); else setTimeout(() => document.getElementById('conf-senha')?.focus(), 60);
   closeSidebar();
 }
 
@@ -881,13 +883,31 @@ async function confUnlock() {
   sessionStorage.setItem('conf-ok', '1');
   document.getElementById('conf-senha').value = '';
   document.getElementById('conf-erro').textContent = '';
-  modeloAtual = '__dashboard__';
-  location.hash = '';
-  buildSidebar();          // agora com a lista de modelos
-  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
-  document.getElementById('panel-dashboard').classList.add('active');
-  document.getElementById('tabs-modelo').style.display = 'none';
-  renderDashboard();
+  buildSidebar(); // troca o cadeado pela agulha no item CONFECÇÃO
+  document.getElementById('nav-confeccao')?.classList.add('active');
+  document.getElementById('conf-gate').style.display = 'none';
+  document.getElementById('conf-content').style.display = '';
+  renderConfeccao();
+}
+
+// Catálogo de modelos dentro da aba Confecção (grupos de SIDEBAR_ESTRUTURA, com busca)
+function renderConfeccao() {
+  const el = document.getElementById('conf-catalogo');
+  if (!el) return;
+  const busca = (document.getElementById('conf-busca')?.value || '').trim().toLowerCase();
+  const html = SIDEBAR_ESTRUTURA.map(grupo => {
+    const cards = grupo.modelos
+      .filter(k => MODELOS[k])
+      .filter(k => !busca || String(((loadLocal('vc:' + k) || {}).nome || MODELOS[k].nome)).toLowerCase().includes(busca))
+      .map(k => `<div class="conf-card" onclick="selectModel(null,'${k}')">${modeloLabelHtml(k)}</div>`)
+      .join('');
+    if (!cards) return '';
+    return `<div class="card" style="margin-bottom:14px">
+      <div class="card-title" style="margin-bottom:10px">${grupo.titulo}</div>
+      <div class="conf-grid">${cards}</div>
+    </div>`;
+  }).join('');
+  el.innerHTML = html || '<div style="color:var(--text-ter);font-size:13px;text-align:center;padding:24px">Nenhum modelo encontrado.</div>';
 }
 
 function finLock() {
@@ -3459,7 +3479,8 @@ function selectModel(el, key) {
   }
 
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
-  el.classList.add('active');
+  // modelo aberto = área Confecção ativa na lateral (os modelos não têm mais item próprio)
+  (el || document.getElementById('nav-confeccao'))?.classList.add('active');
   document.body.classList.remove('precos-mode');
   modeloAtual = key;
   location.hash = key; // persiste na URL para sobreviver ao refresh
@@ -3699,7 +3720,7 @@ function renderDashboard() {
           </tr></thead>
           <tbody>
             ${urgList.map(u => `
-              <tr style="cursor:pointer" onclick="(function(){const ni=Array.from(document.querySelectorAll('.nav-item')).find(el=>el.textContent.trim()==='${u.nome.replace(/'/g,"\\'")}');if(ni)ni.click();})()">
+              <tr style="cursor:pointer" onclick="abrirModeloPorNome('${u.nome.replace(/'/g,"\\'")}')">
                 <td style="font-weight:600">${u.nome}</td>
                 <td style="font-size:11px;color:var(--text-sec)">${u.status || '—'}</td>
                 ${u.tu
@@ -3763,7 +3784,7 @@ function renderDashboard() {
         </tr></thead>
         <tbody>
           ${dupList.map(x => `
-            <tr style="cursor:pointer" onclick="(function(){const ni=Array.from(document.querySelectorAll('.nav-item')).find(el=>el.textContent.trim().startsWith('${x.nome.replace(/'/g,"\\'")}'));if(ni)ni.click();})()">
+            <tr style="cursor:pointer" onclick="abrirModeloPorNome('${x.nome.replace(/'/g,"\\'")}')">
               <td style="font-weight:600">${x.nome}</td>
               <td style="font-size:11px;color:var(--text-sec)">${x.det}</td>
               <td style="text-align:center;font-weight:700;color:#d97706">${x.sobra}</td>
@@ -3812,7 +3833,7 @@ function renderDashboard() {
           </tr></thead>
           <tbody>
             ${prodList.map(p => `
-              <tr style="cursor:pointer" onclick="(function(){const ni=Array.from(document.querySelectorAll('.nav-item')).find(el=>el.textContent.trim().startsWith('${p.nome.replace(/'/g,"\\'")}'));if(ni)ni.click();})()">
+              <tr style="cursor:pointer" onclick="abrirModeloPorNome('${p.nome.replace(/'/g,"\\'")}')">
                 <td style="font-weight:600">${p.nome}${p.leva2 ? ' <span style="font-size:9px;background:rgba(124,58,237,0.12);color:#7C3AED;border-radius:3px;padding:1px 5px;vertical-align:middle">2ª LEVA</span>' : ''}</td>
                 <td style="text-align:center;font-size:11px;color:#0891b2;font-weight:600">${p.status}</td>
                 <td style="text-align:center;font-weight:700;color:#0891b2">${p.total}</td>
@@ -3885,7 +3906,7 @@ function renderDashboard() {
           </tr></thead>
           <tbody>
             ${compraList.map(c => `
-              <tr style="cursor:pointer" onclick="(function(){const ni=Array.from(document.querySelectorAll('.nav-item')).find(el=>el.textContent.trim().startsWith('${c.nome.replace(/'/g,"\\'")}'));if(ni)ni.click();})()">
+              <tr style="cursor:pointer" onclick="abrirModeloPorNome('${c.nome.replace(/'/g,"\\'")}')">
                 <td style="font-weight:600">${c.nome}${c.leva2 ? ' <span style="font-size:9px;background:rgba(124,58,237,0.12);color:#7C3AED;border-radius:3px;padding:1px 5px;vertical-align:middle">2ª LEVA</span>' : ''}</td>
                 <td style="color:var(--text-sec)">${c.tecido}</td>
                 <td style="text-align:center;font-weight:600">${c.metros.toFixed(2)}m</td>
@@ -3959,20 +3980,12 @@ function renderDashboard() {
   } else {
     const max = top5[0].pedidos;
     mvEl.innerHTML = top5.map((m, i) => `
-      <div class="dash-mv-card" onclick="document.querySelector('[data-key=\\'${m.key}\\']')?.click()">
+      <div class="dash-mv-card" onclick="selectModel(null,'${m.key}')">
         <div class="dash-mv-rank">#${i+1}</div>
         <div class="dash-mv-nome">${m.nome}</div>
         <div class="dash-mv-bar-wrap"><div class="dash-mv-bar" style="width:${Math.round(m.pedidos/max*100)}%"></div></div>
         <div class="dash-mv-val">${m.pedidos} <span>pedidos</span></div>
       </div>`).join('');
-    // Adiciona data-key para clique
-    top5.forEach(m => {
-      const navItem = Array.from(document.querySelectorAll('.nav-item')).find(el => {
-        return el.textContent.trim() === MODELOS[m.key]?.nome;
-      });
-      const card = mvEl.querySelector(`[onclick*="${m.key}"]`);
-      if (card && navItem) card.onclick = () => navItem.click();
-    });
   }
 
   // Saldo de estoque (estoque disponível além dos pedidos)
@@ -4004,10 +4017,7 @@ function renderDashboard() {
       const sizeCells = r.tu
         ? `<td>—</td><td>—</td><td>—</td><td>—</td><td>—</td>`
         : r.sizes.map(v => `<td style="text-align:center" class="${v > 0 ? 'saldo-ok' : ''}">${v || '—'}</td>`).join('');
-      return `<tr class="dash-row" style="cursor:pointer" onclick="(function(){
-        const ni = Array.from(document.querySelectorAll('.nav-item')).find(el => el.textContent.trim()==='${r.nome.replace(/'/g,"\\'")}');
-        if(ni) ni.click();
-      })()">
+      return `<tr class="dash-row" style="cursor:pointer" onclick="abrirModeloPorNome('${r.nome.replace(/'/g,"\\'")}')">
         <td style="font-weight:500">${r.nome}</td>
         <td>${r.cor}</td>
         ${sizeCells}
@@ -4035,10 +4045,7 @@ function renderDashboard() {
   const sorted = [...modelData].sort((a,b) => b.pedidos - a.pedidos);
   const TABELA_LIMIT = 10;
   const renderTabelaRows = (rows) => rows.map(m => `
-    <tr class="dash-row" style="cursor:pointer" onclick="(function(){
-      const ni = Array.from(document.querySelectorAll('.nav-item')).find(el => el.textContent.trim()==='${m.nome.replace(/'/g,"\\'")}');
-      if(ni) ni.click();
-    })()">
+    <tr class="dash-row" style="cursor:pointer" onclick="abrirModeloPorNome('${m.nome.replace(/'/g,"\\'")}')">
       <td style="font-weight:500">${m.nome}</td>
       <td style="text-align:center" class="${m.pedidos > 0 ? 'val-areia' : ''}">${m.pedidos || '—'}</td>
       <td style="text-align:center">${m.estoque || '—'}</td>
@@ -4111,7 +4118,7 @@ function renderCorteCostura() {
     : `<table style="width:100%;border-collapse:collapse">
         <tbody>
           ${lista.map(p => `
-            <tr style="cursor:pointer;border-top:1px solid rgba(0,0,0,0.06)" onclick="(function(){const ni=Array.from(document.querySelectorAll('.nav-item')).find(el=>el.textContent.trim().startsWith('${p.nome.replace(/'/g, "\\'")}'));if(ni)ni.click();})()">
+            <tr style="cursor:pointer;border-top:1px solid rgba(0,0,0,0.06)" onclick="abrirModeloPorNome('${p.nome.replace(/'/g,"\\'")}')">
               <td style="padding:5px 2px;font-size:13px;font-weight:600">${p.nome}${p.leva2 ? ' <span style="font-size:9px;background:rgba(124,58,237,0.12);color:#7C3AED;border-radius:3px;padding:1px 5px;vertical-align:middle">2ª LEVA</span>' : ''}</td>
               <td style="padding:5px 2px;text-align:right;font-size:13px;font-weight:700;color:${cor}">${p.total}</td>
             </tr>`).join('')}
@@ -5251,10 +5258,7 @@ function expandirTabela() {
       <td style="text-align:center" class="${m.pedidos > 0 ? 'val-areia' : ''}">${m.pedidos || '—'}</td>
       <td style="text-align:center">${m.estoque || '—'}</td>
       <td style="text-align:center" class="${m.produzir > 0 ? 'val-escuro' : ''}">${m.produzir || '—'}</td>`;
-    tr.onclick = () => {
-      const ni = Array.from(document.querySelectorAll('.nav-item')).find(el => el.textContent.trim() === m.nome);
-      if (ni) ni.click();
-    };
+    tr.onclick = () => abrirModeloPorNome(m.nome);
     tabelaEl.appendChild(tr);
   });
 }
@@ -5281,10 +5285,7 @@ function expandirSaldo() {
       <td>${r.cor}</td>
       ${sizeCells}
       <td style="text-align:center;font-weight:700;color:#16a34a">+${r.total}</td>`;
-    tr.onclick = () => {
-      const ni = Array.from(document.querySelectorAll('.nav-item')).find(el => el.textContent.trim() === r.nome);
-      if (ni) ni.click();
-    };
+    tr.onclick = () => abrirModeloPorNome(r.nome);
     saldoEl.appendChild(tr);
   });
 }
@@ -8561,7 +8562,7 @@ function iniciarApp() {
   _appIniciado = true;
 
 const _hashKey = location.hash.replace('#', '');
-const _ESPECIAIS = { precos: '__precos__', financeiro: '__financeiro__', trafego: '__trafego__', fluxo: '__fluxo__', atendimento: '__atendimento__', modelagem: '__modelagem__', corte: '__corte__' };
+const _ESPECIAIS = { confeccao: '__confeccao__', precos: '__precos__', financeiro: '__financeiro__', trafego: '__trafego__', fluxo: '__fluxo__', atendimento: '__atendimento__', modelagem: '__modelagem__', corte: '__corte__' };
 modeloAtual = _ESPECIAIS[_hashKey] || ((_hashKey && MODELOS[_hashKey]) ? _hashKey : '__dashboard__');
 // Perfil do corte não escolhe tela: entra direto na aba CORTE e fica nela
 if (ehPerfilCorte()) modeloAtual = '__corte__';
@@ -8596,7 +8597,7 @@ if (modeloAtual === '__confeccao__') {
 // 2. Sincroniza todos os modelos da nuvem → depois carrega Shopify e renderiza
 const _renderInicial = () => {
   if (modeloAtual === '__corte__') renderCorte();
-  else if (modeloAtual === '__confeccao__') { /* só o cadeado, nada a renderizar */ }
+  else if (modeloAtual === '__confeccao__') { if (confLiberada()) renderConfeccao(); }
   else if (modeloAtual === '__dashboard__') renderDashboard();
   else if (modeloAtual === '__precos__') { if (sessionStorage.getItem('fin-ok') === '1') renderPrecos(); }
   else if (modeloAtual === '__financeiro__') { if (sessionStorage.getItem('fin-ok') === '1') renderFinanceiro(); }
@@ -8626,6 +8627,7 @@ setInterval(() => {
     if (!ehPerfilCorte()) await baixaImediataDeProcessados().catch(() => {});
     if (modeloAtual === '__corte__') renderCorte();
     else if (modeloAtual === '__dashboard__') renderDashboard();
+    else if (modeloAtual === '__confeccao__' && confLiberada()) renderConfeccao(); // atualiza os selos de etapa do catálogo
     else if (!estEditado && !prodEditado && MODELOS[modeloAtual]) renderModelo(modeloAtual); // só modelos reais; pula precos/financeiro
   }).catch(() => {});
 }, 1 * 60 * 1000);

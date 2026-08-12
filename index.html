@@ -454,7 +454,7 @@
         </div>
       </div>
       <div id="panel-confeccao" class="tab-panel">
-        <div style="max-width:380px;margin:48px auto">
+        <div id="conf-gate" style="max-width:380px;margin:48px auto">
           <div class="card" style="text-align:center;padding:30px 26px">
             <i class="ti ti-lock" style="font-size:30px;color:var(--gold-dark)"></i>
             <div style="font-weight:700;font-size:17px;margin:10px 0 2px">Confecção</div>
@@ -463,6 +463,18 @@
             <div id="conf-erro" style="color:#dc2626;font-size:12px;height:16px;margin-top:6px"></div>
             <button class="btn-primary" style="width:100%;margin-top:6px;padding:10px" onclick="confUnlock()"><i class="ti ti-lock-open"></i> Entrar</button>
           </div>
+        </div>
+        <div id="conf-content" style="display:none">
+          <style>
+            #conf-content .conf-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:8px}
+            #conf-content .conf-card{border:1px solid var(--border);border-radius:10px;padding:10px 12px;font-size:13px;cursor:pointer;background:#fff;transition:box-shadow .15s,transform .15s;line-height:1.5}
+            #conf-content .conf-card:hover{box-shadow:0 4px 14px rgba(0,0,0,.08);transform:translateY(-1px)}
+          </style>
+          <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap">
+            <div style="font-weight:700;font-size:16px"><i class="ti ti-needle-thread"></i> Modelos das peças</div>
+            <input id="conf-busca" placeholder="Buscar modelo..." oninput="renderConfeccao()" style="margin-left:auto;width:min(280px,100%);padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:13px">
+          </div>
+          <div id="conf-catalogo"></div>
         </div>
       </div>
       <div id="panel-financeiro" class="tab-panel">
@@ -916,8 +928,8 @@
     </div>
   </div>
 </div>
-<script src="data.js?v=2026081129"></script>
-<script src="main.js?v=2026081129"></script>
+<script src="data.js?v=2026081201"></script>
+<script src="main.js?v=2026081201"></script>
 <script async src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js" onload="initSupabase()"></script>
 </body>
 </html>
