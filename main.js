@@ -51,6 +51,62 @@ async function renderModeloNuvem(key) {
 const HIST_PREFIXO = 'hist:';
 const HIST_MAX = 25; // versões guardadas por chave
 
+// ─── CADEADO DE ENTRADA (dois perfis) ────────────────────────────────────────
+// Até 11/08/2026 o INÍCIO e toda a CONFECÇÃO ficavam abertos: quem tivesse o link via
+// pedidos, nomes de clientes, estoque e produção sem digitar nada. Só Financeiro, Fluxo,
+// Precificação, Tráfego, Atendimento e Modelagem pediam senha.
+//
+//   dona  → senha que já valia nas abas protegidas; abre o app inteiro
+//   corte → senha do cortador; abre SÓ a aba CORTE
+//
+// IMPORTANTE, e a dona precisa saber: isto é um cadeado de TELA. Os dados moram no
+// Supabase e a chave de leitura é pública (está neste arquivo, como em todo app que
+// roda no navegador). Segura quem abriu o link e o cortador curioso; não segura quem
+// abrir o console do navegador. Barrar de verdade exigiria RLS no Supabase.
+const PERFIL_KEY   = 'vc:perfil';
+const CORTE_HASH   = 'dc724e621cb75ef606aee3461561062996817e52083c466920a90f7e456229aa';
+// As abas que já eram protegidas usam a MESMA senha da dona. Entrar como dona libera
+// todas de uma vez e o desbloqueio fica guardado no aparelho — antes era sessionStorage
+// com uma chave por aba, então era redigitar em cada uma e a cada vez que reabria o app.
+const ABAS_DA_DONA = ['fin-ok', 'flx-ok', 'prc-ok', 'traf-ok', 'atd-ok'];
+
+function perfilAtual() {
+  try { return localStorage.getItem(PERFIL_KEY) || null; } catch (e) { return null; }
+}
+
+function ehPerfilCorte() { return perfilAtual() === 'corte'; }
+
+async function sha256(txt) {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(txt));
+  return [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+function aplicarPerfil(perfil) {
+  if (perfil === 'dona') ABAS_DA_DONA.forEach(k => sessionStorage.setItem(k, '1'));
+  const gate = document.getElementById('app-gate');
+  if (gate) gate.style.display = 'none';
+}
+
+async function appEntrar() {
+  const campo = document.getElementById('app-gate-senha');
+  const erro  = document.getElementById('app-gate-erro');
+  const hex   = await sha256(campo.value);
+  const perfil = hex === FIN_HASH ? 'dona' : hex === CORTE_HASH ? 'corte' : null;
+  if (!perfil) { erro.textContent = 'Senha incorreta'; campo.select(); return; }
+  try { localStorage.setItem(PERFIL_KEY, perfil); } catch (e) {}
+  campo.value = ''; erro.textContent = '';
+  aplicarPerfil(perfil);
+  iniciarApp();
+}
+
+function appSair() {
+  if (!confirm('Sair e pedir a senha de novo?')) return;
+  try { localStorage.removeItem(PERFIL_KEY); } catch (e) {}
+  ABAS_DA_DONA.forEach(k => sessionStorage.removeItem(k));
+  sessionStorage.removeItem('mdl-ok');
+  location.reload();
+}
+
 // Declarado aqui em cima, e não junto de checarVersaoNova lá embaixo, porque a baixa de
 // estoque consulta esta trava e roda antes daquele trecho do arquivo.
 let _versaoAvisada = false;
@@ -509,6 +565,23 @@ function buildSidebar() {
   const nav = document.getElementById('sidebar-nav');
   nav.innerHTML = '';
 
+  // Perfil do corte: o menu tem CORTE e mais nada. Sem INÍCIO, sem modelos — ele não
+  // chega perto de pedido, cliente, estoque nem financeiro.
+  if (ehPerfilCorte()) {
+    const item = document.createElement('div');
+    item.className = 'nav-item nav-dashboard active';
+    item.innerHTML = '<i class="ti ti-scissors"></i> CORTE';
+    item.onclick = () => abrirCorte(item);
+    nav.appendChild(item);
+
+    const sair = document.createElement('div');
+    sair.className = 'nav-item nav-dashboard';
+    sair.innerHTML = '<i class="ti ti-logout"></i> SAIR';
+    sair.onclick = appSair;
+    nav.appendChild(sair);
+    return;
+  }
+
   // Botão Dashboard no topo
   const dashItem = document.createElement('div');
   dashItem.className = 'nav-item nav-dashboard' + (modeloAtual === '__dashboard__' ? ' active' : '');
@@ -576,6 +649,20 @@ function buildSidebar() {
   mdlItem.innerHTML = '<i class="ti ti-shirt"></i> MODELAGEM';
   mdlItem.onclick = () => abrirModelagem(mdlItem);
   nav.appendChild(mdlItem);
+
+  // Botão Corte — a mesma tela que o cortador vê, para conferir o que está na mão dele
+  const crtItem = document.createElement('div');
+  crtItem.className = 'nav-item nav-dashboard' + (modeloAtual === '__corte__' ? ' active' : '');
+  crtItem.innerHTML = '<i class="ti ti-scissors"></i> CORTE';
+  crtItem.onclick = () => abrirCorte(crtItem);
+  nav.appendChild(crtItem);
+
+  // Sair — limpa o perfil deste aparelho e volta a pedir senha
+  const sairItem = document.createElement('div');
+  sairItem.className = 'nav-item nav-dashboard';
+  sairItem.innerHTML = '<i class="ti ti-logout"></i> SAIR';
+  sairItem.onclick = appSair;
+  nav.appendChild(sairItem);
 
   // Título de seção: separa as ferramentas (acima) do catálogo de modelos (abaixo)
   const confTitle = document.createElement('div');
@@ -4522,6 +4609,118 @@ function requisitosDoItem(item) {
   return [];
 }
 
+// ─── ABA CORTE ───────────────────────────────────────────────────────────────
+// A tela do cortador: as levas que estão com tecido sendo comprado ou já em corte,
+// cada uma com a ficha para ele mesmo abrir e salvar. Antes disso a ficha só saía com
+// o modelo aberto na tela da dona, e ela mandava uma a uma no WhatsApp.
+const CORTE_STATUS = ['Comprando tecido', 'Em corte'];
+
+function abrirCorte(item) {
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  if (item) item.classList.add('active');
+  if (modeloAtual !== '__dashboard__' && MODELOS[modeloAtual] && (estEditado || prodEditado || prod2Editado || cfgEditado)) {
+    clearTimeout(saveTimer); salvarModelo();
+  }
+  estEditado = false; prodEditado = false; prod2Editado = false; cfgEditado = false; esconderBtnSalvar();
+  modeloAtual = '__corte__';
+  location.hash = 'corte';
+  document.getElementById('model-title').innerHTML = '<span style="font-family:\'Bebas Neue\',\'Arial Narrow\',sans-serif;font-weight:400;font-size:26px;letter-spacing:0.1em">CORTE</span>';
+  document.getElementById('model-sub').textContent = '';
+  document.getElementById('topbar-actions').style.display = 'none';
+  document.getElementById('tabs-modelo').style.display = 'none';
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  document.getElementById('panel-corte').classList.add('active');
+  document.body.classList.remove('precos-mode');
+  renderCorte();
+  closeSidebar();
+}
+
+function renderCorte() {
+  const el    = document.getElementById('corte-lista');
+  const totEl = document.getElementById('corte-total');
+  if (!el) return;
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c]));
+
+  const levas = [];
+  for (const [key, def] of Object.entries(MODELOS)) {
+    if (CONJUNTO_PECAS[key]) continue; // conjunto não é peça de corte
+    const saved = loadLocal('vc:' + key) || {};
+    const SZ = tamanhosDe(def);
+    [{ prod: saved.prod,  status: saved.status,  at: saved.status_at,  prazo: saved.prazo,  n: 1 },
+     { prod: saved.prod2, status: saved.status2, at: saved.status2_at, prazo: saved.prazo2, n: 2 }].forEach(l => {
+      if (!CORTE_STATUS.includes(l.status) || !l.prod) return;
+      const linhas = [];
+      let total = 0;
+      Object.entries(l.prod).forEach(([cor, vals]) => {
+        const arr = Array.from({ length: SZ.length }, (_, i) => (vals || [])[i] || 0);
+        const tot = arr.reduce((a, b) => a + b, 0);
+        if (tot > 0) { linhas.push({ cor, arr, tot }); total += tot; }
+      });
+      if (total === 0) return;
+      levas.push({
+        key, nome: saved.nome || def.nome, leva: l.n, status: l.status, prazo: l.prazo || '',
+        tecido: saved.tecido || def.tecido, SZ, linhas, total,
+        dias: l.at ? Math.floor((Date.now() - new Date(l.at).getTime()) / 86400000) : null,
+      });
+    });
+  }
+
+  // Em corte primeiro (é o que ele corta agora), e dentro de cada grupo o mais parado no topo
+  const ordem = { 'Em corte': 0, 'Comprando tecido': 1 };
+  levas.sort((a, b) => (ordem[a.status] - ordem[b.status]) || ((b.dias ?? -1) - (a.dias ?? -1)));
+
+  const totalPecas = levas.reduce((s, l) => s + l.total, 0);
+  if (totEl) totEl.textContent = levas.length ? `${levas.length} ficha${levas.length > 1 ? 's' : ''} · ${totalPecas} peças` : '';
+
+  if (levas.length === 0) {
+    el.innerHTML = '<div style="font-size:12px;color:var(--text-ter);padding:10px 0">'
+      + 'Nenhuma ficha para cortar no momento. 👍</div>';
+    return;
+  }
+
+  el.innerHTML = levas.map(l => {
+    const emCorte = l.status === 'Em corte';
+    const cor = emCorte ? '#7C3AED' : 'var(--gold-dark)';
+    const prazoTxt = l.prazo ? new Date(l.prazo + 'T12:00:00').toLocaleDateString('pt-BR') : '—';
+    return `
+      <div style="border:1px solid var(--border);border-left:3px solid ${cor};border-radius:8px;padding:10px 12px;margin-bottom:10px">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:8px">
+          <div>
+            <div style="font-size:14px;font-weight:700">${esc(l.nome)}${l.leva === 2 ? ' <span style="font-size:9px;background:rgba(124,58,237,0.12);color:#7C3AED;border-radius:3px;padding:1px 5px;vertical-align:middle">2ª LEVA</span>' : ''}</div>
+            <div style="font-size:11px;color:var(--text-sec);margin-top:2px">
+              <span style="color:${cor};font-weight:700">${esc(l.status)}</span>
+              ${l.dias !== null ? ` · há ${l.dias} ${l.dias === 1 ? 'dia' : 'dias'}` : ''}
+              · ${esc(l.tecido || '—')} · entrega ${esc(prazoTxt)}
+            </div>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px">
+            <div style="font-size:20px;font-weight:700;line-height:1">${l.total}<span style="font-size:10px;font-weight:600;color:var(--text-sec)"> ${l.total === 1 ? 'peça' : 'peças'}</span></div>
+            <button class="btn-primary" style="font-size:11px;padding:6px 12px" onclick="gerarFicha('${l.key}')">
+              <i class="ti ti-file-text"></i> Abrir ficha
+            </button>
+          </div>
+        </div>
+        <div style="overflow-x:auto">
+          <table style="width:100%;border-collapse:collapse;font-size:12px">
+            <thead><tr>
+              <th style="text-align:left">Cor</th>
+              ${l.SZ.map(s => `<th>${esc(s)}</th>`).join('')}
+              <th>Tot</th>
+            </tr></thead>
+            <tbody>
+              ${l.linhas.map(r => `
+                <tr>
+                  <td style="text-align:left;font-weight:600">${esc(r.cor)}</td>
+                  ${r.arr.map(v => `<td style="text-align:center;${v ? '' : 'color:var(--text-ter)'}">${v || '—'}</td>`).join('')}
+                  <td style="text-align:center;font-weight:700">${r.tot}</td>
+                </tr>`).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>`;
+  }).join('');
+}
+
 // ─── MINI CARDS: LIBERADOS HOJE · LIBERADOS NA SEMANA · PEDIDOS EM ABERTO ────
 // Três números de cabeceira, sem lista de peças: quanto saiu hoje, quanto saiu na
 // semana e quanto ainda falta sair. Em cada um o número grande é PEDIDO e a linha
@@ -5761,21 +5960,28 @@ async function urlToBase64(src) {
   } catch(_) { return null; }
 }
 
-async function gerarFicha() {
-  const def = MODELOS[modeloAtual];
+// Sem argumento: ficha do modelo aberto, lendo a TELA — sai com o que acabou de ser
+// digitado, mesmo antes de salvar. Com uma chave: monta a partir do que está SALVO, que
+// é como a aba CORTE abre a ficha de qualquer modelo sem precisar abrir o modelo.
+async function gerarFicha(keyArg) {
+  const key = keyArg || modeloAtual;
+  const def = MODELOS[key];
+  if (!def) return;
   const tu = !!def.tamanhoUnico;
-  const saved = loadLocal('vc:' + modeloAtual) || {};
+  const saved = loadLocal('vc:' + key) || {};
   const nome = saved.nome || def.nome;
   const tecido = saved.tecido || def.tecido;
   const consumo = saved.consumo || def.consumo;
-  const status = document.getElementById('prod-status').value;
-  const prazo = document.getElementById('prod-prazo').value;
   const componentes = saved.componentes || def.componentes || '—';
   const obs = saved.obs || def.obs || '';
   const cores = coresDoModelo(def, saved);
+  // Só lê a tela quando é mesmo o modelo aberto e a tabela existe no DOM
+  const daTela = !keyArg && key === modeloAtual && !!document.getElementById('prod-tbody');
+  const status  = daTela ? document.getElementById('prod-status').value : (saved.status || '');
+  const prazo   = daTela ? document.getElementById('prod-prazo').value  : (saved.prazo || '');
   // prioridade: upload manual → legado → caminho padrão do modelo
-  const croquiFrenteRaw = loadLocal('vc:croqui-frente:' + modeloAtual) || loadLocal('vc:croqui:' + modeloAtual) || def.croquiFrente || null;
-  const croquiCostasRaw = loadLocal('vc:croqui-costas:' + modeloAtual) || def.croquiCostas || null;
+  const croquiFrenteRaw = loadLocal('vc:croqui-frente:' + key) || loadLocal('vc:croqui:' + key) || def.croquiFrente || null;
+  const croquiCostasRaw = loadLocal('vc:croqui-costas:' + key) || def.croquiCostas || null;
 
   // Converte caminhos de URL para base64 (garante impressão offline)
   const [croquiFrente, croquiCostas] = await Promise.all([
@@ -5784,6 +5990,8 @@ async function gerarFicha() {
   ]);
 
   // Coleta dados de produção (leva 1 + 2ª leva, seções separadas na ficha)
+  // grade do modelo (pode ter G1) — nunca assumir 5 colunas
+  const SZ_FICHA = tamanhosDe(def);
   const lerRows = sel => {
     const rows = [];
     document.querySelectorAll(sel + ' tr').forEach(row => {
@@ -5794,11 +6002,15 @@ async function gerarFicha() {
     });
     return rows;
   };
-  const prodRows  = lerRows('#prod-tbody');
-  const prod2Rows = lerRows('#prod2-tbody').filter(r => r.tot > 0);
-  const status2   = document.getElementById('prod2-status')?.value || '';
-  // grade do modelo atual (pode ter G1) — nunca assumir 5 colunas
-  const SZ_FICHA = tamanhosDe(MODELOS[modeloAtual]);
+  // Mesma forma que lerRows devolve, só que a partir do mapa salvo {cor: [qtds]}
+  const rowsDeSalvo = mapa => cores.map(cor => {
+    const orig = (mapa && mapa[cor]) || [];
+    const vals = Array.from({ length: SZ_FICHA.length }, (_, i) => orig[i] || 0);
+    return { cor, vals, tot: vals.reduce((a, b) => a + b, 0) };
+  });
+  const prodRows  = daTela ? lerRows('#prod-tbody')  : rowsDeSalvo(saved.prod);
+  const prod2Rows = (daTela ? lerRows('#prod2-tbody') : rowsDeSalvo(saved.prod2)).filter(r => r.tot > 0);
+  const status2   = daTela ? (document.getElementById('prod2-status')?.value || '') : (saved.status2 || '');
   const prodTots = new Array(SZ_FICHA.length).fill(0);
   prodRows.forEach(r => r.vals.forEach((v,i) => prodTots[i] += v));
   const prod2Tots = new Array(SZ_FICHA.length).fill(0);
@@ -8118,12 +8330,24 @@ async function mdlRemoverArquivo(id, tipo, fileId) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 // 1. Monta sidebar e restaura tela pelo hash da URL (ou abre dashboard)
+// Tudo isto só roda DEPOIS de alguém passar pelo cadeado — inclusive a leitura da
+// nuvem, que antes acontecia com a tela ainda em branco.
+let _appIniciado = false;
+
+function iniciarApp() {
+  if (_appIniciado) return;
+  _appIniciado = true;
+
 const _hashKey = location.hash.replace('#', '');
-const _ESPECIAIS = { precos: '__precos__', financeiro: '__financeiro__', trafego: '__trafego__', fluxo: '__fluxo__', atendimento: '__atendimento__', modelagem: '__modelagem__' };
+const _ESPECIAIS = { precos: '__precos__', financeiro: '__financeiro__', trafego: '__trafego__', fluxo: '__fluxo__', atendimento: '__atendimento__', modelagem: '__modelagem__', corte: '__corte__' };
 modeloAtual = _ESPECIAIS[_hashKey] || ((_hashKey && MODELOS[_hashKey]) ? _hashKey : '__dashboard__');
+// Perfil do corte não escolhe tela: entra direto na aba CORTE e fica nela
+if (ehPerfilCorte()) modeloAtual = '__corte__';
 buildSidebar();
 
-if (modeloAtual === '__precos__') {
+if (modeloAtual === '__corte__') {
+  abrirCorte(null);
+} else if (modeloAtual === '__precos__') {
   abrirPrecos(null); // restaura a aba Precificação após F5 (mantém o gate de senha)
 } else if (modeloAtual === '__financeiro__') {
   abrirFinanceiro(null); // restaura a aba Financeiro após F5
@@ -8145,7 +8369,8 @@ if (modeloAtual === '__precos__') {
 
 // 2. Sincroniza todos os modelos da nuvem → depois carrega Shopify e renderiza
 const _renderInicial = () => {
-  if (modeloAtual === '__dashboard__') renderDashboard();
+  if (modeloAtual === '__corte__') renderCorte();
+  else if (modeloAtual === '__dashboard__') renderDashboard();
   else if (modeloAtual === '__precos__') { if (sessionStorage.getItem('fin-ok') === '1') renderPrecos(); }
   else if (modeloAtual === '__financeiro__') { if (sessionStorage.getItem('fin-ok') === '1') renderFinanceiro(); }
   else if (modeloAtual === '__trafego__') { if (sessionStorage.getItem('fin-ok') === '1') trafCarregarFrame(); }
@@ -8156,22 +8381,24 @@ const _renderInicial = () => {
 };
 carregarTodosNuvem().then(() => carregarPedidosShopify()).then(async () => {
   // Baixa de estoque dos pedidos que a Shopify já processou (inclusive o atraso de hoje).
-  await baixaImediataDeProcessados().catch(() => {});
+  // O perfil do corte não mexe em estoque: ele só lê fichas.
+  if (!ehPerfilCorte()) await baixaImediataDeProcessados().catch(() => {});
 
   _renderInicial();
-  verificarAvisosStatus();
+  if (!ehPerfilCorte()) verificarAvisosStatus();
 }).catch(() => {
   _renderInicial();
-  verificarAvisosStatus();
+  if (!ehPerfilCorte()) verificarAvisosStatus();
 });
 
 // 3. Atualiza pedidos Shopify automaticamente a cada 1 minuto
 setInterval(() => {
   carregarPedidosShopify().then(async () => {
     // Baixa de estoque na hora: se algum pedido foi processado desde o ciclo anterior,
-    // a peça sai do estoque agora, não às 16h.
-    await baixaImediataDeProcessados().catch(() => {});
-    if (modeloAtual === '__dashboard__') renderDashboard();
+    // a peça sai do estoque agora, não às 16h. O perfil do corte nunca dá baixa.
+    if (!ehPerfilCorte()) await baixaImediataDeProcessados().catch(() => {});
+    if (modeloAtual === '__corte__') renderCorte();
+    else if (modeloAtual === '__dashboard__') renderDashboard();
     else if (!estEditado && !prodEditado && MODELOS[modeloAtual]) renderModelo(modeloAtual); // só modelos reais; pula precos/financeiro
   }).catch(() => {});
 }, 1 * 60 * 1000);
@@ -8186,6 +8413,14 @@ document.addEventListener('visibilitychange', () => {
 });
 window.addEventListener('focus', () => sincronizarNuvem());
 window.addEventListener('pageshow', () => sincronizarNuvem());
+
+} // fim de iniciarApp()
+
+// Se já entrou neste aparelho, entra direto; senão, o cadeado continua na frente e nada
+// é carregado da nuvem até alguém acertar a senha.
+const _perfilSalvo = perfilAtual();
+if (_perfilSalvo) { aplicarPerfil(_perfilSalvo); iniciarApp(); }
+else setTimeout(() => document.getElementById('app-gate-senha')?.focus(), 100);
 
 // ─── AVISO DE VERSÃO NOVA ────────────────────────────────────────────────────
 // Aba deixada aberta continua rodando o JS antigo depois de um deploy — e um

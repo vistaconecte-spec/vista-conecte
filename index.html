@@ -8,9 +8,23 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Bodoni+Moda:ital,opsz,wght@0,6..96,700;0,6..96,900&family=Bebas+Neue&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css">
-<link rel="stylesheet" href="style.css?v=2026081126">
+<link rel="stylesheet" href="style.css?v=2026081127">
 </head>
 <body>
+
+<!-- Cadeado de entrada. Fica por cima de tudo até alguém entrar, e o app só começa a
+     carregar depois disso (ver iniciarApp() no main.js). Duas senhas: a da dona abre
+     tudo, a do corte abre só a aba CORTE. -->
+<div id="app-gate">
+  <div class="app-gate-box">
+    <div class="app-gate-logo">CONECTE</div>
+    <div class="app-gate-sub">Digite a senha para entrar</div>
+    <input type="password" id="app-gate-senha" placeholder="Senha" autocomplete="current-password"
+           onkeydown="if(event.key==='Enter')appEntrar()">
+    <button class="app-gate-btn" onclick="appEntrar()">Entrar</button>
+    <div class="app-gate-erro" id="app-gate-erro"></div>
+  </div>
+</div>
 
 <!-- Modal: confirmação de baixa de estoque por envios detectados -->
 <div id="modal-historico" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9999;align-items:center;justify-content:center;padding:16px">
@@ -197,6 +211,19 @@
           <div class="card-header"><div class="card-title"><i class="ti ti-stack-2"></i> SALDO DE ESTOQUE</div></div>
           <table><thead><tr><th style="text-align:left">Modelo</th><th style="text-align:left">Cor</th><th>PP</th><th>P</th><th>M</th><th>G</th><th>GG</th><th>Total</th></tr></thead>
           <tbody id="dash-saldo"></tbody></table>
+        </div>
+      </div>
+      <div id="panel-corte" class="tab-panel">
+        <div class="card" style="border-left:3px solid var(--text)">
+          <div class="card-header">
+            <div class="card-title"><i class="ti ti-scissors"></i> FICHAS PARA CORTAR</div>
+            <span id="corte-total" style="font-size:11px;font-weight:700"></span>
+          </div>
+          <div style="font-size:12px;color:var(--text-sec);margin-bottom:10px">
+            Toque em <b>Abrir ficha</b> para ver e salvar em PDF. A lista mostra o que está
+            com tecido sendo comprado e o que já está em corte.
+          </div>
+          <div id="corte-lista"></div>
         </div>
       </div>
       <div id="panel-producao" class="tab-panel">
@@ -877,8 +904,8 @@
     </div>
   </div>
 </div>
-<script src="data.js?v=2026081126"></script>
-<script src="main.js?v=2026081126"></script>
+<script src="data.js?v=2026081127"></script>
+<script src="main.js?v=2026081127"></script>
 <script async src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js" onload="initSupabase()"></script>
 </body>
 </html>

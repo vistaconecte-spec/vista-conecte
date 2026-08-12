@@ -48,8 +48,10 @@ ok('falha ao buscar processados não derruba a lista de pedidos em aberto',
    /catch \(e\) \{[\s\S]{0,200}processados = \[\];/.test(api), true);
 
 console.log('\n3) Nunca baixa o mesmo pedido duas vezes');
-const corpo = main.slice(main.indexOf('async function baixaImediataDeProcessados'),
-                         main.indexOf('\n}', main.indexOf('async function baixaImediataDeProcessados')));
+// A lógica mora em _baixaImediataDeProcessados; baixaImediataDeProcessados é só a casca
+// com a trava de concorrência e o corte de página desatualizada.
+const corpo = main.slice(main.indexOf('async function _baixaImediataDeProcessados'),
+                         main.indexOf('\n}', main.indexOf('async function _baixaImediataDeProcessados')));
 ok('pula remessa que já está no registro', /!ledger\.envios\[p\.id\]/.test(corpo), true);
 ok('grava a remessa no registro ao baixar', /ledger\.envios\[p\.id\] = \{/.test(corpo), true);
 ok('o registro é salvo na NUVEM (celular e computador compartilham)',
@@ -130,6 +132,39 @@ ok('o card de prontos usa a mesma função', /const reqsDoItem = requisitosDoIte
 console.log('\n7) A baixa é automática, mas não silenciosa');
 ok('guarda o que saiu para o aviso', /_ultimaBaixaAuto = \{ quando/.test(corpo), true);
 ok('o dashboard tem onde mostrar', /renderAvisoBaixaAuto/.test(main), true);
+
+console.log('\n8) FURO ACHADO 11/08/2026 — aparelho com dados velhos refez a baixa');
+// Às 19:00 um aparelho que estava dormindo desde as 10:21 acordou, leu o registro do
+// PRÓPRIO localStorage (velho, sem as baixas da tarde), concluiu que os 18 envios do dia
+// eram novos e baixou tudo de novo — gravando ainda a cópia velha dos modelos por cima
+// da nuvem. Sumiram as contagens de estoque de uma tarde inteira.
+const lerLedger = main.slice(main.indexOf('async function lerLedgerBaixas'),
+                             main.indexOf('\n}', main.indexOf('async function lerLedgerBaixas')));
+ok('o registro é lido da NUVEM, não do localStorage', /await carregarNuvem\(LEDGER_BAIXAS\)/.test(lerLedger), true);
+ok('lerLedgerBaixas não usa mais loadLocal como fonte', /=\s*loadLocal\(LEDGER_LOCAL\)/.test(lerLedger), false);
+ok('leitura que FALHOU não vira "registro não existe"', /if \(l === undefined\) return undefined/.test(lerLedger), true);
+ok('sem conseguir ler a nuvem, a baixa não roda', /if \(ledger === undefined\) return;/.test(corpo), true);
+
+const baixarPedido = main.slice(main.indexOf('async function baixarEstoqueDoPedido'),
+                                main.indexOf('\n}', main.indexOf('async function baixarEstoqueDoPedido')));
+ok('o estoque de cada modelo também vem da nuvem antes de mexer',
+   /const saved = await carregarNuvem\(r\.key\)/.test(baixarPedido), true);
+ok('modelo não é mais lido do localStorage na hora de baixar',
+   /const saved = loadLocal\('vc:' \+ r\.key\)/.test(baixarPedido), false);
+ok('nuvem fora do ar não inventa baixa', /if \(saved === undefined\) continue;/.test(baixarPedido), true);
+
+const casca = main.slice(main.indexOf('async function baixaImediataDeProcessados'),
+                         main.indexOf('\n}', main.indexOf('async function baixaImediataDeProcessados')));
+ok('duas rodadas ao mesmo tempo não baixam a mesma remessa', /if \(_baixaRodando\) return;/.test(casca), true);
+ok('página desatualizada não mexe mais em estoque', /if \(_versaoAvisada\) return;/.test(casca), true);
+
+// carregarNuvem passou a distinguir "não existe" (null) de "não deu para ler" (undefined),
+// e a não aceitar resposta de cache — era o que truncava o histórico de versões.
+const carregar = main.slice(main.indexOf('async function carregarNuvem'),
+                            main.indexOf('\n}', main.indexOf('async function carregarNuvem')));
+ok('leitura da nuvem não aceita resposta de cache', /cache: 'no-store'/.test(carregar), true);
+ok('erro de rede devolve undefined, não null', /catch\(e\) \{ return undefined; \}/.test(carregar), true);
+ok('histórico não é gravado se a leitura falhou', /if \(atual === undefined\) return;/.test(main), true);
 
 console.log(`\n${falhas === 0 ? '✓ TODOS OS TESTES PASSARAM' : '✗ ' + falhas + ' FALHA(S)'} — ${total - falhas}/${total}\n`);
 process.exit(falhas === 0 ? 0 : 1);
