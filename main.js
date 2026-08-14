@@ -4949,6 +4949,10 @@ function renderCorte() {
             </button>
           </div>
         </div>
+        <div class="crt-aviso">
+          <span>Preencher o que cortou</span>
+          <span id="crt-st-${l.key}-${l.leva}" class="crt-st"></span>
+        </div>
         <div style="overflow-x:auto">
           <table class="crt-tab">
             <thead><tr>
@@ -4979,10 +4983,6 @@ function renderCorte() {
               </tbody>`;
             }).join('')}
           </table>
-        </div>
-        <div class="crt-rodape">
-          <div>Digite na linha <b style="color:${cor}">CORTOU</b> o que saiu de fato — salva sozinho.</div>
-          <div id="crt-st-${l.key}-${l.leva}" style="font-weight:700"></div>
         </div>
       </div>`;
   }).join('') + '</div>';

@@ -562,11 +562,14 @@ input[type=number].ci:focus {
 .crt-big { font-size: 20px; font-weight: 800; line-height: 1; }
 .crt-big span { font-size: 11px; font-weight: 600; color: var(--text-sec); }
 .crt-res { font-size: 12px; font-weight: 800; margin-top: 4px; }
-.crt-rodape {
+/* A frase é o que avisa que a linha CORTOU se preenche — por isso fica ANTES da tabela e
+   não num rodapé: sem moldura desenhada no campo, ninguém descobre lendo depois. */
+.crt-aviso {
   display: flex; justify-content: space-between; align-items: center;
-  gap: 8px; flex-wrap: wrap; margin-top: 9px;
-  font-size: 11px; color: var(--text-ter);
+  gap: 8px; flex-wrap: wrap; margin-bottom: 6px;
+  font-size: 12px; font-weight: 700; color: #7C3AED;
 }
+.crt-aviso .crt-st { font-size: 11px; font-weight: 700; color: var(--text-ter); }
 
 /* auto (e não o fixed global): as colunas se ajustam ao campo de digitar em vez de
    espremê-lo; se não couber, quem rola é a tabela, não a página */
@@ -624,39 +627,45 @@ input[type=number].ci:focus {
 #corte-lista table.crt-tab td.crt-cel { padding: 3px 2px; }
 #corte-lista table.crt-tab tr:hover td { background: transparent; }
 
-/* Campo "CORTOU" (o que saiu de fato da mesa). Diferente do .ci, a caixinha aparece
-   SEMPRE e bem marcada: quem usa é o cortador, sem treino no app — campo que só vira
-   caixa no hover ninguém descobre que dá para editar. A fonte fica em 16px mesmo com a
-   tabela menor: abaixo disso o Safari do iPhone dá zoom sozinho ao tocar no campo. */
+/* Campo "CORTOU" (o que saiu de fato da mesa). Sem caixa desenhada: quem avisa que é para
+   preencher é a frase no alto da ficha e o rótulo CORTOU da própria linha — a moldura roxa
+   permanente poluía a tabela inteira. A caixinha só aparece ao tocar/passar o mouse, igual
+   aos outros campos editáveis do app (.ci). A fonte fica em 16px mesmo com a tabela menor:
+   abaixo disso o Safari do iPhone dá zoom sozinho ao tocar no campo. */
 input[type=number].crt-in {
   width: 44px !important;
   max-width: 44px !important;
   text-align: center !important;
   font-size: 16px !important;
-  font-weight: 800 !important;
+  font-weight: 700 !important;
   padding: 4px 0 !important;
-  border: 2px solid #7C3AED !important;
+  border: 1px solid transparent !important;
   border-radius: 6px !important;
-  background: #fff !important;
-  color: #5b21b6 !important;
-  -webkit-text-fill-color: #5b21b6 !important;
+  background: transparent !important;
+  color: #111827 !important;
+  -webkit-text-fill-color: #111827 !important;
   opacity: 1 !important;
   font-family: inherit !important;
   display: block !important;
   margin: 0 auto !important;
-  box-shadow: 0 1px 0 rgba(124,58,237,0.3) !important;
+  box-shadow: none !important;
+  cursor: pointer !important;
 }
 input[type=number].crt-in::placeholder {
-  color: rgba(124,58,237,0.4) !important;
-  -webkit-text-fill-color: rgba(124,58,237,0.4) !important;
+  color: var(--text-ter) !important;
+  -webkit-text-fill-color: var(--text-ter) !important;
   font-weight: 400 !important;
   opacity: 1 !important;
 }
+input[type=number].crt-in:hover {
+  border-color: var(--border) !important;
+  background: #FAFAFA !important;
+}
 input[type=number].crt-in:focus {
   outline: none !important;
-  border-color: #5b21b6 !important;
-  background: #F7F2FF !important;
-  box-shadow: 0 0 0 3px rgba(124,58,237,0.22) !important;
+  border-color: var(--gold) !important;
+  background: #FFFBF5 !important;
+  box-shadow: 0 0 0 2px rgba(196,168,130,0.18) !important;
 }
 
 /* Saldo do resumo de produção */
