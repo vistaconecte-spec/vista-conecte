@@ -4871,7 +4871,11 @@ function renderCorte() {
     });
   }
 
-  levas.sort((a, b) => (b.dias ?? -1) - (a.dias ?? -1)); // o mais parado no topo
+  // Ordem de corte: primeiro o que destrava mais pedido pago e o que mais vende (ver
+  // "EM QUE ORDEM CORTAR"). Empate volta ao critério antigo, o mais parado no topo.
+  const prio = crtPrioridade();
+  levas.forEach(l => { l.p = crtPrioridadeDe(l.key, prio); });
+  levas.sort((a, b) => (b.p.score - a.p.score) || ((b.dias ?? -1) - (a.dias ?? -1)));
 
   // Tecido em compra: um bloco só, consolidado, sem ficha por modelo
   const compra = comprandoTecidoConsolidado();
@@ -4924,7 +4928,8 @@ function renderCorte() {
   }
 
   // Uma ficha por linha, ocupando a largura toda (ver .crt-grid no style.css).
-  el.innerHTML = blocoCompra + '<div class="crt-grid">' + levas.map(l => {
+  const temOrdem = levas.some(l => l.p.score > 0); // sem dado de prioridade, sem numeração
+  el.innerHTML = blocoCompra + '<div class="crt-grid">' + levas.map((l, pos) => {
     const cor = '#7C3AED'; // roxo do "Em corte", igual ao resto do app
     const prazoTxt = l.prazo ? new Date(l.prazo + 'T12:00:00').toLocaleDateString('pt-BR') : '—';
     const reg = crtRegistro(l.key, l.leva, l.at); // o que ele já anotou nesta rodada
@@ -4932,7 +4937,8 @@ function renderCorte() {
       <div class="crt-card">
         <div class="crt-card-hd">
           <div>
-            <div class="crt-nome">${esc(l.nome)}${l.leva === 2 ? ' <span class="crt-selo">2ª LEVA</span>' : ''}</div>
+            <div class="crt-nome">${temOrdem ? `<span class="crt-pos${pos === 0 ? ' crt-pos-1' : ''}">${pos + 1}º</span>` : ''}${esc(l.nome)}${l.leva === 2 ? ' <span class="crt-selo">2ª LEVA</span>' : ''}</div>
+            ${crtMotivoHTML(l.p)}
             <div class="crt-meta">
               <span style="color:${cor};font-weight:700">${esc(l.status)}</span>
               ${l.dias !== null ? ` · há ${l.dias} ${l.dias === 1 ? 'dia' : 'dias'}` : ''}
@@ -5128,6 +5134,153 @@ async function crtGravar() {
   saveLocal('vc:' + CORTE_KEY, dados);
   await salvarNuvem(CORTE_KEY, dados);
   alvos.forEach(a => crtStatus(a.key, a.leva, 'salvo ✓'));
+}
+
+// ─── EM QUE ORDEM CORTAR ─────────────────────────────────────────────────────
+// A lista saía do mais parado para o menos parado. "Parado há mais tempo" não é o mesmo
+// que "mais urgente": uma leva de um modelo que ninguém está esperando ficava na frente
+// de outra que, cortada hoje, faz seis pedidos pagos saírem amanhã.
+//
+// Duas perguntas, nesta ordem de peso:
+//   1. Quanto pedido PAGO está parado esperando esta peça — e quantos desses saem no
+//      mesmo dia em que ela for cortada (ela é a ÚNICA coisa que falta neles).
+//   2. Quanto o modelo vende (90 dias): o que sempre sai muito não pode ficar parado nem
+//      quando por acaso não tem pedido travado na fila de hoje.
+//
+// ONDE A CONTA RODA: no app da DONA, gravada numa linha do Supabase. A aba do cortador só
+// LÊ o resultado. O perfil 'corte' não tem acesso a /api nenhuma (a allowlist do
+// functions/api/_middleware.js é vazia de propósito) — ele nunca viu pedido, cliente nem
+// faturamento e continua sem ver; o que chega até ele é a ordem e o motivo em uma linha.
+const CORTE_PRIO_KEY      = 'corte-prioridade';
+const CORTE_VENDAS_DIAS   = 90;
+const CORTE_VENDAS_TTL_MS = 12 * 3600 * 1000; // busca pesada: no máximo 2x por dia
+
+// Por que esta ficha está nesta posição — em uma linha, na língua da mesa de corte.
+// Sem isto a ordem seria um ranking sem explicação, e a primeira vez que alguém discordar
+// dela ninguém sabe conferir.
+function crtMotivoHTML(p) {
+  if (!p || !p.score) return '';
+  const n = (q, s, pl) => `${q} ${q === 1 ? s : pl}`;
+  const partes = [];
+  if (p.sozinho) {
+    partes.push(`<b>${n(p.sozinho, 'pedido sai', 'pedidos saem')} só com esta peça</b>`);
+  }
+  const outros = (p.pedidos || 0) - (p.sozinho || 0);
+  if (outros > 0) partes.push(`${n(outros, 'pedido parado', 'pedidos parados')} esperando ela e mais peça`);
+  if (p.dias)     partes.push(`mais antigo há ${n(p.dias, 'dia', 'dias')}`);
+  if (p.estrelas) partes.push(`${'★'.repeat(p.estrelas)} vende muito (${p.unidades} un/90d)`);
+  if (!partes.length) return '';
+  return `<div class="crt-motivo">${partes.join(' · ')}</div>`;
+}
+
+function crtPrioridade() {
+  const d = loadLocal('vc:' + CORTE_PRIO_KEY);
+  return (d && typeof d === 'object') ? d : {};
+}
+
+// Pedidos pagos que não podem sair, agrupados pela peça que falta.
+// `sozinho` = pedidos em que ESTA peça é a única coisa faltando: cortou, o pedido sai.
+function crtCalcularTravados() {
+  const out = {};
+  for (const p of window._pedidosPendentes || []) {
+    const chaves = new Set((p.faltas || []).map(f => f.key));
+    if (!chaves.size) continue;
+    const idade = diasDesde(p.data);
+    chaves.forEach(k => {
+      const o = out[k] || (out[k] = { pedidos: 0, sozinho: 0, dias: 0 });
+      o.pedidos++;
+      if (chaves.size === 1) o.sozinho++;
+      if (idade > o.dias) o.dias = idade;
+    });
+  }
+  return out;
+}
+
+// A venda de um CONJUNTO é venda das peças dele: sem isto a Calça Boho apareceria como
+// modelo fraco enquanto o Conjunto Boho (que é quem a Shopify vende) leva o volume todo.
+function crtVendasPorPeca(porModelo) {
+  const out = {};
+  for (const [k, un] of Object.entries(porModelo || {})) {
+    const pecas = CONJUNTO_PECAS[k];
+    if (pecas && pecas.length) pecas.forEach(pk => { out[pk] = (out[pk] || 0) + un; });
+    else out[k] = (out[k] || 0) + un;
+  }
+  return out;
+}
+
+// Estrelas comparando com o campeão da própria loja, não com uma tabela fixa de unidades:
+// o que é "vender muito" muda com o tamanho da operação e com a estação.
+function crtEstrelas(un, maxUn) {
+  if (!un || !maxUn) return 0;
+  const p = un / maxUn;
+  return p >= 0.5 ? 3 : p >= 0.2 ? 2 : p >= 0.05 ? 1 : 0;
+}
+
+// Os pesos são a regra de negócio, escrita à mão de propósito para dar para explicar a
+// ordem olhando a tela: um pedido que sai SÓ com esta peça vale mais que um que ainda
+// depende de outra; atraso conta até 30 dias (dali para cima já é tudo igualmente grave);
+// e o campeão de vendas sobe mesmo sem ninguém na fila.
+function crtScore(t, estrelas) {
+  return (t.sozinho || 0) * 10
+       + (t.pedidos || 0) * 4
+       + Math.min(t.dias || 0, 30) * 1.5
+       + estrelas * 6;
+}
+
+// Junta os dois sinais para um modelo. Usada no render (leitura) e na gravação.
+function crtPrioridadeDe(key, prio) {
+  const t   = (prio.travados && prio.travados[key]) || { pedidos: 0, sozinho: 0, dias: 0 };
+  const un  = (prio.vendas && prio.vendas[key]) || 0;
+  const est = crtEstrelas(un, prio.vendas_max || 0);
+  return { ...t, unidades: un, estrelas: est, score: crtScore(t, est) };
+}
+
+let _crtVendasBusca = null; // evita duas buscas simultâneas no mesmo carregamento
+
+// Busca o volume de vendas, no máximo de 12 em 12 horas. Falha de rede não derruba nada:
+// a prioridade continua valendo só com os pedidos travados.
+async function crtBuscarVendas(prio) {
+  const fresco = prio.vendas_em && (Date.now() - Date.parse(prio.vendas_em) < CORTE_VENDAS_TTL_MS);
+  if (fresco || _crtVendasBusca) return null;
+  _crtVendasBusca = (async () => {
+    try {
+      const r = await fetch('/api/shopify-orders?vendas=' + CORTE_VENDAS_DIAS);
+      if (!r.ok) return null;
+      const j = await r.json();
+      if (!j || !j.por_modelo) return null;
+      const vendas = crtVendasPorPeca(j.por_modelo);
+      return { vendas, vendas_max: Math.max(0, ...Object.values(vendas)), vendas_em: new Date().toISOString() };
+    } catch (e) { return null; }
+    finally { _crtVendasBusca = null; }
+  })();
+  return _crtVendasBusca;
+}
+
+// Roda no ciclo de 1 minuto do app da dona. Só grava quando o número muda de verdade —
+// senão seriam 1.440 gravações por dia numa linha que quase sempre está igual.
+async function crtSincronizarPrioridade() {
+  if (ehPerfilCorte()) return;
+  if (!(window._shopifyDetalhados || []).length) return; // sem pedidos carregados não há o que ordenar
+
+  // _pedidosPendentes é subproduto do card "Prontos para Envio". Fora do INÍCIO ele fica
+  // velho, então a conta é refeita aqui (renderiza em painel escondido, sem efeito visível
+  // e sem gravar nada).
+  if (modeloAtual !== '__dashboard__') { try { renderProntosParaEnvio(); } catch (e) {} }
+
+  const prio  = crtPrioridade();
+  const novo  = { ...prio, travados: crtCalcularTravados() };
+  const v     = await crtBuscarVendas(prio);
+  if (v) Object.assign(novo, v);
+  novo.atualizado_em = new Date().toISOString();
+
+  const mesmo = k => JSON.stringify(prio[k]) === JSON.stringify(novo[k]);
+  if (mesmo('travados') && mesmo('vendas')) return;
+
+  saveLocal('vc:' + CORTE_PRIO_KEY, novo);
+  // salvarNuvemREST e não salvarNuvem: esta linha é um retrato recalculado o tempo todo,
+  // guardar 25 versões dela no histórico só empurraria para fora as versões que importam.
+  await salvarNuvemREST(CORTE_PRIO_KEY, novo);
+  if (modeloAtual === '__corte__' && !crtOcupado()) renderCorte();
 }
 
 // ─── MINI CARDS: LIBERADOS HOJE · LIBERADOS NA SEMANA · PEDIDOS EM ABERTO ────
@@ -8797,6 +8950,7 @@ carregarTodosNuvem().then(() => carregarPedidosShopify()).then(async () => {
 
   _renderInicial();
   if (!ehPerfilCorte()) verificarAvisosStatus();
+  crtSincronizarPrioridade().catch(() => {}); // solta: a ordem do corte não segura a tela
 }).catch(() => {
   _renderInicial();
   if (!ehPerfilCorte()) verificarAvisosStatus();
@@ -8808,6 +8962,7 @@ setInterval(() => {
     // Baixa de estoque na hora: se algum pedido foi processado desde o ciclo anterior,
     // a peça sai do estoque agora, não às 16h. O perfil do corte nunca dá baixa.
     if (!ehPerfilCorte()) await baixaImediataDeProcessados().catch(() => {});
+    crtSincronizarPrioridade().catch(() => {}); // recalcula a ordem do corte e grava se mudou
     // crtOcupado: não redesenhar a aba CORTE enquanto ele digita o que cortou — o
     // innerHTML novo levaria junto o que ainda não foi gravado.
     if (modeloAtual === '__corte__') { if (!crtOcupado()) renderCorte(); }

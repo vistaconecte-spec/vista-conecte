@@ -444,8 +444,33 @@ function parseLineItem(item, orderName, ignorados, usarQuantidadeTotal) {
   return { modelKey: found.modelKey, color: normalizeColor(rawColor), sizeIdx, qty };
 }
 
+/**
+ * PEÇAS VENDIDAS POR MODELO numa janela de dias — quem consome é a prioridade da aba CORTE
+ * ("o que sempre sai muito é o que se corta primeiro").
+ *
+ * Só pedidos PAGOS e não cancelados, pela data de CRIAÇÃO do pedido (é venda, não envio).
+ * Quantidade é a do item (`quantity`), não a fulfillable: peça já enviada continua sendo
+ * venda.
+ */
+async function fetchVendas(store, token, desdeISO) {
+  const orders = [];
+  const fields = 'id,name,created_at,financial_status,cancelled_at,line_items';
+  let url = `https://${store}/admin/api/2024-04/orders.json?status=any&financial_status=paid`
+    + `&created_at_min=${encodeURIComponent(desdeISO)}&limit=250&fields=${fields}`;
+  while (url) {
+    const res = await fetch(url, { headers: { 'X-Shopify-Access-Token': token } });
+    if (!res.ok) throw new Error(`Shopify API error (vendas): ${res.status}`);
+    const data = await res.json();
+    orders.push(...(data.orders || []));
+    const link = res.headers.get('Link') || '';
+    const next = link.match(/<([^>]+)>;\s*rel="next"/);
+    url = next ? next[1] : null;
+  }
+  return orders.filter(o => !o.cancelled_at);
+}
+
 export async function onRequest(context) {
-  const { env } = context;
+  const { env, request } = context;
   const store = env.SHOPIFY_STORE_DOMAIN;
   const token = env.SHOPIFY_ADMIN_TOKEN;
 
@@ -456,6 +481,39 @@ export async function onRequest(context) {
 
   if (!store || !token) {
     return new Response(JSON.stringify({ erro: 'Variáveis de ambiente não configuradas' }), { headers });
+  }
+
+  // ── ?vendas=N → devolve SÓ o volume de vendas por modelo dos últimos N dias ──
+  // Mora neste arquivo de propósito, e não num endpoint separado: o casamento
+  // título→modelo (PRODUCT_MAP, EXACT_TITLE_MAP, parseLineItemMulti) é o MESMO que
+  // distribui os pedidos da produção e já é coberto por tests/shopify-orders.test.mjs.
+  // Um arquivo separado precisaria de uma cópia dele — e a cópia ia divergir na primeira
+  // cor ou título novo, com o ranking de prioridade errando em silêncio.
+  // A busca é mais pesada que a do dia a dia (meses de pedidos), então quem chama pede
+  // no máximo 1x por dia — nunca no ciclo de 1 minuto.
+  const diasPedidos = parseInt(new URL(request.url).searchParams.get('vendas') || '0', 10);
+  if (diasPedidos > 0) {
+    try {
+      const dias  = Math.min(diasPedidos, 365);
+      const desde = new Date(Date.now() - dias * 86400000).toISOString();
+      const naoMapeados = [];
+      const porModelo   = {};
+      for (const o of await fetchVendas(store, token, desde)) {
+        for (const item of o.line_items || []) {
+          for (const p of parseLineItemMulti(item, o.name, naoMapeados, true)) {
+            porModelo[p.modelKey] = (porModelo[p.modelKey] || 0) + p.qty;
+          }
+        }
+      }
+      return new Response(JSON.stringify({
+        dias, desde,
+        por_modelo: porModelo,
+        total_unidades: Object.values(porModelo).reduce((a, b) => a + b, 0),
+        nao_mapeados: naoMapeados.slice(0, 30),
+      }), { headers });
+    } catch (err) {
+      return new Response(JSON.stringify({ erro: err.message }), { headers });
+    }
   }
 
   try {
