@@ -4865,6 +4865,7 @@ function renderCorte() {
       levas.push({
         key, nome: saved.nome || def.nome, leva: l.n, status: l.status, prazo: l.prazo || '',
         tecido: saved.tecido || def.tecido, SZ, linhas, total,
+        at: l.at || '', // carimbo de entrada no corte = identidade desta rodada (ver crtRef)
         dias: l.at ? Math.floor((Date.now() - new Date(l.at).getTime()) / 86400000) : null,
       });
     });
@@ -4925,6 +4926,7 @@ function renderCorte() {
   el.innerHTML = blocoCompra + levas.map(l => {
     const cor = '#7C3AED'; // roxo do "Em corte", igual ao resto do app
     const prazoTxt = l.prazo ? new Date(l.prazo + 'T12:00:00').toLocaleDateString('pt-BR') : '—';
+    const reg = crtRegistro(l.key, l.leva, l.at); // o que ele já anotou nesta rodada
     return `
       <div style="border:1px solid var(--border);border-left:3px solid ${cor};border-radius:8px;padding:10px 12px;margin-bottom:10px">
         <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:8px">
@@ -4937,7 +4939,10 @@ function renderCorte() {
             </div>
           </div>
           <div style="display:flex;align-items:center;gap:10px">
-            <div style="font-size:20px;font-weight:700;line-height:1">${l.total}<span style="font-size:10px;font-weight:600;color:var(--text-sec)"> ${l.total === 1 ? 'peça' : 'peças'}</span></div>
+            <div style="text-align:right">
+              <div style="font-size:20px;font-weight:700;line-height:1">${l.total}<span style="font-size:10px;font-weight:600;color:var(--text-sec)"> ${l.total === 1 ? 'peça' : 'peças'} pedidas</span></div>
+              <div id="crt-res-${l.key}-${l.leva}" style="font-size:10px;font-weight:700;margin-top:3px"></div>
+            </div>
             <button class="btn-primary" style="font-size:11px;padding:6px 12px" onclick="gerarFicha('${l.key}')">
               <i class="ti ti-file-text"></i> Abrir ficha
             </button>
@@ -4947,21 +4952,181 @@ function renderCorte() {
           <table style="width:100%;border-collapse:collapse;font-size:12px">
             <thead><tr>
               <th style="text-align:left">Cor</th>
+              <th></th>
               ${l.SZ.map(s => `<th>${esc(s)}</th>`).join('')}
               <th>Tot</th>
             </tr></thead>
-            <tbody>
-              ${l.linhas.map(r => `
+            ${l.linhas.map((r, ci) => {
+              const cut = crtCortadoCor(reg, r.cor, l.SZ.length);
+              return `
+              <tbody style="border-top:1px solid var(--border)">
                 <tr>
-                  <td style="text-align:left;font-weight:600">${esc(r.cor)}</td>
+                  <td rowspan="2" style="text-align:left;font-weight:600;vertical-align:middle">${esc(r.cor)}</td>
+                  <td style="font-size:8px;font-weight:800;letter-spacing:.08em;color:var(--text-ter);padding-right:6px">PEDIDO</td>
                   ${r.arr.map(v => `<td style="text-align:center;${v ? '' : 'color:var(--text-ter)'}">${v || '—'}</td>`).join('')}
                   <td style="text-align:center;font-weight:700">${r.tot}</td>
-                </tr>`).join('')}
-            </tbody>
+                </tr>
+                <tr>
+                  <td style="font-size:8px;font-weight:800;letter-spacing:.08em;color:${cor};padding-right:6px">CORTOU</td>
+                  ${r.arr.map((v, i) => `<td style="text-align:center;padding:2px 1px">
+                    <input type="number" class="crt-in" inputmode="numeric" min="0" step="1" placeholder="—"
+                      value="${cut[i] || ''}" data-key="${esc(l.key)}" data-leva="${l.leva}"
+                      data-ref="${esc(l.at)}" data-cor="${esc(r.cor)}" data-i="${i}" data-ped="${v}" data-ci="${ci}"
+                      oninput="crtInput(this)"></td>`).join('')}
+                  <td style="text-align:center;font-weight:700" id="crt-tot-${l.key}-${l.leva}-${ci}"></td>
+                </tr>
+              </tbody>`;
+            }).join('')}
           </table>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-top:6px">
+          <div style="font-size:10px;color:var(--text-ter)">Digite na linha <b style="color:${cor}">CORTOU</b> o que saiu de fato — salva sozinho.</div>
+          <div id="crt-st-${l.key}-${l.leva}" style="font-size:10px;font-weight:700;color:var(--text-ter)"></div>
         </div>
       </div>`;
   }).join('');
+
+  levas.forEach(l => crtAtualizarTotais(l.key, l.leva));
+}
+
+// ─── O QUE FOI REALMENTE CORTADO ─────────────────────────────────────────────
+// A ficha diz o que foi PEDIDO; o que sai da mesa quase nunca é exatamente isso (rolo
+// que rendeu menos, defeito no tecido, encaixe que não fechou). Aqui o cortador digita o
+// que realmente cortou, tamanho a tamanho, e a ficha passa a mostrar os dois números um
+// embaixo do outro — pedido em cima, cortado embaixo, com a diferença ao lado do total.
+//
+// Fica numa linha PRÓPRIA da tabela ('corte-realizado'), NÃO dentro de `vc:<modelo>`:
+// salvarModelo() remonta o JSON do modelo a partir dos campos da tela da dona e descarta
+// tudo que não esteja lá — o que o cortador digitasse sumiria no primeiro salvamento
+// dela, sem erro nenhum na tela.
+//
+// Cada rodada de corte é identificada pelo carimbo de entrada em "Em corte"
+// (`status_at`/`status2_at`). Se a leva sai do corte e volta depois, o carimbo muda e o
+// registro antigo deixa de valer sozinho — ninguém precisa lembrar de zerar nada.
+const CORTE_KEY = 'corte-realizado';
+
+function crtRef(at) { return at || ''; }
+
+function crtTudo() {
+  const d = loadLocal('vc:' + CORTE_KEY);
+  return (d && typeof d === 'object' && d.levas) ? d : { levas: {} };
+}
+
+// Registro desta rodada, ou null (inclusive quando o que está guardado é de uma rodada
+// anterior — aí a ficha abre em branco de propósito).
+function crtRegistro(key, leva, at) {
+  const r = crtTudo().levas[key + '|' + leva];
+  return (r && crtRef(r.ref) === crtRef(at)) ? r : null;
+}
+
+function crtCortadoCor(reg, cor, n) {
+  const v = (reg && reg.cores && reg.cores[cor]) || [];
+  return Array.from({ length: n }, (_, i) => v[i] || 0);
+}
+
+// Todos os inputs de um bloco (uma leva de um modelo). Filtra em JS em vez de montar
+// seletor com o nome da cor dentro — cor tem espaço e acento.
+function crtInputsDe(key, leva) {
+  return Array.from(document.querySelectorAll('#corte-lista input.crt-in'))
+    .filter(i => i.dataset.key === key && i.dataset.leva === String(leva));
+}
+
+function crtNum(inp) { return Math.max(0, parseInt(inp.value, 10) || 0); }
+
+function crtDifHTML(cut, ped) {
+  if (!cut) return '<span style="color:var(--text-ter)">—</span>'; // nada anotado ainda
+  const d = cut - ped;
+  const c = d === 0 ? '#16a34a' : (d < 0 ? '#dc2626' : '#7C3AED');
+  return `<span style="color:${c}">${cut}</span>`
+    + (d ? `<div style="font-size:9px;font-weight:700;color:${c}">${d > 0 ? '+' : ''}${d}</div>` : '');
+}
+
+function crtAtualizarTotais(key, leva) {
+  const porCor = {};
+  let cut = 0, ped = 0;
+  crtInputsDe(key, leva).forEach(inp => {
+    const o = porCor[inp.dataset.ci] || (porCor[inp.dataset.ci] = { cut: 0, ped: 0 });
+    const v = crtNum(inp), p = parseInt(inp.dataset.ped, 10) || 0;
+    o.cut += v; o.ped += p; cut += v; ped += p;
+  });
+  Object.entries(porCor).forEach(([ci, o]) => {
+    const td = document.getElementById(`crt-tot-${key}-${leva}-${ci}`);
+    if (td) td.innerHTML = crtDifHTML(o.cut, o.ped);
+  });
+  const res = document.getElementById(`crt-res-${key}-${leva}`);
+  if (res) {
+    const falta = ped - cut;
+    res.innerHTML = !cut ? '<span style="color:var(--text-ter)">nada cortado ainda</span>'
+      : falta > 0 ? `<span style="color:#dc2626">cortou ${cut} · faltam ${falta}</span>`
+      : falta < 0 ? `<span style="color:#7C3AED">cortou ${cut} · ${-falta} a mais</span>`
+      : `<span style="color:#16a34a">cortou ${cut} · completo ✓</span>`;
+  }
+}
+
+function crtStatus(key, leva, txt, erro) {
+  const el = document.getElementById(`crt-st-${key}-${leva}`);
+  if (!el) return;
+  el.textContent = txt;
+  el.style.color = erro ? '#dc2626' : 'var(--text-ter)';
+}
+
+// Enquanto ele digita (e por alguns segundos depois), o ciclo de 1 minuto não pode
+// redesenhar a aba: o innerHTML novo apagaria o que está na tela sem salvar.
+let _crtTimer = null;
+let _crtPend = {};
+let _crtUltimoInput = 0;
+function crtOcupado() {
+  return !!_crtTimer || Object.keys(_crtPend).length > 0 || (Date.now() - _crtUltimoInput < 8000);
+}
+
+function crtInput(inp) {
+  _crtUltimoInput = Date.now();
+  if (inp.value && parseInt(inp.value, 10) < 0) inp.value = ''; // não existe cortar -3
+  const key = inp.dataset.key, leva = inp.dataset.leva;
+  crtAtualizarTotais(key, leva);
+  _crtPend[key + '|' + leva] = { key, leva, ref: inp.dataset.ref };
+  crtStatus(key, leva, 'salvando…');
+  clearTimeout(_crtTimer);
+  _crtTimer = setTimeout(crtGravar, 1200);
+}
+
+// Grava lendo a nuvem antes e mesclando só as levas mexidas: a linha é uma só para o
+// sistema inteiro, e gravar o objeto local por cima apagaria a anotação de outra ficha
+// feita em outro aparelho.
+async function crtGravar() {
+  _crtTimer = null;
+  const alvos = Object.values(_crtPend);
+  _crtPend = {};
+  if (!alvos.length) return;
+
+  const nuvem = await carregarNuvem(CORTE_KEY);
+  if (nuvem === undefined) {
+    // Não deu para LER — não grava por cima (mesma regra do histórico de versões).
+    alvos.forEach(a => {
+      _crtPend[a.key + '|' + a.leva] = a;
+      crtStatus(a.key, a.leva, 'sem conexão — tentando de novo…', true);
+    });
+    clearTimeout(_crtTimer);
+    _crtTimer = setTimeout(crtGravar, 5000);
+    return;
+  }
+
+  const dados = (nuvem && nuvem.levas) ? nuvem : { levas: {} };
+  const agora = new Date().toISOString();
+  alvos.forEach(a => {
+    const cores = {};
+    crtInputsDe(a.key, a.leva).forEach(inp => {
+      const arr = cores[inp.dataset.cor] || (cores[inp.dataset.cor] = []);
+      arr[parseInt(inp.dataset.i, 10) || 0] = crtNum(inp);
+    });
+    Object.keys(cores).forEach(c => { cores[c] = Array.from(cores[c], v => v || 0); });
+    dados.levas[a.key + '|' + a.leva] = { ref: crtRef(a.ref), cores, at: agora };
+  });
+  dados.updated_at = agora;
+
+  saveLocal('vc:' + CORTE_KEY, dados);
+  await salvarNuvem(CORTE_KEY, dados);
+  alvos.forEach(a => crtStatus(a.key, a.leva, 'salvo ✓'));
 }
 
 // ─── MINI CARDS: LIBERADOS HOJE · LIBERADOS NA SEMANA · PEDIDOS EM ABERTO ────
@@ -8642,7 +8807,9 @@ setInterval(() => {
     // Baixa de estoque na hora: se algum pedido foi processado desde o ciclo anterior,
     // a peça sai do estoque agora, não às 16h. O perfil do corte nunca dá baixa.
     if (!ehPerfilCorte()) await baixaImediataDeProcessados().catch(() => {});
-    if (modeloAtual === '__corte__') renderCorte();
+    // crtOcupado: não redesenhar a aba CORTE enquanto ele digita o que cortou — o
+    // innerHTML novo levaria junto o que ainda não foi gravado.
+    if (modeloAtual === '__corte__') { if (!crtOcupado()) renderCorte(); }
     else if (modeloAtual === '__dashboard__') renderDashboard();
     else if (modeloAtual === '__confeccao__' && confLiberada()) renderConfeccao(); // atualiza os selos de etapa do catálogo
     else if (!estEditado && !prodEditado && MODELOS[modeloAtual]) renderModelo(modeloAtual); // só modelos reais; pula precos/financeiro

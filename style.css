@@ -528,6 +528,40 @@ input[type=number].ci:focus {
   border-color: var(--gold) !important;
   background: #FFFBF5 !important;
 }
+/* Aba CORTE — campo "CORTOU" (o que saiu de fato da mesa).
+   Diferente do .ci, a caixinha aparece SEMPRE: quem usa é o cortador, no celular e sem
+   treino no app; campo que só vira caixa no hover ninguém descobre que dá para editar. */
+input[type=number].crt-in {
+  width: 40px !important;
+  max-width: 40px !important;
+  text-align: center !important;
+  font-size: 12px !important;
+  font-weight: 700 !important;
+  padding: 3px 0 !important;
+  border: 1px solid rgba(124,58,237,0.35) !important;
+  border-radius: 5px !important;
+  background: rgba(124,58,237,0.06) !important;
+  color: #5b21b6 !important;
+  -webkit-text-fill-color: #5b21b6 !important;
+  opacity: 1 !important;
+  font-family: inherit !important;
+  display: block !important;
+  margin: 0 auto !important;
+  box-shadow: none !important;
+}
+input[type=number].crt-in::placeholder {
+  color: rgba(124,58,237,0.45) !important;
+  -webkit-text-fill-color: rgba(124,58,237,0.45) !important;
+  font-weight: 400 !important;
+  opacity: 1 !important;
+}
+input[type=number].crt-in:focus {
+  outline: none !important;
+  border-color: #7C3AED !important;
+  background: #fff !important;
+  box-shadow: 0 0 0 2px rgba(124,58,237,0.15) !important;
+}
+
 /* Saldo do resumo de produção */
 .saldo-ok   { color: #16a34a; font-weight: 700; }
 .saldo-falta { color: #dc2626; font-weight: 700; }
@@ -859,6 +893,7 @@ select:focus, input:not(.ci):focus { outline: none; border-color: var(--gold); b
   th { font-size: 10px; padding: 5px 4px; }
   td { font-size: 11px; padding: 5px 4px; }
   input.ci { font-size: 10px; max-width: 30px; }
+  input[type=number].crt-in { width: 34px !important; max-width: 34px !important; font-size: 11px !important; }
 
   /* Tecido grid */
   .tecido-grid { grid-template-columns: repeat(2, 1fr); gap: 8px; }
