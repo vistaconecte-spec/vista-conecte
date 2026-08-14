@@ -534,12 +534,12 @@ input[type=number].ci:focus {
    das tabelas do app (12px) — número maior, campo com caixa visível e linha grossa
    separando uma cor da outra, para não cortar 8 de uma cor achando que era da outra. */
 
-/* Duas fichas lado a lado quando a tela dá (~852px+): a dona abre a aba para conferir
-   várias de uma vez e uma coluna só obrigava a rolar a página inteira. Abaixo disso cai
-   para uma coluna sozinho — o celular do cortador nunca vira duas. */
+/* UMA ficha por linha, em qualquer tela. Já foi tentado lado a lado com auto-fill: em
+   monitor grande virava três colunas espremidas e a ficha ficou ruim de ler — que é
+   justamente o oposto do que ela precisa ser. Ficha larga, uma de cada vez. */
 .crt-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(400px, 1fr));
+  grid-template-columns: 1fr;
   gap: 12px;
   align-items: start;
 }
@@ -992,7 +992,6 @@ select:focus, input:not(.ci):focus { outline: none; border-color: var(--gold); b
   input.ci { font-size: 10px; max-width: 30px; }
   /* No celular a ficha do corte NÃO encolhe junto com o resto: ela é usada justamente aí.
      Se não couber, a tabela rola de lado — melhor rolar do que ler número miúdo. */
-  .crt-grid { grid-template-columns: 1fr; }
   input[type=number].crt-in { width: 44px !important; max-width: 44px !important; font-size: 16px !important; }
   #corte-lista table.crt-tab { font-size: 13px; }
   #corte-lista table.crt-tab td { font-size: 14px; padding: 5px 4px; }

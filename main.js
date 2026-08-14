@@ -4923,7 +4923,7 @@ function renderCorte() {
     return;
   }
 
-  // As fichas vão numa grade: duas por linha quando a tela dá, uma só no celular (CSS).
+  // Uma ficha por linha, ocupando a largura toda (ver .crt-grid no style.css).
   el.innerHTML = blocoCompra + '<div class="crt-grid">' + levas.map(l => {
     const cor = '#7C3AED'; // roxo do "Em corte", igual ao resto do app
     const prazoTxt = l.prazo ? new Date(l.prazo + 'T12:00:00').toLocaleDateString('pt-BR') : '—';
