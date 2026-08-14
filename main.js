@@ -4923,7 +4923,8 @@ function renderCorte() {
     return;
   }
 
-  el.innerHTML = blocoCompra + levas.map(l => {
+  // As fichas vão numa grade: duas por linha quando a tela dá, uma só no celular (CSS).
+  el.innerHTML = blocoCompra + '<div class="crt-grid">' + levas.map(l => {
     const cor = '#7C3AED'; // roxo do "Em corte", igual ao resto do app
     const prazoTxt = l.prazo ? new Date(l.prazo + 'T12:00:00').toLocaleDateString('pt-BR') : '—';
     const reg = crtRegistro(l.key, l.leva, l.at); // o que ele já anotou nesta rodada
@@ -4984,7 +4985,7 @@ function renderCorte() {
           <div id="crt-st-${l.key}-${l.leva}" style="font-weight:700"></div>
         </div>
       </div>`;
-  }).join('');
+  }).join('') + '</div>';
 
   levas.forEach(l => crtAtualizarTotais(l.key, l.leva));
 }
@@ -5038,7 +5039,7 @@ function crtDifHTML(cut, ped) {
   const d = cut - ped;
   const c = d === 0 ? '#16a34a' : (d < 0 ? '#dc2626' : '#7C3AED');
   return `<span style="color:${c}">${cut}</span>`
-    + (d ? `<div style="font-size:12px;font-weight:800;color:${c};line-height:1.2">${d > 0 ? '+' : ''}${d}</div>` : '');
+    + (d ? `<div style="font-size:11px;font-weight:800;color:${c};line-height:1.2">${d > 0 ? '+' : ''}${d}</div>` : '');
 }
 
 function crtAtualizarTotais(key, leva) {
