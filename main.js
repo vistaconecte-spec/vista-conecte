@@ -59,12 +59,14 @@ const HIST_MAX = 25; // versões guardadas por chave
 //   dona  → senha que já valia nas abas protegidas; abre o app inteiro
 //   corte → senha do cortador; abre SÓ a aba CORTE
 //
-// IMPORTANTE, e a dona precisa saber: isto é um cadeado de TELA. Os dados moram no
-// Supabase e a chave de leitura é pública (está neste arquivo, como em todo app que
-// roda no navegador). Segura quem abriu o link e o cortador curioso; não segura quem
-// abrir o console do navegador. Barrar de verdade exigiria RLS no Supabase.
+// Desde 14/08/2026 quem confere a senha é o SERVIDOR: /api/login compara com um hash
+// que mora em secret do Cloudflare e devolve um cookie HttpOnly assinado, e o
+// middleware de functions/api/ exige esse cookie em toda rota. Antes o hash da senha
+// vinha versionado aqui e a conferência rodava no navegador — escondia a tela, não o
+// dado: quem chamasse /api/shopify-orders direto na URL via os pedidos sem senha.
+// O cookie é HttpOnly, então este arquivo não consegue lê-lo; o navegador o manda
+// sozinho em todo fetch de mesma origem.
 const PERFIL_KEY   = 'vc:perfil';
-const CORTE_HASH   = 'dc724e621cb75ef606aee3461561062996817e52083c466920a90f7e456229aa';
 // As abas que já eram protegidas usam a MESMA senha da dona. Entrar como dona libera
 // todas de uma vez e o desbloqueio fica guardado no aparelho — antes era sessionStorage
 // com uma chave por aba, então era redigitar em cada uma e a cada vez que reabria o app.
@@ -76,9 +78,25 @@ function perfilAtual() {
 
 function ehPerfilCorte() { return perfilAtual() === 'corte'; }
 
-async function sha256(txt) {
-  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(txt));
-  return [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, '0')).join('');
+// Manda a senha pro servidor e devolve o perfil ('dona' | 'corte'), null se a senha
+// estiver errada, ou false se nem deu para perguntar (sem rede / servidor fora) — sem
+// essa distinção, celular sem sinal acusaria "senha incorreta" e ela ficaria caçando
+// uma senha que está certa.
+// Também é o que renova o cookie de sessão: por isso os cadeados das abas chamam isto
+// em vez de conferir hash local — acertar a senha da aba revalida a sessão que fazia as
+// chamadas de API morrerem em 401.
+async function conferirSenha(senha) {
+  let r;
+  try {
+    r = await fetch('/api/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ senha })
+    });
+  } catch (e) { return false; }
+  if (r.status >= 500) return false; // ex.: secret de login faltando no Cloudflare
+  if (!r.ok) return null;
+  return (await r.json().catch(() => ({}))).perfil || null;
 }
 
 function aplicarPerfil(perfil) {
@@ -90,8 +108,9 @@ function aplicarPerfil(perfil) {
 async function appEntrar() {
   const campo = document.getElementById('app-gate-senha');
   const erro  = document.getElementById('app-gate-erro');
-  const hex   = await sha256(campo.value);
-  const perfil = hex === FIN_HASH ? 'dona' : hex === CORTE_HASH ? 'corte' : null;
+  erro.textContent = 'Entrando…';
+  const perfil = await conferirSenha(campo.value);
+  if (perfil === false) { erro.textContent = 'Servidor não respondeu — tente de novo'; return; }
   if (!perfil) { erro.textContent = 'Senha incorreta'; campo.select(); return; }
   try { localStorage.setItem(PERFIL_KEY, perfil); } catch (e) {}
   campo.value = ''; erro.textContent = '';
@@ -99,8 +118,11 @@ async function appEntrar() {
   iniciarApp();
 }
 
-function appSair() {
+async function appSair() {
   if (!confirm('Sair e pedir a senha de novo?')) return;
+  // Derruba o cookie no servidor: só limpar o localStorage deixaria a sessão
+  // valendo por 12h para quem pegasse o aparelho.
+  try { await fetch('/api/logout', { method: 'POST' }); } catch (e) {}
   try { localStorage.removeItem(PERFIL_KEY); } catch (e) {}
   ABAS_DA_DONA.forEach(k => sessionStorage.removeItem(k));
   sessionStorage.removeItem('mdl-ok');
@@ -741,7 +763,9 @@ function abrirModeloPorNome(nome) {
 }
 
 // ─── ABA FINANCEIRA ──────────────────────────────────────────────────────────
-const FIN_HASH = '61ec6cb14cce98a7e71c4ae4668d1df518e59a253aa83d0f7ba52773743aa78a';
+// A senha da dona não mora mais aqui: os cadeados destas abas chamam conferirSenha(),
+// que pergunta ao /api/login. Só a da Modelagem continua sendo conferida no navegador
+// (é uma senha à parte, sem secret correspondente no Cloudflare).
 const MDL_HASH = 'a01b9981184c6b9627fb38968441bc17686288e37a8e81e8dec2b6c926b6dca7'; // senha da aba Modelagem (SHA-256)
 const CUSTO_DEFS = [
   ['trafego', 'Tráfego (anúncios)', '#D85A30'],
@@ -832,9 +856,7 @@ function abrirFinanceiro(item) {
 
 async function finUnlock() {
   const v = document.getElementById('fin-senha').value;
-  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(v));
-  const hex = [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, '0')).join('');
-  if (hex === FIN_HASH) {
+  if (await conferirSenha(v) === 'dona') {
     sessionStorage.setItem('fin-ok', '1');
     document.getElementById('fin-erro').textContent = '';
     document.getElementById('fin-senha').value = '';
@@ -876,7 +898,7 @@ function abrirConfeccao(item) {
 
 async function confUnlock() {
   const v = document.getElementById('conf-senha').value;
-  if (await sha256(v) !== FIN_HASH) {
+  if (await conferirSenha(v) !== 'dona') {
     document.getElementById('conf-erro').textContent = 'Senha incorreta';
     return;
   }
@@ -945,9 +967,7 @@ function abrirTrafego(item) {
 }
 async function trafUnlock() {
   const v = document.getElementById('traf-senha').value;
-  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(v));
-  const hex = [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, '0')).join('');
-  if (hex === FIN_HASH) {
+  if (await conferirSenha(v) === 'dona') {
     sessionStorage.setItem('fin-ok', '1');
     document.getElementById('traf-erro').textContent = '';
     document.getElementById('traf-senha').value = '';
@@ -989,9 +1009,7 @@ function abrirAtendimento(item) {
 }
 async function atdUnlock() {
   const v = document.getElementById('atd-senha').value;
-  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(v));
-  const hex = [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, '0')).join('');
-  if (hex === FIN_HASH) {
+  if (await conferirSenha(v) === 'dona') {
     sessionStorage.setItem('fin-ok', '1');
     document.getElementById('atd-erro').textContent = '';
     document.getElementById('atd-senha').value = '';
@@ -2252,9 +2270,7 @@ function abrirFluxo(item) {
 
 async function flxUnlock() {
   const v = document.getElementById('flx-senha').value;
-  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(v));
-  const hex = [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, '0')).join('');
-  if (hex === FIN_HASH) {
+  if (await conferirSenha(v) === 'dona') {
     sessionStorage.setItem('fin-ok', '1');
     document.getElementById('flx-erro').textContent = '';
     document.getElementById('flx-senha').value = '';
@@ -3224,9 +3240,7 @@ function abrirPrecos(item) {
 
 async function precoUnlock() {
   const v = document.getElementById('prc-senha').value;
-  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(v));
-  const hex = [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, '0')).join('');
-  if (hex === FIN_HASH) {
+  if (await conferirSenha(v) === 'dona') {
     sessionStorage.setItem('fin-ok', '1');
     document.getElementById('prc-erro').textContent = '';
     document.getElementById('prc-senha').value = '';
@@ -7283,6 +7297,9 @@ function gerarFichaCompra() {
 }
 
 async function carregarPedidosShopify() {
+  // O perfil do corte não tem acesso a /api/shopify-orders (a ficha de corte sai do que
+  // já veio do Supabase). Sem esta saída, o middleware devolveria 403 a cada minuto.
+  if (ehPerfilCorte()) return;
   try {
     const res = await fetch('/api/shopify-orders');
     if (!res.ok) return;
@@ -8645,11 +8662,25 @@ window.addEventListener('pageshow', () => sincronizarNuvem());
 
 } // fim de iniciarApp()
 
-// Se já entrou neste aparelho, entra direto; senão, o cadeado continua na frente e nada
-// é carregado da nuvem até alguém acertar a senha.
-const _perfilSalvo = perfilAtual();
-if (_perfilSalvo) { aplicarPerfil(_perfilSalvo); iniciarApp(); }
-else setTimeout(() => document.getElementById('app-gate-senha')?.focus(), 100);
+// Quem manda é o cookie de sessão, não o localStorage: um aparelho que "já entrou" mas
+// está com a sessão vencida precisa ver o cadeado de novo, senão o app carrega a tela
+// toda e cada chamada de API morre em 401. O localStorage vira só um espelho do perfil,
+// que ehPerfilCorte() lê de forma síncrona durante a montagem da tela.
+(async () => {
+  let perfil = null;
+  try {
+    const r = await fetch('/api/sessao');
+    if (r.ok) perfil = (await r.json()).perfil;
+  } catch (e) {}
+  if (perfil) {
+    try { localStorage.setItem(PERFIL_KEY, perfil); } catch (e) {}
+    aplicarPerfil(perfil);
+    iniciarApp();
+  } else {
+    try { localStorage.removeItem(PERFIL_KEY); } catch (e) {}
+    setTimeout(() => document.getElementById('app-gate-senha')?.focus(), 100);
+  }
+})();
 
 // ─── AVISO DE VERSÃO NOVA ────────────────────────────────────────────────────
 // Aba deixada aberta continua rodando o JS antigo depois de um deploy — e um

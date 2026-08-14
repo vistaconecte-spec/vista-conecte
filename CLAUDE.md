@@ -40,6 +40,18 @@ destrutivas (apagar dados/arquivos), mudanças que ele não pediu, ou rotação 
   se aparecer qualquer arquivo com credencial, PARE e ajuste o `.gitignore`.
 - Secrets de runtime ficam no Cloudflare Pages (projeto `vistaconecte` → env vars):
   `SHOPIFY_ADMIN_TOKEN`, `SHOPIFY_STORE_DOMAIN`, `MP_ACCESS_TOKEN`, `PAGARME_SECRET_KEY` etc.
+  Do cadeado: `SESSION_SECRET`, `SENHA_DONA_HASH`, `SENHA_CORTE_HASH`, `API_TOKEN`.
+- **Toda rota de `/api/*` exige sessão** — `functions/api/_middleware.js` roda antes de
+  qualquer function e barra quem não tem o cookie `vc_sessao` (HttpOnly, HMAC, 12h).
+  Endpoint novo já nasce protegido; não há nada a fazer para proteger um. Consequências:
+  - Chamada de fora do navegador (curl, rotina agendada) precisa do header
+    `X-VC-Token` = secret `API_TOKEN`. É assim que o vigia da campanha e os alertas entram.
+  - Rota que precise responder sem sessão entra no `PUBLICO` do middleware, com o porquê
+    escrito ao lado (hoje: login/logout/sessao e o `shopify-callback` do OAuth).
+  - O perfil `corte` não alcança `/api` nenhuma (`CORTE_LIBERA` é vazio de propósito —
+    a aba CORTE se monta com o que já veio do Supabase).
+- Senha: quem confere é `/api/login`, contra hash em secret. **Nunca** voltar a versionar
+  hash de senha no `main.js` — o repositório é público.
 - **Dados** ficam no Supabase (tabela `vc_modelos`, id + JSON) — o deploy não toca em dados.
 - Functions em `functions/api/*.js` (Cloudflare Pages Functions). Padrão Shopify do projeto:
   env `SHOPIFY_STORE_DOMAIN` + API `2024-04`.
