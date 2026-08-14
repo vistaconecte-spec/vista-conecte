@@ -528,38 +528,121 @@ input[type=number].ci:focus {
   border-color: var(--gold) !important;
   background: #FFFBF5 !important;
 }
-/* Aba CORTE — campo "CORTOU" (o que saiu de fato da mesa).
-   Diferente do .ci, a caixinha aparece SEMPRE: quem usa é o cortador, no celular e sem
-   treino no app; campo que só vira caixa no hover ninguém descobre que dá para editar. */
+/* ── Aba CORTE: a ficha do cortador ──────────────────────────────────────────
+   Esta tabela não é lida sentado na frente do computador: é lida em pé na mesa de corte,
+   no celular, com a mão ocupada e o tecido na frente. Por isso ela foge do tamanho padrão
+   das tabelas do app (12px) — número grande, campo com caixa visível e linha grossa
+   separando uma cor da outra, para não cortar 8 de uma cor achando que era da outra. */
+.crt-card {
+  border: 1px solid var(--border);
+  border-left: 4px solid #7C3AED;
+  border-radius: 8px;
+  padding: 12px 14px;
+  margin-bottom: 12px;
+}
+/* o bloco do tecido em compra usa o mesmo desenho, mas em dourado: não é para cortar */
+.crt-card-compra { border-left-color: var(--gold-dark); background: rgba(196,168,130,0.06); }
+.crt-card-hd { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
+.crt-nome { font-size: 17px; font-weight: 800; letter-spacing: .01em; }
+.crt-selo { font-size: 11px; background: rgba(124,58,237,0.12); color: #7C3AED; border-radius: 4px; padding: 2px 6px; vertical-align: middle; font-weight: 700; }
+.crt-meta { font-size: 13px; color: var(--text-sec); margin-top: 3px; }
+.crt-big { font-size: 24px; font-weight: 800; line-height: 1; }
+.crt-big span { font-size: 12px; font-weight: 600; color: var(--text-sec); }
+.crt-res { font-size: 13px; font-weight: 800; margin-top: 4px; }
+.crt-rodape {
+  display: flex; justify-content: space-between; align-items: center;
+  gap: 8px; flex-wrap: wrap; margin-top: 10px;
+  font-size: 12px; color: var(--text-ter);
+}
+
+/* auto (e não o fixed global): as colunas se ajustam ao campo de digitar em vez de
+   espremê-lo; se não couber, quem rola é a tabela, não a página */
+#corte-lista table.crt-tab {
+  table-layout: auto;
+  min-width: 100%;
+  font-size: 16px;
+  border-collapse: collapse;
+}
+#corte-lista table.crt-tab th {
+  font-size: 13px;
+  padding: 8px 6px;
+  border-bottom: 2px solid var(--text);
+}
+#corte-lista table.crt-tab td {
+  font-size: 17px;
+  font-weight: 600;
+  padding: 7px 6px;
+  border-bottom: none;
+}
+/* LINHA GROSSA entre uma cor e a outra */
+#corte-lista table.crt-tab tbody.crt-grp + tbody.crt-grp { border-top: 3px solid #4B5563; }
+/* e uma linha leve separando o que foi pedido do que foi cortado, dentro da mesma cor */
+#corte-lista table.crt-tab tr.crt-lin-cut td { border-top: 1px dashed rgba(124,58,237,0.4); }
+/* grade vertical: sem ela, com a fonte grande, o olho pula de coluna */
+#corte-lista table.crt-tab td.crt-c,
+#corte-lista table.crt-tab th + th ~ th { border-left: 1px solid var(--border); }
+#corte-lista table.crt-tab td.crt-cor {
+  text-align: left; vertical-align: middle;
+  font-size: 17px; font-weight: 800;
+  padding-right: 10px;
+}
+/* Com a fonte grande a tabela fica mais larga que a tela do celular e rola de lado. A
+   coluna da COR fica grudada na esquerda: ele nunca perde de vista de que cor é a linha
+   que está preenchendo — que é justamente o erro caro aqui (cortar 8 da cor errada). */
+#corte-lista .crt-card table.crt-tab td.crt-cor,
+#corte-lista .crt-card table.crt-tab th:first-child {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  box-shadow: 1px 0 0 var(--border);
+}
+#corte-lista .crt-card table.crt-tab td.crt-cor { background: #fff; }
+#corte-lista .crt-card-compra table.crt-tab td.crt-cor { background: #FBF8F3; }
+#corte-lista .crt-card table.crt-tab th:first-child { background: var(--bg); }
+#corte-lista table.crt-tab td.crt-rot {
+  font-size: 11px; font-weight: 800; letter-spacing: .08em;
+  color: var(--text-ter); text-align: left; white-space: nowrap; padding-right: 10px;
+}
+#corte-lista table.crt-tab td.crt-rot-cut { color: #7C3AED; }
+#corte-lista table.crt-tab td.crt-cores { text-align: left; font-size: 14px; font-weight: 500; color: var(--text-sec); }
+#corte-lista table.crt-tab td.crt-zero { color: var(--text-ter); font-weight: 400; }
+#corte-lista table.crt-tab td.crt-tot { font-weight: 800; }
+#corte-lista table.crt-tab td.crt-cel { padding: 4px 3px; }
+#corte-lista table.crt-tab tr:hover td { background: transparent; }
+
+/* Campo "CORTOU" (o que saiu de fato da mesa). Diferente do .ci, a caixinha aparece
+   SEMPRE e bem marcada: quem usa é o cortador, sem treino no app — campo que só vira
+   caixa no hover ninguém descobre que dá para editar. 17px também evita o zoom
+   automático do iPhone ao tocar no campo (abaixo de 16px o Safari dá zoom sozinho). */
 input[type=number].crt-in {
-  width: 40px !important;
-  max-width: 40px !important;
+  width: 56px !important;
+  max-width: 56px !important;
   text-align: center !important;
-  font-size: 12px !important;
-  font-weight: 700 !important;
-  padding: 3px 0 !important;
-  border: 1px solid rgba(124,58,237,0.35) !important;
-  border-radius: 5px !important;
-  background: rgba(124,58,237,0.06) !important;
+  font-size: 17px !important;
+  font-weight: 800 !important;
+  padding: 7px 0 !important;
+  border: 2px solid #7C3AED !important;
+  border-radius: 7px !important;
+  background: #fff !important;
   color: #5b21b6 !important;
   -webkit-text-fill-color: #5b21b6 !important;
   opacity: 1 !important;
   font-family: inherit !important;
   display: block !important;
   margin: 0 auto !important;
-  box-shadow: none !important;
+  box-shadow: 0 1px 0 rgba(124,58,237,0.3) !important;
 }
 input[type=number].crt-in::placeholder {
-  color: rgba(124,58,237,0.45) !important;
-  -webkit-text-fill-color: rgba(124,58,237,0.45) !important;
+  color: rgba(124,58,237,0.4) !important;
+  -webkit-text-fill-color: rgba(124,58,237,0.4) !important;
   font-weight: 400 !important;
   opacity: 1 !important;
 }
 input[type=number].crt-in:focus {
   outline: none !important;
-  border-color: #7C3AED !important;
-  background: #fff !important;
-  box-shadow: 0 0 0 2px rgba(124,58,237,0.15) !important;
+  border-color: #5b21b6 !important;
+  background: #F7F2FF !important;
+  box-shadow: 0 0 0 3px rgba(124,58,237,0.22) !important;
 }
 
 /* Saldo do resumo de produção */
@@ -893,7 +976,13 @@ select:focus, input:not(.ci):focus { outline: none; border-color: var(--gold); b
   th { font-size: 10px; padding: 5px 4px; }
   td { font-size: 11px; padding: 5px 4px; }
   input.ci { font-size: 10px; max-width: 30px; }
-  input[type=number].crt-in { width: 34px !important; max-width: 34px !important; font-size: 11px !important; }
+  /* No celular a ficha do corte NÃO encolhe junto com o resto: ela é usada justamente aí.
+     Se não couber, a tabela rola de lado — melhor rolar do que ler número miúdo. */
+  input[type=number].crt-in { width: 50px !important; max-width: 50px !important; font-size: 17px !important; }
+  #corte-lista table.crt-tab { font-size: 15px; }
+  #corte-lista table.crt-tab td { font-size: 16px; padding: 6px 4px; }
+  #corte-lista table.crt-tab td.crt-cor { font-size: 15px; }
+  #corte-lista table.crt-tab th { font-size: 12px; padding: 6px 4px; }
 
   /* Tecido grid */
   .tecido-grid { grid-template-columns: repeat(2, 1fr); gap: 8px; }

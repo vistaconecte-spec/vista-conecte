@@ -4887,29 +4887,29 @@ function renderCorte() {
   }
 
   const blocoCompra = compra.length === 0 ? '' : `
-    <div style="border:1px solid var(--border);border-left:3px solid var(--gold-dark);border-radius:8px;padding:10px 12px;margin-bottom:14px;background:rgba(196,168,130,0.06)">
-      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:8px">
+    <div class="crt-card crt-card-compra">
+      <div class="crt-card-hd">
         <div>
-          <div style="font-size:13px;font-weight:700"><i class="ti ti-shopping-cart"></i> TECIDO SENDO COMPRADO</div>
-          <div style="font-size:11px;color:var(--text-sec);margin-top:2px">Ainda não é para cortar — é o total que vem por aí</div>
+          <div class="crt-nome"><i class="ti ti-shopping-cart"></i> TECIDO SENDO COMPRADO</div>
+          <div class="crt-meta">Ainda não é para cortar — é o total que vem por aí</div>
         </div>
         <div style="display:flex;align-items:center;gap:10px">
-          <div style="font-size:20px;font-weight:700;line-height:1">${compraPecas}<span style="font-size:10px;font-weight:600;color:var(--text-sec)"> ${compraPecas === 1 ? 'peça' : 'peças'} · ${nMetros(compraMetros)}m</span></div>
-          <button class="btn-outline" style="font-size:11px;padding:6px 12px" onclick="gerarFichaCorteTotal()">
+          <div class="crt-big">${compraPecas}<span> ${compraPecas === 1 ? 'peça' : 'peças'} · ${nMetros(compraMetros)}m</span></div>
+          <button class="btn-outline" style="font-size:12px;padding:7px 13px" onclick="gerarFichaCorteTotal()">
             <i class="ti ti-file-text"></i> Ficha total
           </button>
         </div>
       </div>
       <div style="overflow-x:auto">
-        <table style="width:100%;border-collapse:collapse;font-size:12px">
+        <table class="crt-tab">
           <thead><tr><th style="text-align:left">Tecido</th><th style="text-align:left">Cores</th><th>Peças</th><th>Metros</th></tr></thead>
-          <tbody>
+          <tbody class="crt-grp">
             ${compra.map(g => `
               <tr>
-                <td style="text-align:left;font-weight:600">${esc(g.tecido)}</td>
-                <td style="text-align:left;font-size:11px;color:var(--text-sec)">${esc(g.cores.map(c => c.cor).join(' · '))}</td>
-                <td style="text-align:center;font-weight:700">${g.pecas}</td>
-                <td style="text-align:right;font-weight:700">${nMetros(g.metros)}m</td>
+                <td class="crt-cor">${esc(g.tecido)}</td>
+                <td class="crt-cores">${esc(g.cores.map(c => c.cor).join(' · '))}</td>
+                <td class="crt-c crt-tot">${g.pecas}</td>
+                <td class="crt-c crt-tot" style="text-align:right">${nMetros(g.metros)}m</td>
               </tr>`).join('')}
           </tbody>
         </table>
@@ -4917,7 +4917,7 @@ function renderCorte() {
     </div>`;
 
   if (levas.length === 0) {
-    el.innerHTML = blocoCompra + '<div style="font-size:12px;color:var(--text-ter);padding:10px 0">'
+    el.innerHTML = blocoCompra + '<div style="font-size:14px;color:var(--text-ter);padding:10px 0">'
       + (compra.length ? 'Nenhuma ficha em corte no momento — assim que o tecido chegar, as fichas aparecem aqui.'
                        : 'Nenhuma ficha para cortar no momento. 👍') + '</div>';
     return;
@@ -4928,11 +4928,11 @@ function renderCorte() {
     const prazoTxt = l.prazo ? new Date(l.prazo + 'T12:00:00').toLocaleDateString('pt-BR') : '—';
     const reg = crtRegistro(l.key, l.leva, l.at); // o que ele já anotou nesta rodada
     return `
-      <div style="border:1px solid var(--border);border-left:3px solid ${cor};border-radius:8px;padding:10px 12px;margin-bottom:10px">
-        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:8px">
+      <div class="crt-card">
+        <div class="crt-card-hd">
           <div>
-            <div style="font-size:14px;font-weight:700">${esc(l.nome)}${l.leva === 2 ? ' <span style="font-size:9px;background:rgba(124,58,237,0.12);color:#7C3AED;border-radius:3px;padding:1px 5px;vertical-align:middle">2ª LEVA</span>' : ''}</div>
-            <div style="font-size:11px;color:var(--text-sec);margin-top:2px">
+            <div class="crt-nome">${esc(l.nome)}${l.leva === 2 ? ' <span class="crt-selo">2ª LEVA</span>' : ''}</div>
+            <div class="crt-meta">
               <span style="color:${cor};font-weight:700">${esc(l.status)}</span>
               ${l.dias !== null ? ` · há ${l.dias} ${l.dias === 1 ? 'dia' : 'dias'}` : ''}
               · ${esc(l.tecido || '—')} · entrega ${esc(prazoTxt)}
@@ -4940,16 +4940,16 @@ function renderCorte() {
           </div>
           <div style="display:flex;align-items:center;gap:10px">
             <div style="text-align:right">
-              <div style="font-size:20px;font-weight:700;line-height:1">${l.total}<span style="font-size:10px;font-weight:600;color:var(--text-sec)"> ${l.total === 1 ? 'peça' : 'peças'} pedidas</span></div>
-              <div id="crt-res-${l.key}-${l.leva}" style="font-size:10px;font-weight:700;margin-top:3px"></div>
+              <div class="crt-big">${l.total}<span> ${l.total === 1 ? 'peça' : 'peças'} pedidas</span></div>
+              <div class="crt-res" id="crt-res-${l.key}-${l.leva}"></div>
             </div>
-            <button class="btn-primary" style="font-size:11px;padding:6px 12px" onclick="gerarFicha('${l.key}')">
+            <button class="btn-primary" style="font-size:12px;padding:7px 13px" onclick="gerarFicha('${l.key}')">
               <i class="ti ti-file-text"></i> Abrir ficha
             </button>
           </div>
         </div>
         <div style="overflow-x:auto">
-          <table style="width:100%;border-collapse:collapse;font-size:12px">
+          <table class="crt-tab">
             <thead><tr>
               <th style="text-align:left">Cor</th>
               <th></th>
@@ -4959,29 +4959,29 @@ function renderCorte() {
             ${l.linhas.map((r, ci) => {
               const cut = crtCortadoCor(reg, r.cor, l.SZ.length);
               return `
-              <tbody style="border-top:1px solid var(--border)">
-                <tr>
-                  <td rowspan="2" style="text-align:left;font-weight:600;vertical-align:middle">${esc(r.cor)}</td>
-                  <td style="font-size:8px;font-weight:800;letter-spacing:.08em;color:var(--text-ter);padding-right:6px">PEDIDO</td>
-                  ${r.arr.map(v => `<td style="text-align:center;${v ? '' : 'color:var(--text-ter)'}">${v || '—'}</td>`).join('')}
-                  <td style="text-align:center;font-weight:700">${r.tot}</td>
+              <tbody class="crt-grp">
+                <tr class="crt-lin-ped">
+                  <td rowspan="2" class="crt-cor">${esc(r.cor)}</td>
+                  <td class="crt-rot">PEDIDO</td>
+                  ${r.arr.map(v => `<td class="crt-c${v ? '' : ' crt-zero'}">${v || '—'}</td>`).join('')}
+                  <td class="crt-c crt-tot">${r.tot}</td>
                 </tr>
-                <tr>
-                  <td style="font-size:8px;font-weight:800;letter-spacing:.08em;color:${cor};padding-right:6px">CORTOU</td>
-                  ${r.arr.map((v, i) => `<td style="text-align:center;padding:2px 1px">
+                <tr class="crt-lin-cut">
+                  <td class="crt-rot crt-rot-cut">CORTOU</td>
+                  ${r.arr.map((v, i) => `<td class="crt-c crt-cel">
                     <input type="number" class="crt-in" inputmode="numeric" min="0" step="1" placeholder="—"
                       value="${cut[i] || ''}" data-key="${esc(l.key)}" data-leva="${l.leva}"
                       data-ref="${esc(l.at)}" data-cor="${esc(r.cor)}" data-i="${i}" data-ped="${v}" data-ci="${ci}"
                       oninput="crtInput(this)"></td>`).join('')}
-                  <td style="text-align:center;font-weight:700" id="crt-tot-${l.key}-${l.leva}-${ci}"></td>
+                  <td class="crt-c crt-tot" id="crt-tot-${l.key}-${l.leva}-${ci}"></td>
                 </tr>
               </tbody>`;
             }).join('')}
           </table>
         </div>
-        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-top:6px">
-          <div style="font-size:10px;color:var(--text-ter)">Digite na linha <b style="color:${cor}">CORTOU</b> o que saiu de fato — salva sozinho.</div>
-          <div id="crt-st-${l.key}-${l.leva}" style="font-size:10px;font-weight:700;color:var(--text-ter)"></div>
+        <div class="crt-rodape">
+          <div>Digite na linha <b style="color:${cor}">CORTOU</b> o que saiu de fato — salva sozinho.</div>
+          <div id="crt-st-${l.key}-${l.leva}" style="font-weight:700"></div>
         </div>
       </div>`;
   }).join('');
@@ -5038,7 +5038,7 @@ function crtDifHTML(cut, ped) {
   const d = cut - ped;
   const c = d === 0 ? '#16a34a' : (d < 0 ? '#dc2626' : '#7C3AED');
   return `<span style="color:${c}">${cut}</span>`
-    + (d ? `<div style="font-size:9px;font-weight:700;color:${c}">${d > 0 ? '+' : ''}${d}</div>` : '');
+    + (d ? `<div style="font-size:12px;font-weight:800;color:${c};line-height:1.2">${d > 0 ? '+' : ''}${d}</div>` : '');
 }
 
 function crtAtualizarTotais(key, leva) {
