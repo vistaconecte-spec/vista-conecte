@@ -544,6 +544,16 @@ input[type=number].ci:focus {
   align-items: start;
 }
 .crt-grid .crt-card { margin-bottom: 0; }
+/* Linha fina roxa a cada troca de modelo: rolando a lista as fichas são longas e uma
+   emendava na outra — a linha marca onde uma acaba e a próxima começa. Fica no meio do
+   vão entre os cards, não na borda de nenhum dos dois. */
+.crt-grid .crt-card + .crt-card { position: relative; }
+.crt-grid .crt-card + .crt-card::before {
+  content: '';
+  position: absolute;
+  top: -7px; left: 0; right: 0;
+  border-top: 1px solid rgba(124,58,237,0.55);
+}
 
 .crt-card {
   border: 1px solid var(--border);
