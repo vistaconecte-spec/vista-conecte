@@ -103,6 +103,12 @@ ok('sem valor ao lado do título — os números vivem na frase de baixo',
 ok('e o selo do total nem é desenhado quando vem vazio',
    /\$\{tot \? `<span class="aviso-tot">\$\{tot\}<\/span>` : ''\}/.test(main), true);
 ok('não sobrou aba/rota própria de faturamento', /__faturamento__|abrirFaturamento/.test(main), false);
+ok('fechado, o resumo tem "na máquina agora (ainda não entregue)" e "em corte"',
+   /\['Na máquina agora', 'ainda não entregue', totalAgora\][\s\S]{0,80}\['Em corte', '', totalCorte\]/.test(main), true);
+ok('"entregue e não pago" só entra no resumo quando existe',
+   /concat\(totalAPagar \? \[\['Entregue e não pago'/.test(main), true);
+ok('o valor do corte é só do corte (o tecido em compra não entra nele)',
+   /const totalCorte  = vindo\.filter\(l => l\.etapa === 'Em corte'\)/.test(main), true);
 const idx = readFileSync(join(raiz, 'index.html'), 'utf8');
 ok('o lugar dele no HTML fica logo abaixo do que vem por aí',
    idx.indexOf('id="costura-corte"') < idx.indexOf('id="faturamento-lista"')

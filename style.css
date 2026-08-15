@@ -569,6 +569,14 @@ input[type=number].ci:focus {
    Cada bloco é uma pergunta: quanto tem na máquina, quanto devo, quanto vem por aí, quanto
    já paguei. O total do bloco fica GRANDE no cabeçalho — é o número que se procura ao abrir
    a tela; a lista embaixo só explica de onde ele vem. */
+/* Resumo do card fechado: uma etapa por linha, valor à direita. */
+.fat-resumo { margin-top: 6px; }
+.fat-resumo-lin {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 12px;
+  font-size: 13px; color: var(--text-sec); padding: 3px 0;
+}
+.fat-resumo-lin i { font-style: normal; color: var(--text-ter); font-size: 12px; }
+.fat-resumo-lin b { font-weight: 800; color: var(--text); white-space: nowrap; }
 .fat-bloco { border-top: 2px solid var(--border); padding-top: 10px; margin-top: 14px; }
 .fat-hd { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
 .fat-tit { font-size: 12px; font-weight: 800; letter-spacing: .06em; display: inline-flex; align-items: center; gap: 6px; }

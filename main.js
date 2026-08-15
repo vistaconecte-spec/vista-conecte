@@ -5393,7 +5393,8 @@ function renderFaturamento() {
       nome: l.nome, leva: l.leva, etapa: st, pecas: l.total, unit: cstValorPeca(l.key),
     })));
   vindo.forEach(l => { l.valor = Math.round(l.pecas * l.unit * 100) / 100; });
-  const totalVindo = vindo.reduce((s, l) => s + l.valor, 0);
+  const totalVindo  = vindo.reduce((s, l) => s + l.valor, 0);
+  const totalCorte  = vindo.filter(l => l.etapa === 'Em corte').reduce((s, l) => s + l.valor, 0);
 
   // 3. ENTREGUE E AINDA NÃO PAGO / 4. JÁ PAGO
   const d = cstFatTudo();
@@ -5467,11 +5468,18 @@ function renderFaturamento() {
         ${semValor} ${semValor === 1 ? 'leva está' : 'levas estão'} com R$ 0 por peça — falta o valor de
         <b>costura</b> desse modelo na Precificação. Enquanto isso, ${semValor === 1 ? 'ela não soma' : 'elas não somam'} nada aqui.</div>` : '');
 
-  // Fechado, o card responde a pergunta que ela faz de fora: quanto já posso cobrar, e quanto
-  // ainda está preso na máquina. O detalhe fica atrás do "ver mais".
-  const frase = totalAPagar
-    ? `${finBRL(totalAPagar)} entregue e ainda não pago. Na máquina agora, mais ${finBRL(totalAgora)}.`
-    : `Nada entregue esperando pagamento. Na máquina agora, ${finBRL(totalAgora)}.`;
+  // Fechado, o card já responde tudo o que ela quer saber de relance, uma etapa por linha e
+  // o valor alinhado à direita — frase corrida obrigava a caçar o número no meio do texto.
+  // "Entregue e não pago" só aparece quando existe: zerado, era só um R$ 0,00 sobrando.
+  const resumo = [
+    ['Na máquina agora', 'ainda não entregue', totalAgora],
+    ['Em corte', '', totalCorte],
+  ].concat(totalAPagar ? [['Entregue e não pago', 'a receber', totalAPagar]] : []);
+  const frase = `<div class="fat-resumo">${resumo.map(([rot, obs, v]) => `
+    <div class="fat-resumo-lin">
+      <span>${rot}${obs ? ` <i>(${obs})</i>` : ''}</span>
+      <b>${finBRL(v)}</b>
+    </div>`).join('')}</div>`;
   // Sem valor ao lado do título (pedido da Bárbara, 15/08): os dois números que importam já
   // estão na frase logo abaixo, e repetir um deles em cima só enchia o topo.
   el.innerHTML = avisoCardHTML('ti-cash', 'FATURAMENTO DA COSTURA', '', frase, corpo, '', '#0f766e');
