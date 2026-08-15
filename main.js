@@ -612,13 +612,21 @@ function buildSidebar() {
     return;
   }
 
-  // Mesma ideia para a costureira: o menu tem COSTURA e SAIR, e mais nada.
+  // Mesma ideia para a costureira: COSTURA, o FATURAMENTO dela e SAIR. Os valores em R$ que
+  // ela vê são só os da própria costura (decisão da Bárbara, 15/08) — pedido, cliente e o
+  // resto do financeiro continuam fora do alcance dela.
   if (ehPerfilCostura()) {
     const item = document.createElement('div');
-    item.className = 'nav-item nav-dashboard active';
+    item.className = 'nav-item nav-dashboard' + (modeloAtual === '__faturamento__' ? '' : ' active');
     item.innerHTML = '<i class="ti ti-needle-thread"></i> COSTURA';
     item.onclick = () => abrirCostura(item);
     nav.appendChild(item);
+
+    const fat = document.createElement('div');
+    fat.className = 'nav-item nav-dashboard' + (modeloAtual === '__faturamento__' ? ' active' : '');
+    fat.innerHTML = '<i class="ti ti-cash"></i> FATURAMENTO';
+    fat.onclick = () => abrirFaturamento(fat);
+    nav.appendChild(fat);
 
     const sair = document.createElement('div');
     sair.className = 'nav-item nav-dashboard';
@@ -719,6 +727,13 @@ function buildSidebar() {
   cstItem.innerHTML = '<i class="ti ti-needle-thread"></i> COSTURA';
   cstItem.onclick = () => abrirCostura(cstItem);
   nav.appendChild(cstItem);
+
+  // Botão Faturamento da costura — quanto vale o que está na máquina e o que falta pagar
+  const fatItem = document.createElement('div');
+  fatItem.className = 'nav-item nav-dashboard' + (modeloAtual === '__faturamento__' ? ' active' : '');
+  fatItem.innerHTML = '<i class="ti ti-cash"></i> FATURAMENTO';
+  fatItem.onclick = () => abrirFaturamento(fatItem);
+  nav.appendChild(fatItem);
 
   // Sair — limpa o perfil deste aparelho e volta a pedir senha
   const sairItem = document.createElement('div');
@@ -3550,6 +3565,9 @@ function confirmarStatus(key, novoStatus, leva) {
   salvarNuvem(key, saved);
   buildSidebar();
   verificarAvisosStatus();
+  // Tirar a leva de "Em costura" É a entrega: fecha o valor da rodada na hora, sem esperar
+  // o ciclo de 1 minuto (que só roda enquanto o app está aberto).
+  cstFatSincronizar().catch(() => {});
   if (modeloAtual === key) {
     const sel = document.getElementById(leva === 2 ? 'prod2-status' : 'prod-status');
     if (sel) sel.value = novoStatus;
@@ -5227,6 +5245,258 @@ function renderCostura() {
   if (corteEl) corteEl.innerHTML = blocoCorte + blocoCompra;
 
   el.innerHTML = levas.length ? '<div class="crt-grid">' + fichas + '</div>' : vazio;
+}
+
+// ─── FATURAMENTO DA COSTURA ──────────────────────────────────────────────────
+// Quanto vale, em R$, o que a costureira tem na máquina, o que vem por aí e o que ela já
+// entregou e ainda não recebeu. O valor por peça é o campo `costura` da Precificação
+// (`flxCustoModelo`), que é exatamente o que se paga por peça costurada.
+//
+// COMO UMA LEVA VIRA "ENTREGUE" (decisão da Bárbara, 15/08): sozinha, quando a leva DEIXA de
+// estar "Em costura" — que é o que ela já faz hoje ao mudar o status. Ninguém precisa apertar
+// "entreguei", e não há passo novo para esquecer.
+//
+// Para saber que uma leva SAIU, é preciso ter visto que ela estava lá: por isso a linha
+// guarda um retrato (`abertas`) das levas em costura. A conta roda no app da DONA
+// (`ehPerfilOficina()` sai fora) — o aparelho da costureira só LÊ, como no resto da oficina.
+//
+// O valor é CONGELADO no momento da entrega (peças × R$ da época): mexer na Precificação
+// depois não pode reescrever o que já foi combinado por uma leva entregue.
+//
+// NÃO lança nada no Fluxo de Caixa, de propósito: o Fluxo já injeta corte+costura das peças
+// VENDIDAS toda semana (ver flxVendasParaPagamentos). Lançar aqui também contaria o mesmo
+// custo duas vezes. Quem decidir trocar a fonte um dia precisa desligar lá antes.
+const CST_FAT_KEY  = 'costura-faturamento';
+const CST_PAGAS_MAX = 300;
+
+function cstFatTudo() {
+  const d = loadLocal('vc:' + CST_FAT_KEY);
+  const o = (d && typeof d === 'object') ? d : {};
+  return { abertas: o.abertas || {}, aPagar: o.aPagar || {}, pagas: Array.isArray(o.pagas) ? o.pagas : [] };
+}
+
+// R$ por peça costurada, da Precificação. 0 = modelo sem valor cadastrado — a tela avisa em
+// vez de somar zero em silêncio.
+function cstValorPeca(key) {
+  const c = flxCustoModelo(flxPrecoCfg(), key);
+  return Math.round((c.costura || 0) * 100) / 100;
+}
+
+// Retrato do que está em costura AGORA, no formato guardado em `abertas`.
+function cstFatAbertasAgora() {
+  const out = {};
+  cstLevasDe('Em costura').forEach(l => {
+    out[l.key + '|' + l.leva] = {
+      ref: l.at || '', nome: l.nome, pecas: l.total, unit: cstValorPeca(l.key), desde: l.at || '',
+    };
+  });
+  return out;
+}
+
+// Compara o retrato com a realidade e devolve o objeto novo, ou null se nada mudou.
+// Separada do resto para poder ser testada fora do navegador.
+function cstFatAplicar(dados, atuais, agora) {
+  const d = { abertas: { ...dados.abertas }, aPagar: { ...dados.aPagar }, pagas: (dados.pagas || []).slice() };
+  let mudou = false;
+  for (const [id, a] of Object.entries(atuais)) {
+    const ant = d.abertas[id];
+    if (!ant || ant.ref !== a.ref || ant.pecas !== a.pecas || ant.unit !== a.unit) {
+      // Rodada NOVA da mesma leva (voltou pra costura com carimbo novo): a anterior é entrega.
+      if (ant && ant.ref !== a.ref) cstFatEntregar(d, id, ant, agora);
+      d.abertas[id] = a;
+      mudou = true;
+    }
+  }
+  for (const [id, ant] of Object.entries(d.abertas)) {
+    if (atuais[id]) continue;          // continua na máquina
+    cstFatEntregar(d, id, ant, agora); // saiu de "Em costura" = entregou
+    delete d.abertas[id];
+    mudou = true;
+  }
+  return mudou ? d : null;
+}
+
+function cstFatEntregar(d, id, ant, agora) {
+  const [key, levaTxt] = id.split('|');
+  const idFat = id + '|' + (ant.ref || '');
+  if (d.aPagar[idFat] || d.pagas.some(p => p.id === idFat)) return; // já contabilizada
+  if (!ant.pecas) return;                                           // leva vazia não vira cobrança
+  d.aPagar[idFat] = {
+    id: idFat, key, leva: Number(levaTxt) || 1, nome: ant.nome,
+    pecas: ant.pecas, unit: ant.unit,
+    valor: Math.round(ant.pecas * ant.unit * 100) / 100,
+    entregue_em: agora,
+  };
+}
+
+async function cstFatSincronizar() {
+  if (ehPerfilOficina()) return; // o aparelho da costureira só lê
+  const atuais = cstFatAbertasAgora();
+  if (!cstFatAplicar(cstFatTudo(), atuais, new Date().toISOString())) return; // nada mudou: não toca na nuvem
+
+  const nuvem = await carregarNuvem(CST_FAT_KEY);
+  if (nuvem === undefined) return; // não deu para ler: tenta no próximo ciclo (nunca grava por cima às cegas)
+  const base = (nuvem && typeof nuvem === 'object') ? nuvem : {};
+  const novo = cstFatAplicar(
+    { abertas: base.abertas || {}, aPagar: base.aPagar || {}, pagas: Array.isArray(base.pagas) ? base.pagas : [] },
+    atuais, new Date().toISOString());
+  if (!novo) return;
+  novo.pagas = novo.pagas.slice(0, CST_PAGAS_MAX);
+  novo.updated_at = new Date().toISOString();
+  saveLocal('vc:' + CST_FAT_KEY, novo);
+  await salvarNuvem(CST_FAT_KEY, novo);
+  if (modeloAtual === '__faturamento__') renderFaturamento();
+}
+
+// Marcar pago é da DONA. O botão nem existe no aparelho da costureira, e aqui vai a trava de
+// novo: quem chamar isto por outro caminho não passa.
+async function cstFatPagar(id, desfazer) {
+  if (ehPerfilOficina()) return;
+  const nuvem = await carregarNuvem(CST_FAT_KEY);
+  if (nuvem === undefined) { alert('Sem conexão com a nuvem — tente de novo em instantes.'); return; }
+  const d = {
+    abertas: (nuvem && nuvem.abertas) || {},
+    aPagar:  (nuvem && nuvem.aPagar)  || {},
+    pagas:   (nuvem && Array.isArray(nuvem.pagas)) ? nuvem.pagas : [],
+  };
+  if (desfazer) {
+    const i = d.pagas.findIndex(p => p.id === id);
+    if (i < 0) return;
+    const p = d.pagas.splice(i, 1)[0];
+    delete p.pago_em;
+    d.aPagar[p.id] = p;
+  } else {
+    const p = d.aPagar[id];
+    if (!p) return;
+    delete d.aPagar[id];
+    p.pago_em = new Date().toISOString();
+    d.pagas.unshift(p);
+  }
+  d.pagas = d.pagas.slice(0, CST_PAGAS_MAX);
+  d.updated_at = new Date().toISOString();
+  saveLocal('vc:' + CST_FAT_KEY, d);
+  await salvarNuvem(CST_FAT_KEY, d);
+  renderFaturamento();
+}
+
+function abrirFaturamento(item) {
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  if (item) item.classList.add('active');
+  if (modeloAtual !== '__dashboard__' && MODELOS[modeloAtual] && (estEditado || prodEditado || prod2Editado || cfgEditado)) {
+    clearTimeout(saveTimer); salvarModelo();
+  }
+  estEditado = false; prodEditado = false; prod2Editado = false; cfgEditado = false; esconderBtnSalvar();
+  modeloAtual = '__faturamento__';
+  location.hash = 'faturamento';
+  document.getElementById('model-title').innerHTML = '<span style="font-family:\'Bebas Neue\',\'Arial Narrow\',sans-serif;font-weight:400;font-size:26px;letter-spacing:0.1em">FATURAMENTO DA COSTURA</span>';
+  document.getElementById('model-sub').textContent = '';
+  document.getElementById('topbar-actions').style.display = 'none';
+  document.getElementById('tabs-modelo').style.display = 'none';
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  document.getElementById('panel-faturamento').classList.add('active');
+  document.body.classList.remove('precos-mode');
+  renderFaturamento();
+  cstFatSincronizar().catch(() => {});
+  closeSidebar();
+}
+
+function renderFaturamento() {
+  const el = document.getElementById('faturamento-lista');
+  if (!el) return;
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c]));
+  const dia = iso => iso ? new Date(iso).toLocaleDateString('pt-BR') : '—';
+  const podePagar = !ehPerfilOficina();
+
+  // 1. NA MÁQUINA AGORA — o que ela recebe quando entregar
+  const agora = cstLevasDe('Em costura').map(l => ({
+    nome: l.nome, leva: l.leva, pecas: l.total, unit: cstValorPeca(l.key),
+  }));
+  agora.forEach(l => { l.valor = Math.round(l.pecas * l.unit * 100) / 100; });
+  const totalAgora = agora.reduce((s, l) => s + l.valor, 0);
+
+  // 2. VEM POR AÍ — corte e tecido em compra, na ordem em que chegam até ela
+  const vindo = ['Em corte', 'Comprando tecido'].flatMap(st =>
+    cstLevasDe(st).map(l => ({
+      nome: l.nome, leva: l.leva, etapa: st, pecas: l.total, unit: cstValorPeca(l.key),
+    })));
+  vindo.forEach(l => { l.valor = Math.round(l.pecas * l.unit * 100) / 100; });
+  const totalVindo = vindo.reduce((s, l) => s + l.valor, 0);
+
+  // 3. ENTREGUE E AINDA NÃO PAGO / 4. JÁ PAGO
+  const d = cstFatTudo();
+  const aPagar = Object.values(d.aPagar).sort((a, b) => String(a.entregue_em).localeCompare(String(b.entregue_em)));
+  const pagas  = d.pagas.slice(0, 40);
+  const totalAPagar = aPagar.reduce((s, p) => s + (p.valor || 0), 0);
+
+  const semValor = agora.concat(vindo).filter(l => !l.unit).length
+                 + aPagar.filter(p => !p.unit).length;
+
+  const linhas = (arr, extra) => arr.map(l => `
+    <div class="fat-lin">
+      <div>
+        <div class="fat-nome">${esc(l.nome)}${l.leva === 2 ? ' <span class="crt-selo">2ª LEVA</span>' : ''}</div>
+        <div class="fat-sub">${l.pecas} ${l.pecas === 1 ? 'peça' : 'peças'} × ${finBRL(l.unit)}${l.unit ? '' : ' <span class="fat-alerta">sem valor na Precificação</span>'}${extra ? extra(l) : ''}</div>
+      </div>
+      <div class="fat-val">${finBRL(l.valor)}</div>
+    </div>`).join('');
+
+  const bloco = (cor, icone, titulo, total, frase, corpo) => `
+    <div class="card fat-card" style="border-color:${cor}">
+      <div class="fat-hd">
+        <span class="fat-tit" style="color:${cor}"><i class="ti ${icone}"></i> ${titulo}</span>
+        <span class="fat-tot" style="color:${cor}">${finBRL(total)}</span>
+      </div>
+      <div class="aviso-txt">${frase}</div>
+      ${corpo}
+    </div>`;
+
+  el.innerHTML =
+    bloco('#0891b2', 'ti-needle-thread', 'NA MÁQUINA AGORA', totalAgora,
+      'É o que está em costura hoje — vira a receber quando a leva for entregue.',
+      agora.length ? linhas(agora) : '<div class="fat-vazio">Nada em costura no momento.</div>')
+    + bloco('#dc2626', 'ti-cash', 'ENTREGUE — A RECEBER', totalAPagar,
+      'Levas que saíram da costura e ainda não foram pagas.',
+      aPagar.length ? aPagar.map(p => `
+        <div class="fat-lin">
+          <div>
+            <div class="fat-nome">${esc(p.nome)}${p.leva === 2 ? ' <span class="crt-selo">2ª LEVA</span>' : ''}</div>
+            <div class="fat-sub">${p.pecas} ${p.pecas === 1 ? 'peça' : 'peças'} × ${finBRL(p.unit)} · entregue em ${dia(p.entregue_em)}</div>
+          </div>
+          <div class="fat-acao">
+            <span class="fat-val">${finBRL(p.valor)}</span>
+            ${podePagar ? `<button class="btn-outline" style="font-size:11px;padding:4px 9px" onclick="cstFatPagar('${esc(p.id)}')"><i class="ti ti-check"></i> pago</button>` : ''}
+          </div>
+        </div>`).join('') : '<div class="fat-vazio">Nada entregue esperando pagamento. 👍</div>')
+    + bloco('#7C3AED', 'ti-scissors', 'VEM POR AÍ', totalVindo,
+      'O que está no corte e o tecido em compra, pelo mesmo valor por peça.',
+      vindo.length ? linhas(vindo, l => ` · ${l.etapa === 'Em corte' ? 'no corte' : 'comprando tecido'}`)
+                   : '<div class="fat-vazio">Nada a caminho no momento.</div>')
+    + (pagas.length ? `
+      <details class="card fat-card fat-pagas">
+        <summary class="aviso-sum">
+          <div class="aviso-sum-hd">
+            <span class="fat-tit" style="color:#16a34a"><i class="ti ti-checkbox"></i> JÁ PAGO</span>
+            <span class="fat-tot" style="color:#16a34a">${finBRL(d.pagas.reduce((s, p) => s + (p.valor || 0), 0))}</span>
+            <span class="aviso-ver"><span class="aviso-ver-mais">ver mais</span><span class="aviso-ver-menos">ver menos</span></span>
+            <i class="ti ti-chevron-down aviso-seta"></i>
+          </div>
+          <div class="aviso-txt">Últimas levas quitadas.</div>
+        </summary>
+        ${pagas.map(p => `
+          <div class="fat-lin">
+            <div>
+              <div class="fat-nome">${esc(p.nome)}${p.leva === 2 ? ' <span class="crt-selo">2ª LEVA</span>' : ''}</div>
+              <div class="fat-sub">${p.pecas} ${p.pecas === 1 ? 'peça' : 'peças'} · pago em ${dia(p.pago_em)}</div>
+            </div>
+            <div class="fat-acao">
+              <span class="fat-val">${finBRL(p.valor)}</span>
+              ${podePagar ? `<button class="btn-outline" style="font-size:11px;padding:4px 9px" onclick="cstFatPagar('${esc(p.id)}', true)" title="Marquei pago sem querer">desfazer</button>` : ''}
+            </div>
+          </div>`).join('')}
+      </details>` : '')
+    + (semValor ? `<div class="fat-aviso-cfg"><i class="ti ti-alert-triangle"></i>
+        ${semValor} ${semValor === 1 ? 'leva está' : 'levas estão'} com R$ 0 por peça — falta o valor de
+        <b>costura</b> desse modelo na Precificação. Enquanto isso, ${semValor === 1 ? 'ela não soma' : 'elas não somam'} nada aqui.</div>` : '');
 }
 
 // ─── O QUE FOI REALMENTE CORTADO ─────────────────────────────────────────────
@@ -9241,11 +9511,12 @@ function iniciarApp() {
   _appIniciado = true;
 
 const _hashKey = location.hash.replace('#', '');
-const _ESPECIAIS = { confeccao: '__confeccao__', precos: '__precos__', financeiro: '__financeiro__', trafego: '__trafego__', fluxo: '__fluxo__', atendimento: '__atendimento__', modelagem: '__modelagem__', corte: '__corte__', costura: '__costura__' };
+const _ESPECIAIS = { confeccao: '__confeccao__', precos: '__precos__', financeiro: '__financeiro__', trafego: '__trafego__', fluxo: '__fluxo__', atendimento: '__atendimento__', modelagem: '__modelagem__', corte: '__corte__', costura: '__costura__', faturamento: '__faturamento__' };
 modeloAtual = _ESPECIAIS[_hashKey] || ((_hashKey && MODELOS[_hashKey]) ? _hashKey : '__dashboard__');
-// Perfis de oficina não escolhem tela: entram direto na aba deles e ficam nela
+// Perfis de oficina não escolhem tela: só as abas deles existem. A costureira tem duas
+// (COSTURA e FATURAMENTO), então o hash vale entre essas duas e nada além disso.
 if (ehPerfilCorte())   modeloAtual = '__corte__';
-if (ehPerfilCostura()) modeloAtual = '__costura__';
+if (ehPerfilCostura() && modeloAtual !== '__faturamento__') modeloAtual = '__costura__';
 // #macacao-amplo na URL não pode furar o cadeado da confecção
 if (MODELOS[modeloAtual] && !confLiberada()) modeloAtual = '__confeccao__';
 buildSidebar();
@@ -9256,6 +9527,8 @@ if (modeloAtual === '__confeccao__') {
   abrirCorte(null);
 } else if (modeloAtual === '__costura__') {
   abrirCostura(null);
+} else if (modeloAtual === '__faturamento__') {
+  abrirFaturamento(null);
 } else if (modeloAtual === '__precos__') {
   abrirPrecos(null); // restaura a aba Precificação após F5 (mantém o gate de senha)
 } else if (modeloAtual === '__financeiro__') {
@@ -9280,6 +9553,7 @@ if (modeloAtual === '__confeccao__') {
 const _renderInicial = () => {
   if (modeloAtual === '__corte__') renderCorte();
   else if (modeloAtual === '__costura__') renderCostura();
+  else if (modeloAtual === '__faturamento__') renderFaturamento();
   else if (modeloAtual === '__confeccao__') { if (confLiberada()) renderConfeccao(); }
   else if (modeloAtual === '__dashboard__') renderDashboard();
   else if (modeloAtual === '__precos__') { if (sessionStorage.getItem('fin-ok') === '1') renderPrecos(); }
@@ -9298,6 +9572,7 @@ carregarTodosNuvem().then(() => carregarPedidosShopify()).then(async () => {
   _renderInicial();
   if (!ehPerfilOficina()) verificarAvisosStatus();
   crtSincronizarPrioridade().catch(() => {}); // solta: a ordem do corte não segura a tela
+  cstFatSincronizar().catch(() => {});        // idem: fecha o valor das levas que saíram da costura
 }).catch(() => {
   _renderInicial();
   if (!ehPerfilOficina()) verificarAvisosStatus();
@@ -9311,10 +9586,12 @@ setInterval(() => {
     if (!ehPerfilOficina()) await baixaImediataDeProcessados().catch(() => {});
     crtSincronizarPrioridade().catch(() => {}); // recalcula a ordem do corte e grava se mudou
     crtArquivarConcluidas().catch(() => {});    // leva que saiu do corte vira histórico
+    cstFatSincronizar().catch(() => {});        // leva que saiu da costura vira valor a pagar
     // crtOcupado: não redesenhar a aba CORTE enquanto ele digita o que cortou — o
     // innerHTML novo levaria junto o que ainda não foi gravado.
     if (modeloAtual === '__corte__') { if (!crtOcupado()) renderCorte(); }
     else if (modeloAtual === '__costura__') renderCostura(); // só leitura: nada digitado para perder
+    else if (modeloAtual === '__faturamento__') renderFaturamento();
     else if (modeloAtual === '__dashboard__') renderDashboard();
     else if (modeloAtual === '__confeccao__' && confLiberada()) renderConfeccao(); // atualiza os selos de etapa do catálogo
     else if (!estEditado && !prodEditado && MODELOS[modeloAtual]) renderModelo(modeloAtual); // só modelos reais; pula precos/financeiro

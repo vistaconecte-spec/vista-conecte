@@ -564,6 +564,34 @@ input[type=number].ci:focus {
    no celular a linha do topo quebrava e o botão sumia longe do modelo a que pertence. */
 .cst-ficha-hd { margin-bottom: 9px; }
 .cst-ficha-acoes { display: flex; align-items: center; gap: 10px; margin-top: 7px; }
+
+/* ── FATURAMENTO DA COSTURA ──
+   Cada bloco é uma pergunta: quanto tem na máquina, quanto devo, quanto vem por aí, quanto
+   já paguei. O total do bloco fica GRANDE no cabeçalho — é o número que se procura ao abrir
+   a tela; a lista embaixo só explica de onde ele vem. */
+.fat-card { border: 1.5px solid var(--border); margin-bottom: 12px; }
+.fat-hd { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.fat-tit { font-size: 12px; font-weight: 800; letter-spacing: .06em; display: inline-flex; align-items: center; gap: 6px; }
+.fat-tot { font-size: 20px; font-weight: 800; white-space: nowrap; }
+.fat-lin {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 9px 0; border-bottom: 1px solid var(--border);
+}
+.fat-lin:last-child { border-bottom: none; }
+.fat-nome { font-size: 14px; font-weight: 700; }
+.fat-sub { font-size: 12px; color: var(--text-sec); margin-top: 2px; }
+.fat-val { font-size: 15px; font-weight: 800; white-space: nowrap; }
+.fat-acao { display: flex; align-items: center; gap: 9px; }
+.fat-vazio { font-size: 13px; color: var(--text-ter); padding: 8px 0 2px; }
+.fat-alerta { color: #dc2626; font-weight: 700; }
+.fat-pagas summary { padding: 0; }
+.fat-pagas .fat-lin:first-of-type { border-top: 1px solid var(--border); margin-top: 8px; }
+/* Modelo sem valor de costura na Precificação soma zero — o aviso existe para o total nunca
+   parecer certo estando incompleto. */
+.fat-aviso-cfg {
+  font-size: 12px; color: #92400e; background: #FFFBEB; border: 1px solid #FDE68A;
+  border-radius: 8px; padding: 9px 12px; display: flex; align-items: flex-start; gap: 7px;
+}
 /* As duas etapas que ainda não são dela (no corte, comprando tecido) usam este card: fechado
    mostra título, total e a FRASE que diz o que ele é — a frase mora dentro do <summary> de
    propósito, senão o card fechado seria só um número solto. Abre no toque, e aí sai a lista
