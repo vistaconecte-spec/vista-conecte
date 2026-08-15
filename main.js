@@ -5109,8 +5109,6 @@ function renderCostura() {
   if (!el) return;
   const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c]));
   const nMetros = v => v.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
-  const COR_COSTURA = '#0891b2'; // o mesmo azul do "Em costura" no resto do app
-  const COR_CORTE   = '#7C3AED';
 
   // 1. NA MÃO DELA — mesma ordem de urgência da aba CORTE (pedido pago parado esperando a
   // peça pesa mais que "está aqui há mais tempo"). No máximo duas ganham tarja: lista em
@@ -5143,23 +5141,27 @@ function renderCostura() {
   const totalPecas = levas.reduce((s, l) => s + l.total, 0);
   if (totEl) {
     totEl.textContent = levas.length
-      ? `${levas.length} ficha${levas.length > 1 ? 's' : ''} para costurar · ${totalPecas} peças`
+      ? `${levas.length} ficha${levas.length > 1 ? 's' : ''} · ${totalPecas} peças`
       : ((emCorte.length || compra.length) ? 'nada para costurar ainda' : '');
   }
 
+  // A linha embaixo do nome só tem o que ela usa: há quantos dias a leva está com ela e a
+  // data de entrega. Status ("Em costura"), tecido e a palavra "entrega" saíram a pedido da
+  // Bárbara (15/08) — na aba de costura toda ficha está em costura, e o tecido é assunto de
+  // quem compra e de quem corta, não de quem monta a peça.
   const fichas = levas.map((l, pos) => {
-    const prazoTxt = l.prazo ? new Date(l.prazo + 'T12:00:00').toLocaleDateString('pt-BR') : '—';
+    const prazoTxt = l.prazo ? new Date(l.prazo + 'T12:00:00').toLocaleDateString('pt-BR') : '';
+    const meta = [
+      l.dias !== null ? `há ${l.dias} ${l.dias === 1 ? 'dia' : 'dias'}` : '',
+      prazoTxt ? esc(prazoTxt) : '',
+    ].filter(Boolean).join(' · ');
     return `
       <div class="crt-card cst-card">
         <div class="crt-card-hd">
           <div>
             <div class="crt-nome">${l.prioritaria ? `<span class="crt-pos${pos === 0 ? ' crt-pos-1' : ''}">${pos + 1}º</span>` : ''}${esc(l.nome)}${l.leva === 2 ? ' <span class="crt-selo">2ª LEVA</span>' : ''}</div>
             ${l.prioritaria ? crtMotivoHTML(l.p) : ''}
-            <div class="crt-meta">
-              <span style="color:${COR_COSTURA};font-weight:700">${esc(l.status)}</span>
-              ${l.dias !== null ? ` · há ${l.dias} ${l.dias === 1 ? 'dia' : 'dias'}` : ''}
-              · ${esc(l.tecido || '—')} · entrega ${esc(prazoTxt)}
-            </div>
+            <div class="crt-meta">${meta}</div>
           </div>
           <div style="display:flex;align-items:center;gap:10px">
             <div class="crt-big">${l.total}<span> ${l.total === 1 ? 'peça' : 'peças'}</span></div>
@@ -5194,32 +5196,23 @@ function renderCostura() {
         : 'Nenhuma ficha para costurar no momento. 👍')
     + '</div>';
 
+  // O que está no corte é AVISO, não trabalho: fica num card pequeno no topo, uma linha por
+  // modelo, sem tabela de tamanho. Era um bloco grande embaixo das fichas até 15/08 e
+  // competia com o que ela tem para fazer agora.
+  const cortePecas = emCorte.reduce((s, l) => s + l.total, 0);
   const blocoCorte = emCorte.length === 0 ? '' : `
-    <div class="crt-card cst-card-corte">
-      <div class="crt-card-hd">
-        <div>
-          <div class="crt-nome"><i class="ti ti-scissors"></i> VEM POR AÍ — NO CORTE</div>
-          <div class="crt-meta">Ainda não é para costurar — é o que está na mesa de corte agora</div>
-        </div>
-        <div class="crt-big">${emCorte.reduce((s, l) => s + l.total, 0)}<span> peças</span></div>
+    <div class="crt-card cst-card-corte cst-mini">
+      <div class="cst-mini-hd">
+        <div class="cst-mini-tit"><i class="ti ti-scissors"></i> VEM POR AÍ — NO CORTE</div>
+        <div class="cst-mini-tot">${cortePecas} ${cortePecas === 1 ? 'peça' : 'peças'}</div>
       </div>
-      <div style="overflow-x:auto">
-        <table class="crt-tab">
-          <thead><tr>
-            <th style="text-align:left">Modelo</th><th style="text-align:left">Cores</th>
-            <th>Peças</th><th>Já cortado</th><th>No corte há</th>
-          </tr></thead>
-          <tbody class="crt-grp">
-            ${emCorte.map(l => `
-              <tr>
-                <td class="crt-cor">${esc(l.nome)}${l.leva === 2 ? ' <span class="crt-selo">2ª</span>' : ''}</td>
-                <td class="crt-cores">${esc(l.linhas.map(r => r.cor).join(' · '))}</td>
-                <td class="crt-c crt-tot">${l.total}</td>
-                <td class="crt-c${l.cortado ? '' : ' crt-zero'}" style="color:${l.cortado ? COR_CORTE : ''}">${l.cortado || '—'}</td>
-                <td class="crt-c${l.dias === null ? ' crt-zero' : ''}">${l.dias === null ? '—' : l.dias + (l.dias === 1 ? ' dia' : ' dias')}</td>
-              </tr>`).join('')}
-          </tbody>
-        </table>
+      <div class="cst-mini-txt">É o que está na mesa do corte, já com o tecido comprado.</div>
+      <div class="cst-mini-itens">
+        ${emCorte.map(l => `
+          <span class="cst-chip">
+            <b>${esc(l.nome)}${l.leva === 2 ? ' <span class="crt-selo">2ª</span>' : ''}</b>
+            ${l.total} ${l.total === 1 ? 'peça' : 'peças'}${l.cortado ? ` · <span class="cst-chip-cut">${l.cortado} já cortada${l.cortado === 1 ? '' : 's'}</span>` : ''}
+          </span>`).join('')}
       </div>
     </div>`;
 
@@ -5248,8 +5241,9 @@ function renderCostura() {
       </div>
     </div>`;
 
-  el.innerHTML = (levas.length ? '<div class="crt-grid">' + fichas + '</div>' : vazio)
-    + blocoCorte + blocoCompra;
+  el.innerHTML = blocoCorte
+    + (levas.length ? '<div class="crt-grid">' + fichas + '</div>' : vazio)
+    + blocoCompra;
 }
 
 // ─── O QUE FOI REALMENTE CORTADO ─────────────────────────────────────────────

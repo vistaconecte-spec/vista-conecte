@@ -134,14 +134,27 @@ new Function(
   () => [{ tecido: 'Viscolycra', cores: [{ cor: 'Marsala' }], pecas: 10, metros: 12.5 }]);
 
 const html = els['costura-lista'].innerHTML;
-ok('a ficha do que está na máquina vem primeiro', html.indexOf('Saia Midi') < html.indexOf('VEM POR AÍ'), true);
-ok('depois o que está no corte, e por último o tecido em compra',
-   html.indexOf('VEM POR AÍ') < html.indexOf('TECIDO SENDO COMPRADO'), true);
+ok('o aviso do corte vem no topo, antes das fichas', html.indexOf('VEM POR AÍ') < html.indexOf('Saia Midi'), true);
+const cardCorte = html.slice(html.indexOf('cst-card-corte'), html.indexOf('crt-grid'));
+ok('e é um card pequeno (cst-mini)', /cst-mini/.test(cardCorte), true);
+ok('sem tabela dentro dele — é uma tira de nomes', /<table/.test(cardCorte), false);
+ok('a frase do card é a que ela pediu',
+   html.includes('É o que está na mesa do corte, já com o tecido comprado.'), true);
+ok('o tecido em compra fica por último', html.indexOf('Saia Midi') < html.indexOf('TECIDO SENDO COMPRADO'), true);
 ok('a ficha traz a cor e a quantidade por tamanho', /Areia[\s\S]*?>1</.test(html), true);
 ok('a 2ª leva no corte aparece marcada como 2ª', /Saia Midi <span class="crt-selo">2ª<\/span>/.test(html), true);
-ok('e mostra o que o cortador já anotou ter cortado', html.includes('>2<'), true);
-ok('o cabeçalho conta as fichas e as peças', els['costura-total'].textContent, '2 fichas para costurar · 12 peças');
+ok('e mostra o que o cortador já anotou ter cortado', /já cortadas?<\/span>/.test(html), true);
+ok('o cabeçalho conta as fichas e as peças', els['costura-total'].textContent, '2 fichas · 12 peças');
 ok('sem campo de digitar: a aba não tem input nenhum', /<input/.test(html), false);
+
+// Pedido da Bárbara em 15/08: a linha embaixo do nome ficou só com o tempo e a data.
+console.log('\n6) A ficha não repete o óbvio');
+const iSaia = html.lastIndexOf('Saia Midi'); // a ficha dela é a última do grid (3 dias < 10 do Moletom)
+const fichaSaia = html.slice(iSaia, html.indexOf('TECIDO SENDO COMPRADO', iSaia));
+ok('sem "Em costura" na ficha (a aba inteira é costura)', /Em costura/.test(fichaSaia), false);
+ok('sem o nome do tecido', /Alfaiataria/.test(fichaSaia), false);
+ok('sem a palavra "entrega"', /entrega/i.test(fichaSaia), false);
+ok('mas com os dias na etapa e a data de entrega', /há 3 dias · 20\/08\/2026/.test(fichaSaia), true);
 
 console.log(falhas ? `\n✗ ${total - falhas}/${total} passaram` : `\n✓ ${total}/${total} passaram`);
 process.exit(falhas ? 1 : 0);

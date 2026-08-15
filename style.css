@@ -563,6 +563,21 @@ input[type=number].ci:focus {
    tela têm que se distinguir de relance: azul = agora, roxo = depois, dourado = por último. */
 .cst-card { border-left-color: #0891b2; }
 .cst-card-corte { border-left-color: #7C3AED; background: rgba(124,58,237,0.05); }
+/* O que está no corte é AVISO, não trabalho: card baixo, uma tira de nomes, sem tabela —
+   não pode competir com a ficha que ela tem para fazer agora. */
+.cst-mini { padding: 9px 12px; margin-bottom: 16px; }
+.cst-mini-hd { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.cst-mini-tit { font-size: 12px; font-weight: 800; letter-spacing: .06em; color: #7C3AED; }
+.cst-mini-tot { font-size: 14px; font-weight: 800; color: #7C3AED; white-space: nowrap; }
+.cst-mini-txt { font-size: 12px; color: var(--text-sec); margin-top: 2px; }
+.cst-mini-itens { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.cst-chip {
+  font-size: 12px; color: var(--text-sec);
+  background: var(--surface); border: 1px solid var(--border); border-radius: 6px;
+  padding: 4px 9px; white-space: nowrap;
+}
+.cst-chip b { font-weight: 700; color: var(--text); }
+.cst-chip-cut { color: #7C3AED; font-weight: 700; }
 .crt-card-hd { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-bottom: 9px; }
 .crt-nome { font-size: 15px; font-weight: 800; letter-spacing: .01em; }
 .crt-selo { font-size: 10px; background: rgba(124,58,237,0.12); color: #7C3AED; border-radius: 4px; padding: 2px 6px; vertical-align: middle; font-weight: 700; }
