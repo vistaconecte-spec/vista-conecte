@@ -537,23 +537,16 @@ input[type=number].ci:focus {
 /* UMA ficha por linha, em qualquer tela. Já foi tentado lado a lado com auto-fill: em
    monitor grande virava três colunas espremidas e a ficha ficou ruim de ler — que é
    justamente o oposto do que ela precisa ser. Ficha larga, uma de cada vez. */
+/* O vão entre uma ficha e a outra é largo de propósito. Já foi 12px com uma linha roxa
+   no meio: as fichas são compridas e mesmo com a linha uma parecia continuação da outra.
+   Espaço vazio separa melhor que traço — e sem traço nenhum a lista respira. */
 .crt-grid {
   display: grid;
   grid-template-columns: 1fr;
-  gap: 12px;
+  gap: 34px;
   align-items: start;
 }
 .crt-grid .crt-card { margin-bottom: 0; }
-/* Linha fina roxa a cada troca de modelo: rolando a lista as fichas são longas e uma
-   emendava na outra — a linha marca onde uma acaba e a próxima começa. Fica no meio do
-   vão entre os cards, não na borda de nenhum dos dois. */
-.crt-grid .crt-card + .crt-card { position: relative; }
-.crt-grid .crt-card + .crt-card::before {
-  content: '';
-  position: absolute;
-  top: -7px; left: 0; right: 0;
-  border-top: 1px solid rgba(124,58,237,0.55);
-}
 
 .crt-card {
   border: 1px solid var(--border);
