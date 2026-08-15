@@ -88,11 +88,19 @@ ok('modelo sem nada: score 0 (cai no critério antigo, o mais parado no topo)',
    F.crtPrioridadeDe('vestido-amplo', {}).score, 0);
 ok('e sem selo na tela', F.crtMotivoHTML(F.crtPrioridadeDe('vestido-amplo', {})), '');
 const motivoFlare = F.crtMotivoHTML(F.crtPrioridadeDe('calca-flare', { travados: t, vendas: {}, vendas_max: 0 }));
-ok('abre pela quantidade de pedidos esperando o modelo',
-   /^<div class="crt-motivo"><b>3 pedidos esperando este modelo<\/b>/.test(motivoFlare), true);
-ok('e diz quantos saem só com ela', /2 saem só com esta peça/.test(motivoFlare), true);
-ok('singular certo', /<b>1 pedido esperando este modelo<\/b> · 1 sai só com esta peça/.test(
-     F.crtMotivoHTML({ score: 1, sozinho: 1, pedidos: 1, dias: 0, estrelas: 0 })), true);
+ok('a tarja é a palavra + quantos pedidos esperam o modelo, e nada mais',
+   motivoFlare, '<div class="crt-motivo"><b>PRIORIDADE</b> · 3 pedidos esperando este modelo</div>');
+ok('singular certo',
+   F.crtMotivoHTML({ score: 1, sozinho: 1, pedidos: 1, dias: 9, estrelas: 3, unidades: 900 }),
+   '<div class="crt-motivo"><b>PRIORIDADE</b> · 1 pedido esperando este modelo</div>');
+// O detalhe saiu da TELA, não da CONTA: apagar esses campos mudaria a ordem da fila.
+ok('nada de "saem só com esta peça" na tela',  /saem só com/.test(motivoFlare), false);
+ok('nada de "mais antigo há" na tela',         /mais antigo/.test(motivoFlare), false);
+ok('nada de estrelas na tela',                 /★/.test(motivoFlare), false);
+ok('mas eles continuam mandando na ordem',
+   F.crtScore({ sozinho: 2, pedidos: 2, dias: 10 }, 2) > F.crtScore({ sozinho: 0, pedidos: 2, dias: 0 }, 0), true);
+ok('modelo que vende muito e não tem ninguém na fila: sem tarja, mas ainda pontua',
+   [F.crtMotivoHTML({ score: 18, pedidos: 0, estrelas: 3 }), F.crtScore({ pedidos: 0 }, 3) > 0], ['', true]);
 
 console.log('\n5b) A prioridade é escrita em VERMELHO (é o que manda fazer antes)');
 const css = readFileSync(join(raiz, 'style.css'), 'utf8');

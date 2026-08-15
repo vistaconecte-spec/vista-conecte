@@ -5155,21 +5155,17 @@ const CORTE_PRIO_KEY      = 'corte-prioridade';
 const CORTE_VENDAS_DIAS   = 90;
 const CORTE_VENDAS_TTL_MS = 12 * 3600 * 1000; // busca pesada: no máximo 2x por dia
 
-// Por que esta ficha está nesta posição — em uma linha, na língua da mesa de corte.
-// Sem isto a ordem seria um ranking sem explicação, e a primeira vez que alguém discordar
-// dela ninguém sabe conferir.
+// A tarja de prioridade da ficha: a palavra e o número de pedidos esperando aquele
+// modelo, e nada mais.
+//
+// `sozinho`, `dias` e `estrelas` continuam existindo e continuam MANDANDO na ordem
+// (ver crtScore) — só não são escritos na tela. Foram até 14/08/2026 e a linha ficou
+// comprida demais para quem lê em pé na mesa: quatro informações onde uma decide.
+// Não apagar esses campos achando que viraram código morto.
 function crtMotivoHTML(p) {
-  if (!p || !p.score) return '';
-  const n = (q, s, pl) => `${q} ${q === 1 ? s : pl}`;
-  const partes = [];
-  // Abre pelo número de pedidos esperando o modelo: é o que responde "por que essa
-  // primeiro" sem ler o resto da linha.
-  if (p.pedidos)  partes.push(`<b>${n(p.pedidos, 'pedido esperando', 'pedidos esperando')} este modelo</b>`);
-  if (p.sozinho)  partes.push(`${p.sozinho} ${p.sozinho === 1 ? 'sai' : 'saem'} só com esta peça`);
-  if (p.dias)     partes.push(`mais antigo há ${n(p.dias, 'dia', 'dias')}`);
-  if (p.estrelas) partes.push(`${'★'.repeat(p.estrelas)} vende muito (${p.unidades} un/90d)`);
-  if (!partes.length) return '';
-  return `<div class="crt-motivo">${partes.join(' · ')}</div>`;
+  if (!p || !p.pedidos) return ''; // sem ninguém na fila não há o que anunciar
+  const n = p.pedidos === 1 ? '1 pedido esperando' : `${p.pedidos} pedidos esperando`;
+  return `<div class="crt-motivo"><b>PRIORIDADE</b> · ${n} este modelo</div>`;
 }
 
 function crtPrioridade() {
