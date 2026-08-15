@@ -592,6 +592,30 @@ input[type=number].ci:focus {
   font-size: 12px; font-weight: 700; color: #7C3AED;
 }
 .crt-aviso .crt-st { font-size: 11px; font-weight: 700; color: var(--text-ter); }
+/* Data do corte: fica na MESMA linha do aviso, não perdida no rodapé — é preenchida
+   junto com os números, na mesma passada. */
+.crt-data {
+  display: inline-flex; align-items: center; gap: 6px; margin-left: auto;
+  font-size: 11px; font-weight: 700; color: var(--text-sec); letter-spacing: .02em;
+}
+.crt-data input[type=date] {
+  font-size: 13px !important; font-weight: 700 !important;
+  padding: 3px 7px !important; width: auto !important;
+  border: 1px solid var(--border) !important; border-radius: 6px !important;
+  color: var(--text) !important; background: #fff !important;
+}
+.crt-data input[type=date]:focus { border-color: var(--gold) !important; }
+
+/* Registro do que já foi cortado */
+.crt-card-hist { border-left-color: #16a34a; }
+.crt-hist { border-top: 1px solid var(--border); padding: 7px 0; }
+.crt-hist summary {
+  cursor: pointer; font-size: 13px; display: flex; align-items: baseline;
+  gap: 8px; flex-wrap: wrap; list-style: revert;
+}
+.crt-hist summary b { font-weight: 800; }
+.crt-hist-tot { margin-left: auto; font-weight: 800; color: #16a34a; white-space: nowrap; }
+.crt-hist > div { padding: 8px 0 4px; }
 
 /* auto (e não o fixed global): as colunas se ajustam ao campo de digitar em vez de
    espremê-lo; se não couber, quem rola é a tabela, não a página */

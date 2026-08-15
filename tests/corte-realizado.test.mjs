@@ -104,5 +104,34 @@ ok('o ciclo automático de 1 minuto não redesenha enquanto ele digita',
 ok('crtOcupado cobre digitação recente, não só o salvamento pendente',
    /_crtUltimoInput < \d+/.test(main), true);
 
+console.log('\n5) O que foi cortado vira registro quando a leva sai do corte');
+// Antes disso a dona trocava o status para "Em costura" e o que ele tinha anotado sumia
+// junto com a ficha — ninguém sabia depois quanto realmente saiu daquela rodada.
+const T = new Function(extrair('crtTotalDe') + '; return crtTotalDe;')();
+ok('soma todas as cores e tamanhos', T({ Preto: [4, 6, 6, 4, 2], Militar: [0, 2, 3, 1, 0] }), 28);
+ok('sem nada anotado dá zero', T({}), 0);
+ok('buraco no meio do array não quebra', T({ Preto: [1, , 2] }), 3);
+
+const arq = main.slice(main.indexOf('async function crtArquivarConcluidas'),
+                       main.indexOf('\n}', main.indexOf('async function crtArquivarConcluidas')));
+ok('só arquiva o que NÃO está mais em corte', /if \(status === 'Em corte'\) continue;/.test(arq), true);
+ok('leva 2 lê o status da leva 2', /levaTxt === '2' \? saved\.status2 : saved\.status/.test(arq), true);
+ok('nada anotado não vira linha de histórico (só sai da lista)', /total \? \{/.test(arq), true);
+ok('guarda a data que ele preencheu', /data:\s*r\.data \|\| ''/.test(arq), true);
+ok('guarda os tamanhos do modelo junto (a grade muda com o tempo)',
+   /tamanhos: MODELOS\[key\] \? tamanhosDe\(MODELOS\[key\]\) : \[\]/.test(arq), true);
+ok('dois aparelhos arquivando a mesma leva não duplicam',
+   /!hist\.some\(h => h\.id === s\.reg\.id\)/.test(arq), true);
+ok('leitura da nuvem falhou → não grava por cima', /if \(nuvem === undefined\) return;/.test(arq), true);
+ok('histórico tem teto', /hist\.slice\(0, CORTE_HIST_MAX\)/.test(arq), true);
+ok('e mora na MESMA linha do Supabase (o cortador não alcança endpoint)',
+   /await salvarNuvem\(CORTE_KEY, novo\)/.test(arq), true);
+
+console.log('\n6) A data do corte usa o mesmo caminho de gravação dos números');
+ok('a barra de data está na ficha', /<input type="date" class="crt-dt"/.test(main), true);
+ok('e é lida na hora de gravar', /input\.crt-dt[\s\S]{0,220}data: \(dt && dt\.value\) \|\| ''/.test(main), true);
+ok('data não passa pelo ajuste de número nem mexe nos totais',
+   /const ehData = inp\.classList\.contains\('crt-dt'\);[\s\S]{0,260}if \(!ehData\) crtAtualizarTotais/.test(main), true);
+
 console.log(`\n${falhas ? '✗' : '✓'} ${total - falhas}/${total} passaram\n`);
 process.exit(falhas ? 1 : 0);

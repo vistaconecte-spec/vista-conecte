@@ -109,6 +109,16 @@ ok('número da fila em vermelho',      /\.crt-pos-1 \{ background: #dc2626/.test
 ok('linha do motivo em vermelho',     /\.crt-motivo \{[^}]*color: #dc2626/.test(bloco), true);
 ok('sem sobrar roxo nesse pedaço',    /#7C3AED/.test(bloco), false);
 
+console.log('\n5c) Só DUAS fichas levam a tarja — lista em que tudo é prioridade não prioriza nada');
+ok('corta a lista de prioritárias em 2',
+   /levas\.filter\(l => l\.p\.pedidos > 0\)[\s\S]{0,160}\.slice\(0, 2\)/.test(main), true);
+ok('e só entra quem tem pedido esperando',
+   /const prioritarias = levas\.filter\(l => l\.p\.pedidos > 0\)/.test(main), true);
+ok('da terceira em diante volta a fila antiga (mais parado no topo)',
+   /levas\.filter\(l => !marcadas\.has\(l\)\)\.sort\(\(a, b\) => \(b\.dias \?\? -1\) - \(a\.dias \?\? -1\)\)/.test(main), true);
+ok('número e tarja só aparecem na ficha marcada',
+   /\$\{l\.prioritaria \? crtMotivoHTML\(l\.p\) : ''\}/.test(main), true);
+
 console.log('\n6) O cortador continua sem acesso a pedido/cliente');
 const mid = readFileSync(join(raiz, 'functions/api/_middleware.js'), 'utf8');
 ok('a allowlist do perfil corte continua VAZIA', /const CORTE_LIBERA = new Set\(\[\]\);/.test(mid), true);

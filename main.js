@@ -4836,6 +4836,7 @@ function abrirCorte(item) {
   document.getElementById('panel-corte').classList.add('active');
   document.body.classList.remove('precos-mode');
   renderCorte();
+  crtArquivarConcluidas().catch(() => {}); // leva que saiu do corte vira histórico
   closeSidebar();
 }
 
@@ -4846,7 +4847,7 @@ function renderCorte() {
   const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c]));
 
   // Ficha por modelo é só de quem já está EM CORTE — é o que ele corta agora.
-  const levas = [];
+  let levas = [];
   for (const [key, def] of Object.entries(MODELOS)) {
     if (CONJUNTO_PECAS[key]) continue; // conjunto não é peça de corte
     const saved = loadLocal('vc:' + key) || {};
@@ -4871,11 +4872,20 @@ function renderCorte() {
     });
   }
 
-  // Ordem de corte: primeiro o que destrava mais pedido pago e o que mais vende (ver
-  // "EM QUE ORDEM CORTAR"). Empate volta ao critério antigo, o mais parado no topo.
+  // DUAS fichas ganham a tarja de prioridade, no máximo: lista em que tudo é prioridade
+  // não prioriza nada. São as duas de maior score ENTRE as que têm pedido esperando (ver
+  // "EM QUE ORDEM CORTAR"); da terceira em diante volta a ser a fila normal, do mais
+  // parado para o menos parado, sem número e sem tarja.
   const prio = crtPrioridade();
   levas.forEach(l => { l.p = crtPrioridadeDe(l.key, prio); });
-  levas.sort((a, b) => (b.p.score - a.p.score) || ((b.dias ?? -1) - (a.dias ?? -1)));
+  const prioritarias = levas.filter(l => l.p.pedidos > 0)
+                            .sort((a, b) => b.p.score - a.p.score)
+                            .slice(0, 2);
+  const marcadas = new Set(prioritarias);
+  prioritarias.forEach(l => { l.prioritaria = true; });
+  levas = prioritarias.concat(
+    levas.filter(l => !marcadas.has(l)).sort((a, b) => (b.dias ?? -1) - (a.dias ?? -1))
+  );
 
   // Tecido em compra: um bloco só, consolidado, sem ficha por modelo
   const compra = comprandoTecidoConsolidado();
@@ -4923,12 +4933,11 @@ function renderCorte() {
   if (levas.length === 0) {
     el.innerHTML = blocoCompra + '<div style="font-size:14px;color:var(--text-ter);padding:10px 0">'
       + (compra.length ? 'Nenhuma ficha em corte no momento — assim que o tecido chegar, as fichas aparecem aqui.'
-                       : 'Nenhuma ficha para cortar no momento. 👍') + '</div>';
+                       : 'Nenhuma ficha para cortar no momento. 👍') + '</div>' + crtHistoricoHTML();
     return;
   }
 
   // Uma ficha por linha, ocupando a largura toda (ver .crt-grid no style.css).
-  const temOrdem = levas.some(l => l.p.score > 0); // sem dado de prioridade, sem numeração
   el.innerHTML = blocoCompra + '<div class="crt-grid">' + levas.map((l, pos) => {
     const cor = '#7C3AED'; // roxo do "Em corte", igual ao resto do app
     const prazoTxt = l.prazo ? new Date(l.prazo + 'T12:00:00').toLocaleDateString('pt-BR') : '—';
@@ -4937,8 +4946,8 @@ function renderCorte() {
       <div class="crt-card">
         <div class="crt-card-hd">
           <div>
-            <div class="crt-nome">${temOrdem ? `<span class="crt-pos${pos === 0 ? ' crt-pos-1' : ''}">${pos + 1}º</span>` : ''}${esc(l.nome)}${l.leva === 2 ? ' <span class="crt-selo">2ª LEVA</span>' : ''}</div>
-            ${crtMotivoHTML(l.p)}
+            <div class="crt-nome">${l.prioritaria ? `<span class="crt-pos${pos === 0 ? ' crt-pos-1' : ''}">${pos + 1}º</span>` : ''}${esc(l.nome)}${l.leva === 2 ? ' <span class="crt-selo">2ª LEVA</span>' : ''}</div>
+            ${l.prioritaria ? crtMotivoHTML(l.p) : ''}
             <div class="crt-meta">
               <span style="color:${cor};font-weight:700">${esc(l.status)}</span>
               ${l.dias !== null ? ` · há ${l.dias} ${l.dias === 1 ? 'dia' : 'dias'}` : ''}
@@ -4957,6 +4966,11 @@ function renderCorte() {
         </div>
         <div class="crt-aviso">
           <span>Preencher o que cortou</span>
+          <label class="crt-data">Data do corte
+            <input type="date" class="crt-dt" value="${esc((reg && reg.data) || '')}"
+              data-key="${esc(l.key)}" data-leva="${l.leva}" data-ref="${esc(l.at)}"
+              onchange="crtInput(this)">
+          </label>
           <span id="crt-st-${l.key}-${l.leva}" class="crt-st"></span>
         </div>
         <div style="overflow-x:auto">
@@ -4991,7 +5005,7 @@ function renderCorte() {
           </table>
         </div>
       </div>`;
-  }).join('') + '</div>';
+  }).join('') + '</div>' + crtHistoricoHTML();
 
   levas.forEach(l => crtAtualizarTotais(l.key, l.leva));
 }
@@ -5086,11 +5100,14 @@ function crtOcupado() {
   return !!_crtTimer || Object.keys(_crtPend).length > 0 || (Date.now() - _crtUltimoInput < 8000);
 }
 
+// Serve às duas coisas que ele preenche na ficha: o que cortou (célula por tamanho) e a
+// data do corte. Mesmo caminho de gravação, mesma marca de "salvando/salvo".
 function crtInput(inp) {
   _crtUltimoInput = Date.now();
-  if (inp.value && parseInt(inp.value, 10) < 0) inp.value = ''; // não existe cortar -3
+  const ehData = inp.classList.contains('crt-dt');
+  if (!ehData && inp.value && parseInt(inp.value, 10) < 0) inp.value = ''; // não existe cortar -3
   const key = inp.dataset.key, leva = inp.dataset.leva;
-  crtAtualizarTotais(key, leva);
+  if (!ehData) crtAtualizarTotais(key, leva);
   _crtPend[key + '|' + leva] = { key, leva, ref: inp.dataset.ref };
   crtStatus(key, leva, 'salvando…');
   clearTimeout(_crtTimer);
@@ -5127,13 +5144,120 @@ async function crtGravar() {
       arr[parseInt(inp.dataset.i, 10) || 0] = crtNum(inp);
     });
     Object.keys(cores).forEach(c => { cores[c] = Array.from(cores[c], v => v || 0); });
-    dados.levas[a.key + '|' + a.leva] = { ref: crtRef(a.ref), cores, at: agora };
+    const dt = Array.from(document.querySelectorAll('#corte-lista input.crt-dt'))
+      .find(i => i.dataset.key === a.key && i.dataset.leva === String(a.leva));
+    dados.levas[a.key + '|' + a.leva] = { ref: crtRef(a.ref), cores, data: (dt && dt.value) || '', at: agora };
   });
   dados.updated_at = agora;
 
   saveLocal('vc:' + CORTE_KEY, dados);
   await salvarNuvem(CORTE_KEY, dados);
   alvos.forEach(a => crtStatus(a.key, a.leva, 'salvo ✓'));
+}
+
+// ─── REGISTRO DO QUE FOI CORTADO ─────────────────────────────────────────────
+// Até 14/08/2026 a leva ia para "Em costura" e o que tinha sido cortado ia junto: a ficha
+// sumia da aba e ninguém mais sabia quanto realmente havia saído daquela rodada. Aqui,
+// quando a leva deixa de estar "Em corte", o que ele anotou vira uma linha de histórico
+// em vez de desaparecer.
+//
+// Mora na MESMA linha do Supabase do que está sendo cortado (`corte-realizado.historico`)
+// — sem tabela nova e sem endpoint, que é o que o perfil do cortador consegue alcançar.
+const CORTE_HIST_MAX = 200;
+
+function crtHistorico() {
+  const h = crtTudo().historico;
+  return Array.isArray(h) ? h : [];
+}
+
+function crtTotalDe(cores) {
+  return Object.values(cores || {})
+    .reduce((s, arr) => s + (arr || []).reduce((a, b) => a + (b || 0), 0), 0);
+}
+
+// Roda ao abrir a aba e no ciclo de 1 minuto. Grava só quando alguma leva REALMENTE saiu
+// do corte — no resto do tempo não toca na nuvem.
+async function crtArquivarConcluidas() {
+  const dados = crtTudo();
+  const sair = [];
+  for (const [id, r] of Object.entries(dados.levas || {})) {
+    const [key, levaTxt] = id.split('|');
+    const saved  = loadLocal('vc:' + key) || {};
+    const status = levaTxt === '2' ? saved.status2 : saved.status;
+    if (status === 'Em corte') continue; // ainda está na mesa
+    const total = crtTotalDe(r.cores);
+    sair.push({
+      id,
+      // Sem nada anotado não vira linha de histórico: só sai da lista de trabalho.
+      reg: total ? {
+        id:    id + '|' + crtRef(r.ref),
+        key,   leva: Number(levaTxt) || 1,
+        nome:  saved.nome || (MODELOS[key] && MODELOS[key].nome) || key,
+        tamanhos: MODELOS[key] ? tamanhosDe(MODELOS[key]) : [],
+        data:  r.data || '',
+        cores: r.cores, total,
+        arquivado_em: new Date().toISOString(),
+      } : null,
+    });
+  }
+  if (!sair.length) return;
+
+  const nuvem = await carregarNuvem(CORTE_KEY);
+  if (nuvem === undefined) return; // não deu para ler: tenta de novo no próximo ciclo
+  const novo = (nuvem && nuvem.levas) ? nuvem : { levas: {} };
+  const hist = Array.isArray(novo.historico) ? novo.historico : [];
+  for (const s of sair) {
+    delete novo.levas[s.id];
+    // Dedup por id: dois aparelhos podem arquivar a mesma leva no mesmo minuto.
+    if (s.reg && !hist.some(h => h.id === s.reg.id)) hist.unshift(s.reg);
+  }
+  novo.historico   = hist.slice(0, CORTE_HIST_MAX);
+  novo.updated_at  = new Date().toISOString();
+  saveLocal('vc:' + CORTE_KEY, novo);
+  await salvarNuvem(CORTE_KEY, novo);
+  if (modeloAtual === '__corte__' && !crtOcupado()) renderCorte();
+}
+
+function crtHistoricoHTML() {
+  const hist = crtHistorico();
+  if (!hist.length) return '';
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c]));
+  const dia = h => {
+    const d = h.data ? new Date(h.data + 'T12:00:00') : new Date(h.arquivado_em);
+    return d.toLocaleDateString('pt-BR');
+  };
+  return `
+    <div class="crt-card crt-card-hist">
+      <div class="crt-card-hd">
+        <div>
+          <div class="crt-nome"><i class="ti ti-checkbox"></i> JÁ CORTADO</div>
+          <div class="crt-meta">O que saiu de cada leva que já passou pela mesa. Toque para ver por tamanho.</div>
+        </div>
+        <div class="crt-big">${hist.length}<span> ${hist.length === 1 ? 'leva' : 'levas'}</span></div>
+      </div>
+      ${hist.slice(0, 20).map(h => `
+        <details class="crt-hist">
+          <summary>
+            <b>${esc(dia(h))}</b> · ${esc(h.nome)}${h.leva === 2 ? ' (2ª leva)' : ''}
+            <span class="crt-hist-tot">${h.total} ${h.total === 1 ? 'peça' : 'peças'}</span>
+          </summary>
+          <div style="overflow-x:auto">
+            <table class="crt-tab">
+              <thead><tr><th style="text-align:left">Cor</th>
+                ${(h.tamanhos || []).map(s => `<th>${esc(s)}</th>`).join('')}
+                <th>Tot</th></tr></thead>
+              <tbody class="crt-grp">
+                ${Object.entries(h.cores || {}).map(([cor, arr]) => `
+                  <tr>
+                    <td class="crt-cor">${esc(cor)}</td>
+                    ${(h.tamanhos || []).map((_, i) => `<td class="crt-c${(arr || [])[i] ? '' : ' crt-zero'}">${(arr || [])[i] || '—'}</td>`).join('')}
+                    <td class="crt-c crt-tot">${(arr || []).reduce((a, b) => a + (b || 0), 0)}</td>
+                  </tr>`).join('')}
+              </tbody>
+            </table>
+          </div>
+        </details>`).join('')}
+    </div>`;
 }
 
 // ─── EM QUE ORDEM CORTAR ─────────────────────────────────────────────────────
@@ -8958,6 +9082,7 @@ setInterval(() => {
     // a peça sai do estoque agora, não às 16h. O perfil do corte nunca dá baixa.
     if (!ehPerfilCorte()) await baixaImediataDeProcessados().catch(() => {});
     crtSincronizarPrioridade().catch(() => {}); // recalcula a ordem do corte e grava se mudou
+    crtArquivarConcluidas().catch(() => {});    // leva que saiu do corte vira histórico
     // crtOcupado: não redesenhar a aba CORTE enquanto ele digita o que cortou — o
     // innerHTML novo levaria junto o que ainda não foi gravado.
     if (modeloAtual === '__corte__') { if (!crtOcupado()) renderCorte(); }
