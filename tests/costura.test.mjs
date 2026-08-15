@@ -138,23 +138,29 @@ new Function(
   () => [{ tecido: 'Viscolycra', cores: [{ cor: 'Marsala' }], pecas: 10, metros: 12.5 }]);
 
 const html  = els['costura-lista'].innerHTML;
-const corteHtml = els['costura-corte'].innerHTML;
-ok('o corte sai do card das fichas e vai para o elemento de cima',
-   [corteHtml.includes('VEM POR AÍ'), html.includes('VEM POR AÍ')], [true, false]);
-ok('é um <details>: chega fechado e abre no toque',
-   /^\s*<details class="card cst-corte">/.test(corteHtml) && !/\bopen\b/.test(corteHtml.slice(0, 60)), true);
-ok('fechado mostra o total de peças na mesa', /cst-mini-tot">5 peças/.test(corteHtml), true);
-ok('aberto mostra os modelos com as quantidades por tamanho',
-   /cst-corte-mod[\s\S]*?<table[\s\S]*?Preto/.test(corteHtml), true);
-ok('a frase do card é a que ela pediu',
-   corteHtml.includes('É o que está na mesa do corte, já com o tecido comprado.'), true);
-ok('a 2ª leva aparece marcada como 2ª', /Saia Midi <span class="crt-selo">2ª LEVA<\/span>/.test(corteHtml), true);
-ok('e mostra o que o cortador já anotou ter cortado', /já cortadas?<\/span>/.test(corteHtml), true);
-ok('o card das fichas fica só com ficha e tecido em compra',
-   html.indexOf('Saia Midi') < html.indexOf('TECIDO SENDO COMPRADO'), true);
+const avisos = els['costura-corte'].innerHTML;
+ok('os dois avisos saem do card das fichas e vão para o elemento de cima',
+   [/VEM POR AÍ/.test(avisos), /COMPRANDO TECIDO/.test(avisos), /VEM POR AÍ|COMPRANDO TECIDO/.test(html)],
+   [true, true, false]);
+ok('o corte vem antes do tecido em compra (a fila que ela enxerga)',
+   avisos.indexOf('VEM POR AÍ') < avisos.indexOf('COMPRANDO TECIDO'), true);
+ok('são dois <details> fechados, no mesmo formato',
+   (avisos.match(/<details class="card cst-corte">/g) || []).length, 2);
+ok('nenhum deles abre sozinho', /<details[^>]*\bopen\b/.test(avisos), false);
+ok('fechado já mostra o total de peças de cada etapa',
+   [/cst-mini-tot">5 peças/.test(avisos), /cst-mini-tot">10 peças/.test(avisos)], [true, true]);
+ok('e a frase fica VISÍVEL antes do toque — dentro do <summary>',
+   /<summary[\s\S]*?É o que está na mesa do corte, já com o tecido comprado\.[\s\S]*?<\/summary>/.test(avisos), true);
+ok('aberto, só nome e total: sem grade de tamanho',
+   /cst-corte-lin[\s\S]*?Saia Midi[\s\S]*?5 peças/.test(avisos) && !/<table/.test(avisos), true);
+ok('a 2ª leva aparece marcada como 2ª', /Saia Midi <span class="crt-selo">2ª LEVA<\/span>/.test(avisos), true);
+ok('o card de baixo fica só com as fichas', /TECIDO SENDO COMPRADO|VEM POR AÍ/.test(html), false);
 ok('a ficha traz a cor e a quantidade por tamanho', /Areia[\s\S]*?>1</.test(html), true);
+ok('o botão da ficha é discreto: sem o fundo preto do btn-primary',
+   [/class="btn-outline"[^>]*>\s*<i class="ti ti-file-text"><\/i> Abrir ficha/.test(html), /btn-primary/.test(html)],
+   [true, false]);
 ok('o cabeçalho conta as fichas e as peças', els['costura-total'].textContent, '2 fichas · 12 peças');
-ok('sem campo de digitar: a aba não tem input nenhum', /<input/.test(html + corteHtml), false);
+ok('sem campo de digitar: a aba não tem input nenhum', /<input/.test(html + avisos), false);
 
 // Pedido da Bárbara em 15/08: a linha embaixo do nome ficou só com o tempo e a data.
 console.log('\n6) A ficha não repete o óbvio');

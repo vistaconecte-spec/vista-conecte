@@ -562,25 +562,30 @@ input[type=number].ci:focus {
    inteiro) e o bloco do que ainda está no corte fica roxo e apagado — as três faixas da
    tela têm que se distinguir de relance: azul = agora, roxo = depois, dourado = por último. */
 .cst-card { border-left-color: #0891b2; }
-/* O que está no corte é AVISO, não trabalho: card próprio no topo, fechado, mostrando só o
-   título e o total. Abre no toque — no celular é a área que ela aperta para ver quais
-   modelos e quantas de cada tamanho estão na mesa. */
+/* As duas etapas que ainda não são dela (no corte, comprando tecido) usam este card: fechado
+   mostra título, total e a FRASE que diz o que ele é — a frase mora dentro do <summary> de
+   propósito, senão o card fechado seria só um número solto. Abre no toque, e aí sai a lista
+   de nome + total, uma linha por item. */
 .cst-corte { border-left: 3px solid #7C3AED; }
 .cst-corte-sum {
-  display: flex; align-items: center; gap: 10px;
-  list-style: none; cursor: pointer; user-select: none;
+  display: block; list-style: none; cursor: pointer; user-select: none;
   padding: 2px 0; /* alvo de toque folgado no celular */
 }
 .cst-corte-sum::-webkit-details-marker { display: none; }
+.cst-corte-sum-hd { display: flex; align-items: center; gap: 10px; }
 .cst-corte-seta { margin-left: auto; color: #7C3AED; font-size: 18px; transition: transform .15s; }
 .cst-corte[open] .cst-corte-seta { transform: rotate(180deg); }
 .cst-mini-tit { font-size: 12px; font-weight: 800; letter-spacing: .06em; color: #7C3AED; }
 .cst-mini-tot { font-size: 14px; font-weight: 800; color: #7C3AED; white-space: nowrap; }
-.cst-mini-txt { font-size: 12px; color: var(--text-sec); margin-top: 6px; }
-.cst-corte-mod { margin-top: 12px; }
-.cst-corte-nome { font-size: 14px; font-weight: 800; margin-bottom: 5px; }
-.cst-corte-tot { font-size: 12px; font-weight: 600; color: var(--text-sec); margin-left: 6px; }
-.cst-chip-cut { color: #7C3AED; font-weight: 700; }
+.cst-mini-txt { font-size: 12px; color: var(--text-sec); margin-top: 4px; }
+.cst-corte-lista { margin-top: 10px; border-top: 1px solid var(--border); }
+.cst-corte-lin {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 12px;
+  padding: 8px 0; border-bottom: 1px solid var(--border);
+}
+.cst-corte-lin:last-child { border-bottom: none; }
+.cst-corte-nome { font-size: 14px; font-weight: 700; }
+.cst-corte-tot { font-size: 13px; font-weight: 800; color: var(--text-sec); white-space: nowrap; }
 .crt-card-hd { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-bottom: 9px; }
 .crt-nome { font-size: 15px; font-weight: 800; letter-spacing: .01em; }
 .crt-selo { font-size: 10px; background: rgba(124,58,237,0.12); color: #7C3AED; border-radius: 4px; padding: 2px 6px; vertical-align: middle; font-weight: 700; }
@@ -676,19 +681,15 @@ input[type=number].ci:focus {
    coluna da COR fica grudada na esquerda: ele nunca perde de vista de que cor é a linha
    que está preenchendo — que é justamente o erro caro aqui (cortar 8 da cor errada). */
 .crt-lista .crt-card table.crt-tab td.crt-cor,
-.crt-lista .cst-corte table.crt-tab td.crt-cor,
-.crt-lista .crt-card table.crt-tab th:first-child,
-.crt-lista .cst-corte table.crt-tab th:first-child {
+.crt-lista .crt-card table.crt-tab th:first-child {
   position: sticky;
   left: 0;
   z-index: 1;
   box-shadow: 1px 0 0 var(--border);
 }
-.crt-lista .crt-card table.crt-tab td.crt-cor,
-.crt-lista .cst-corte table.crt-tab td.crt-cor { background: var(--surface); }
+.crt-lista .crt-card table.crt-tab td.crt-cor { background: var(--surface); }
 .crt-lista .crt-card-compra table.crt-tab td.crt-cor { background: #FBF8F3; }
-.crt-lista .crt-card table.crt-tab th:first-child,
-.crt-lista .cst-corte table.crt-tab th:first-child { background: var(--bg); }
+.crt-lista .crt-card table.crt-tab th:first-child { background: var(--bg); }
 .crt-lista table.crt-tab td.crt-rot {
   font-size: 10px; font-weight: 800; letter-spacing: .06em;
   color: var(--text-ter); text-align: left; white-space: nowrap; padding-right: 8px;
