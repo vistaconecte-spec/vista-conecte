@@ -560,6 +560,10 @@ input[type=number].ci:focus {
 /* Aba COSTURA: a ficha do que está na máquina é azul — a cor de "Em costura" no app inteiro
    (no corte, o mesmo card é roxo). */
 .cst-card { border: 1.5px solid #0891b2; }
+/* Total e "Abrir ficha" ficam à ESQUERDA, embaixo do nome, e não jogados no canto oposto:
+   no celular a linha do topo quebrava e o botão sumia longe do modelo a que pertence. */
+.cst-ficha-hd { margin-bottom: 9px; }
+.cst-ficha-acoes { display: flex; align-items: center; gap: 10px; margin-top: 7px; }
 /* As duas etapas que ainda não são dela (no corte, comprando tecido) usam este card: fechado
    mostra título, total e a FRASE que diz o que ele é — a frase mora dentro do <summary> de
    propósito, senão o card fechado seria só um número solto. Abre no toque, e aí sai a lista

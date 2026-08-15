@@ -5171,13 +5171,11 @@ function renderCostura() {
     ].filter(Boolean).join(' · ');
     return `
       <div class="crt-card cst-card">
-        <div class="crt-card-hd">
-          <div>
-            <div class="crt-nome">${l.prioritaria ? `<span class="crt-pos${pos === 0 ? ' crt-pos-1' : ''}">${pos + 1}º</span>` : ''}${esc(l.nome)}${l.leva === 2 ? ' <span class="crt-selo">2ª LEVA</span>' : ''}</div>
-            ${l.prioritaria ? crtMotivoHTML(l.p, 'COSTURAR PRIMEIRO') : ''}
-            <div class="crt-meta">${meta}</div>
-          </div>
-          <div style="display:flex;align-items:center;gap:10px">
+        <div class="cst-ficha-hd">
+          <div class="crt-nome">${l.prioritaria ? `<span class="crt-pos${pos === 0 ? ' crt-pos-1' : ''}">${pos + 1}º</span>` : ''}${esc(l.nome)}${l.leva === 2 ? ' <span class="crt-selo">2ª LEVA</span>' : ''}</div>
+          ${l.prioritaria ? crtMotivoHTML(l.p, 'COSTURAR PRIMEIRO') : ''}
+          <div class="crt-meta">${meta}</div>
+          <div class="cst-ficha-acoes">
             <div class="crt-big">${l.total}<span> ${l.total === 1 ? 'peça' : 'peças'}</span></div>
             <button class="btn-outline" style="font-size:11px;padding:5px 10px" onclick="gerarFicha('${l.key}')">
               <i class="ti ti-file-text"></i> Abrir ficha
