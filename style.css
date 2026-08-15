@@ -592,19 +592,26 @@ input[type=number].ci:focus {
   font-size: 12px; font-weight: 700; color: #7C3AED;
 }
 .crt-aviso .crt-st { font-size: 11px; font-weight: 700; color: var(--text-ter); }
-/* Data do corte: fica na MESMA linha do aviso, não perdida no rodapé — é preenchida
-   junto com os números, na mesma passada. */
-.crt-data {
-  display: inline-flex; align-items: center; gap: 6px; margin-left: auto;
-  font-size: 11px; font-weight: 700; color: var(--text-sec); letter-spacing: .02em;
+/* DATA DO CORTE: barra própria, a primeira coisa do corpo da ficha (antes até do aviso
+   de preencher). Antes era um campinho no canto direito da linha do aviso e passava
+   despercebido — é o dado que amarra o registro do que foi cortado a um dia. */
+.crt-databar {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  background: var(--bg); border: 1px solid var(--border);
+  border-radius: 7px; padding: 8px 11px; margin-bottom: 8px;
+  cursor: pointer;
 }
-.crt-data input[type=date] {
-  font-size: 13px !important; font-weight: 700 !important;
-  padding: 3px 7px !important; width: auto !important;
+.crt-databar-lb { font-size: 11px; font-weight: 800; letter-spacing: .08em; color: var(--text-sec); }
+.crt-databar input[type=date] {
+  font-size: 15px !important; font-weight: 800 !important;
+  padding: 5px 10px !important; width: auto !important;
   border: 1px solid var(--border) !important; border-radius: 6px !important;
   color: var(--text) !important; background: #fff !important;
 }
-.crt-data input[type=date]:focus { border-color: var(--gold) !important; }
+.crt-databar input[type=date]:focus {
+  border-color: var(--gold) !important; outline: none !important;
+  box-shadow: 0 0 0 2px rgba(196,168,130,0.18) !important;
+}
 
 /* Registro do que já foi cortado */
 .crt-card-hist { border-left-color: #16a34a; }

@@ -4964,13 +4964,14 @@ function renderCorte() {
             </button>
           </div>
         </div>
+        <label class="crt-databar">
+          <span class="crt-databar-lb">DATA DO CORTE</span>
+          <input type="date" class="crt-dt" value="${esc((reg && reg.data) || '')}"
+            data-key="${esc(l.key)}" data-leva="${l.leva}" data-ref="${esc(l.at)}"
+            onchange="crtInput(this)">
+        </label>
         <div class="crt-aviso">
           <span>Preencher o que cortou</span>
-          <label class="crt-data">Data do corte
-            <input type="date" class="crt-dt" value="${esc((reg && reg.data) || '')}"
-              data-key="${esc(l.key)}" data-leva="${l.leva}" data-ref="${esc(l.at)}"
-              onchange="crtInput(this)">
-          </label>
           <span id="crt-st-${l.key}-${l.leva}" class="crt-st"></span>
         </div>
         <div style="overflow-x:auto">
