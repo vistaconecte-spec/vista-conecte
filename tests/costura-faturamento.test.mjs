@@ -98,6 +98,10 @@ ok('renderCostura desenha o card do faturamento',
    /function renderCostura\(\)[\s\S]*?renderFaturamento\(\);/.test(main), true);
 ok('e o card é o mesmo "ver mais" das outras faixas',
    /el\.innerHTML = avisoCardHTML\('ti-cash', 'FATURAMENTO DA COSTURA'/.test(main), true);
+ok('sem valor ao lado do título — os números vivem na frase de baixo',
+   /avisoCardHTML\('ti-cash', 'FATURAMENTO DA COSTURA', '',/.test(main), true);
+ok('e o selo do total nem é desenhado quando vem vazio',
+   /\$\{tot \? `<span class="aviso-tot">\$\{tot\}<\/span>` : ''\}/.test(main), true);
 ok('não sobrou aba/rota própria de faturamento', /__faturamento__|abrirFaturamento/.test(main), false);
 const idx = readFileSync(join(raiz, 'index.html'), 'utf8');
 ok('o lugar dele no HTML fica logo abaixo do que vem por aí',

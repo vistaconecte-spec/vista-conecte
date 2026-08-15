@@ -4894,14 +4894,15 @@ function avisoLinhaHTML(nome, selo, total) {
 }
 
 function avisoCardHTML(icone, titulo, total, frase, linhas, extra, cor) {
-  // Número puro é contagem de peças; texto já vem formatado (o faturamento manda R$).
-  const tot = (typeof total === 'number') ? `${total} ${total === 1 ? 'peça' : 'peças'}` : total;
+  // Número puro é contagem de peças; texto já vem formatado. Vazio não desenha o selo —
+  // o card do faturamento prefere dizer os valores na frase, e não repetir um número no topo.
+  const tot = (typeof total === 'number') ? `${total} ${total === 1 ? 'peça' : 'peças'}` : (total || '');
   return `
     <details class="card aviso-card"${cor ? ` style="--aviso-cor:${cor}"` : ''}>
       <summary class="aviso-sum">
         <div class="aviso-sum-hd">
           <span class="aviso-tit"><i class="ti ${icone}"></i> ${titulo}</span>
-          <span class="aviso-tot">${tot}</span>
+          ${tot ? `<span class="aviso-tot">${tot}</span>` : ''}
           <span class="aviso-ver"><span class="aviso-ver-mais">ver mais</span><span class="aviso-ver-menos">ver menos</span></span>
           <i class="ti ti-chevron-down aviso-seta"></i>
         </div>
@@ -5471,7 +5472,9 @@ function renderFaturamento() {
   const frase = totalAPagar
     ? `${finBRL(totalAPagar)} entregue e ainda não pago. Na máquina agora, mais ${finBRL(totalAgora)}.`
     : `Nada entregue esperando pagamento. Na máquina agora, ${finBRL(totalAgora)}.`;
-  el.innerHTML = avisoCardHTML('ti-cash', 'FATURAMENTO DA COSTURA', finBRL(totalAPagar), frase, corpo, '', '#0f766e');
+  // Sem valor ao lado do título (pedido da Bárbara, 15/08): os dois números que importam já
+  // estão na frase logo abaixo, e repetir um deles em cima só enchia o topo.
+  el.innerHTML = avisoCardHTML('ti-cash', 'FATURAMENTO DA COSTURA', '', frase, corpo, '', '#0f766e');
 }
 
 // ─── O QUE FOI REALMENTE CORTADO ─────────────────────────────────────────────
