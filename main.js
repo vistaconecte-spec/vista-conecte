@@ -4978,7 +4978,7 @@ function renderCorte() {
         <div class="crt-card-hd">
           <div>
             <div class="crt-nome">${l.prioritaria ? `<span class="crt-pos${pos === 0 ? ' crt-pos-1' : ''}">${pos + 1}º</span>` : ''}${esc(l.nome)}${l.leva === 2 ? ' <span class="crt-selo">2ª LEVA</span>' : ''}</div>
-            ${l.prioritaria ? crtMotivoHTML(l.p) : ''}
+            ${l.prioritaria ? crtMotivoHTML(l.p, 'CORTAR PRIMEIRO') : ''}
             <div class="crt-meta">
               <span style="color:${cor};font-weight:700">${esc(l.status)}</span>
               ${l.dias !== null ? ` · há ${l.dias} ${l.dias === 1 ? 'dia' : 'dias'}` : ''}
@@ -5157,7 +5157,7 @@ function renderCostura() {
         <div class="crt-card-hd">
           <div>
             <div class="crt-nome">${l.prioritaria ? `<span class="crt-pos${pos === 0 ? ' crt-pos-1' : ''}">${pos + 1}º</span>` : ''}${esc(l.nome)}${l.leva === 2 ? ' <span class="crt-selo">2ª LEVA</span>' : ''}</div>
-            ${l.prioritaria ? crtMotivoHTML(l.p) : ''}
+            ${l.prioritaria ? crtMotivoHTML(l.p, 'COSTURAR PRIMEIRO') : ''}
             <div class="crt-meta">${meta}</div>
           </div>
           <div style="display:flex;align-items:center;gap:10px">
@@ -5513,10 +5513,15 @@ const CORTE_VENDAS_TTL_MS = 12 * 3600 * 1000; // busca pesada: no máximo 2x por
 // (ver crtScore) — só não são escritos na tela. Foram até 14/08/2026 e a linha ficou
 // comprida demais para quem lê em pé na mesa: quatro informações onde uma decide.
 // Não apagar esses campos achando que viraram código morto.
-function crtMotivoHTML(p) {
+// `verbo` é a ORDEM da aba onde a tarja aparece ("CORTAR PRIMEIRO" / "COSTURAR PRIMEIRO") —
+// em vermelho, junto de PRIORIDADE, porque é a única linha da tela que manda fazer uma coisa
+// antes da outra. Quantos pedidos esperam vai em PRETO logo depois: é o motivo, não a ordem,
+// e em vermelho também a frase inteira vira uma mancha só e nada salta.
+function crtMotivoHTML(p, verbo) {
   if (!p || !p.pedidos) return ''; // sem ninguém na fila não há o que anunciar
   const n = p.pedidos === 1 ? '1 pedido esperando' : `${p.pedidos} pedidos esperando`;
-  return `<div class="crt-motivo"><b>PRIORIDADE</b> · ${n} este modelo</div>`;
+  return `<div class="crt-motivo"><b>PRIORIDADE · ${verbo || 'CORTAR PRIMEIRO'}</b>`
+       + `<span class="crt-motivo-n">${n} este modelo</span></div>`;
 }
 
 function crtPrioridade() {
