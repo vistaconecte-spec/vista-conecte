@@ -569,15 +569,17 @@ input[type=number].ci:focus {
 .crt-nome { font-size: 15px; font-weight: 800; letter-spacing: .01em; }
 .crt-selo { font-size: 10px; background: rgba(124,58,237,0.12); color: #7C3AED; border-radius: 4px; padding: 2px 6px; vertical-align: middle; font-weight: 700; }
 .crt-meta { font-size: 12px; color: var(--text-sec); margin-top: 3px; }
-/* Ordem de corte: o número da fila e, embaixo, o porquê dela em uma linha */
+/* Ordem de corte: o número da fila e, embaixo, quantos pedidos esperam aquele modelo.
+   Em VERMELHO, e não no roxo do resto da aba: é a única informação da tela que manda
+   fazer uma coisa antes da outra — precisa saltar por cima de tudo. */
 .crt-pos {
   display: inline-block; min-width: 26px; text-align: center;
   font-size: 12px; font-weight: 800; margin-right: 7px;
   padding: 2px 6px; border-radius: 5px;
-  background: var(--bg); color: var(--text-sec);
+  background: rgba(220,38,38,0.12); color: #dc2626;
 }
-.crt-pos-1 { background: #7C3AED; color: #fff; }
-.crt-motivo { font-size: 12px; font-weight: 600; color: #7C3AED; margin-top: 4px; }
+.crt-pos-1 { background: #dc2626; color: #fff; }
+.crt-motivo { font-size: 12px; font-weight: 700; color: #dc2626; margin-top: 4px; }
 .crt-motivo b { font-weight: 800; }
 .crt-big { font-size: 20px; font-weight: 800; line-height: 1; }
 .crt-big span { font-size: 11px; font-weight: 600; color: var(--text-sec); }

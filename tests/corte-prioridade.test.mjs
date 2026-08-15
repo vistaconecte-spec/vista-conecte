@@ -87,11 +87,19 @@ console.log('\n5) Sem dado de prioridade, nada quebra');
 ok('modelo sem nada: score 0 (cai no critério antigo, o mais parado no topo)',
    F.crtPrioridadeDe('vestido-amplo', {}).score, 0);
 ok('e sem selo na tela', F.crtMotivoHTML(F.crtPrioridadeDe('vestido-amplo', {})), '');
-ok('com dado: o motivo aparece escrito',
-   /2 pedidos saem só com esta peça/.test(
-     F.crtMotivoHTML(F.crtPrioridadeDe('calca-flare', { travados: t, vendas: {}, vendas_max: 0 }))), true);
-ok('e o singular também', /1 pedido sai só com esta peça/.test(
+const motivoFlare = F.crtMotivoHTML(F.crtPrioridadeDe('calca-flare', { travados: t, vendas: {}, vendas_max: 0 }));
+ok('abre pela quantidade de pedidos esperando o modelo',
+   /^<div class="crt-motivo"><b>3 pedidos esperando este modelo<\/b>/.test(motivoFlare), true);
+ok('e diz quantos saem só com ela', /2 saem só com esta peça/.test(motivoFlare), true);
+ok('singular certo', /<b>1 pedido esperando este modelo<\/b> · 1 sai só com esta peça/.test(
      F.crtMotivoHTML({ score: 1, sozinho: 1, pedidos: 1, dias: 0, estrelas: 0 })), true);
+
+console.log('\n5b) A prioridade é escrita em VERMELHO (é o que manda fazer antes)');
+const css = readFileSync(join(raiz, 'style.css'), 'utf8');
+const bloco = css.slice(css.indexOf('.crt-pos {'), css.indexOf('.crt-motivo b'));
+ok('número da fila em vermelho',      /\.crt-pos-1 \{ background: #dc2626/.test(bloco), true);
+ok('linha do motivo em vermelho',     /\.crt-motivo \{[^}]*color: #dc2626/.test(bloco), true);
+ok('sem sobrar roxo nesse pedaço',    /#7C3AED/.test(bloco), false);
 
 console.log('\n6) O cortador continua sem acesso a pedido/cliente');
 const mid = readFileSync(join(raiz, 'functions/api/_middleware.js'), 'utf8');

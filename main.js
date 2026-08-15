@@ -5162,11 +5162,10 @@ function crtMotivoHTML(p) {
   if (!p || !p.score) return '';
   const n = (q, s, pl) => `${q} ${q === 1 ? s : pl}`;
   const partes = [];
-  if (p.sozinho) {
-    partes.push(`<b>${n(p.sozinho, 'pedido sai', 'pedidos saem')} só com esta peça</b>`);
-  }
-  const outros = (p.pedidos || 0) - (p.sozinho || 0);
-  if (outros > 0) partes.push(`${n(outros, 'pedido parado', 'pedidos parados')} esperando ela e mais peça`);
+  // Abre pelo número de pedidos esperando o modelo: é o que responde "por que essa
+  // primeiro" sem ler o resto da linha.
+  if (p.pedidos)  partes.push(`<b>${n(p.pedidos, 'pedido esperando', 'pedidos esperando')} este modelo</b>`);
+  if (p.sozinho)  partes.push(`${p.sozinho} ${p.sozinho === 1 ? 'sai' : 'saem'} só com esta peça`);
   if (p.dias)     partes.push(`mais antigo há ${n(p.dias, 'dia', 'dias')}`);
   if (p.estrelas) partes.push(`${'★'.repeat(p.estrelas)} vende muito (${p.unidades} un/90d)`);
   if (!partes.length) return '';
