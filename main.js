@@ -612,21 +612,15 @@ function buildSidebar() {
     return;
   }
 
-  // Mesma ideia para a costureira: COSTURA, o FATURAMENTO dela e SAIR. Os valores em R$ que
-  // ela vê são só os da própria costura (decisão da Bárbara, 15/08) — pedido, cliente e o
-  // resto do financeiro continuam fora do alcance dela.
+  // Mesma ideia para a costureira: o menu tem COSTURA e SAIR, e mais nada. O faturamento
+  // dela mora DENTRO dessa aba (decisão da Bárbara, 15/08) — uma tela só para uma pessoa que
+  // consulta em pé, no celular, sem menu para caçar.
   if (ehPerfilCostura()) {
     const item = document.createElement('div');
-    item.className = 'nav-item nav-dashboard' + (modeloAtual === '__faturamento__' ? '' : ' active');
+    item.className = 'nav-item nav-dashboard active';
     item.innerHTML = '<i class="ti ti-needle-thread"></i> COSTURA';
     item.onclick = () => abrirCostura(item);
     nav.appendChild(item);
-
-    const fat = document.createElement('div');
-    fat.className = 'nav-item nav-dashboard' + (modeloAtual === '__faturamento__' ? ' active' : '');
-    fat.innerHTML = '<i class="ti ti-cash"></i> FATURAMENTO';
-    fat.onclick = () => abrirFaturamento(fat);
-    nav.appendChild(fat);
 
     const sair = document.createElement('div');
     sair.className = 'nav-item nav-dashboard';
@@ -727,13 +721,6 @@ function buildSidebar() {
   cstItem.innerHTML = '<i class="ti ti-needle-thread"></i> COSTURA';
   cstItem.onclick = () => abrirCostura(cstItem);
   nav.appendChild(cstItem);
-
-  // Botão Faturamento da costura — quanto vale o que está na máquina e o que falta pagar
-  const fatItem = document.createElement('div');
-  fatItem.className = 'nav-item nav-dashboard' + (modeloAtual === '__faturamento__' ? ' active' : '');
-  fatItem.innerHTML = '<i class="ti ti-cash"></i> FATURAMENTO';
-  fatItem.onclick = () => abrirFaturamento(fatItem);
-  nav.appendChild(fatItem);
 
   // Sair — limpa o perfil deste aparelho e volta a pedir senha
   const sairItem = document.createElement('div');
@@ -4906,13 +4893,15 @@ function avisoLinhaHTML(nome, selo, total) {
     </div>`;
 }
 
-function avisoCardHTML(icone, titulo, total, frase, linhas, extra) {
+function avisoCardHTML(icone, titulo, total, frase, linhas, extra, cor) {
+  // Número puro é contagem de peças; texto já vem formatado (o faturamento manda R$).
+  const tot = (typeof total === 'number') ? `${total} ${total === 1 ? 'peça' : 'peças'}` : total;
   return `
-    <details class="card aviso-card">
+    <details class="card aviso-card"${cor ? ` style="--aviso-cor:${cor}"` : ''}>
       <summary class="aviso-sum">
         <div class="aviso-sum-hd">
           <span class="aviso-tit"><i class="ti ${icone}"></i> ${titulo}</span>
-          <span class="aviso-tot">${total} ${total === 1 ? 'peça' : 'peças'}</span>
+          <span class="aviso-tot">${tot}</span>
           <span class="aviso-ver"><span class="aviso-ver-mais">ver mais</span><span class="aviso-ver-menos">ver menos</span></span>
           <i class="ti ti-chevron-down aviso-seta"></i>
         </div>
@@ -5243,6 +5232,7 @@ function renderCostura() {
   // no mesmo innerHTML eles apareciam colados no texto das fichas.
   const corteEl = document.getElementById('costura-corte');
   if (corteEl) corteEl.innerHTML = blocoCorte + blocoCompra;
+  renderFaturamento(); // card do dinheiro dela, logo abaixo do que vem por aí
 
   el.innerHTML = levas.length ? '<div class="crt-grid">' + fichas + '</div>' : vazio;
 }
@@ -5345,7 +5335,7 @@ async function cstFatSincronizar() {
   novo.updated_at = new Date().toISOString();
   saveLocal('vc:' + CST_FAT_KEY, novo);
   await salvarNuvem(CST_FAT_KEY, novo);
-  if (modeloAtual === '__faturamento__') renderFaturamento();
+  if (modeloAtual === '__costura__') renderCostura();
 }
 
 // Marcar pago é da DONA. O botão nem existe no aparelho da costureira, e aqui vai a trava de
@@ -5379,27 +5369,9 @@ async function cstFatPagar(id, desfazer) {
   renderFaturamento();
 }
 
-function abrirFaturamento(item) {
-  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
-  if (item) item.classList.add('active');
-  if (modeloAtual !== '__dashboard__' && MODELOS[modeloAtual] && (estEditado || prodEditado || prod2Editado || cfgEditado)) {
-    clearTimeout(saveTimer); salvarModelo();
-  }
-  estEditado = false; prodEditado = false; prod2Editado = false; cfgEditado = false; esconderBtnSalvar();
-  modeloAtual = '__faturamento__';
-  location.hash = 'faturamento';
-  document.getElementById('model-title').innerHTML = '<span style="font-family:\'Bebas Neue\',\'Arial Narrow\',sans-serif;font-weight:400;font-size:26px;letter-spacing:0.1em">FATURAMENTO DA COSTURA</span>';
-  document.getElementById('model-sub').textContent = '';
-  document.getElementById('topbar-actions').style.display = 'none';
-  document.getElementById('tabs-modelo').style.display = 'none';
-  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
-  document.getElementById('panel-faturamento').classList.add('active');
-  document.body.classList.remove('precos-mode');
-  renderFaturamento();
-  cstFatSincronizar().catch(() => {});
-  closeSidebar();
-}
-
+// Mora DENTRO da aba COSTURA, logo abaixo do que vem por aí — não é aba própria (pedido da
+// Bárbara, 15/08). Vem fechado, no mesmo card de "ver mais" das outras faixas: o que ela abre
+// para consultar não pode empurrar a ficha do dia para baixo da dobra.
 function renderFaturamento() {
   const el = document.getElementById('faturamento-lista');
   if (!el) return;
@@ -5441,7 +5413,7 @@ function renderFaturamento() {
     </div>`).join('');
 
   const bloco = (cor, icone, titulo, total, frase, corpo) => `
-    <div class="card fat-card" style="border-color:${cor}">
+    <div class="fat-bloco" style="border-color:${cor}">
       <div class="fat-hd">
         <span class="fat-tit" style="color:${cor}"><i class="ti ${icone}"></i> ${titulo}</span>
         <span class="fat-tot" style="color:${cor}">${finBRL(total)}</span>
@@ -5450,7 +5422,7 @@ function renderFaturamento() {
       ${corpo}
     </div>`;
 
-  el.innerHTML =
+  const corpo =
     bloco('#0891b2', 'ti-needle-thread', 'NA MÁQUINA AGORA', totalAgora,
       'É o que está em costura hoje — vira a receber quando a leva for entregue.',
       agora.length ? linhas(agora) : '<div class="fat-vazio">Nada em costura no momento.</div>')
@@ -5472,16 +5444,12 @@ function renderFaturamento() {
       vindo.length ? linhas(vindo, l => ` · ${l.etapa === 'Em corte' ? 'no corte' : 'comprando tecido'}`)
                    : '<div class="fat-vazio">Nada a caminho no momento.</div>')
     + (pagas.length ? `
-      <details class="card fat-card fat-pagas">
-        <summary class="aviso-sum">
-          <div class="aviso-sum-hd">
-            <span class="fat-tit" style="color:#16a34a"><i class="ti ti-checkbox"></i> JÁ PAGO</span>
-            <span class="fat-tot" style="color:#16a34a">${finBRL(d.pagas.reduce((s, p) => s + (p.valor || 0), 0))}</span>
-            <span class="aviso-ver"><span class="aviso-ver-mais">ver mais</span><span class="aviso-ver-menos">ver menos</span></span>
-            <i class="ti ti-chevron-down aviso-seta"></i>
-          </div>
-          <div class="aviso-txt">Últimas levas quitadas.</div>
-        </summary>
+      <div class="fat-bloco" style="border-color:#16a34a">
+        <div class="fat-hd">
+          <span class="fat-tit" style="color:#16a34a"><i class="ti ti-checkbox"></i> JÁ PAGO</span>
+          <span class="fat-tot" style="color:#16a34a">${finBRL(d.pagas.reduce((s, p) => s + (p.valor || 0), 0))}</span>
+        </div>
+        <div class="aviso-txt">Últimas levas quitadas.</div>
         ${pagas.map(p => `
           <div class="fat-lin">
             <div>
@@ -5493,10 +5461,17 @@ function renderFaturamento() {
               ${podePagar ? `<button class="btn-outline" style="font-size:11px;padding:4px 9px" onclick="cstFatPagar('${esc(p.id)}', true)" title="Marquei pago sem querer">desfazer</button>` : ''}
             </div>
           </div>`).join('')}
-      </details>` : '')
+      </div>` : '')
     + (semValor ? `<div class="fat-aviso-cfg"><i class="ti ti-alert-triangle"></i>
         ${semValor} ${semValor === 1 ? 'leva está' : 'levas estão'} com R$ 0 por peça — falta o valor de
         <b>costura</b> desse modelo na Precificação. Enquanto isso, ${semValor === 1 ? 'ela não soma' : 'elas não somam'} nada aqui.</div>` : '');
+
+  // Fechado, o card responde a pergunta que ela faz de fora: quanto já posso cobrar, e quanto
+  // ainda está preso na máquina. O detalhe fica atrás do "ver mais".
+  const frase = totalAPagar
+    ? `${finBRL(totalAPagar)} entregue e ainda não pago. Na máquina agora, mais ${finBRL(totalAgora)}.`
+    : `Nada entregue esperando pagamento. Na máquina agora, ${finBRL(totalAgora)}.`;
+  el.innerHTML = avisoCardHTML('ti-cash', 'FATURAMENTO DA COSTURA', finBRL(totalAPagar), frase, corpo, '', '#0f766e');
 }
 
 // ─── O QUE FOI REALMENTE CORTADO ─────────────────────────────────────────────
@@ -9511,12 +9486,11 @@ function iniciarApp() {
   _appIniciado = true;
 
 const _hashKey = location.hash.replace('#', '');
-const _ESPECIAIS = { confeccao: '__confeccao__', precos: '__precos__', financeiro: '__financeiro__', trafego: '__trafego__', fluxo: '__fluxo__', atendimento: '__atendimento__', modelagem: '__modelagem__', corte: '__corte__', costura: '__costura__', faturamento: '__faturamento__' };
+const _ESPECIAIS = { confeccao: '__confeccao__', precos: '__precos__', financeiro: '__financeiro__', trafego: '__trafego__', fluxo: '__fluxo__', atendimento: '__atendimento__', modelagem: '__modelagem__', corte: '__corte__', costura: '__costura__' };
 modeloAtual = _ESPECIAIS[_hashKey] || ((_hashKey && MODELOS[_hashKey]) ? _hashKey : '__dashboard__');
-// Perfis de oficina não escolhem tela: só as abas deles existem. A costureira tem duas
-// (COSTURA e FATURAMENTO), então o hash vale entre essas duas e nada além disso.
+// Perfis de oficina não escolhem tela: entram direto na aba deles e ficam nela
 if (ehPerfilCorte())   modeloAtual = '__corte__';
-if (ehPerfilCostura() && modeloAtual !== '__faturamento__') modeloAtual = '__costura__';
+if (ehPerfilCostura()) modeloAtual = '__costura__';
 // #macacao-amplo na URL não pode furar o cadeado da confecção
 if (MODELOS[modeloAtual] && !confLiberada()) modeloAtual = '__confeccao__';
 buildSidebar();
@@ -9527,8 +9501,6 @@ if (modeloAtual === '__confeccao__') {
   abrirCorte(null);
 } else if (modeloAtual === '__costura__') {
   abrirCostura(null);
-} else if (modeloAtual === '__faturamento__') {
-  abrirFaturamento(null);
 } else if (modeloAtual === '__precos__') {
   abrirPrecos(null); // restaura a aba Precificação após F5 (mantém o gate de senha)
 } else if (modeloAtual === '__financeiro__') {
@@ -9553,7 +9525,6 @@ if (modeloAtual === '__confeccao__') {
 const _renderInicial = () => {
   if (modeloAtual === '__corte__') renderCorte();
   else if (modeloAtual === '__costura__') renderCostura();
-  else if (modeloAtual === '__faturamento__') renderFaturamento();
   else if (modeloAtual === '__confeccao__') { if (confLiberada()) renderConfeccao(); }
   else if (modeloAtual === '__dashboard__') renderDashboard();
   else if (modeloAtual === '__precos__') { if (sessionStorage.getItem('fin-ok') === '1') renderPrecos(); }
@@ -9591,8 +9562,7 @@ setInterval(() => {
     // innerHTML novo levaria junto o que ainda não foi gravado.
     if (modeloAtual === '__corte__') { if (!crtOcupado()) renderCorte(); }
     else if (modeloAtual === '__costura__') renderCostura(); // só leitura: nada digitado para perder
-    else if (modeloAtual === '__faturamento__') renderFaturamento();
-    else if (modeloAtual === '__dashboard__') renderDashboard();
+      else if (modeloAtual === '__dashboard__') renderDashboard();
     else if (modeloAtual === '__confeccao__' && confLiberada()) renderConfeccao(); // atualiza os selos de etapa do catálogo
     else if (!estEditado && !prodEditado && MODELOS[modeloAtual]) renderModelo(modeloAtual); // só modelos reais; pula precos/financeiro
   }).catch(() => {});

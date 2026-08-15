@@ -569,7 +569,7 @@ input[type=number].ci:focus {
    Cada bloco é uma pergunta: quanto tem na máquina, quanto devo, quanto vem por aí, quanto
    já paguei. O total do bloco fica GRANDE no cabeçalho — é o número que se procura ao abrir
    a tela; a lista embaixo só explica de onde ele vem. */
-.fat-card { border: 1.5px solid var(--border); margin-bottom: 12px; }
+.fat-bloco { border-top: 2px solid var(--border); padding-top: 10px; margin-top: 14px; }
 .fat-hd { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
 .fat-tit { font-size: 12px; font-weight: 800; letter-spacing: .06em; display: inline-flex; align-items: center; gap: 6px; }
 .fat-tot { font-size: 20px; font-weight: 800; white-space: nowrap; }
@@ -584,11 +584,10 @@ input[type=number].ci:focus {
 .fat-acao { display: flex; align-items: center; gap: 9px; }
 .fat-vazio { font-size: 13px; color: var(--text-ter); padding: 8px 0 2px; }
 .fat-alerta { color: #dc2626; font-weight: 700; }
-.fat-pagas summary { padding: 0; }
-.fat-pagas .fat-lin:first-of-type { border-top: 1px solid var(--border); margin-top: 8px; }
 /* Modelo sem valor de costura na Precificação soma zero — o aviso existe para o total nunca
    parecer certo estando incompleto. */
 .fat-aviso-cfg {
+  margin-top: 14px;
   font-size: 12px; color: #92400e; background: #FFFBEB; border: 1px solid #FDE68A;
   border-radius: 8px; padding: 9px 12px; display: flex; align-items: flex-start; gap: 7px;
 }
@@ -596,7 +595,7 @@ input[type=number].ci:focus {
    mostra título, total e a FRASE que diz o que ele é — a frase mora dentro do <summary> de
    propósito, senão o card fechado seria só um número solto. Abre no toque, e aí sai a lista
    de nome + total, uma linha por item. */
-.aviso-card { border: 1.5px solid #7C3AED; }
+.aviso-card { border: 1.5px solid var(--aviso-cor, #7C3AED); }
 .aviso-sum {
   display: block; list-style: none; cursor: pointer; user-select: none;
   padding: 2px 0; /* alvo de toque folgado no celular */
@@ -605,14 +604,14 @@ input[type=number].ci:focus {
 .aviso-sum-hd { display: flex; align-items: center; gap: 10px; }
 /* "ver mais" ao lado da seta: a setinha sozinha não diz que ali abre alguma coisa. Vira
    "ver menos" com o card aberto — os dois textos estão no HTML e o CSS mostra o certo. */
-.aviso-ver { margin-left: auto; font-size: 12px; font-weight: 700; color: #7C3AED; white-space: nowrap; }
+.aviso-ver { margin-left: auto; font-size: 12px; font-weight: 700; color: var(--aviso-cor, #7C3AED); white-space: nowrap; }
 .aviso-ver-menos { display: none; }
 .aviso-card[open] .aviso-ver-mais { display: none; }
 .aviso-card[open] .aviso-ver-menos { display: inline; }
-.aviso-seta { color: #7C3AED; font-size: 18px; transition: transform .15s; }
+.aviso-seta { color: var(--aviso-cor, #7C3AED); font-size: 18px; transition: transform .15s; }
 .aviso-card[open] .aviso-seta { transform: rotate(180deg); }
-.aviso-tit { font-size: 12px; font-weight: 800; letter-spacing: .06em; color: #7C3AED; }
-.aviso-tot { font-size: 14px; font-weight: 800; color: #7C3AED; white-space: nowrap; }
+.aviso-tit { font-size: 12px; font-weight: 800; letter-spacing: .06em; color: var(--aviso-cor, #7C3AED); }
+.aviso-tot { font-size: 14px; font-weight: 800; color: var(--aviso-cor, #7C3AED); white-space: nowrap; }
 .aviso-txt { font-size: 12px; color: var(--text-sec); margin-top: 4px; }
 .aviso-lista { margin-top: 10px; border-top: 1px solid var(--border); }
 .aviso-lin {

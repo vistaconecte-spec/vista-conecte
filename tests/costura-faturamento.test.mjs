@@ -92,6 +92,18 @@ const bloco = main.slice(main.indexOf('const CST_FAT_KEY'), main.indexOf('// ─
 ok('o faturamento não cria conta a pagar no Fluxo (seria o mesmo custo duas vezes)',
    /flxAdd|flxSalvar|flxLancar|vendasIncluir/.test(bloco), false);
 ok('a linha do Supabase é própria, sem tabela nova', /const CST_FAT_KEY  = 'costura-faturamento';/.test(main), true);
+
+console.log('\n8) Mora DENTRO da aba COSTURA, e não em aba própria');
+ok('renderCostura desenha o card do faturamento',
+   /function renderCostura\(\)[\s\S]*?renderFaturamento\(\);/.test(main), true);
+ok('e o card é o mesmo "ver mais" das outras faixas',
+   /el\.innerHTML = avisoCardHTML\('ti-cash', 'FATURAMENTO DA COSTURA'/.test(main), true);
+ok('não sobrou aba/rota própria de faturamento', /__faturamento__|abrirFaturamento/.test(main), false);
+const idx = readFileSync(join(raiz, 'index.html'), 'utf8');
+ok('o lugar dele no HTML fica logo abaixo do que vem por aí',
+   idx.indexOf('id="costura-corte"') < idx.indexOf('id="faturamento-lista"')
+   && idx.indexOf('id="faturamento-lista"') < idx.indexOf('FICHAS EM COSTURA'), true);
+ok('e o painel avulso sumiu', /panel-faturamento/.test(idx), false);
 ok('e nunca grava por cima sem conseguir ler antes',
    /const nuvem = await carregarNuvem\(CST_FAT_KEY\);\s*\r?\n\s*if \(nuvem === undefined\) return;/.test(main), true);
 
