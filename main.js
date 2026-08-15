@@ -5442,7 +5442,7 @@ function renderFaturamento() {
           </div>
         </div>`).join('') : '<div class="fat-vazio">Nada entregue esperando pagamento. 👍</div>')
     + bloco('#7C3AED', 'ti-scissors', 'VEM POR AÍ', totalVindo,
-      'O que está no corte e o tecido em compra, pelo mesmo valor por peça.',
+      'O que está no corte e o tecido em compra, pelo valor de <b>costura</b> da peça — é a previsão do que ela vai receber, não o que se paga pelo corte.',
       vindo.length ? linhas(vindo, l => ` · ${l.etapa === 'Em corte' ? 'no corte' : 'comprando tecido'}`)
                    : '<div class="fat-vazio">Nada a caminho no momento.</div>')
     + (pagas.length ? `
@@ -5471,9 +5471,12 @@ function renderFaturamento() {
   // Fechado, o card já responde tudo o que ela quer saber de relance, uma etapa por linha e
   // o valor alinhado à direita — frase corrida obrigava a caçar o número no meio do texto.
   // "Entregue e não pago" só aparece quando existe: zerado, era só um R$ 0,00 sobrando.
+  // ATENÇÃO ao rótulo "Em corte": o valor é o da COSTURA daquelas peças — previsão do que ela
+  // vai receber quando elas chegarem à máquina —, e NÃO o que se paga pelo corte. Sem o
+  // "previsão do que vai receber" escrito ali, a linha se lê como custo de corte.
   const resumo = [
     ['Na máquina agora', 'ainda não entregue', totalAgora],
-    ['Em corte', '', totalCorte],
+    ['Em corte', 'previsão do que vai receber', totalCorte],
   ].concat(totalAPagar ? [['Entregue e não pago', 'a receber', totalAPagar]] : []);
   const frase = `<div class="fat-resumo">${resumo.map(([rot, obs, v]) => `
     <div class="fat-resumo-lin">

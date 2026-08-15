@@ -76,9 +76,18 @@ const jaPaga = F.cstFatAplicar(
   { abertas: { 'y|1': { ref: 'r', nome: 'Y', pecas: 3, unit: 5 } }, aPagar: {}, pagas: [{ id: 'y|1|r', valor: 15 }] }, {}, AGORA);
 ok('leva que já foi paga não volta a aparecer em aberto', Object.keys(jaPaga.aPagar).length, 0);
 
-console.log('\n6) O valor por peça sai da Precificação (mesmo cálculo do Fluxo)');
+console.log('\n6) O valor por peça é o da COSTURA — nunca o do corte');
+// A linha "Em corte" mostra quanto ELA vai receber para costurar aquelas peças; se um dia
+// alguém trocar por c.corte, o número vira o que se paga ao cortador e ninguém percebe.
+const fnValor = /function cstValorPeca\(key\) \{[\s\S]*?\n\}/.exec(main)[0];
+ok('cstValorPeca lê o campo costura', fnValor.includes('c.costura'), true);
+ok('e nunca o campo corte (viraria o que se paga ao cortador)', /c\.corte/.test(fnValor), false);
+ok('a tela avisa que o valor do corte é previsão do que ela recebe',
+   /\['Em corte', 'previsão do que vai receber', totalCorte\]/.test(main), true);
+ok('e o bloco "vem por aí" diz de onde vem o número',
+   /pelo valor de <b>costura<\/b> da peça — é a previsão do que ela vai receber, não o que se paga pelo corte/.test(main), true);
 const pc = { global: { custoMetro: 12 }, modelos: { 'saia-midi': { costura: 4.5, corte: 2, consumo: 1 }, 'blusa': { costura: 3 } } };
-ok('modelo comum', F.flxCustoModelo(pc, 'saia-midi').costura, 4.5);
+ok('a peça em corte vale a COSTURA dela (4,50), não o corte (2,00)', F.flxCustoModelo(pc, 'saia-midi').costura, 4.5);
 ok('modelo sem valor cadastrado devolve 0 (a tela avisa)', F.flxCustoModelo(pc, 'nao-cadastrado').costura, 0);
 
 console.log('\n7) A costureira só LÊ; e nada vai para o Fluxo de Caixa');
@@ -104,7 +113,7 @@ ok('e o selo do total nem é desenhado quando vem vazio',
    /\$\{tot \? `<span class="aviso-tot">\$\{tot\}<\/span>` : ''\}/.test(main), true);
 ok('não sobrou aba/rota própria de faturamento', /__faturamento__|abrirFaturamento/.test(main), false);
 ok('fechado, o resumo tem "na máquina agora (ainda não entregue)" e "em corte"',
-   /\['Na máquina agora', 'ainda não entregue', totalAgora\][\s\S]{0,80}\['Em corte', '', totalCorte\]/.test(main), true);
+   /\['Na máquina agora', 'ainda não entregue', totalAgora\][\s\S]{0,120}\['Em corte', 'previsão do que vai receber', totalCorte\]/.test(main), true);
 ok('"entregue e não pago" só entra no resumo quando existe',
    /concat\(totalAPagar \? \[\['Entregue e não pago'/.test(main), true);
 ok('o valor do corte é só do corte (o tecido em compra não entra nele)',
