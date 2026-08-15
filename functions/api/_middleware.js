@@ -13,11 +13,12 @@ import { lerSessao } from '../_sessao.js';
 //                          de quem autorizou — não vaza o nosso.
 const PUBLICO = new Set(['/api/login', '/api/logout', '/api/sessao', '/api/shopify-callback']);
 
-// O perfil 'corte' abre só a aba CORTE, que é montada com o que já veio do
-// Supabase (fichas de corte) — ela não chama /api nenhuma vez. Por isso a lista
-// do que ele pode é VAZIA, e não uma lista do que ele não pode: com denylist,
-// todo endpoint novo nasceria liberado pro cortador sem ninguém notar.
-const CORTE_LIBERA = new Set([]);
+// Os perfis de oficina ('corte' e 'costura') abrem UMA aba cada — CORTE e COSTURA —,
+// montadas com o que já veio do Supabase, e não chamam /api nenhuma vez. Por isso a
+// lista do que eles podem é VAZIA, e não uma lista do que não podem: com denylist,
+// todo endpoint novo nasceria liberado pra oficina sem ninguém notar.
+const OFICINA = new Set(['corte', 'costura']);
+const OFICINA_LIBERA = new Set([]);
 
 const nega = (erro, status) => new Response(JSON.stringify({ erro }), {
   status, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }
@@ -50,7 +51,7 @@ export async function onRequest(context) {
 
   const sessao = await lerSessao(request, env.SESSION_SECRET);
   if (!sessao) return nega('Sessão ausente ou expirada', 401);
-  if (sessao.perfil === 'corte' && !CORTE_LIBERA.has(pathname)) {
+  if (OFICINA.has(sessao.perfil) && !OFICINA_LIBERA.has(pathname)) {
     return nega('Perfil sem acesso a esta rota', 403);
   }
   return next();

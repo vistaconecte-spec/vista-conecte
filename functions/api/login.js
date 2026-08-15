@@ -20,8 +20,9 @@ export async function onRequestPost({ request, env }) {
   if (!senha) return J({ erro: 'Senha ausente' }, 400);
 
   const hex = await sha256hex(senha);
-  const perfil = hex === env.SENHA_DONA_HASH  ? 'dona'
-               : hex === env.SENHA_CORTE_HASH ? 'corte'
+  const perfil = hex === env.SENHA_DONA_HASH    ? 'dona'
+               : hex === env.SENHA_CORTE_HASH   ? 'corte'
+               : hex === env.SENHA_COSTURA_HASH ? 'costura'
                : null;
   if (!perfil) return J({ erro: 'Senha incorreta' }, 401);
 

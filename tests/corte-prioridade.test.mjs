@@ -119,13 +119,16 @@ ok('da terceira em diante volta a fila antiga (mais parado no topo)',
 ok('número e tarja só aparecem na ficha marcada',
    /\$\{l\.prioritaria \? crtMotivoHTML\(l\.p\) : ''\}/.test(main), true);
 
-console.log('\n6) O cortador continua sem acesso a pedido/cliente');
+console.log('\n6) A oficina (corte e costura) continua sem acesso a pedido/cliente');
 const mid = readFileSync(join(raiz, 'functions/api/_middleware.js'), 'utf8');
-ok('a allowlist do perfil corte continua VAZIA', /const CORTE_LIBERA = new Set\(\[\]\);/.test(mid), true);
+ok('a allowlist dos perfis de oficina continua VAZIA', /const OFICINA_LIBERA = new Set\(\[\]\);/.test(mid), true);
+ok('e o bloqueio vale para os dois perfis, não só para o corte',
+   /const OFICINA = new Set\(\['corte', 'costura'\]\);/.test(mid)
+   && /OFICINA\.has\(sessao\.perfil\) && !OFICINA_LIBERA\.has\(pathname\)/.test(mid), true);
 ok('a prioridade é gravada no Supabase, não servida por /api',
    /await salvarNuvemREST\(CORTE_PRIO_KEY, novo\)/.test(main), true);
-ok('e o perfil corte nem calcula (só lê)',
-   /async function crtSincronizarPrioridade\(\) \{\s*\r?\n\s*if \(ehPerfilCorte\(\)\) return;/.test(main), true);
+ok('e os perfis de oficina nem calculam (só leem)',
+   /async function crtSincronizarPrioridade\(\) \{\s*\r?\n\s*if \(ehPerfilOficina\(\)\) return;/.test(main), true);
 
 console.log('\n7) O volume de vendas usa o parser já testado dos pedidos');
 ok('a busca mora no shopify-orders.js (mesmo PRODUCT_MAP da distribuição)',

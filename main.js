@@ -51,13 +51,14 @@ async function renderModeloNuvem(key) {
 const HIST_PREFIXO = 'hist:';
 const HIST_MAX = 25; // versões guardadas por chave
 
-// ─── CADEADO DE ENTRADA (dois perfis) ────────────────────────────────────────
+// ─── CADEADO DE ENTRADA (três perfis) ────────────────────────────────────────
 // Até 11/08/2026 o INÍCIO e toda a CONFECÇÃO ficavam abertos: quem tivesse o link via
 // pedidos, nomes de clientes, estoque e produção sem digitar nada. Só Financeiro, Fluxo,
 // Precificação, Tráfego, Atendimento e Modelagem pediam senha.
 //
-//   dona  → senha que já valia nas abas protegidas; abre o app inteiro
-//   corte → senha do cortador; abre SÓ a aba CORTE
+//   dona    → senha que já valia nas abas protegidas; abre o app inteiro
+//   corte   → senha do cortador; abre SÓ a aba CORTE
+//   costura → senha da costureira; abre SÓ a aba COSTURA
 //
 // Desde 14/08/2026 quem confere a senha é o SERVIDOR: /api/login compara com um hash
 // que mora em secret do Cloudflare e devolve um cookie HttpOnly assinado, e o
@@ -77,8 +78,15 @@ function perfilAtual() {
 }
 
 function ehPerfilCorte() { return perfilAtual() === 'corte'; }
+function ehPerfilCostura() { return perfilAtual() === 'costura'; }
 
-// Manda a senha pro servidor e devolve o perfil ('dona' | 'corte'), null se a senha
+// Corte e costura são os perfis de OFICINA: veem uma aba só, montada com o que já veio do
+// Supabase, e não chamam /api nenhuma vez (o middleware devolve 403 pros dois). Tudo que
+// só a dona pode fazer — baixa de estoque, avisos de status, buscar pedido na Shopify —
+// pergunta por aqui, e não por ehPerfilCorte(), senão a costureira daria baixa em estoque.
+function ehPerfilOficina() { return ehPerfilCorte() || ehPerfilCostura(); }
+
+// Manda a senha pro servidor e devolve o perfil ('dona' | 'corte' | 'costura'), null se a senha
 // estiver errada, ou false se nem deu para perguntar (sem rede / servidor fora) — sem
 // essa distinção, celular sem sinal acusaria "senha incorreta" e ela ficaria caçando
 // uma senha que está certa.
@@ -604,6 +612,22 @@ function buildSidebar() {
     return;
   }
 
+  // Mesma ideia para a costureira: o menu tem COSTURA e SAIR, e mais nada.
+  if (ehPerfilCostura()) {
+    const item = document.createElement('div');
+    item.className = 'nav-item nav-dashboard active';
+    item.innerHTML = '<i class="ti ti-needle-thread"></i> COSTURA';
+    item.onclick = () => abrirCostura(item);
+    nav.appendChild(item);
+
+    const sair = document.createElement('div');
+    sair.className = 'nav-item nav-dashboard';
+    sair.innerHTML = '<i class="ti ti-logout"></i> SAIR';
+    sair.onclick = appSair;
+    nav.appendChild(sair);
+    return;
+  }
+
   // Botão Dashboard no topo
   const dashItem = document.createElement('div');
   dashItem.className = 'nav-item nav-dashboard' + (modeloAtual === '__dashboard__' ? ' active' : '');
@@ -688,6 +712,13 @@ function buildSidebar() {
   crtItem.innerHTML = '<i class="ti ti-scissors"></i> CORTE';
   crtItem.onclick = () => abrirCorte(crtItem);
   nav.appendChild(crtItem);
+
+  // Botão Costura — a mesma tela que a costureira vê
+  const cstItem = document.createElement('div');
+  cstItem.className = 'nav-item nav-dashboard' + (modeloAtual === '__costura__' ? ' active' : '');
+  cstItem.innerHTML = '<i class="ti ti-needle-thread"></i> COSTURA';
+  cstItem.onclick = () => abrirCostura(cstItem);
+  nav.appendChild(cstItem);
 
   // Sair — limpa o perfil deste aparelho e volta a pedir senha
   const sairItem = document.createElement('div');
@@ -5011,6 +5042,216 @@ function renderCorte() {
   levas.forEach(l => crtAtualizarTotais(l.key, l.leva));
 }
 
+// ─── ABA COSTURA ─────────────────────────────────────────────────────────────
+// A costureira precisa de três coisas na mesma tela, nesta ordem:
+//   1. o que está NA MÃO dela agora  → status "Em costura", ficha por modelo;
+//   2. o que VEM POR AÍ do corte     → status "Em corte", só o total (não é dela ainda);
+//   3. o que ainda é tecido comprado → status "Comprando tecido", consolidado.
+// Sem 2 e 3 ela só enxerga o dia de hoje e não dá para se organizar para a semana.
+//
+// A aba é SÓ LEITURA de propósito (a de corte tem campo do que foi cortado): quem fecha a
+// leva é a dona, quando muda o status. Perfil 'costura' não tem acesso a /api nenhuma —
+// tudo aqui sai do que já veio do Supabase, igual à aba CORTE.
+
+// Levas de um status, no formato que as duas listas da aba usam. Sozinha para poder ser
+// testada fora do navegador (tests/costura.test.mjs injeta MODELOS/loadLocal/tamanhosDe).
+function cstLevasDe(statusAlvo) {
+  const out = [];
+  for (const [key, def] of Object.entries(MODELOS)) {
+    if (CONJUNTO_PECAS[key]) continue; // conjunto não é peça de oficina
+    const saved = loadLocal('vc:' + key) || {};
+    const SZ = tamanhosDe(def);
+    [{ prod: saved.prod,  status: saved.status,  at: saved.status_at,  prazo: saved.prazo,  n: 1 },
+     { prod: saved.prod2, status: saved.status2, at: saved.status2_at, prazo: saved.prazo2, n: 2 }].forEach(l => {
+      if (l.status !== statusAlvo || !l.prod) return;
+      const linhas = [];
+      let total = 0;
+      Object.entries(l.prod).forEach(([cor, vals]) => {
+        const arr = Array.from({ length: SZ.length }, (_, i) => (vals || [])[i] || 0);
+        const tot = arr.reduce((a, b) => a + b, 0);
+        if (tot > 0) { linhas.push({ cor, arr, tot }); total += tot; }
+      });
+      if (total === 0) return;
+      out.push({
+        key, nome: saved.nome || def.nome, leva: l.n, status: l.status, prazo: l.prazo || '',
+        tecido: saved.tecido || def.tecido, SZ, linhas, total,
+        at: l.at || '',
+        dias: l.at ? Math.floor((Date.now() - new Date(l.at).getTime()) / 86400000) : null,
+      });
+    });
+  }
+  return out;
+}
+
+function abrirCostura(item) {
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  if (item) item.classList.add('active');
+  if (modeloAtual !== '__dashboard__' && MODELOS[modeloAtual] && (estEditado || prodEditado || prod2Editado || cfgEditado)) {
+    clearTimeout(saveTimer); salvarModelo();
+  }
+  estEditado = false; prodEditado = false; prod2Editado = false; cfgEditado = false; esconderBtnSalvar();
+  modeloAtual = '__costura__';
+  location.hash = 'costura';
+  document.getElementById('model-title').innerHTML = '<span style="font-family:\'Bebas Neue\',\'Arial Narrow\',sans-serif;font-weight:400;font-size:26px;letter-spacing:0.1em">COSTURA</span>';
+  document.getElementById('model-sub').textContent = '';
+  document.getElementById('topbar-actions').style.display = 'none';
+  document.getElementById('tabs-modelo').style.display = 'none';
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  document.getElementById('panel-costura').classList.add('active');
+  document.body.classList.remove('precos-mode');
+  renderCostura();
+  closeSidebar();
+}
+
+function renderCostura() {
+  const el    = document.getElementById('costura-lista');
+  const totEl = document.getElementById('costura-total');
+  if (!el) return;
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c]));
+  const nMetros = v => v.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+  const COR_COSTURA = '#0891b2'; // o mesmo azul do "Em costura" no resto do app
+  const COR_CORTE   = '#7C3AED';
+
+  // 1. NA MÃO DELA — mesma ordem de urgência da aba CORTE (pedido pago parado esperando a
+  // peça pesa mais que "está aqui há mais tempo"). No máximo duas ganham tarja: lista em
+  // que tudo é prioridade não prioriza nada.
+  let levas = cstLevasDe('Em costura');
+  const prio = crtPrioridade();
+  levas.forEach(l => { l.p = crtPrioridadeDe(l.key, prio); });
+  const prioritarias = levas.filter(l => l.p.pedidos > 0)
+                            .sort((a, b) => b.p.score - a.p.score)
+                            .slice(0, 2);
+  const marcadas = new Set(prioritarias);
+  prioritarias.forEach(l => { l.prioritaria = true; });
+  levas = prioritarias.concat(
+    levas.filter(l => !marcadas.has(l)).sort((a, b) => (b.dias ?? -1) - (a.dias ?? -1))
+  );
+
+  // 2. VEM DO CORTE — sem ficha por modelo: ainda não é para costurar. Quando o cortador já
+  // anotou o que saiu da mesa, esse número aparece do lado (é o que ela vai receber de fato).
+  const emCorte = cstLevasDe('Em corte').sort((a, b) => (b.dias ?? -1) - (a.dias ?? -1));
+  emCorte.forEach(l => {
+    const reg = crtRegistro(l.key, l.leva, l.at);
+    l.cortado = reg ? crtTotalDe(reg.cores) : 0;
+  });
+
+  // 3. TECIDO EM COMPRA — um total só, agrupado por tecido, igual à aba CORTE.
+  const compra = comprandoTecidoConsolidado();
+  const compraPecas  = compra.reduce((s, g) => s + g.pecas, 0);
+  const compraMetros = compra.reduce((s, g) => s + g.metros, 0);
+
+  const totalPecas = levas.reduce((s, l) => s + l.total, 0);
+  if (totEl) {
+    totEl.textContent = levas.length
+      ? `${levas.length} ficha${levas.length > 1 ? 's' : ''} para costurar · ${totalPecas} peças`
+      : ((emCorte.length || compra.length) ? 'nada para costurar ainda' : '');
+  }
+
+  const fichas = levas.map((l, pos) => {
+    const prazoTxt = l.prazo ? new Date(l.prazo + 'T12:00:00').toLocaleDateString('pt-BR') : '—';
+    return `
+      <div class="crt-card cst-card">
+        <div class="crt-card-hd">
+          <div>
+            <div class="crt-nome">${l.prioritaria ? `<span class="crt-pos${pos === 0 ? ' crt-pos-1' : ''}">${pos + 1}º</span>` : ''}${esc(l.nome)}${l.leva === 2 ? ' <span class="crt-selo">2ª LEVA</span>' : ''}</div>
+            ${l.prioritaria ? crtMotivoHTML(l.p) : ''}
+            <div class="crt-meta">
+              <span style="color:${COR_COSTURA};font-weight:700">${esc(l.status)}</span>
+              ${l.dias !== null ? ` · há ${l.dias} ${l.dias === 1 ? 'dia' : 'dias'}` : ''}
+              · ${esc(l.tecido || '—')} · entrega ${esc(prazoTxt)}
+            </div>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px">
+            <div class="crt-big">${l.total}<span> ${l.total === 1 ? 'peça' : 'peças'}</span></div>
+            <button class="btn-primary" style="font-size:12px;padding:7px 13px" onclick="gerarFicha('${l.key}')">
+              <i class="ti ti-file-text"></i> Abrir ficha
+            </button>
+          </div>
+        </div>
+        <div style="overflow-x:auto">
+          <table class="crt-tab">
+            <thead><tr>
+              <th style="text-align:left">Cor</th>
+              ${l.SZ.map(s => `<th>${esc(s)}</th>`).join('')}
+              <th>Tot</th>
+            </tr></thead>
+            <tbody class="crt-grp">
+              ${l.linhas.map(r => `
+                <tr>
+                  <td class="crt-cor">${esc(r.cor)}</td>
+                  ${r.arr.map(v => `<td class="crt-c${v ? '' : ' crt-zero'}">${v || '—'}</td>`).join('')}
+                  <td class="crt-c crt-tot">${r.tot}</td>
+                </tr>`).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>`;
+  }).join('');
+
+  const vazio = `<div style="font-size:14px;color:var(--text-ter);padding:10px 0">`
+    + ((emCorte.length || compra.length)
+        ? 'Nenhuma ficha em costura no momento — o que está no corte aparece aqui assim que sair da mesa.'
+        : 'Nenhuma ficha para costurar no momento. 👍')
+    + '</div>';
+
+  const blocoCorte = emCorte.length === 0 ? '' : `
+    <div class="crt-card cst-card-corte">
+      <div class="crt-card-hd">
+        <div>
+          <div class="crt-nome"><i class="ti ti-scissors"></i> VEM POR AÍ — NO CORTE</div>
+          <div class="crt-meta">Ainda não é para costurar — é o que está na mesa de corte agora</div>
+        </div>
+        <div class="crt-big">${emCorte.reduce((s, l) => s + l.total, 0)}<span> peças</span></div>
+      </div>
+      <div style="overflow-x:auto">
+        <table class="crt-tab">
+          <thead><tr>
+            <th style="text-align:left">Modelo</th><th style="text-align:left">Cores</th>
+            <th>Peças</th><th>Já cortado</th><th>No corte há</th>
+          </tr></thead>
+          <tbody class="crt-grp">
+            ${emCorte.map(l => `
+              <tr>
+                <td class="crt-cor">${esc(l.nome)}${l.leva === 2 ? ' <span class="crt-selo">2ª</span>' : ''}</td>
+                <td class="crt-cores">${esc(l.linhas.map(r => r.cor).join(' · '))}</td>
+                <td class="crt-c crt-tot">${l.total}</td>
+                <td class="crt-c${l.cortado ? '' : ' crt-zero'}" style="color:${l.cortado ? COR_CORTE : ''}">${l.cortado || '—'}</td>
+                <td class="crt-c${l.dias === null ? ' crt-zero' : ''}">${l.dias === null ? '—' : l.dias + (l.dias === 1 ? ' dia' : ' dias')}</td>
+              </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>`;
+
+  const blocoCompra = compra.length === 0 ? '' : `
+    <div class="crt-card crt-card-compra">
+      <div class="crt-card-hd">
+        <div>
+          <div class="crt-nome"><i class="ti ti-shopping-cart"></i> TECIDO SENDO COMPRADO</div>
+          <div class="crt-meta">Nem cortado foi — é o que vem depois do que está no corte</div>
+        </div>
+        <div class="crt-big">${compraPecas}<span> ${compraPecas === 1 ? 'peça' : 'peças'} · ${nMetros(compraMetros)}m</span></div>
+      </div>
+      <div style="overflow-x:auto">
+        <table class="crt-tab">
+          <thead><tr><th style="text-align:left">Tecido</th><th style="text-align:left">Cores</th><th>Peças</th><th>Metros</th></tr></thead>
+          <tbody class="crt-grp">
+            ${compra.map(g => `
+              <tr>
+                <td class="crt-cor">${esc(g.tecido)}</td>
+                <td class="crt-cores">${esc(g.cores.map(c => c.cor).join(' · '))}</td>
+                <td class="crt-c crt-tot">${g.pecas}</td>
+                <td class="crt-c crt-tot" style="text-align:right">${nMetros(g.metros)}m</td>
+              </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>`;
+
+  el.innerHTML = (levas.length ? '<div class="crt-grid">' + fichas + '</div>' : vazio)
+    + blocoCorte + blocoCompra;
+}
+
 // ─── O QUE FOI REALMENTE CORTADO ─────────────────────────────────────────────
 // A ficha diz o que foi PEDIDO; o que sai da mesa quase nunca é exatamente isso (rolo
 // que rendeu menos, defeito no tecido, encaixe que não fechou). Aqui o cortador digita o
@@ -5379,7 +5620,7 @@ async function crtBuscarVendas(prio) {
 // Roda no ciclo de 1 minuto do app da dona. Só grava quando o número muda de verdade —
 // senão seriam 1.440 gravações por dia numa linha que quase sempre está igual.
 async function crtSincronizarPrioridade() {
-  if (ehPerfilCorte()) return;
+  if (ehPerfilOficina()) return;
   if (!(window._shopifyDetalhados || []).length) return; // sem pedidos carregados não há o que ordenar
 
   // _pedidosPendentes é subproduto do card "Prontos para Envio". Fora do INÍCIO ele fica
@@ -7736,9 +7977,9 @@ function gerarFichaCompra() {
 }
 
 async function carregarPedidosShopify() {
-  // O perfil do corte não tem acesso a /api/shopify-orders (a ficha de corte sai do que
-  // já veio do Supabase). Sem esta saída, o middleware devolveria 403 a cada minuto.
-  if (ehPerfilCorte()) return;
+  // Os perfis de oficina não têm acesso a /api/shopify-orders (as fichas saem do que já
+  // veio do Supabase). Sem esta saída, o middleware devolveria 403 a cada minuto.
+  if (ehPerfilOficina()) return;
   try {
     const res = await fetch('/api/shopify-orders');
     if (!res.ok) return;
@@ -9018,10 +9259,11 @@ function iniciarApp() {
   _appIniciado = true;
 
 const _hashKey = location.hash.replace('#', '');
-const _ESPECIAIS = { confeccao: '__confeccao__', precos: '__precos__', financeiro: '__financeiro__', trafego: '__trafego__', fluxo: '__fluxo__', atendimento: '__atendimento__', modelagem: '__modelagem__', corte: '__corte__' };
+const _ESPECIAIS = { confeccao: '__confeccao__', precos: '__precos__', financeiro: '__financeiro__', trafego: '__trafego__', fluxo: '__fluxo__', atendimento: '__atendimento__', modelagem: '__modelagem__', corte: '__corte__', costura: '__costura__' };
 modeloAtual = _ESPECIAIS[_hashKey] || ((_hashKey && MODELOS[_hashKey]) ? _hashKey : '__dashboard__');
-// Perfil do corte não escolhe tela: entra direto na aba CORTE e fica nela
-if (ehPerfilCorte()) modeloAtual = '__corte__';
+// Perfis de oficina não escolhem tela: entram direto na aba deles e ficam nela
+if (ehPerfilCorte())   modeloAtual = '__corte__';
+if (ehPerfilCostura()) modeloAtual = '__costura__';
 // #macacao-amplo na URL não pode furar o cadeado da confecção
 if (MODELOS[modeloAtual] && !confLiberada()) modeloAtual = '__confeccao__';
 buildSidebar();
@@ -9030,6 +9272,8 @@ if (modeloAtual === '__confeccao__') {
   abrirConfeccao(null);
 } else if (modeloAtual === '__corte__') {
   abrirCorte(null);
+} else if (modeloAtual === '__costura__') {
+  abrirCostura(null);
 } else if (modeloAtual === '__precos__') {
   abrirPrecos(null); // restaura a aba Precificação após F5 (mantém o gate de senha)
 } else if (modeloAtual === '__financeiro__') {
@@ -9053,6 +9297,7 @@ if (modeloAtual === '__confeccao__') {
 // 2. Sincroniza todos os modelos da nuvem → depois carrega Shopify e renderiza
 const _renderInicial = () => {
   if (modeloAtual === '__corte__') renderCorte();
+  else if (modeloAtual === '__costura__') renderCostura();
   else if (modeloAtual === '__confeccao__') { if (confLiberada()) renderConfeccao(); }
   else if (modeloAtual === '__dashboard__') renderDashboard();
   else if (modeloAtual === '__precos__') { if (sessionStorage.getItem('fin-ok') === '1') renderPrecos(); }
@@ -9065,28 +9310,29 @@ const _renderInicial = () => {
 };
 carregarTodosNuvem().then(() => carregarPedidosShopify()).then(async () => {
   // Baixa de estoque dos pedidos que a Shopify já processou (inclusive o atraso de hoje).
-  // O perfil do corte não mexe em estoque: ele só lê fichas.
-  if (!ehPerfilCorte()) await baixaImediataDeProcessados().catch(() => {});
+  // Os perfis de oficina não mexem em estoque: eles só leem fichas.
+  if (!ehPerfilOficina()) await baixaImediataDeProcessados().catch(() => {});
 
   _renderInicial();
-  if (!ehPerfilCorte()) verificarAvisosStatus();
+  if (!ehPerfilOficina()) verificarAvisosStatus();
   crtSincronizarPrioridade().catch(() => {}); // solta: a ordem do corte não segura a tela
 }).catch(() => {
   _renderInicial();
-  if (!ehPerfilCorte()) verificarAvisosStatus();
+  if (!ehPerfilOficina()) verificarAvisosStatus();
 });
 
 // 3. Atualiza pedidos Shopify automaticamente a cada 1 minuto
 setInterval(() => {
   carregarPedidosShopify().then(async () => {
     // Baixa de estoque na hora: se algum pedido foi processado desde o ciclo anterior,
-    // a peça sai do estoque agora, não às 16h. O perfil do corte nunca dá baixa.
-    if (!ehPerfilCorte()) await baixaImediataDeProcessados().catch(() => {});
+    // a peça sai do estoque agora, não às 16h. Os perfis de oficina nunca dão baixa.
+    if (!ehPerfilOficina()) await baixaImediataDeProcessados().catch(() => {});
     crtSincronizarPrioridade().catch(() => {}); // recalcula a ordem do corte e grava se mudou
     crtArquivarConcluidas().catch(() => {});    // leva que saiu do corte vira histórico
     // crtOcupado: não redesenhar a aba CORTE enquanto ele digita o que cortou — o
     // innerHTML novo levaria junto o que ainda não foi gravado.
     if (modeloAtual === '__corte__') { if (!crtOcupado()) renderCorte(); }
+    else if (modeloAtual === '__costura__') renderCostura(); // só leitura: nada digitado para perder
     else if (modeloAtual === '__dashboard__') renderDashboard();
     else if (modeloAtual === '__confeccao__' && confLiberada()) renderConfeccao(); // atualiza os selos de etapa do catálogo
     else if (!estEditado && !prodEditado && MODELOS[modeloAtual]) renderModelo(modeloAtual); // só modelos reais; pula precos/financeiro
@@ -9109,7 +9355,7 @@ window.addEventListener('pageshow', () => sincronizarNuvem());
 // Quem manda é o cookie de sessão, não o localStorage: um aparelho que "já entrou" mas
 // está com a sessão vencida precisa ver o cadeado de novo, senão o app carrega a tela
 // toda e cada chamada de API morre em 401. O localStorage vira só um espelho do perfil,
-// que ehPerfilCorte() lê de forma síncrona durante a montagem da tela.
+// que ehPerfilCorte()/ehPerfilCostura() leem de forma síncrona durante a montagem da tela.
 (async () => {
   let perfil = null;
   try {

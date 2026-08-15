@@ -558,6 +558,11 @@ input[type=number].ci:focus {
 }
 /* o bloco do tecido em compra usa o mesmo desenho, mas em dourado: não é para cortar */
 .crt-card-compra { border-left-color: var(--gold-dark); background: rgba(196,168,130,0.06); }
+/* Aba COSTURA: a ficha do que está na máquina é azul (a cor de "Em costura" no app
+   inteiro) e o bloco do que ainda está no corte fica roxo e apagado — as três faixas da
+   tela têm que se distinguir de relance: azul = agora, roxo = depois, dourado = por último. */
+.cst-card { border-left-color: #0891b2; }
+.cst-card-corte { border-left-color: #7C3AED; background: rgba(124,58,237,0.05); }
 .crt-card-hd { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-bottom: 9px; }
 .crt-nome { font-size: 15px; font-weight: 800; letter-spacing: .01em; }
 .crt-selo { font-size: 10px; background: rgba(124,58,237,0.12); color: #7C3AED; border-radius: 4px; padding: 2px 6px; vertical-align: middle; font-weight: 700; }
@@ -619,31 +624,31 @@ input[type=number].ci:focus {
 
 /* auto (e não o fixed global): as colunas se ajustam ao campo de digitar em vez de
    espremê-lo; se não couber, quem rola é a tabela, não a página */
-#corte-lista table.crt-tab {
+.crt-lista table.crt-tab {
   table-layout: auto;
   min-width: 100%;
   font-size: 13px;
   border-collapse: collapse;
 }
-#corte-lista table.crt-tab th {
+.crt-lista table.crt-tab th {
   font-size: 11px;
   padding: 6px 5px;
   border-bottom: 2px solid var(--text);
 }
-#corte-lista table.crt-tab td {
+.crt-lista table.crt-tab td {
   font-size: 14px;
   font-weight: 600;
   padding: 5px 5px;
   border-bottom: none;
 }
 /* LINHA GROSSA entre uma cor e a outra */
-#corte-lista table.crt-tab tbody.crt-grp + tbody.crt-grp { border-top: 3px solid #4B5563; }
+.crt-lista table.crt-tab tbody.crt-grp + tbody.crt-grp { border-top: 3px solid #4B5563; }
 /* e uma linha leve separando o que foi pedido do que foi cortado, dentro da mesma cor */
-#corte-lista table.crt-tab tr.crt-lin-cut td { border-top: 1px dashed rgba(124,58,237,0.4); }
+.crt-lista table.crt-tab tr.crt-lin-cut td { border-top: 1px dashed rgba(124,58,237,0.4); }
 /* grade vertical: sem ela, com a fonte grande, o olho pula de coluna */
-#corte-lista table.crt-tab td.crt-c,
-#corte-lista table.crt-tab th + th ~ th { border-left: 1px solid var(--border); }
-#corte-lista table.crt-tab td.crt-cor {
+.crt-lista table.crt-tab td.crt-c,
+.crt-lista table.crt-tab th + th ~ th { border-left: 1px solid var(--border); }
+.crt-lista table.crt-tab td.crt-cor {
   text-align: left; vertical-align: middle;
   font-size: 14px; font-weight: 800;
   padding-right: 8px;
@@ -652,26 +657,27 @@ input[type=number].ci:focus {
    o espaço e rola de lado. A
    coluna da COR fica grudada na esquerda: ele nunca perde de vista de que cor é a linha
    que está preenchendo — que é justamente o erro caro aqui (cortar 8 da cor errada). */
-#corte-lista .crt-card table.crt-tab td.crt-cor,
-#corte-lista .crt-card table.crt-tab th:first-child {
+.crt-lista .crt-card table.crt-tab td.crt-cor,
+.crt-lista .crt-card table.crt-tab th:first-child {
   position: sticky;
   left: 0;
   z-index: 1;
   box-shadow: 1px 0 0 var(--border);
 }
-#corte-lista .crt-card table.crt-tab td.crt-cor { background: #fff; }
-#corte-lista .crt-card-compra table.crt-tab td.crt-cor { background: #FBF8F3; }
-#corte-lista .crt-card table.crt-tab th:first-child { background: var(--bg); }
-#corte-lista table.crt-tab td.crt-rot {
+.crt-lista .crt-card table.crt-tab td.crt-cor { background: #fff; }
+.crt-lista .crt-card-compra table.crt-tab td.crt-cor { background: #FBF8F3; }
+.crt-lista .cst-card-corte table.crt-tab td.crt-cor { background: #F8F5FE; }
+.crt-lista .crt-card table.crt-tab th:first-child { background: var(--bg); }
+.crt-lista table.crt-tab td.crt-rot {
   font-size: 10px; font-weight: 800; letter-spacing: .06em;
   color: var(--text-ter); text-align: left; white-space: nowrap; padding-right: 8px;
 }
-#corte-lista table.crt-tab td.crt-rot-cut { color: #7C3AED; }
-#corte-lista table.crt-tab td.crt-cores { text-align: left; font-size: 12px; font-weight: 500; color: var(--text-sec); }
-#corte-lista table.crt-tab td.crt-zero { color: var(--text-ter); font-weight: 400; }
-#corte-lista table.crt-tab td.crt-tot { font-weight: 800; }
-#corte-lista table.crt-tab td.crt-cel { padding: 3px 2px; }
-#corte-lista table.crt-tab tr:hover td { background: transparent; }
+.crt-lista table.crt-tab td.crt-rot-cut { color: #7C3AED; }
+.crt-lista table.crt-tab td.crt-cores { text-align: left; font-size: 12px; font-weight: 500; color: var(--text-sec); }
+.crt-lista table.crt-tab td.crt-zero { color: var(--text-ter); font-weight: 400; }
+.crt-lista table.crt-tab td.crt-tot { font-weight: 800; }
+.crt-lista table.crt-tab td.crt-cel { padding: 3px 2px; }
+.crt-lista table.crt-tab tr:hover td { background: transparent; }
 
 /* Campo "CORTOU" (o que saiu de fato da mesa). Sem caixa desenhada: quem avisa que é para
    preencher é a frase no alto da ficha e o rótulo CORTOU da própria linha — a moldura roxa
@@ -1048,10 +1054,10 @@ select:focus, input:not(.ci):focus { outline: none; border-color: var(--gold); b
   /* No celular a ficha do corte NÃO encolhe junto com o resto: ela é usada justamente aí.
      Se não couber, a tabela rola de lado — melhor rolar do que ler número miúdo. */
   input[type=number].crt-in { width: 44px !important; max-width: 44px !important; font-size: 16px !important; }
-  #corte-lista table.crt-tab { font-size: 13px; }
-  #corte-lista table.crt-tab td { font-size: 14px; padding: 5px 4px; }
-  #corte-lista table.crt-tab td.crt-cor { font-size: 14px; }
-  #corte-lista table.crt-tab th { font-size: 11px; padding: 5px 4px; }
+  .crt-lista table.crt-tab { font-size: 13px; }
+  .crt-lista table.crt-tab td { font-size: 14px; padding: 5px 4px; }
+  .crt-lista table.crt-tab td.crt-cor { font-size: 14px; }
+  .crt-lista table.crt-tab th { font-size: 11px; padding: 5px 4px; }
 
   /* Tecido grid */
   .tecido-grid { grid-template-columns: repeat(2, 1fr); gap: 8px; }
