@@ -5234,6 +5234,7 @@ function renderCostura() {
   const corteEl = document.getElementById('costura-corte');
   if (corteEl) corteEl.innerHTML = blocoCorte + blocoCompra;
   renderFaturamento(); // card do dinheiro dela, logo abaixo do que vem por aí
+  renderAviamentos();  // lista manual de zíper/elástico/linha a comprar, logo abaixo dele
 
   el.innerHTML = levas.length ? '<div class="crt-grid">' + fichas + '</div>' : vazio;
 }
@@ -5322,6 +5323,11 @@ function cstFatEntregar(d, id, ant, agora) {
 
 async function cstFatSincronizar() {
   if (ehPerfilOficina()) return; // o aparelho da costureira só lê
+  // Recarrega os modelos da nuvem ANTES de olhar quem está em costura: um local desatualizado
+  // no meio da sessão (troca de aba, celular voltando do fundo) fazia uma leva que continuava
+  // na máquina sumir do retrato por um instante e virar "entregue" por engano — em massa, porque
+  // várias levas caem juntas nesse mesmo instante desatualizado.
+  await carregarTodosNuvem();
   const atuais = cstFatAbertasAgora();
   if (!cstFatAplicar(cstFatTudo(), atuais, new Date().toISOString())) return; // nada mudou: não toca na nuvem
 
@@ -5486,6 +5492,126 @@ function renderFaturamento() {
   // Sem valor ao lado do título (pedido da Bárbara, 15/08): os dois números que importam já
   // estão na frase logo abaixo, e repetir um deles em cima só enchia o topo.
   el.innerHTML = avisoCardHTML('ti-cash', 'FATURAMENTO DA COSTURA', '', frase, corpo, '', '#0f766e');
+}
+
+// ─── AVIAMENTOS A COMPRAR ─────────────────────────────────────────────────────
+// Lista manual (zíper, elástico, linha, etiqueta…) que a dona cadastra e risca conforme
+// compra. Mora na aba COSTURA — é o aviso de "isso ainda falta chegar" pra quem monta a
+// peça — e é card fechado, no mesmo formato do faturamento, logo abaixo dele.
+//
+// Cadastrar, marcar comprado, editar a data de entrega e remover são só da DONA
+// (ehPerfilOficina() sai fora, igual ao resto da oficina); cortador e costureira só leem.
+const AVM_KEY = 'costura-aviamentos';
+
+function avmTudo() {
+  const d = loadLocal('vc:' + AVM_KEY);
+  return { itens: (d && Array.isArray(d.itens)) ? d.itens : [] };
+}
+
+// Lê a nuvem antes de gravar, igual ao faturamento — nunca escreve por cima às cegas.
+async function avmGravar(mutar) {
+  if (ehPerfilOficina()) return;
+  const nuvem = await carregarNuvem(AVM_KEY);
+  if (nuvem === undefined) { alert('Sem conexão com a nuvem — tente de novo em instantes.'); return; }
+  const d = { itens: (nuvem && Array.isArray(nuvem.itens)) ? nuvem.itens.slice() : [] };
+  mutar(d);
+  d.updated_at = new Date().toISOString();
+  saveLocal('vc:' + AVM_KEY, d);
+  await salvarNuvem(AVM_KEY, d);
+  renderAviamentos();
+}
+
+async function avmAdicionar() {
+  const input = document.getElementById('avm-novo-nome');
+  const nome = (input?.value || '').trim();
+  if (!nome) return;
+  if (input) input.value = '';
+  await avmGravar(d => {
+    d.itens.unshift({
+      id: Date.now() + '-' + Math.random().toString(36).slice(2, 7),
+      nome, comprado: false, data_entrega: '', criado_em: new Date().toISOString(),
+    });
+  });
+}
+
+async function avmComprado(id, valor) {
+  await avmGravar(d => {
+    const it = d.itens.find(i => i.id === id);
+    if (!it) return;
+    it.comprado = valor;
+    it.comprado_em = valor ? new Date().toISOString() : '';
+  });
+}
+
+async function avmData(id, valor) {
+  await avmGravar(d => {
+    const it = d.itens.find(i => i.id === id);
+    if (it) it.data_entrega = valor || '';
+  });
+}
+
+async function avmRemover(id) {
+  if (!confirm('Remover este aviamento da lista?')) return;
+  await avmGravar(d => { d.itens = d.itens.filter(i => i.id !== id); });
+}
+
+function renderAviamentos() {
+  const el = document.getElementById('aviamentos-lista');
+  if (!el) return;
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c]));
+  const dia = iso => iso ? new Date(iso).toLocaleDateString('pt-BR') : '—';
+  const podeEditar = !ehPerfilOficina();
+
+  const d = avmTudo();
+  // Sem nada pra ver e sem como editar, o card só ocupava tela à toa pra quem só lê.
+  if (!podeEditar && d.itens.length === 0) { el.innerHTML = ''; return; }
+
+  const pendentes = d.itens.filter(i => !i.comprado)
+    .sort((a, b) => (a.data_entrega || '9999-99-99').localeCompare(b.data_entrega || '9999-99-99'));
+  const comprados = d.itens.filter(i => i.comprado)
+    .sort((a, b) => String(b.comprado_em).localeCompare(String(a.comprado_em)));
+
+  const linha = it => `
+    <div class="fat-lin">
+      <div>
+        <div class="fat-nome">${esc(it.nome)}</div>
+        <div class="fat-sub">
+          ${it.comprado
+            ? `comprado em ${dia(it.comprado_em)}`
+            : (podeEditar
+                ? `<label style="display:inline-flex;align-items:center;gap:5px;cursor:pointer">entrega
+                     <input type="date" value="${esc(it.data_entrega || '')}" style="font-size:12px;padding:2px 6px"
+                       onchange="avmData('${esc(it.id)}', this.value)"></label>`
+                : (it.data_entrega ? `entrega prevista ${dia(it.data_entrega + 'T12:00:00')}` : 'sem data de entrega ainda'))}
+        </div>
+      </div>
+      ${podeEditar ? `
+        <div class="fat-acao">
+          ${it.comprado
+            ? `<button class="btn-outline" style="font-size:11px;padding:4px 9px" onclick="avmComprado('${esc(it.id)}', false)" title="Marquei comprado sem querer">desfazer</button>`
+            : `<button class="btn-outline" style="font-size:11px;padding:4px 9px" onclick="avmComprado('${esc(it.id)}', true)"><i class="ti ti-check"></i> comprado</button>`}
+          <button class="btn-outline" style="font-size:11px;padding:4px 9px" onclick="avmRemover('${esc(it.id)}')" title="Remover"><i class="ti ti-trash"></i></button>
+        </div>` : ''}
+    </div>`;
+
+  const corpo =
+    (podeEditar ? `
+      <div style="display:flex;gap:8px;margin-bottom:10px">
+        <input id="avm-novo-nome" type="text" placeholder="nome do aviamento" style="flex:1"
+          onkeydown="if(event.key==='Enter') avmAdicionar()">
+        <button class="btn-primary" style="font-size:12px;padding:7px 13px" onclick="avmAdicionar()">adicionar</button>
+      </div>` : '')
+    + (pendentes.length ? pendentes.map(linha).join('') : '<div class="fat-vazio">Nada pendente de compra. 👍</div>')
+    + (comprados.length ? `
+      <div class="fat-bloco">
+        <div class="fat-hd"><span class="fat-tit" style="color:#16a34a"><i class="ti ti-checkbox"></i> JÁ COMPRADO</span></div>
+        ${comprados.map(linha).join('')}
+      </div>` : '');
+
+  el.innerHTML = avisoCardHTML('ti-shopping-bag', 'AVIAMENTOS A COMPRAR',
+    pendentes.length ? `${pendentes.length} pendente${pendentes.length > 1 ? 's' : ''}` : '',
+    'Zíper, elástico, linha e outros aviamentos que faltam chegar antes de montar a peça.',
+    corpo, '', '#B45309');
 }
 
 // ─── O QUE FOI REALMENTE CORTADO ─────────────────────────────────────────────

@@ -93,6 +93,9 @@ ok('modelo sem valor cadastrado devolve 0 (a tela avisa)', F.flxCustoModelo(pc, 
 console.log('\n7) A costureira só LÊ; e nada vai para o Fluxo de Caixa');
 ok('sincronização só roda no app da dona',
    /async function cstFatSincronizar\(\) \{\s*\r?\n\s*if \(ehPerfilOficina\(\)\) return;/.test(main), true);
+ok('e recarrega os modelos da nuvem antes de decidir quem saiu da costura (local desatualizado '
+   + 'não pode virar "entregue" em massa por engano)',
+   /if \(ehPerfilOficina\(\)\) return;[\s\S]{0,400}await carregarTodosNuvem\(\);\s*\r?\n\s*const atuais = cstFatAbertasAgora\(\);/.test(main), true);
 ok('marcar pago também tem a trava de perfil',
    /async function cstFatPagar\([^)]*\) \{\s*\r?\n\s*if \(ehPerfilOficina\(\)\) return;/.test(main), true);
 ok('e o botão "pago" nem é desenhado para ela',
