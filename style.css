@@ -548,46 +548,48 @@ input[type=number].ci:focus {
 }
 .crt-grid .crt-card { margin-bottom: 0; }
 
+/* A cor da etapa contorna o card INTEIRO (era faixa de 4px só na esquerda até 15/08):
+   quem lê em pé, de longe, separa um card do outro pelo retângulo colorido. */
 .crt-card {
-  border: 1px solid var(--border);
-  border-left: 4px solid #7C3AED;
+  border: 1.5px solid #7C3AED;
   border-radius: 8px;
   padding: 11px 13px;
   margin-bottom: 12px;
   min-width: 0; /* sem isso a tabela larga estica a coluna do grid em vez de rolar */
 }
-/* o bloco do tecido em compra usa o mesmo desenho, mas em dourado: não é para cortar */
-.crt-card-compra { border-left-color: var(--gold-dark); background: rgba(196,168,130,0.06); }
-/* Aba COSTURA: a ficha do que está na máquina é azul (a cor de "Em costura" no app
-   inteiro) e o bloco do que ainda está no corte fica roxo e apagado — as três faixas da
-   tela têm que se distinguir de relance: azul = agora, roxo = depois, dourado = por último. */
-/* Na aba COSTURA a cor da etapa contorna o card INTEIRO, e não como faixa em um lado só:
-   ela lê a tela em pé, de longe, e o retângulo colorido separa um card do outro sozinho. */
+/* Aba COSTURA: a ficha do que está na máquina é azul — a cor de "Em costura" no app inteiro
+   (no corte, o mesmo card é roxo). */
 .cst-card { border: 1.5px solid #0891b2; }
 /* As duas etapas que ainda não são dela (no corte, comprando tecido) usam este card: fechado
    mostra título, total e a FRASE que diz o que ele é — a frase mora dentro do <summary> de
    propósito, senão o card fechado seria só um número solto. Abre no toque, e aí sai a lista
    de nome + total, uma linha por item. */
-.cst-corte { border: 1.5px solid #7C3AED; }
-.cst-corte-sum {
+.aviso-card { border: 1.5px solid #7C3AED; }
+.aviso-sum {
   display: block; list-style: none; cursor: pointer; user-select: none;
   padding: 2px 0; /* alvo de toque folgado no celular */
 }
-.cst-corte-sum::-webkit-details-marker { display: none; }
-.cst-corte-sum-hd { display: flex; align-items: center; gap: 10px; }
-.cst-corte-seta { margin-left: auto; color: #7C3AED; font-size: 18px; transition: transform .15s; }
-.cst-corte[open] .cst-corte-seta { transform: rotate(180deg); }
-.cst-mini-tit { font-size: 12px; font-weight: 800; letter-spacing: .06em; color: #7C3AED; }
-.cst-mini-tot { font-size: 14px; font-weight: 800; color: #7C3AED; white-space: nowrap; }
-.cst-mini-txt { font-size: 12px; color: var(--text-sec); margin-top: 4px; }
-.cst-corte-lista { margin-top: 10px; border-top: 1px solid var(--border); }
-.cst-corte-lin {
+.aviso-sum::-webkit-details-marker { display: none; }
+.aviso-sum-hd { display: flex; align-items: center; gap: 10px; }
+/* "ver mais" ao lado da seta: a setinha sozinha não diz que ali abre alguma coisa. Vira
+   "ver menos" com o card aberto — os dois textos estão no HTML e o CSS mostra o certo. */
+.aviso-ver { margin-left: auto; font-size: 12px; font-weight: 700; color: #7C3AED; white-space: nowrap; }
+.aviso-ver-menos { display: none; }
+.aviso-card[open] .aviso-ver-mais { display: none; }
+.aviso-card[open] .aviso-ver-menos { display: inline; }
+.aviso-seta { color: #7C3AED; font-size: 18px; transition: transform .15s; }
+.aviso-card[open] .aviso-seta { transform: rotate(180deg); }
+.aviso-tit { font-size: 12px; font-weight: 800; letter-spacing: .06em; color: #7C3AED; }
+.aviso-tot { font-size: 14px; font-weight: 800; color: #7C3AED; white-space: nowrap; }
+.aviso-txt { font-size: 12px; color: var(--text-sec); margin-top: 4px; }
+.aviso-lista { margin-top: 10px; border-top: 1px solid var(--border); }
+.aviso-lin {
   display: flex; align-items: baseline; justify-content: space-between; gap: 12px;
   padding: 8px 0; border-bottom: 1px solid var(--border);
 }
-.cst-corte-lin:last-child { border-bottom: none; }
-.cst-corte-nome { font-size: 14px; font-weight: 700; }
-.cst-corte-tot { font-size: 13px; font-weight: 800; color: var(--text-sec); white-space: nowrap; }
+.aviso-lin:last-child { border-bottom: none; }
+.aviso-nome { font-size: 14px; font-weight: 700; }
+.aviso-item-tot { font-size: 13px; font-weight: 800; color: var(--text-sec); white-space: nowrap; }
 .crt-card-hd { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-bottom: 9px; }
 .crt-nome { font-size: 15px; font-weight: 800; letter-spacing: .01em; }
 .crt-selo { font-size: 10px; background: rgba(124,58,237,0.12); color: #7C3AED; border-radius: 4px; padding: 2px 6px; vertical-align: middle; font-weight: 700; }
@@ -640,7 +642,7 @@ input[type=number].ci:focus {
 }
 
 /* Registro do que já foi cortado */
-.crt-card-hist { border-left-color: #16a34a; }
+.crt-card-hist { border-color: #16a34a; }
 .crt-hist { border-top: 1px solid var(--border); padding: 7px 0; }
 .crt-hist summary {
   cursor: pointer; font-size: 13px; display: flex; align-items: baseline;
@@ -693,7 +695,6 @@ input[type=number].ci:focus {
   box-shadow: 1px 0 0 var(--border);
 }
 .crt-lista .crt-card table.crt-tab td.crt-cor { background: var(--surface); }
-.crt-lista .crt-card-compra table.crt-tab td.crt-cor { background: #FBF8F3; }
 .crt-lista .crt-card table.crt-tab th:first-child { background: var(--bg); }
 .crt-lista table.crt-tab td.crt-rot {
   font-size: 10px; font-weight: 800; letter-spacing: .06em;

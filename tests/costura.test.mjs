@@ -125,7 +125,8 @@ new Function(
   'MODELOS', 'CONJUNTO_PECAS', 'loadLocal', 'tamanhosDe', 'document',
   'crtPrioridade', 'crtPrioridadeDe', 'crtMotivoHTML', 'crtRegistro', 'crtTotalDe',
   'comprandoTecidoConsolidado',
-  extrair('cstLevasDe') + '\n' + extrair('renderCostura') + '; renderCostura();'
+  extrair('avisoLinhaHTML') + '\n' + extrair('avisoCardHTML') + '\n'
+    + extrair('cstLevasDe') + '\n' + extrair('renderCostura') + '; renderCostura();'
 )(MODELOS, { 'conj-boho': [] },
   k => salvos[k.replace('vc:', '')] || null,
   def => def.tamanhos || ['PP', 'P', 'M', 'G', 'GG'],
@@ -145,14 +146,14 @@ ok('os dois avisos saem do card das fichas e vão para o elemento de cima',
 ok('o corte vem antes do tecido em compra (a fila que ela enxerga)',
    avisos.indexOf('VEM POR AÍ') < avisos.indexOf('COMPRANDO TECIDO'), true);
 ok('são dois <details> fechados, no mesmo formato',
-   (avisos.match(/<details class="card cst-corte">/g) || []).length, 2);
+   (avisos.match(/<details class="card aviso-card">/g) || []).length, 2);
 ok('nenhum deles abre sozinho', /<details[^>]*\bopen\b/.test(avisos), false);
 ok('fechado já mostra o total de peças de cada etapa',
-   [/cst-mini-tot">5 peças/.test(avisos), /cst-mini-tot">10 peças/.test(avisos)], [true, true]);
+   [/aviso-tot">5 peças/.test(avisos), /aviso-tot">10 peças/.test(avisos)], [true, true]);
 ok('e a frase fica VISÍVEL antes do toque — dentro do <summary>',
    /<summary[\s\S]*?É o que está na mesa do corte, já com o tecido comprado\.[\s\S]*?<\/summary>/.test(avisos), true);
 ok('aberto, só nome e total: sem grade de tamanho',
-   /cst-corte-lin[\s\S]*?Saia Midi[\s\S]*?5 peças/.test(avisos) && !/<table/.test(avisos), true);
+   /aviso-lin[\s\S]*?Saia Midi[\s\S]*?5 peças/.test(avisos) && !/<table/.test(avisos), true);
 ok('a 2ª leva aparece marcada como 2ª', /Saia Midi <span class="crt-selo">2ª LEVA<\/span>/.test(avisos), true);
 ok('o card de baixo fica só com as fichas', /TECIDO SENDO COMPRADO|VEM POR AÍ/.test(html), false);
 ok('a ficha traz a cor e a quantidade por tamanho', /Areia[\s\S]*?>1</.test(html), true);
@@ -170,6 +171,16 @@ ok('sem "Em costura" na ficha (a aba inteira é costura)', /Em costura/.test(fic
 ok('sem o nome do tecido', /Alfaiataria/.test(fichaSaia), false);
 ok('sem a palavra "entrega"', /entrega/i.test(fichaSaia), false);
 ok('mas com os dias na etapa e a data de entrega', /há 3 dias · 20\/08\/2026/.test(fichaSaia), true);
+
+console.log('\n7) O card de aviso é UM só, servindo as duas abas de oficina');
+ok('tem "ver mais" ao lado da seta — setinha sozinha não convida a tocar',
+   /aviso-ver-mais">ver mais<[\s\S]*?aviso-ver-menos">ver menos</.test(avisos), true);
+ok('e o CSS troca o texto quando abre',
+   /\.aviso-card\[open\] \.aviso-ver-mais \{[^}]*display: none/.test(readFileSync(join(raiz, 'style.css'), 'utf8')), true);
+ok('a aba CORTE monta o tecido em compra pelo MESMO card (nada de dois desenhos)',
+   /function renderCorte\(\)[\s\S]*?const blocoCompra = compra\.length === 0 \? '' : avisoCardHTML\(/.test(main), true);
+ok('e a Ficha total continua lá, fora do <summary> (senão o botão abriria o card)',
+   /avisoCardHTML\([\s\S]*?gerarFichaCorteTotal\(\)/.test(main), true);
 
 console.log(falhas ? `\n✗ ${total - falhas}/${total} passaram` : `\n✓ ${total}/${total} passaram`);
 process.exit(falhas ? 1 : 0);

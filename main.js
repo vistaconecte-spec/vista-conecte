@@ -4871,6 +4871,40 @@ function abrirCorte(item) {
   closeSidebar();
 }
 
+// ─── CARD DE AVISO (etapa que ainda não é minha) ─────────────────────────────
+// Usado pelas DUAS abas de oficina: no corte, o tecido que está sendo comprado; na costura,
+// o que está na mesa de corte e o tecido em compra. Fechado mostra título, total e a frase
+// que explica o card — a frase fica dentro do <summary> de propósito: fechado, sem ela, o
+// card é um número sem contexto. "Ver mais" ao lado da seta porque nem todo mundo entende
+// que a setinha sozinha abre alguma coisa.
+//
+// Abrindo, sai UMA LINHA por item (nome + total), sem grade de tamanho: grade é ficha de
+// trabalho, e isto aqui é aviso do que vem por aí.
+function avisoLinhaHTML(nome, selo, total) {
+  return `
+    <div class="aviso-lin">
+      <span class="aviso-nome">${nome}${selo}</span>
+      <span class="aviso-item-tot">${total} ${total === 1 ? 'peça' : 'peças'}</span>
+    </div>`;
+}
+
+function avisoCardHTML(icone, titulo, total, frase, linhas, extra) {
+  return `
+    <details class="card aviso-card">
+      <summary class="aviso-sum">
+        <div class="aviso-sum-hd">
+          <span class="aviso-tit"><i class="ti ${icone}"></i> ${titulo}</span>
+          <span class="aviso-tot">${total} ${total === 1 ? 'peça' : 'peças'}</span>
+          <span class="aviso-ver"><span class="aviso-ver-mais">ver mais</span><span class="aviso-ver-menos">ver menos</span></span>
+          <i class="ti ti-chevron-down aviso-seta"></i>
+        </div>
+        <div class="aviso-txt">${frase}</div>
+      </summary>
+      <div class="aviso-lista">${linhas}</div>
+      ${extra || ''}
+    </details>`;
+}
+
 function renderCorte() {
   const el    = document.getElementById('corte-lista');
   const totEl = document.getElementById('corte-total');
@@ -4931,35 +4965,18 @@ function renderCorte() {
       : (compra.length ? 'nada para cortar ainda' : '');
   }
 
-  const blocoCompra = compra.length === 0 ? '' : `
-    <div class="crt-card crt-card-compra">
-      <div class="crt-card-hd">
-        <div>
-          <div class="crt-nome"><i class="ti ti-shopping-cart"></i> TECIDO SENDO COMPRADO</div>
-          <div class="crt-meta">Ainda não é para cortar — é o total que vem por aí</div>
-        </div>
-        <div style="display:flex;align-items:center;gap:10px">
-          <div class="crt-big">${compraPecas}<span> ${compraPecas === 1 ? 'peça' : 'peças'} · ${nMetros(compraMetros)}m</span></div>
-          <button class="btn-outline" style="font-size:12px;padding:7px 13px" onclick="gerarFichaCorteTotal()">
-            <i class="ti ti-file-text"></i> Ficha total
-          </button>
-        </div>
-      </div>
-      <div style="overflow-x:auto">
-        <table class="crt-tab">
-          <thead><tr><th style="text-align:left">Tecido</th><th style="text-align:left">Cores</th><th>Peças</th><th>Metros</th></tr></thead>
-          <tbody class="crt-grp">
-            ${compra.map(g => `
-              <tr>
-                <td class="crt-cor">${esc(g.tecido)}</td>
-                <td class="crt-cores">${esc(g.cores.map(c => c.cor).join(' · '))}</td>
-                <td class="crt-c crt-tot">${g.pecas}</td>
-                <td class="crt-c crt-tot" style="text-align:right">${nMetros(g.metros)}m</td>
-              </tr>`).join('')}
-          </tbody>
-        </table>
-      </div>
-    </div>`;
+  // Mesmo card de aviso da aba COSTURA (15/08): fechado, mostrando total e frase, abrindo em
+  // uma linha por tecido. A Ficha total continua aqui dentro — é o papel que ele leva para a
+  // compra —, mas fora do <summary>, senão o clique no botão abriria e fecharia o card.
+  const blocoCompra = compra.length === 0 ? '' : avisoCardHTML(
+    'ti-shopping-cart', 'TECIDO SENDO COMPRADO', compraPecas,
+    `Ainda não é para cortar — é o que vem por aí. ${nMetros(compraMetros)}m no total.`,
+    compra.map(g => avisoLinhaHTML(esc(g.tecido), '', g.pecas)).join(''),
+    `<div style="margin-top:10px">
+       <button class="btn-outline" style="font-size:11px;padding:5px 10px" onclick="gerarFichaCorteTotal()">
+         <i class="ti ti-file-text"></i> Ficha total
+       </button>
+     </div>`);
 
   if (levas.length === 0) {
     el.innerHTML = blocoCompra + '<div style="font-size:14px;color:var(--text-ter);padding:10px 0">'
@@ -5193,41 +5210,18 @@ function renderCostura() {
         : 'Nenhuma ficha para costurar no momento. 👍')
     + '</div>';
 
-  // As duas etapas que ainda NÃO são dela viram dois cards iguais no topo, fechados: título,
-  // total e a frase que explica o card — a frase fica no summary, VISÍVEL antes do toque,
-  // senão o card fechado é só um número sem contexto. Abrindo, sai a lista de uma linha por
-  // item, nome e total, sem grade de tamanho: a grade é da ficha dela, aqui é só aviso.
-  const linhaAviso = (nome, selo, total) => `
-    <div class="cst-corte-lin">
-      <span class="cst-corte-nome">${nome}${selo}</span>
-      <span class="cst-corte-tot">${total} ${total === 1 ? 'peça' : 'peças'}</span>
-    </div>`;
-
-  const cardAviso = (icone, titulo, total, frase, linhas) => `
-    <details class="card cst-corte">
-      <summary class="cst-corte-sum">
-        <div class="cst-corte-sum-hd">
-          <span class="cst-mini-tit"><i class="ti ${icone}"></i> ${titulo}</span>
-          <span class="cst-mini-tot">${total} ${total === 1 ? 'peça' : 'peças'}</span>
-          <i class="ti ti-chevron-down cst-corte-seta"></i>
-        </div>
-        <div class="cst-mini-txt">${frase}</div>
-      </summary>
-      <div class="cst-corte-lista">${linhas}</div>
-    </details>`;
-
   const cortePecas = emCorte.reduce((s, l) => s + l.total, 0);
-  const blocoCorte = emCorte.length === 0 ? '' : cardAviso(
+  const blocoCorte = emCorte.length === 0 ? '' : avisoCardHTML(
     'ti-scissors', 'VEM POR AÍ — NO CORTE', cortePecas,
     'É o que está na mesa do corte, já com o tecido comprado.',
-    emCorte.map(l => linhaAviso(esc(l.nome), l.leva === 2 ? ' <span class="crt-selo">2ª LEVA</span>' : '', l.total)).join(''));
+    emCorte.map(l => avisoLinhaHTML(esc(l.nome), l.leva === 2 ? ' <span class="crt-selo">2ª LEVA</span>' : '', l.total)).join(''));
 
   // Mesmo formato do card do corte — é a etapa anterior a ele, e ler as duas do mesmo jeito
   // é o que deixa a fila óbvia: comprando tecido → no corte → na minha máquina.
-  const blocoCompra = compra.length === 0 ? '' : cardAviso(
+  const blocoCompra = compra.length === 0 ? '' : avisoCardHTML(
     'ti-shopping-cart', 'COMPRANDO TECIDO', compraPecas,
     `Ainda nem foi cortado — vem depois do corte. ${nMetros(compraMetros)}m no total.`,
-    compra.map(g => linhaAviso(esc(g.tecido), '', g.pecas)).join(''));
+    compra.map(g => avisoLinhaHTML(esc(g.tecido), '', g.pecas)).join(''));
 
   // Os dois cards de aviso moram FORA do card das fichas (elemento próprio no index.html):
   // no mesmo innerHTML eles apareciam colados no texto das fichas.
