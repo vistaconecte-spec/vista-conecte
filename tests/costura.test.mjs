@@ -116,7 +116,11 @@ ok('a aba é só leitura: nada nela grava na nuvem',
 console.log('\n5) A tela montada — as três faixas, na ordem');
 // renderCostura roda fora do navegador com um DOM de mentira: o que interessa é o HTML
 // que ela escreve. Sem isto, um erro de digitação no template só apareceria na mesa dela.
-const els = { 'costura-lista': { innerHTML: '' }, 'costura-total': { textContent: '' } };
+const els = {
+  'costura-corte': { innerHTML: '' },   // card próprio, ACIMA do card das fichas
+  'costura-lista': { innerHTML: '' },
+  'costura-total': { textContent: '' },
+};
 new Function(
   'MODELOS', 'CONJUNTO_PECAS', 'loadLocal', 'tamanhosDe', 'document',
   'crtPrioridade', 'crtPrioridadeDe', 'crtMotivoHTML', 'crtRegistro', 'crtTotalDe',
@@ -133,19 +137,24 @@ new Function(
   cores => Object.values(cores).reduce((s, a) => s + a.reduce((x, y) => x + y, 0), 0),
   () => [{ tecido: 'Viscolycra', cores: [{ cor: 'Marsala' }], pecas: 10, metros: 12.5 }]);
 
-const html = els['costura-lista'].innerHTML;
-ok('o aviso do corte vem no topo, antes das fichas', html.indexOf('VEM POR AÍ') < html.indexOf('Saia Midi'), true);
-const cardCorte = html.slice(html.indexOf('cst-card-corte'), html.indexOf('crt-grid'));
-ok('e é um card pequeno (cst-mini)', /cst-mini/.test(cardCorte), true);
-ok('sem tabela dentro dele — é uma tira de nomes', /<table/.test(cardCorte), false);
+const html  = els['costura-lista'].innerHTML;
+const corteHtml = els['costura-corte'].innerHTML;
+ok('o corte sai do card das fichas e vai para o elemento de cima',
+   [corteHtml.includes('VEM POR AÍ'), html.includes('VEM POR AÍ')], [true, false]);
+ok('é um <details>: chega fechado e abre no toque',
+   /^\s*<details class="card cst-corte">/.test(corteHtml) && !/\bopen\b/.test(corteHtml.slice(0, 60)), true);
+ok('fechado mostra o total de peças na mesa', /cst-mini-tot">5 peças/.test(corteHtml), true);
+ok('aberto mostra os modelos com as quantidades por tamanho',
+   /cst-corte-mod[\s\S]*?<table[\s\S]*?Preto/.test(corteHtml), true);
 ok('a frase do card é a que ela pediu',
-   html.includes('É o que está na mesa do corte, já com o tecido comprado.'), true);
-ok('o tecido em compra fica por último', html.indexOf('Saia Midi') < html.indexOf('TECIDO SENDO COMPRADO'), true);
+   corteHtml.includes('É o que está na mesa do corte, já com o tecido comprado.'), true);
+ok('a 2ª leva aparece marcada como 2ª', /Saia Midi <span class="crt-selo">2ª LEVA<\/span>/.test(corteHtml), true);
+ok('e mostra o que o cortador já anotou ter cortado', /já cortadas?<\/span>/.test(corteHtml), true);
+ok('o card das fichas fica só com ficha e tecido em compra',
+   html.indexOf('Saia Midi') < html.indexOf('TECIDO SENDO COMPRADO'), true);
 ok('a ficha traz a cor e a quantidade por tamanho', /Areia[\s\S]*?>1</.test(html), true);
-ok('a 2ª leva no corte aparece marcada como 2ª', /Saia Midi <span class="crt-selo">2ª<\/span>/.test(html), true);
-ok('e mostra o que o cortador já anotou ter cortado', /já cortadas?<\/span>/.test(html), true);
 ok('o cabeçalho conta as fichas e as peças', els['costura-total'].textContent, '2 fichas · 12 peças');
-ok('sem campo de digitar: a aba não tem input nenhum', /<input/.test(html), false);
+ok('sem campo de digitar: a aba não tem input nenhum', /<input/.test(html + corteHtml), false);
 
 // Pedido da Bárbara em 15/08: a linha embaixo do nome ficou só com o tempo e a data.
 console.log('\n6) A ficha não repete o óbvio');

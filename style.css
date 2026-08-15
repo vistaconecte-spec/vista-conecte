@@ -562,21 +562,24 @@ input[type=number].ci:focus {
    inteiro) e o bloco do que ainda está no corte fica roxo e apagado — as três faixas da
    tela têm que se distinguir de relance: azul = agora, roxo = depois, dourado = por último. */
 .cst-card { border-left-color: #0891b2; }
-.cst-card-corte { border-left-color: #7C3AED; background: rgba(124,58,237,0.05); }
-/* O que está no corte é AVISO, não trabalho: card baixo, uma tira de nomes, sem tabela —
-   não pode competir com a ficha que ela tem para fazer agora. */
-.cst-mini { padding: 9px 12px; margin-bottom: 16px; }
-.cst-mini-hd { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+/* O que está no corte é AVISO, não trabalho: card próprio no topo, fechado, mostrando só o
+   título e o total. Abre no toque — no celular é a área que ela aperta para ver quais
+   modelos e quantas de cada tamanho estão na mesa. */
+.cst-corte { border-left: 3px solid #7C3AED; }
+.cst-corte-sum {
+  display: flex; align-items: center; gap: 10px;
+  list-style: none; cursor: pointer; user-select: none;
+  padding: 2px 0; /* alvo de toque folgado no celular */
+}
+.cst-corte-sum::-webkit-details-marker { display: none; }
+.cst-corte-seta { margin-left: auto; color: #7C3AED; font-size: 18px; transition: transform .15s; }
+.cst-corte[open] .cst-corte-seta { transform: rotate(180deg); }
 .cst-mini-tit { font-size: 12px; font-weight: 800; letter-spacing: .06em; color: #7C3AED; }
 .cst-mini-tot { font-size: 14px; font-weight: 800; color: #7C3AED; white-space: nowrap; }
-.cst-mini-txt { font-size: 12px; color: var(--text-sec); margin-top: 2px; }
-.cst-mini-itens { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
-.cst-chip {
-  font-size: 12px; color: var(--text-sec);
-  background: var(--surface); border: 1px solid var(--border); border-radius: 6px;
-  padding: 4px 9px; white-space: nowrap;
-}
-.cst-chip b { font-weight: 700; color: var(--text); }
+.cst-mini-txt { font-size: 12px; color: var(--text-sec); margin-top: 6px; }
+.cst-corte-mod { margin-top: 12px; }
+.cst-corte-nome { font-size: 14px; font-weight: 800; margin-bottom: 5px; }
+.cst-corte-tot { font-size: 12px; font-weight: 600; color: var(--text-sec); margin-left: 6px; }
 .cst-chip-cut { color: #7C3AED; font-weight: 700; }
 .crt-card-hd { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-bottom: 9px; }
 .crt-nome { font-size: 15px; font-weight: 800; letter-spacing: .01em; }
@@ -673,16 +676,19 @@ input[type=number].ci:focus {
    coluna da COR fica grudada na esquerda: ele nunca perde de vista de que cor é a linha
    que está preenchendo — que é justamente o erro caro aqui (cortar 8 da cor errada). */
 .crt-lista .crt-card table.crt-tab td.crt-cor,
-.crt-lista .crt-card table.crt-tab th:first-child {
+.crt-lista .cst-corte table.crt-tab td.crt-cor,
+.crt-lista .crt-card table.crt-tab th:first-child,
+.crt-lista .cst-corte table.crt-tab th:first-child {
   position: sticky;
   left: 0;
   z-index: 1;
   box-shadow: 1px 0 0 var(--border);
 }
-.crt-lista .crt-card table.crt-tab td.crt-cor { background: #fff; }
+.crt-lista .crt-card table.crt-tab td.crt-cor,
+.crt-lista .cst-corte table.crt-tab td.crt-cor { background: var(--surface); }
 .crt-lista .crt-card-compra table.crt-tab td.crt-cor { background: #FBF8F3; }
-.crt-lista .cst-card-corte table.crt-tab td.crt-cor { background: #F8F5FE; }
-.crt-lista .crt-card table.crt-tab th:first-child { background: var(--bg); }
+.crt-lista .crt-card table.crt-tab th:first-child,
+.crt-lista .cst-corte table.crt-tab th:first-child { background: var(--bg); }
 .crt-lista table.crt-tab td.crt-rot {
   font-size: 10px; font-weight: 800; letter-spacing: .06em;
   color: var(--text-ter); text-align: left; white-space: nowrap; padding-right: 8px;

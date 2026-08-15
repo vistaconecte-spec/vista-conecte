@@ -5196,25 +5196,44 @@ function renderCostura() {
         : 'Nenhuma ficha para costurar no momento. 👍')
     + '</div>';
 
-  // O que está no corte é AVISO, não trabalho: fica num card pequeno no topo, uma linha por
-  // modelo, sem tabela de tamanho. Era um bloco grande embaixo das fichas até 15/08 e
-  // competia com o que ela tem para fazer agora.
+  // O que está no corte é AVISO, não trabalho: card PRÓPRIO no topo, separado das fichas, e
+  // FECHADO — só o título e o total de peças. Quem quiser saber quais modelos e quantas de
+  // cada tamanho toca e abre. É por aqui que ela consulta no celular, onde a tela é estreita
+  // e um bloco grande empurraria a ficha do dia para baixo da dobra.
   const cortePecas = emCorte.reduce((s, l) => s + l.total, 0);
   const blocoCorte = emCorte.length === 0 ? '' : `
-    <div class="crt-card cst-card-corte cst-mini">
-      <div class="cst-mini-hd">
-        <div class="cst-mini-tit"><i class="ti ti-scissors"></i> VEM POR AÍ — NO CORTE</div>
-        <div class="cst-mini-tot">${cortePecas} ${cortePecas === 1 ? 'peça' : 'peças'}</div>
-      </div>
+    <details class="card cst-corte">
+      <summary class="cst-corte-sum">
+        <span class="cst-mini-tit"><i class="ti ti-scissors"></i> VEM POR AÍ — NO CORTE</span>
+        <span class="cst-mini-tot">${cortePecas} ${cortePecas === 1 ? 'peça' : 'peças'}</span>
+        <i class="ti ti-chevron-down cst-corte-seta"></i>
+      </summary>
       <div class="cst-mini-txt">É o que está na mesa do corte, já com o tecido comprado.</div>
-      <div class="cst-mini-itens">
-        ${emCorte.map(l => `
-          <span class="cst-chip">
-            <b>${esc(l.nome)}${l.leva === 2 ? ' <span class="crt-selo">2ª</span>' : ''}</b>
-            ${l.total} ${l.total === 1 ? 'peça' : 'peças'}${l.cortado ? ` · <span class="cst-chip-cut">${l.cortado} já cortada${l.cortado === 1 ? '' : 's'}</span>` : ''}
-          </span>`).join('')}
-      </div>
-    </div>`;
+      ${emCorte.map(l => `
+        <div class="cst-corte-mod">
+          <div class="cst-corte-nome">
+            ${esc(l.nome)}${l.leva === 2 ? ' <span class="crt-selo">2ª LEVA</span>' : ''}
+            <span class="cst-corte-tot">${l.total} ${l.total === 1 ? 'peça' : 'peças'}${l.cortado ? ` · <span class="cst-chip-cut">${l.cortado} já cortada${l.cortado === 1 ? '' : 's'}</span>` : ''}</span>
+          </div>
+          <div style="overflow-x:auto">
+            <table class="crt-tab">
+              <thead><tr>
+                <th style="text-align:left">Cor</th>
+                ${l.SZ.map(s => `<th>${esc(s)}</th>`).join('')}
+                <th>Tot</th>
+              </tr></thead>
+              <tbody class="crt-grp">
+                ${l.linhas.map(r => `
+                  <tr>
+                    <td class="crt-cor">${esc(r.cor)}</td>
+                    ${r.arr.map(v => `<td class="crt-c${v ? '' : ' crt-zero'}">${v || '—'}</td>`).join('')}
+                    <td class="crt-c crt-tot">${r.tot}</td>
+                  </tr>`).join('')}
+              </tbody>
+            </table>
+          </div>
+        </div>`).join('')}
+    </details>`;
 
   const blocoCompra = compra.length === 0 ? '' : `
     <div class="crt-card crt-card-compra">
@@ -5241,8 +5260,12 @@ function renderCostura() {
       </div>
     </div>`;
 
-  el.innerHTML = blocoCorte
-    + (levas.length ? '<div class="crt-grid">' + fichas + '</div>' : vazio)
+  // O card do corte mora FORA do card das fichas (elemento próprio no index.html): manter os
+  // dois no mesmo innerHTML era o que fazia ele aparecer colado no texto das fichas.
+  const corteEl = document.getElementById('costura-corte');
+  if (corteEl) corteEl.innerHTML = blocoCorte;
+
+  el.innerHTML = (levas.length ? '<div class="crt-grid">' + fichas + '</div>' : vazio)
     + blocoCompra;
 }
 
