@@ -3558,6 +3558,7 @@ function confirmarStatus(key, novoStatus, leva) {
   // Tirar a leva de "Em costura" É a entrega: fecha o valor da rodada na hora, sem esperar
   // o ciclo de 1 minuto (que só roda enquanto o app está aberto).
   cstFatSincronizar().catch(() => {});
+  crtFatSincronizar().catch(() => {}); // idem para as levas que saíram do corte
   if (modeloAtual === key) {
     const sel = document.getElementById(leva === 2 ? 'prod2-status' : 'prod-status');
     if (sel) sel.value = novoStatus;
@@ -5024,6 +5025,7 @@ function renderCorte() {
 
   if (levas.length === 0) {
     if (compraEl) compraEl.innerHTML = blocoCompra;
+    renderFaturamentoCorte();
     el.innerHTML = '<div style="font-size:14px;color:var(--text-ter);padding:10px 0">'
       + (compra.length ? 'Nenhuma ficha em corte no momento — assim que o tecido chegar, as fichas aparecem aqui.'
                        : 'Nenhuma ficha para cortar no momento. 👍') + '</div>' + crtHistoricoHTML();
@@ -5032,6 +5034,7 @@ function renderCorte() {
 
   // Uma ficha por linha, ocupando a largura toda (ver .crt-grid no style.css).
   if (compraEl) compraEl.innerHTML = blocoCompra;
+  renderFaturamentoCorte(); // dinheiro do cortador, mesmo desenho do card da costura
   el.innerHTML = '<div class="crt-grid">' + levas.map((l, pos) => {
     const cor = '#7C3AED'; // roxo do "Em corte", igual ao resto do app
     const prazoTxt = l.prazo ? new Date(l.prazo + 'T12:00:00').toLocaleDateString('pt-BR') : '—';
@@ -5636,6 +5639,194 @@ function renderAviamentos() {
     pendentes.length ? `${pendentes.length} pendente${pendentes.length > 1 ? 's' : ''}` : '',
     'Zíper, elástico, linha e outros aviamentos que faltam chegar antes de montar a peça.',
     corpo, '', '#B45309');
+}
+
+// ─── FATURAMENTO DO CORTE ────────────────────────────────────────────────────
+// Gêmeo do faturamento da costura, uma etapa antes: quanto o cortador tem a receber pelo
+// que está na mesa, pelo que já entregou, e o registro do que foi pago.
+//
+// O NÚCLEO É O MESMO (cstFatAplicar/cstFatEntregar, as funções puras logo acima): é lá que
+// mora a regra de congelar o valor na entrega e a correção de 18/08 que impedia a segunda
+// rodada da mesma leva de sumir. Chamar as mesmas funções — em vez de copiá-las — é o que
+// faz uma correção de dinheiro valer para os dois lados de uma vez.
+// Muda só: a etapa observada ('Em corte'), o campo da Precificação ('corte') e a linha do
+// Supabase. O I/O e a tela ficam separados de propósito: as funções da costura têm o texto
+// travado por dezenas de asserções e não podem ser mexidas para caber aqui.
+//
+// QUANTIDADE: a da leva (o que foi pedido). Desde 18/08 o que ele cortou de fato vai a
+// caneta na ficha impressa e o app não tem esse número — se um dia voltar a ser digitado,
+// é aqui que a conta muda.
+const CRT_FAT_KEY = 'corte-faturamento';
+
+function crtFatTudo() {
+  const d = loadLocal('vc:' + CRT_FAT_KEY);
+  const o = (d && typeof d === 'object') ? d : {};
+  return { abertas: o.abertas || {}, aPagar: o.aPagar || {}, pagas: Array.isArray(o.pagas) ? o.pagas : [] };
+}
+
+// R$ por peça CORTADA — campo `corte` da Precificação, nunca o de costura.
+function crtValorPeca(key) {
+  const c = flxCustoModelo(flxPrecoCfg(), key);
+  return Math.round((c.corte || 0) * 100) / 100;
+}
+
+function crtFatAbertasAgora() {
+  const out = {};
+  cstLevasDe('Em corte').forEach(l => {
+    out[l.key + '|' + l.leva] = {
+      ref: l.at || '', nome: l.nome, pecas: l.total, unit: crtValorPeca(l.key), desde: l.at || '',
+    };
+  });
+  return out;
+}
+
+async function crtFatSincronizar() {
+  if (ehPerfilOficina()) return; // o aparelho da oficina só lê
+  await carregarTodosNuvem();    // mesmo motivo da costura: local velho vira "entregue" em massa
+  const atuais = crtFatAbertasAgora();
+  if (!cstFatAplicar(crtFatTudo(), atuais, new Date().toISOString())) return;
+
+  const nuvem = await carregarNuvem(CRT_FAT_KEY);
+  if (nuvem === undefined) return; // não deu para ler: nunca grava por cima às cegas
+  const base = (nuvem && typeof nuvem === 'object') ? nuvem : {};
+  const novo = cstFatAplicar(
+    { abertas: base.abertas || {}, aPagar: base.aPagar || {}, pagas: Array.isArray(base.pagas) ? base.pagas : [] },
+    atuais, new Date().toISOString());
+  if (!novo) return;
+  novo.pagas = novo.pagas.slice(0, CST_PAGAS_MAX);
+  novo.updated_at = new Date().toISOString();
+  saveLocal('vc:' + CRT_FAT_KEY, novo);
+  await salvarNuvem(CRT_FAT_KEY, novo);
+  if (modeloAtual === '__corte__') renderCorte();
+}
+
+async function crtFatPagar(id, desfazer) {
+  if (ehPerfilOficina()) return;
+  const nuvem = await carregarNuvem(CRT_FAT_KEY);
+  if (nuvem === undefined) { alert('Sem conexão com a nuvem — tente de novo em instantes.'); return; }
+  const d = {
+    abertas: (nuvem && nuvem.abertas) || {},
+    aPagar:  (nuvem && nuvem.aPagar)  || {},
+    pagas:   (nuvem && Array.isArray(nuvem.pagas)) ? nuvem.pagas : [],
+  };
+  const agora = new Date().toISOString();
+  if (desfazer) {
+    const i = d.pagas.findIndex(p => p.id === id);
+    if (i < 0) return;
+    const p = d.pagas.splice(i, 1)[0];
+    delete p.pago_em;
+    d.aPagar[p.id] = p;
+  } else {
+    const p = d.aPagar[id];
+    if (!p) return;
+    delete d.aPagar[id];
+    d.pagas.unshift({ ...p, pago_em: agora });
+  }
+  d.pagas = d.pagas.slice(0, CST_PAGAS_MAX);
+  d.updated_at = agora;
+  saveLocal('vc:' + CRT_FAT_KEY, d);
+  await salvarNuvem(CRT_FAT_KEY, d);
+  renderCorte();
+}
+
+function renderFaturamentoCorte() {
+  const el = document.getElementById('corte-faturamento');
+  if (!el) return;
+  const esc = x => String(x).replace(/[&<>"]/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c]));
+  const dia = iso => iso ? new Date(iso).toLocaleDateString('pt-BR') : '—';
+  const podePagar = !ehPerfilOficina();
+
+  const agora = cstLevasDe('Em corte').map(l => ({
+    nome: l.nome, leva: l.leva, pecas: l.total, unit: crtValorPeca(l.key),
+  }));
+  agora.forEach(l => { l.valor = Math.round(l.pecas * l.unit * 100) / 100; });
+  const totalAgora = agora.reduce((a, l) => a + l.valor, 0);
+
+  // "Vem por aí", para o CORTE, é só o tecido em compra — o que está em costura já passou
+  // pela mesa dele e não volta.
+  const vindo = cstLevasDe('Comprando tecido').map(l => ({
+    nome: l.nome, leva: l.leva, pecas: l.total, unit: crtValorPeca(l.key),
+  }));
+  vindo.forEach(l => { l.valor = Math.round(l.pecas * l.unit * 100) / 100; });
+  const totalVindo = vindo.reduce((a, l) => a + l.valor, 0);
+
+  const d = crtFatTudo();
+  const aPagar = Object.values(d.aPagar).sort((a, b) => String(a.entregue_em).localeCompare(String(b.entregue_em)));
+  const pagas = d.pagas.slice(0, 40);
+  const totalAPagar = aPagar.reduce((a, p) => a + (p.valor || 0), 0);
+  const semValor = agora.concat(vindo).filter(l => !l.unit).length + aPagar.filter(p => !p.unit).length;
+
+  const linhas = arr => arr.map(l => `
+    <div class="fat-lin">
+      <div>
+        <div class="fat-nome">${esc(l.nome)}${l.leva === 2 ? ' <span class="crt-selo">2ª LEVA</span>' : ''}</div>
+        <div class="fat-sub">${l.pecas} ${l.pecas === 1 ? 'peça' : 'peças'} × ${finBRL(l.unit)}${l.unit ? '' : ' <span class="fat-alerta">sem valor na Precificação</span>'}</div>
+      </div>
+      <div class="fat-val">${finBRL(l.valor)}</div>
+    </div>`).join('');
+
+  const bloco = (cor, icone, titulo, total, frase, corpoBloco) => `
+    <div class="fat-bloco" style="border-color:${cor}">
+      <div class="fat-hd">
+        <span class="fat-tit" style="color:${cor}"><i class="ti ${icone}"></i> ${titulo}</span>
+        <span class="fat-tot" style="color:${cor}">${finBRL(total)}</span>
+      </div>
+      <div class="aviso-txt">${frase}</div>
+      ${corpoBloco}
+    </div>`;
+
+  const corpo =
+    bloco('#7C3AED', 'ti-scissors', 'NA MESA AGORA', totalAgora,
+      'É o que está em corte hoje — vira a receber quando a leva sair da mesa.',
+      agora.length ? linhas(agora) : '<div class="fat-vazio">Nada em corte no momento.</div>')
+    + bloco('#dc2626', 'ti-cash', 'ENTREGUE — A RECEBER', totalAPagar,
+      'Levas que saíram do corte e ainda não foram pagas.',
+      aPagar.length ? aPagar.map(p => `
+        <div class="fat-lin">
+          <div>
+            <div class="fat-nome">${esc(p.nome)}${p.leva === 2 ? ' <span class="crt-selo">2ª LEVA</span>' : ''}</div>
+            <div class="fat-sub">${p.pecas} ${p.pecas === 1 ? 'peça' : 'peças'} × ${finBRL(p.unit)} · entregue em ${dia(p.entregue_em)}</div>
+          </div>
+          <div class="fat-acao">
+            <span class="fat-val">${finBRL(p.valor)}</span>
+            ${podePagar ? `<button class="btn-outline" style="font-size:11px;padding:4px 9px" onclick="crtFatPagar('${esc(p.id)}')"><i class="ti ti-check"></i> pago</button>` : ''}
+          </div>
+        </div>`).join('') : '<div class="fat-vazio">Nada entregue esperando pagamento.</div>')
+    + bloco('#C4A882', 'ti-shopping-cart', 'VEM POR AÍ', totalVindo,
+      'Tecido em compra, pelo valor de <b>corte</b> da peça — previsão do que ele recebe quando chegar à mesa.',
+      vindo.length ? linhas(vindo) : '<div class="fat-vazio">Nada a caminho no momento.</div>')
+    + (pagas.length ? `
+      <div class="fat-bloco" style="border-color:#16a34a">
+        <div class="fat-hd">
+          <span class="fat-tit" style="color:#16a34a"><i class="ti ti-checkbox"></i> JÁ PAGO</span>
+          <span class="fat-tot" style="color:#16a34a">${finBRL(d.pagas.reduce((a, p) => a + (p.valor || 0), 0))}</span>
+        </div>
+        <div class="aviso-txt">Últimas levas quitadas.</div>
+        ${pagas.map(p => `
+          <div class="fat-lin">
+            <div>
+              <div class="fat-nome">${esc(p.nome)}${p.leva === 2 ? ' <span class="crt-selo">2ª LEVA</span>' : ''}</div>
+              <div class="fat-sub">${p.pecas} ${p.pecas === 1 ? 'peça' : 'peças'} · pago em ${dia(p.pago_em)}</div>
+            </div>
+            <div class="fat-acao">
+              <span class="fat-val">${finBRL(p.valor)}</span>
+              ${podePagar ? `<button class="btn-outline" style="font-size:11px;padding:4px 9px" onclick="crtFatPagar('${esc(p.id)}', true)" title="Marquei pago sem querer">desfazer</button>` : ''}
+            </div>
+          </div>`).join('')}
+      </div>` : '')
+    + (semValor ? `<div class="fat-aviso-cfg"><i class="ti ti-alert-triangle"></i>
+        ${semValor} ${semValor === 1 ? 'leva está' : 'levas estão'} com R$ 0 por peça — falta o valor de
+        <b>corte</b> desse modelo na Precificação.</div>` : '');
+
+  const resumo = [
+    ['Na mesa agora', 'ainda não entregue', totalAgora],
+  ].concat(totalAPagar ? [['Entregue e não pago', 'a receber', totalAPagar]] : []);
+  const frase = `<div class="fat-resumo">${resumo.map(([rot, obs, v]) => `
+    <div class="fat-resumo-lin">
+      <span>${rot}${obs ? ` <i>(${obs})</i>` : ''}</span>
+      <b>${finBRL(v)}</b>
+    </div>`).join('')}</div>`;
+  el.innerHTML = avisoCardHTML('ti-cash', 'FATURAMENTO DO CORTE', '', frase, corpo, '', '#7C3AED');
 }
 
 // ─── O QUE FOI REALMENTE CORTADO ─────────────────────────────────────────────
@@ -9616,7 +9807,8 @@ carregarTodosNuvem().then(() => carregarPedidosShopify()).then(async () => {
   _renderInicial();
   if (!ehPerfilOficina()) verificarAvisosStatus();
   crtSincronizarPrioridade().catch(() => {}); // solta: a ordem do corte não segura a tela
-  cstFatSincronizar().catch(() => {});        // idem: fecha o valor das levas que saíram da costura
+  cstFatSincronizar().catch(() => {});
+  crtFatSincronizar().catch(() => {}); // idem para as levas que saíram do corte        // idem: fecha o valor das levas que saíram da costura
 }).catch(() => {
   _renderInicial();
   if (!ehPerfilOficina()) verificarAvisosStatus();
@@ -9630,7 +9822,8 @@ setInterval(() => {
     if (!ehPerfilOficina()) await baixaImediataDeProcessados().catch(() => {});
     crtSincronizarPrioridade().catch(() => {}); // recalcula a ordem do corte e grava se mudou
     crtArquivarConcluidas().catch(() => {});    // leva que saiu do corte vira histórico
-    cstFatSincronizar().catch(() => {});        // leva que saiu da costura vira valor a pagar
+    cstFatSincronizar().catch(() => {});
+  crtFatSincronizar().catch(() => {}); // idem para as levas que saíram do corte        // leva que saiu da costura vira valor a pagar
     if (modeloAtual === '__corte__') renderCorte(); // só leitura desde 18/08: nada digitado para perder
     else if (modeloAtual === '__costura__') renderCostura(); // só leitura: nada digitado para perder
       else if (modeloAtual === '__dashboard__') renderDashboard();
