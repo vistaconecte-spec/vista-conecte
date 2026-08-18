@@ -74,21 +74,25 @@ ok('e nasce escondido, como todo aviso da tela', /id="costura-pagamento" style="
 ok('renderCostura chama o card', /renderPagamentoCostura\(\); \/\//.test(main), true);
 
 console.log('\n2) Duas etapas, cada uma no seu bloco');
-ok('o que já foi cortado vem primeiro',
-   out.indexOf('já foi cortado') < out.indexOf('está sendo cortado'), true);
+ok('o que está na máquina vem primeiro',
+   out.indexOf('o que está na máquina') < out.indexOf('ainda está no corte'), true);
+// O dinheiro dos dois blocos é da COSTUREIRA (campo costura). Título que abre com
+// "cortado" faz ler como pagamento do corte — foi a confusão de 18/08.
+ok('nenhum título abre falando de corte',
+   /Pagamento do que (já foi|está sendo) cortado/.test(out), false);
 ok('e são dois blocos, na cor da etapa (teal na máquina, roxo no corte)',
    [out.includes('#0891b2'), out.includes('#7C3AED')], [true, true]);
 
 console.log('\n3) A conta: peças × R$ da Precificação');
 // Na máquina: Saia 5 × 4,50 = 22,50 | Sem Preço 2 × 0 = 0 → 7 peças, R$ 22,50
-ok('o topo do bloco "já cortado" soma peças e reais', /7 peças · R\$ 22,50/.test(out), true);
+ok('o topo do bloco do que está na máquina soma peças e reais', /7 peças · R\$ 22,50/.test(out), true);
 // No corte: Saia 2ª leva 5 × 4,50 = 22,50 | Vestido 4 × 6 = 24,00 → 9 peças, R$ 46,50
-ok('o topo do bloco "sendo cortado" idem', /9 peças · R\$ 46,50/.test(out), true);
+ok('o topo do bloco da previsão idem', /9 peças · R\$ 46,50/.test(out), true);
 ok('a 2ª leva aparece marcada, sem se juntar à leva 1', /Saia Midi \(2ª leva\)/.test(out), true);
 ok('cada cartão mostra o valor da leva', [/R\$ 22,50/.test(out), /R\$ 24,00/.test(out)], [true, true]);
 ok('e a conta que gerou ele', /5 × R\$ 4,50/.test(out), true);
 ok('a leva do corte NÃO entra no total do que já é dela',
-   out.slice(0, out.indexOf('está sendo cortado')).includes('Vestido Amplo'), false);
+   out.slice(0, out.indexOf('ainda está no corte')).includes('Vestido Amplo'), false);
 
 console.log('\n4) Sem valor na Precificação avisa, não soma zero calado');
 ok('o cartão do modelo sem preço diz o que falta', /sem valor na Precificação/.test(out), true);

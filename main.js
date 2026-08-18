@@ -5282,14 +5282,14 @@ function renderPagamentoCostura() {
       })));
   };
 
-  const jaCortado   = levasDe('Em costura');
-  const sendoCortado = levasDe('Em corte');
+  const naMaquina  = levasDe('Em costura');
+  const vemDoCorte = levasDe('Em corte');
 
   const html =
     bloco({ cor: '#0891b2', bg: '#ecfeff', borda: '#0891b2', txtTitulo: '#0e7490', txtInfo: '#0e7490' },
-          '🧵 Pagamento do que já foi cortado — está na máquina', jaCortado)
+          'Pagamento da costura — o que está na máquina', naMaquina)
     + bloco({ cor: '#7C3AED', bg: '#f5f0ff', borda: '#7C3AED', txtTitulo: '#5b21b6', txtInfo: '#6d28d9' },
-            '✂️ Pagamento do que está sendo cortado — previsão', sendoCortado);
+            'Pagamento da costura — previsão do que ainda está no corte', vemDoCorte);
 
   el.style.display = html ? '' : 'none';
   el.innerHTML = html;
