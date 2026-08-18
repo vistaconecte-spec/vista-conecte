@@ -124,6 +124,10 @@ ok('da terceira em diante volta a fila antiga (mais parado no topo)',
 ok('número e tarja só aparecem na ficha marcada',
    /\$\{l\.prioritaria \? crtMotivoHTML\(l\.p, 'CORTAR PRIMEIRO'\) : ''\}/.test(main), true);
 
+console.log('\n5d) O alerta compacto é um desenho só, compartilhado com a aba COSTURA');
+ok('o alerta do corte usa o helper comum', /return blocoCompactoHTML\(r, titulo, resumo,/.test(main), true);
+ok('e o helper serve mais de uma tela', (main.match(/blocoCompactoHTML\(/g) || []).length >= 2, true);
+
 console.log('\n6) A oficina (corte e costura) continua sem acesso a pedido/cliente');
 const mid = readFileSync(join(raiz, 'functions/api/_middleware.js'), 'utf8');
 ok('a allowlist dos perfis de oficina continua VAZIA', /const OFICINA_LIBERA = new Set\(\[\]\);/.test(mid), true);

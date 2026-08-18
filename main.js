@@ -5241,60 +5241,16 @@ function renderCostura() {
   // no mesmo innerHTML eles apareciam colados no texto das fichas.
   const corteEl = document.getElementById('costura-corte');
   if (corteEl) corteEl.innerHTML = blocoCorte + blocoCompra;
-  renderPagamentoCostura(); // pagamento por etapa, no topo da aba
   renderFaturamento(); // card do dinheiro dela, logo abaixo do que vem por aí
   renderAviamentos();  // lista manual de zíper/elástico/linha a comprar, logo abaixo dele
 
   el.innerHTML = levas.length ? '<div class="crt-grid">' + fichas + '</div>' : vazio;
 }
 
-// ─── PAGAMENTO POR ETAPA (topo da aba COSTURA) ───────────────────────────────
-// Mesmo formato compacto do alerta de peça parada na aba CORTE: faixa colorida, resumo em
-// cima e um cartãozinho por modelo lado a lado. São dois blocos, na ordem em que o trabalho
-// chega até ela:
-//   1. JÁ CORTADO   → leva em "Em costura": o pano já saiu da mesa de corte e está na
-//      máquina. É o pagamento que ela recebe quando entregar a leva.
-//   2. SENDO CORTADO → leva em "Em corte": ainda está na mesa. É PREVISÃO do que ela vai
-//      receber quando aquelas peças chegarem — não é o que se paga pelo corte.
-// O R$ por peça é o mesmo do faturamento (campo `costura` da Precificação, cstValorPeca),
-// para os dois cards da aba nunca discordarem entre si.
-function renderPagamentoCostura() {
-  const el = document.getElementById('costura-pagamento');
-  if (!el) return;
-  const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c]));
-
-  const levasDe = st => cstLevasDe(st).map(l => {
-    const unit = cstValorPeca(l.key);
-    return { nome: l.nome + (l.leva === 2 ? ' (2ª leva)' : ''), pecas: l.total, unit,
-             valor: Math.round(l.total * unit * 100) / 100 };
-  }).sort((a, b) => b.valor - a.valor);
-
-  const bloco = (cores, titulo, itens) => {
-    if (!itens.length) return '';
-    const total = itens.reduce((s, l) => s + l.valor, 0);
-    const pecas = itens.reduce((s, l) => s + l.pecas, 0);
-    return blocoCompactoHTML(cores, titulo, `${pecas} ${pecas === 1 ? 'peça' : 'peças'} · ${finBRL(total)}`,
-      itens.map(l => ({
-        nome: esc(l.nome),
-        dir: finBRL(l.valor),
-        // Sem valor na Precificação a conta daria R$ 0,00 em silêncio — avisa em vez de somar zero
-        sub: l.unit ? `${l.pecas} × ${finBRL(l.unit)}` : `${l.pecas} ${l.pecas === 1 ? 'peça' : 'peças'} · sem valor na Precificação`,
-      })));
-  };
-
-  const naMaquina  = levasDe('Em costura');
-  const vemDoCorte = levasDe('Em corte');
-
-  const html =
-    bloco({ cor: '#0891b2', bg: '#ecfeff', borda: '#0891b2', txtTitulo: '#0e7490', txtInfo: '#0e7490' },
-          'Pagamento da costura — o que está na máquina', naMaquina)
-    + bloco({ cor: '#7C3AED', bg: '#f5f0ff', borda: '#7C3AED', txtTitulo: '#5b21b6', txtInfo: '#6d28d9' },
-            'Pagamento da costura — previsão do que ainda está no corte', vemDoCorte);
-
-  el.style.display = html ? '' : 'none';
-  el.innerHTML = html;
-}
-
+// Até 18/08/2026 havia um segundo card acima deste ("Pagamento da costura", dois blocos:
+// na máquina e previsão do corte). Ele era subconjunto EXATO deste aqui — os mesmos dois
+// estágios, o mesmo cstValorPeca, sem o entregue/pago e sem os botões. Dois cards falando
+// do mesmo dinheiro, um aberto e outro fechado, era o que confundia. Ficou um só.
 // ─── FATURAMENTO DA COSTURA ──────────────────────────────────────────────────
 // Quanto vale, em R$, o que a costureira tem na máquina, o que vem por aí e o que ela já
 // entregou e ainda não recebeu. O valor por peça é o campo `costura` da Precificação
