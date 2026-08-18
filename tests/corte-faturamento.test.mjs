@@ -73,7 +73,23 @@ ok('e não encosta na linha da costura', /CST_FAT_KEY/.test(bloco), false);
 console.log('\n5) As etapas certas');
 ok('"na mesa agora" olha Em corte',        /cstLevasDe\('Em corte'\)/.test(bloco), true);
 ok('"vem por aí" é só tecido em compra',   /cstLevasDe\('Comprando tecido'\)/.test(bloco), true);
-ok('e não mistura o que já está em costura', /cstLevasDe\('Em costura'\)/.test(bloco), false);
+// O CARD não pode olhar costura — "vem por aí" do corte é só tecido em compra, porque o
+// que já está em costura passou pela mesa. O resgate (abaixo) olha, e é de propósito.
+const render = main.slice(main.indexOf('function renderFaturamentoCorte'), main.indexOf('// ─── O QUE FOI REALMENTE CORTADO'));
+ok('e o card não mistura o que já está em costura', /cstLevasDe\('Em costura'\)/.test(render), false);
+
+console.log('\n5b) Leva que JÁ está em costura também é corte a receber');
+// Ela passou pela mesa: o corte está feito. Sem isto ficariam de fora tudo o que já estava
+// em costura quando este faturamento nasceu, e qualquer status que pule com o app fechado.
+const resg = main.slice(main.indexOf('function crtFatResgatarCostura'), main.indexOf('async function crtFatSincronizar'));
+ok('o resgate existe e olha as levas em costura', /cstLevasDe\('Em costura'\)/.test(resg), true);
+ok('só entra quem não tem cobrança NENHUMA (não paga duas vezes)',
+   /const jaTem = Object.keys\(d.aPagar\)[\s\S]{0,200}d.pagas.some/.test(resg) && /if \(jaTem\) return;/.test(resg), true);
+ok('leva ainda tida como na mesa fica com o fluxo normal', /if \(d.abertas\[id\]\) return;/.test(resg), true);
+ok('leva vazia não vira cobrança', /if \(!l.total\) return;/.test(resg), true);
+ok('o registro fica marcado de onde veio', /origem: 'costura'/.test(resg), true);
+ok('e roda nas duas passadas do sincronizador (local e nuvem)',
+   (main.match(/crtFatResgatarCostura\(/g) || []).length, 3);
 
 console.log('\n6) Mora na aba CORTE, junto das fichas');
 ok('o div existe no HTML', /id="corte-faturamento"/.test(idx), true);

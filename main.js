@@ -5361,9 +5361,10 @@ async function cstFatSincronizar() {
   const nuvem = await carregarNuvem(CST_FAT_KEY);
   if (nuvem === undefined) return; // não deu para ler: tenta no próximo ciclo (nunca grava por cima às cegas)
   const base = (nuvem && typeof nuvem === 'object') ? nuvem : {};
-  const novo = cstFatAplicar(
-    { abertas: base.abertas || {}, aPagar: base.aPagar || {}, pagas: Array.isArray(base.pagas) ? base.pagas : [] },
-    atuais, new Date().toISOString());
+  const agora2 = new Date().toISOString();
+  const d0 = { abertas: base.abertas || {}, aPagar: base.aPagar || {}, pagas: Array.isArray(base.pagas) ? base.pagas : [] };
+  const resgatou = crtFatResgatarCostura(d0, agora2);
+  const novo = cstFatAplicar(d0, atuais, agora2) || (resgatou ? d0 : null);
   if (!novo) return;
   novo.pagas = novo.pagas.slice(0, CST_PAGAS_MAX);
   novo.updated_at = new Date().toISOString();
@@ -5680,11 +5681,49 @@ function crtFatAbertasAgora() {
   return out;
 }
 
+// Uma leva que está EM COSTURA já passou pela mesa: o corte dela está feito, e o cortador
+// tem a receber por ela. O fluxo normal só cobra quem o app viu SAIR de "Em corte" — então
+// ficariam de fora (a) tudo que já estava em costura quando este faturamento nasceu, em
+// 18/08/2026, e (b) qualquer leva cujo status pule de corte para costura sem o app da dona
+// aberto para ver a passagem.
+//
+// A trava contra pagar duas vezes: só entra leva que não tem cobrança NENHUMA — nem aberta,
+// nem a pagar, nem já paga. Quando o fluxo normal já registrou a rodada, este resgate não
+// encosta nela. O carimbo aqui é o da entrada em costura (o do corte já foi sobrescrito),
+// por isso o registro fica marcado com origem 'costura' — dá para saber de onde veio.
+function crtFatResgatarCostura(d, agora) {
+  let mudou = false;
+  cstLevasDe('Em costura').forEach(l => {
+    const id = l.key + '|' + l.leva;
+    if (d.abertas[id]) return; // ainda tida como na mesa: o fluxo normal fecha essa
+    const jaTem = Object.keys(d.aPagar).some(k => k.startsWith(id + '|'))
+               || d.pagas.some(p => String(p.id).startsWith(id + '|'));
+    if (jaTem) return;
+    const unit = crtValorPeca(l.key);
+    if (!l.total) return;
+    const idFat = id + '|' + (l.at || '') + '|costura';
+    d.aPagar[idFat] = {
+      id: idFat, key: l.key, leva: l.leva, nome: l.nome,
+      pecas: l.total, unit,
+      valor: Math.round(l.total * unit * 100) / 100,
+      entregue_em: l.at || agora,
+      origem: 'costura',
+    };
+    mudou = true;
+  });
+  return mudou;
+}
+
 async function crtFatSincronizar() {
   if (ehPerfilOficina()) return; // o aparelho da oficina só lê
   await carregarTodosNuvem();    // mesmo motivo da costura: local velho vira "entregue" em massa
   const atuais = crtFatAbertasAgora();
-  if (!cstFatAplicar(crtFatTudo(), atuais, new Date().toISOString())) return;
+  const local = crtFatTudo();
+  const agoraLocal = new Date().toISOString();
+  // resgate roda ANTES da comparação: leva que já está em costura sem cobrança nenhuma
+  // também é motivo para gravar, mesmo que nada tenha saído do corte neste ciclo.
+  const precisa = crtFatResgatarCostura(local, agoraLocal) | !!cstFatAplicar(local, atuais, agoraLocal);
+  if (!precisa) return;
 
   const nuvem = await carregarNuvem(CRT_FAT_KEY);
   if (nuvem === undefined) return; // não deu para ler: nunca grava por cima às cegas
