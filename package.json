@@ -3,7 +3,7 @@
     "pg": "^8.21.0"
   },
   "scripts": {
-    "test": "node tests/shopify-orders.test.mjs && node tests/producao.test.mjs && node tests/troca-etiqueta.test.mjs && node tests/baixa-estoque.test.mjs && node tests/historico.test.mjs && node tests/modelagem-valor.test.mjs && node tests/corte-realizado.test.mjs && node tests/corte-prioridade.test.mjs && node tests/costura.test.mjs && node tests/costura-faturamento.test.mjs && node tests/costura-aviamentos.test.mjs",
+    "test": "node tests/shopify-orders.test.mjs && node tests/producao.test.mjs && node tests/troca-etiqueta.test.mjs && node tests/baixa-estoque.test.mjs && node tests/historico.test.mjs && node tests/modelagem-valor.test.mjs && node tests/corte-realizado.test.mjs && node tests/corte-prioridade.test.mjs && node tests/costura.test.mjs && node tests/costura-pagamento.test.mjs && node tests/costura-faturamento.test.mjs && node tests/costura-aviamentos.test.mjs",
     "deploy": "npm test && npx wrangler pages deploy . --project-name vistaconecte --commit-dirty=true"
   }
 }

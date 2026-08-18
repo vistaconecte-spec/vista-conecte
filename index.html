@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Bodoni+Moda:ital,opsz,wght@0,6..96,700;0,6..96,900&family=Bebas+Neue&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css">
-<link rel="stylesheet" href="style.css?v=2026081513">
+<link rel="stylesheet" href="style.css?v=2026081820">
 </head>
 <body>
 
@@ -103,7 +103,6 @@
     </div>
     <div class="content">
       <div id="panel-dashboard" class="tab-panel active">
-        <div id="status-alerts" style="display:none;margin-bottom:12px"></div>
         <div id="aviso-baixa-auto" style="display:none;margin-bottom:12px"></div>
         <div class="mini-cards">
           <div class="mini-card">
@@ -214,6 +213,7 @@
         </div>
       </div>
       <div id="panel-corte" class="tab-panel">
+        <div id="status-alerts" style="display:none;margin-bottom:12px"></div>
         <div class="card" style="border-left:3px solid var(--text)">
           <div class="card-header">
             <div class="card-title"><i class="ti ti-scissors"></i> FICHAS PARA CORTAR</div>
@@ -229,6 +229,7 @@
         <!-- Cards PRÓPRIOS, acima das fichas: o que está no corte e o tecido em compra são
              aviso, não trabalho. Vêm fechados, com a frase à mostra, e abrem no toque
              (é assim que ela consulta no celular). -->
+        <div id="costura-pagamento" style="display:none;margin-bottom:12px"></div>
         <div id="costura-corte" class="crt-lista"></div>
         <!-- Faturamento dela: card fechado, logo abaixo do que vem por aí -->
         <div id="faturamento-lista"></div>
@@ -946,7 +947,7 @@
   </div>
 </div>
 <script src="data.js?v=2026081514"></script>
-<script src="main.js?v=2026081514"></script>
+<script src="main.js?v=2026081820"></script>
 <script async src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js" onload="initSupabase()"></script>
 </body>
 </html>

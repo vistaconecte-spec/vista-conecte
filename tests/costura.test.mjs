@@ -124,7 +124,7 @@ const els = {
 new Function(
   'MODELOS', 'CONJUNTO_PECAS', 'loadLocal', 'tamanhosDe', 'document',
   'crtPrioridade', 'crtPrioridadeDe', 'crtMotivoHTML', 'crtRegistro', 'crtTotalDe',
-  'comprandoTecidoConsolidado', 'renderFaturamento', 'renderAviamentos',
+  'comprandoTecidoConsolidado', 'renderPagamentoCostura', 'renderFaturamento', 'renderAviamentos',
   extrair('avisoLinhaHTML') + '\n' + extrair('avisoCardHTML') + '\n'
     + extrair('cstLevasDe') + '\n' + extrair('renderCostura') + '; renderCostura();'
 )(MODELOS, { 'conj-boho': [] },
@@ -137,6 +137,7 @@ new Function(
   () => ({ cores: { Preto: [0, 0, 2, 0, 0] } }),
   cores => Object.values(cores).reduce((s, a) => s + a.reduce((x, y) => x + y, 0), 0),
   () => [{ tecido: 'Viscolycra', cores: [{ cor: 'Marsala' }], pecas: 10, metros: 12.5 }],
+  () => {},  // o card do pagamento por etapa tem teste próprio (costura-pagamento.test.mjs)
   () => {},  // o card do faturamento tem teste próprio (costura-faturamento.test.mjs)
   () => {}); // idem para o card dos aviamentos (costura-aviamentos.test.mjs)
 

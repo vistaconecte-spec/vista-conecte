@@ -650,34 +650,12 @@ input[type=number].ci:focus {
 .crt-motivo .crt-motivo-n { color: var(--text); font-weight: 600; margin-left: 7px; }
 .crt-big { font-size: 20px; font-weight: 800; line-height: 1; }
 .crt-big span { font-size: 11px; font-weight: 600; color: var(--text-sec); }
-.crt-res { font-size: 12px; font-weight: 800; margin-top: 4px; }
-/* A frase é o que avisa que a linha CORTOU se preenche — por isso fica ANTES da tabela e
-   não num rodapé: sem moldura desenhada no campo, ninguém descobre lendo depois. */
+/* Frase que manda anotar no papel: o cortador não digita mais nada no app (18/08) —
+   o que ele cortou vai a caneta na coluna "Cortado" da ficha impressa. */
 .crt-aviso {
   display: flex; justify-content: space-between; align-items: center;
   gap: 8px; flex-wrap: wrap; margin-bottom: 6px;
   font-size: 12px; font-weight: 700; color: #7C3AED;
-}
-.crt-aviso .crt-st { font-size: 11px; font-weight: 700; color: var(--text-ter); }
-/* DATA DO CORTE: barra própria, a primeira coisa do corpo da ficha (antes até do aviso
-   de preencher). Antes era um campinho no canto direito da linha do aviso e passava
-   despercebido — é o dado que amarra o registro do que foi cortado a um dia. */
-.crt-databar {
-  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
-  background: var(--bg); border: 1px solid var(--border);
-  border-radius: 7px; padding: 8px 11px; margin-bottom: 8px;
-  cursor: pointer;
-}
-.crt-databar-lb { font-size: 11px; font-weight: 800; letter-spacing: .08em; color: var(--text-sec); }
-.crt-databar input[type=date] {
-  font-size: 15px !important; font-weight: 800 !important;
-  padding: 5px 10px !important; width: auto !important;
-  border: 1px solid var(--border) !important; border-radius: 6px !important;
-  color: var(--text) !important; background: #fff !important;
-}
-.crt-databar input[type=date]:focus {
-  border-color: var(--gold) !important; outline: none !important;
-  box-shadow: 0 0 0 2px rgba(196,168,130,0.18) !important;
 }
 
 /* Registro do que já foi cortado */
@@ -712,8 +690,6 @@ input[type=number].ci:focus {
 }
 /* LINHA GROSSA entre uma cor e a outra */
 .crt-lista table.crt-tab tbody.crt-grp + tbody.crt-grp { border-top: 3px solid #4B5563; }
-/* e uma linha leve separando o que foi pedido do que foi cortado, dentro da mesma cor */
-.crt-lista table.crt-tab tr.crt-lin-cut td { border-top: 1px dashed rgba(124,58,237,0.4); }
 /* grade vertical: sem ela, com a fonte grande, o olho pula de coluna */
 .crt-lista table.crt-tab td.crt-c,
 .crt-lista table.crt-tab th + th ~ th { border-left: 1px solid var(--border); }
@@ -735,57 +711,10 @@ input[type=number].ci:focus {
 }
 .crt-lista .crt-card table.crt-tab td.crt-cor { background: var(--surface); }
 .crt-lista .crt-card table.crt-tab th:first-child { background: var(--bg); }
-.crt-lista table.crt-tab td.crt-rot {
-  font-size: 10px; font-weight: 800; letter-spacing: .06em;
-  color: var(--text-ter); text-align: left; white-space: nowrap; padding-right: 8px;
-}
-.crt-lista table.crt-tab td.crt-rot-cut { color: #7C3AED; }
 .crt-lista table.crt-tab td.crt-cores { text-align: left; font-size: 12px; font-weight: 500; color: var(--text-sec); }
 .crt-lista table.crt-tab td.crt-zero { color: var(--text-ter); font-weight: 400; }
 .crt-lista table.crt-tab td.crt-tot { font-weight: 800; }
-.crt-lista table.crt-tab td.crt-cel { padding: 3px 2px; }
 .crt-lista table.crt-tab tr:hover td { background: transparent; }
-
-/* Campo "CORTOU" (o que saiu de fato da mesa). Sem caixa desenhada: quem avisa que é para
-   preencher é a frase no alto da ficha e o rótulo CORTOU da própria linha — a moldura roxa
-   permanente poluía a tabela inteira. A caixinha só aparece ao tocar/passar o mouse, igual
-   aos outros campos editáveis do app (.ci). A fonte fica em 16px mesmo com a tabela menor:
-   abaixo disso o Safari do iPhone dá zoom sozinho ao tocar no campo. */
-input[type=number].crt-in {
-  width: 44px !important;
-  max-width: 44px !important;
-  text-align: center !important;
-  font-size: 16px !important;
-  font-weight: 700 !important;
-  padding: 4px 0 !important;
-  border: 1px solid transparent !important;
-  border-radius: 6px !important;
-  background: transparent !important;
-  color: #111827 !important;
-  -webkit-text-fill-color: #111827 !important;
-  opacity: 1 !important;
-  font-family: inherit !important;
-  display: block !important;
-  margin: 0 auto !important;
-  box-shadow: none !important;
-  cursor: pointer !important;
-}
-input[type=number].crt-in::placeholder {
-  color: var(--text-ter) !important;
-  -webkit-text-fill-color: var(--text-ter) !important;
-  font-weight: 400 !important;
-  opacity: 1 !important;
-}
-input[type=number].crt-in:hover {
-  border-color: var(--border) !important;
-  background: #FAFAFA !important;
-}
-input[type=number].crt-in:focus {
-  outline: none !important;
-  border-color: var(--gold) !important;
-  background: #FFFBF5 !important;
-  box-shadow: 0 0 0 2px rgba(196,168,130,0.18) !important;
-}
 
 /* Saldo do resumo de produção */
 .saldo-ok   { color: #16a34a; font-weight: 700; }
@@ -1120,7 +1049,6 @@ select:focus, input:not(.ci):focus { outline: none; border-color: var(--gold); b
   input.ci { font-size: 10px; max-width: 30px; }
   /* No celular a ficha do corte NÃO encolhe junto com o resto: ela é usada justamente aí.
      Se não couber, a tabela rola de lado — melhor rolar do que ler número miúdo. */
-  input[type=number].crt-in { width: 44px !important; max-width: 44px !important; font-size: 16px !important; }
   .crt-lista table.crt-tab { font-size: 13px; }
   .crt-lista table.crt-tab td { font-size: 14px; padding: 5px 4px; }
   .crt-lista table.crt-tab td.crt-cor { font-size: 14px; }

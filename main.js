@@ -3583,6 +3583,32 @@ function verIgnoradosShopify() {
   win.document.close();
 }
 
+// Bloco compacto de aviso: faixa colorida com título e resumo em cima, e um cartãozinho por
+// modelo lado a lado num grid que quebra sozinho. Usado pelo alerta de peça parada no corte
+// (aba CORTE) e pelo pagamento por etapa (aba COSTURA) — mesmo formato nas duas telas.
+//   cores  = { cor, bg, borda, txtTitulo, txtInfo }
+//   itens  = [{ nome, dir, sub }]  → nome à esquerda, `dir` à direita, `sub` embaixo
+function blocoCompactoHTML(cores, titulo, resumo, itens) {
+  const c = cores;
+  return `
+    <div style="background:${c.bg};border:1px solid ${c.borda};border-left:4px solid ${c.borda};border-radius:6px;padding:8px 10px;margin-bottom:6px">
+      <div style="display:flex;align-items:baseline;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:6px">
+        <div style="font-size:10px;font-weight:800;color:${c.txtTitulo};letter-spacing:0.06em;text-transform:uppercase">${titulo}</div>
+        ${resumo ? `<div style="font-size:10px;font-weight:800;color:${c.cor};white-space:nowrap">${resumo}</div>` : ''}
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(168px,1fr));gap:5px">
+        ${itens.map(v => `
+          <div style="background:#fff;border:1px solid ${c.borda}33;border-radius:5px;padding:4px 7px;min-width:0">
+            <div style="display:flex;align-items:baseline;justify-content:space-between;gap:6px">
+              <span style="font-size:11.5px;font-weight:700;color:#111;line-height:1.25;overflow-wrap:anywhere">${v.nome}</span>
+              <span style="font-size:10px;font-weight:800;color:${c.txtInfo};white-space:nowrap">${v.dir}</span>
+            </div>
+            ${v.sub ? `<div style="font-size:9.5px;color:${c.txtInfo};opacity:.85;margin-top:1px">${v.sub}</div>` : ''}
+          </div>`).join('')}
+      </div>
+    </div>`;
+}
+
 function verificarAvisosStatus() {
   const alertEl = document.getElementById('status-alerts');
   if (!alertEl) return;
@@ -3641,27 +3667,17 @@ function verificarAvisosStatus() {
   alertEl.innerHTML = Object.values(blocos).map(b => {
     const r = b.regra;
     const titulo = r.status === 'Em corte'
-      ? `${r.urgente ? '🔴' : '⚠️'} Altera peças em corte há mais de ${fmtDias(r.horasMin, true)}`
+      ? `${r.urgente ? '🔴' : '⚠️'} Peças em corte há mais de ${fmtDias(r.horasMin, true)}`
       : r.urgente
         ? `🔴 Lembrete — confirmar ${r.proxStatus.toLowerCase()} (aguardando há +12h)`
         : '⚠️ Tecido comprado — confirmar início do corte';
-    return `
-      <div style="background:${r.bg};border:1px solid ${r.borda};border-left:4px solid ${r.borda};border-radius:6px;padding:12px 16px;margin-bottom:8px">
-        <div style="font-size:11px;font-weight:800;color:${r.txtTitulo};letter-spacing:0.06em;text-transform:uppercase;margin-bottom:8px">${titulo}</div>
-        <div style="display:flex;flex-direction:column;gap:8px">
-          ${b.itens.map(v => `
-            <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
-              <div>
-                <span style="font-size:13px;font-weight:700;color:#111">${v.nome}</span>
-                <span style="font-size:11px;color:${r.txtInfo};margin-left:8px">em "${r.status}" há <strong>${fmtDias(v.horas)}</strong></span>
-              </div>
-              <button onclick="confirmarStatus('${v.key}', '${r.proxStatus}', ${v.leva || 1})"
-                style="background:${r.cor};color:${r.cor === '#f59e0b' ? '#111' : '#fff'};border:none;border-radius:4px;padding:5px 14px;font-size:11px;font-weight:800;cursor:pointer;letter-spacing:0.04em;white-space:nowrap">
-                ${r.emoji} ${r.label}
-              </button>
-            </div>`).join('')}
-        </div>
-      </div>`;
+    // Só aviso, sem botão de confirmar (a confirmação continua no status do modelo): o
+    // cartão é nome + dias parados. No topo, o resumo — quantos modelos e há quantos dias
+    // está parado o mais antigo deles.
+    const maxDias = Math.max(...b.itens.map(v => v.horas));
+    const resumo = `${b.itens.length} ${b.itens.length === 1 ? 'modelo' : 'modelos'} · até ${fmtDias(maxDias)} parado${b.itens.length === 1 ? '' : 's'}`;
+    return blocoCompactoHTML(r, titulo, resumo,
+      b.itens.map(v => ({ nome: v.nome, dir: fmtDias(v.horas), sub: '' })));
   }).join('');
 }
 
@@ -4709,13 +4725,26 @@ function renderTrocaEtiqueta() {
 // resolvidas por corCanonica — senão "CINZA" do pedido não acha o estoque de "Cinza".
 const COR_ALIASES_DIST = { 'Branca': 'Branco' };
 
+// Tamanho fora da grade do modelo (ex.: G1 num modelo PP..GG) cai no MAIOR tamanho da grade —
+// a MESMA regra que a leitura dos pedidos já aplica ao somar "em aberto" (ver carregarPedidosShopify).
+// Sem isto o pedido pede um índice que não existe na grade: estoque e produção são lidos numa
+// posição vazia, então ele nunca acha peça, nunca acha leva ("NÃO ESTÁ NA PRODUÇÃO") e trava para
+// sempre — e o tamanho ainda sai como "—" na tela. Caso real: #8520, todo G1, parado desde
+// 13/07/2026 com o Carneirinho Off White já em produção no GG.
+function tamNaGrade(key, tam) {
+  const def = MODELOS[key];
+  if (!def) return tam;
+  return Math.min(tam, tamanhosDe(def).length - 1);
+}
+
 function requisitosDoItem(item) {
   const { modelKey, cor, tam, qtd } = item;
   if (CONJUNTO_PECAS[modelKey]) {
-    return pecasDoConjunto(modelKey, cor).map(p => ({ key: p.key, cor: p.cor, tam, qtd }));
+    // cada peça do conjunto tem a SUA grade — quem manda no corte é a peça, não o conjunto
+    return pecasDoConjunto(modelKey, cor).map(p => ({ key: p.key, cor: p.cor, tam: tamNaGrade(p.key, tam), qtd }));
   }
   if (MODELOS[modelKey]) {
-    return [{ key: modelKey, cor: corCanonica(MODELOS[modelKey], COR_ALIASES_DIST[cor] || cor), tam, qtd }];
+    return [{ key: modelKey, cor: corCanonica(MODELOS[modelKey], COR_ALIASES_DIST[cor] || cor), tam: tamNaGrade(modelKey, tam), qtd }];
   }
   return [];
 }
@@ -4872,6 +4901,9 @@ function abrirCorte(item) {
   document.getElementById('panel-corte').classList.add('active');
   document.body.classList.remove('precos-mode');
   renderCorte();
+  // O aviso de peça parada no corte mora nesta aba (15/08 estava no painel): quem abre
+  // direto em #corte precisa vê-lo sem passar pelo painel. Oficina não confirma status.
+  if (!ehPerfilOficina()) verificarAvisosStatus();
   crtArquivarConcluidas().catch(() => {}); // leva que saiu do corte vira histórico
   closeSidebar();
 }
@@ -4997,7 +5029,6 @@ function renderCorte() {
   el.innerHTML = blocoCompra + '<div class="crt-grid">' + levas.map((l, pos) => {
     const cor = '#7C3AED'; // roxo do "Em corte", igual ao resto do app
     const prazoTxt = l.prazo ? new Date(l.prazo + 'T12:00:00').toLocaleDateString('pt-BR') : '—';
-    const reg = crtRegistro(l.key, l.leva, l.at); // o que ele já anotou nesta rodada
     return `
       <div class="crt-card">
         <div class="crt-card-hd">
@@ -5013,58 +5044,32 @@ function renderCorte() {
           <div style="display:flex;align-items:center;gap:10px">
             <div style="text-align:right">
               <div class="crt-big">${l.total}<span> ${l.total === 1 ? 'peça' : 'peças'} pedidas</span></div>
-              <div class="crt-res" id="crt-res-${l.key}-${l.leva}"></div>
             </div>
             <button class="btn-primary" style="font-size:12px;padding:7px 13px" onclick="gerarFicha('${l.key}')">
               <i class="ti ti-file-text"></i> Abrir ficha
             </button>
           </div>
         </div>
-        <label class="crt-databar">
-          <span class="crt-databar-lb">DATA DO CORTE</span>
-          <input type="date" class="crt-dt" value="${esc((reg && reg.data) || '')}"
-            data-key="${esc(l.key)}" data-leva="${l.leva}" data-ref="${esc(l.at)}"
-            onchange="crtInput(this)">
-        </label>
-        <div class="crt-aviso">
-          <span>Preencher o que cortou</span>
-          <span id="crt-st-${l.key}-${l.leva}" class="crt-st"></span>
-        </div>
+        <div class="crt-aviso"><span>O que cortou vai na coluna <b>Cortado</b> da ficha impressa, a caneta.</span></div>
         <div style="overflow-x:auto">
           <table class="crt-tab">
             <thead><tr>
               <th style="text-align:left">Cor</th>
-              <th></th>
               ${l.SZ.map(s => `<th>${esc(s)}</th>`).join('')}
               <th>Tot</th>
             </tr></thead>
-            ${l.linhas.map((r, ci) => {
-              const cut = crtCortadoCor(reg, r.cor, l.SZ.length);
-              return `
-              <tbody class="crt-grp">
-                <tr class="crt-lin-ped">
-                  <td rowspan="2" class="crt-cor">${esc(r.cor)}</td>
-                  <td class="crt-rot">PEDIDO</td>
+            <tbody class="crt-grp">
+              ${l.linhas.map(r => `
+                <tr>
+                  <td class="crt-cor">${esc(r.cor)}</td>
                   ${r.arr.map(v => `<td class="crt-c${v ? '' : ' crt-zero'}">${v || '—'}</td>`).join('')}
                   <td class="crt-c crt-tot">${r.tot}</td>
-                </tr>
-                <tr class="crt-lin-cut">
-                  <td class="crt-rot crt-rot-cut">CORTOU</td>
-                  ${r.arr.map((v, i) => `<td class="crt-c crt-cel">
-                    <input type="number" class="crt-in" inputmode="numeric" min="0" step="1" placeholder="—"
-                      value="${cut[i] || ''}" data-key="${esc(l.key)}" data-leva="${l.leva}"
-                      data-ref="${esc(l.at)}" data-cor="${esc(r.cor)}" data-i="${i}" data-ped="${v}" data-ci="${ci}"
-                      oninput="crtInput(this)"></td>`).join('')}
-                  <td class="crt-c crt-tot" id="crt-tot-${l.key}-${l.leva}-${ci}"></td>
-                </tr>
-              </tbody>`;
-            }).join('')}
+                </tr>`).join('')}
+            </tbody>
           </table>
         </div>
       </div>`;
   }).join('') + '</div>' + crtHistoricoHTML();
-
-  levas.forEach(l => crtAtualizarTotais(l.key, l.leva));
 }
 
 // ─── ABA COSTURA ─────────────────────────────────────────────────────────────
@@ -5233,10 +5238,58 @@ function renderCostura() {
   // no mesmo innerHTML eles apareciam colados no texto das fichas.
   const corteEl = document.getElementById('costura-corte');
   if (corteEl) corteEl.innerHTML = blocoCorte + blocoCompra;
+  renderPagamentoCostura(); // pagamento por etapa, no topo da aba
   renderFaturamento(); // card do dinheiro dela, logo abaixo do que vem por aí
   renderAviamentos();  // lista manual de zíper/elástico/linha a comprar, logo abaixo dele
 
   el.innerHTML = levas.length ? '<div class="crt-grid">' + fichas + '</div>' : vazio;
+}
+
+// ─── PAGAMENTO POR ETAPA (topo da aba COSTURA) ───────────────────────────────
+// Mesmo formato compacto do alerta de peça parada na aba CORTE: faixa colorida, resumo em
+// cima e um cartãozinho por modelo lado a lado. São dois blocos, na ordem em que o trabalho
+// chega até ela:
+//   1. JÁ CORTADO   → leva em "Em costura": o pano já saiu da mesa de corte e está na
+//      máquina. É o pagamento que ela recebe quando entregar a leva.
+//   2. SENDO CORTADO → leva em "Em corte": ainda está na mesa. É PREVISÃO do que ela vai
+//      receber quando aquelas peças chegarem — não é o que se paga pelo corte.
+// O R$ por peça é o mesmo do faturamento (campo `costura` da Precificação, cstValorPeca),
+// para os dois cards da aba nunca discordarem entre si.
+function renderPagamentoCostura() {
+  const el = document.getElementById('costura-pagamento');
+  if (!el) return;
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c]));
+
+  const levasDe = st => cstLevasDe(st).map(l => {
+    const unit = cstValorPeca(l.key);
+    return { nome: l.nome + (l.leva === 2 ? ' (2ª leva)' : ''), pecas: l.total, unit,
+             valor: Math.round(l.total * unit * 100) / 100 };
+  }).sort((a, b) => b.valor - a.valor);
+
+  const bloco = (cores, titulo, itens) => {
+    if (!itens.length) return '';
+    const total = itens.reduce((s, l) => s + l.valor, 0);
+    const pecas = itens.reduce((s, l) => s + l.pecas, 0);
+    return blocoCompactoHTML(cores, titulo, `${pecas} ${pecas === 1 ? 'peça' : 'peças'} · ${finBRL(total)}`,
+      itens.map(l => ({
+        nome: esc(l.nome),
+        dir: finBRL(l.valor),
+        // Sem valor na Precificação a conta daria R$ 0,00 em silêncio — avisa em vez de somar zero
+        sub: l.unit ? `${l.pecas} × ${finBRL(l.unit)}` : `${l.pecas} ${l.pecas === 1 ? 'peça' : 'peças'} · sem valor na Precificação`,
+      })));
+  };
+
+  const jaCortado   = levasDe('Em costura');
+  const sendoCortado = levasDe('Em corte');
+
+  const html =
+    bloco({ cor: '#0891b2', bg: '#ecfeff', borda: '#0891b2', txtTitulo: '#0e7490', txtInfo: '#0e7490' },
+          '🧵 Pagamento do que já foi cortado — está na máquina', jaCortado)
+    + bloco({ cor: '#7C3AED', bg: '#f5f0ff', borda: '#7C3AED', txtTitulo: '#5b21b6', txtInfo: '#6d28d9' },
+            '✂️ Pagamento do que está sendo cortado — previsão', sendoCortado);
+
+  el.style.display = html ? '' : 'none';
+  el.innerHTML = html;
 }
 
 // ─── FATURAMENTO DA COSTURA ──────────────────────────────────────────────────
@@ -5616,18 +5669,20 @@ function renderAviamentos() {
 
 // ─── O QUE FOI REALMENTE CORTADO ─────────────────────────────────────────────
 // A ficha diz o que foi PEDIDO; o que sai da mesa quase nunca é exatamente isso (rolo
-// que rendeu menos, defeito no tecido, encaixe que não fechou). Aqui o cortador digita o
-// que realmente cortou, tamanho a tamanho, e a ficha passa a mostrar os dois números um
-// embaixo do outro — pedido em cima, cortado embaixo, com a diferença ao lado do total.
+// que rendeu menos, defeito no tecido, encaixe que não fechou).
 //
-// Fica numa linha PRÓPRIA da tabela ('corte-realizado'), NÃO dentro de `vc:<modelo>`:
-// salvarModelo() remonta o JSON do modelo a partir dos campos da tela da dona e descarta
-// tudo que não esteja lá — o que o cortador digitasse sumiria no primeiro salvamento
-// dela, sem erro nenhum na tela.
+// COMO ELE ANOTA (mudou em 18/08/2026): a caneta, na coluna "Cortado" da ficha IMPRESSA
+// (ver gerarFicha). Até aqui havia um campo digitável por tamanho na aba CORTE; ele disse
+// que não tem tempo de preencher — corta em pé, com o papel na mesa —, e campo que ninguém
+// preenche não fica vazio: fica errado. O app deixou de pedir o número.
 //
-// Cada rodada de corte é identificada pelo carimbo de entrada em "Em corte"
-// (`status_at`/`status2_at`). Se a leva sai do corte e volta depois, o carimbo muda e o
-// registro antigo deixa de valer sozinho — ninguém precisa lembrar de zerar nada.
+// O QUE SOBROU AQUI é só LEITURA do que foi anotado ANTES dessa mudança: a linha
+// 'corte-realizado' do Supabase ainda pode ter levas pendentes, e elas continuam virando
+// histórico quando saem do corte (crtArquivarConcluidas + card JÁ CORTADO). Nada novo
+// entra em `levas` — não existe mais caminho de gravação.
+//
+// Cada rodada de corte era identificada pelo carimbo de entrada em "Em corte"
+// (`status_at`/`status2_at`), e é por ele que o registro antigo continua sendo casado.
 const CORTE_KEY = 'corte-realizado';
 
 function crtRef(at) { return at || ''; }
@@ -5637,127 +5692,12 @@ function crtTudo() {
   return (d && typeof d === 'object' && d.levas) ? d : { levas: {} };
 }
 
-// Registro desta rodada, ou null (inclusive quando o que está guardado é de uma rodada
-// anterior — aí a ficha abre em branco de propósito).
-function crtRegistro(key, leva, at) {
-  const r = crtTudo().levas[key + '|' + leva];
-  return (r && crtRef(r.ref) === crtRef(at)) ? r : null;
-}
-
-function crtCortadoCor(reg, cor, n) {
-  const v = (reg && reg.cores && reg.cores[cor]) || [];
-  return Array.from({ length: n }, (_, i) => v[i] || 0);
-}
-
-// Todos os inputs de um bloco (uma leva de um modelo). Filtra em JS em vez de montar
-// seletor com o nome da cor dentro — cor tem espaço e acento.
-function crtInputsDe(key, leva) {
-  return Array.from(document.querySelectorAll('#corte-lista input.crt-in'))
-    .filter(i => i.dataset.key === key && i.dataset.leva === String(leva));
-}
-
-function crtNum(inp) { return Math.max(0, parseInt(inp.value, 10) || 0); }
-
-function crtDifHTML(cut, ped) {
-  if (!cut) return '<span style="color:var(--text-ter)">—</span>'; // nada anotado ainda
-  const d = cut - ped;
-  const c = d === 0 ? '#16a34a' : (d < 0 ? '#dc2626' : '#7C3AED');
-  return `<span style="color:${c}">${cut}</span>`
-    + (d ? `<div style="font-size:11px;font-weight:800;color:${c};line-height:1.2">${d > 0 ? '+' : ''}${d}</div>` : '');
-}
-
-function crtAtualizarTotais(key, leva) {
-  const porCor = {};
-  let cut = 0, ped = 0;
-  crtInputsDe(key, leva).forEach(inp => {
-    const o = porCor[inp.dataset.ci] || (porCor[inp.dataset.ci] = { cut: 0, ped: 0 });
-    const v = crtNum(inp), p = parseInt(inp.dataset.ped, 10) || 0;
-    o.cut += v; o.ped += p; cut += v; ped += p;
-  });
-  Object.entries(porCor).forEach(([ci, o]) => {
-    const td = document.getElementById(`crt-tot-${key}-${leva}-${ci}`);
-    if (td) td.innerHTML = crtDifHTML(o.cut, o.ped);
-  });
-  const res = document.getElementById(`crt-res-${key}-${leva}`);
-  if (res) {
-    const falta = ped - cut;
-    res.innerHTML = !cut ? '<span style="color:var(--text-ter)">nada cortado ainda</span>'
-      : falta > 0 ? `<span style="color:#dc2626">cortou ${cut} · faltam ${falta}</span>`
-      : falta < 0 ? `<span style="color:#7C3AED">cortou ${cut} · ${-falta} a mais</span>`
-      : `<span style="color:#16a34a">cortou ${cut} · completo ✓</span>`;
-  }
-}
-
-function crtStatus(key, leva, txt, erro) {
-  const el = document.getElementById(`crt-st-${key}-${leva}`);
-  if (!el) return;
-  el.textContent = txt;
-  el.style.color = erro ? '#dc2626' : 'var(--text-ter)';
-}
-
-// Enquanto ele digita (e por alguns segundos depois), o ciclo de 1 minuto não pode
-// redesenhar a aba: o innerHTML novo apagaria o que está na tela sem salvar.
-let _crtTimer = null;
-let _crtPend = {};
-let _crtUltimoInput = 0;
-function crtOcupado() {
-  return !!_crtTimer || Object.keys(_crtPend).length > 0 || (Date.now() - _crtUltimoInput < 8000);
-}
-
-// Serve às duas coisas que ele preenche na ficha: o que cortou (célula por tamanho) e a
-// data do corte. Mesmo caminho de gravação, mesma marca de "salvando/salvo".
-function crtInput(inp) {
-  _crtUltimoInput = Date.now();
-  const ehData = inp.classList.contains('crt-dt');
-  if (!ehData && inp.value && parseInt(inp.value, 10) < 0) inp.value = ''; // não existe cortar -3
-  const key = inp.dataset.key, leva = inp.dataset.leva;
-  if (!ehData) crtAtualizarTotais(key, leva);
-  _crtPend[key + '|' + leva] = { key, leva, ref: inp.dataset.ref };
-  crtStatus(key, leva, 'salvando…');
-  clearTimeout(_crtTimer);
-  _crtTimer = setTimeout(crtGravar, 1200);
-}
-
-// Grava lendo a nuvem antes e mesclando só as levas mexidas: a linha é uma só para o
-// sistema inteiro, e gravar o objeto local por cima apagaria a anotação de outra ficha
-// feita em outro aparelho.
-async function crtGravar() {
-  _crtTimer = null;
-  const alvos = Object.values(_crtPend);
-  _crtPend = {};
-  if (!alvos.length) return;
-
-  const nuvem = await carregarNuvem(CORTE_KEY);
-  if (nuvem === undefined) {
-    // Não deu para LER — não grava por cima (mesma regra do histórico de versões).
-    alvos.forEach(a => {
-      _crtPend[a.key + '|' + a.leva] = a;
-      crtStatus(a.key, a.leva, 'sem conexão — tentando de novo…', true);
-    });
-    clearTimeout(_crtTimer);
-    _crtTimer = setTimeout(crtGravar, 5000);
-    return;
-  }
-
-  const dados = (nuvem && nuvem.levas) ? nuvem : { levas: {} };
-  const agora = new Date().toISOString();
-  alvos.forEach(a => {
-    const cores = {};
-    crtInputsDe(a.key, a.leva).forEach(inp => {
-      const arr = cores[inp.dataset.cor] || (cores[inp.dataset.cor] = []);
-      arr[parseInt(inp.dataset.i, 10) || 0] = crtNum(inp);
-    });
-    Object.keys(cores).forEach(c => { cores[c] = Array.from(cores[c], v => v || 0); });
-    const dt = Array.from(document.querySelectorAll('#corte-lista input.crt-dt'))
-      .find(i => i.dataset.key === a.key && i.dataset.leva === String(a.leva));
-    dados.levas[a.key + '|' + a.leva] = { ref: crtRef(a.ref), cores, data: (dt && dt.value) || '', at: agora };
-  });
-  dados.updated_at = agora;
-
-  saveLocal('vc:' + CORTE_KEY, dados);
-  await salvarNuvem(CORTE_KEY, dados);
-  alvos.forEach(a => crtStatus(a.key, a.leva, 'salvo ✓'));
-}
+// 18/08/2026: o cortador NÃO anota mais nada no app — ele preenche a caneta a coluna
+// "Cortado" da ficha impressa (ver gerarFicha). Ele corta em pé, com o papel na mesa, e
+// nunca parava para digitar no celular; campo que ninguém preenche vira número errado.
+// O que ficou aqui é só LEITURA do que já foi anotado antes: `levas` pendentes continuam
+// virando linha do histórico quando a leva sai do corte (crtArquivarConcluidas), e o card
+// JÁ CORTADO continua mostrando as levas antigas. Nada novo entra em `levas`.
 
 // ─── REGISTRO DO QUE FOI CORTADO ─────────────────────────────────────────────
 // Até 14/08/2026 a leva ia para "Em costura" e o que tinha sido cortado ia junto: a ficha
@@ -5819,7 +5759,7 @@ async function crtArquivarConcluidas() {
   novo.updated_at  = new Date().toISOString();
   saveLocal('vc:' + CORTE_KEY, novo);
   await salvarNuvem(CORTE_KEY, novo);
-  if (modeloAtual === '__corte__' && !crtOcupado()) renderCorte();
+  if (modeloAtual === '__corte__') renderCorte();
 }
 
 function crtHistoricoHTML() {
@@ -6008,7 +5948,7 @@ async function crtSincronizarPrioridade() {
   // salvarNuvemREST e não salvarNuvem: esta linha é um retrato recalculado o tempo todo,
   // guardar 25 versões dela no histórico só empurraria para fora as versões que importam.
   await salvarNuvemREST(CORTE_PRIO_KEY, novo);
-  if (modeloAtual === '__corte__' && !crtOcupado()) renderCorte();
+  if (modeloAtual === '__corte__') renderCorte();
 }
 
 // ─── MINI CARDS: LIBERADOS HOJE · LIBERADOS NA SEMANA · PEDIDOS EM ABERTO ────
@@ -7305,15 +7245,21 @@ async function gerarFicha(keyArg) {
   const hoje = new Date().toLocaleDateString('pt-BR');
   const prazoFmt = prazo ? new Date(prazo + 'T12:00:00').toLocaleDateString('pt-BR') : '—';
 
-  const colSpan = tu ? 2 : SZ_FICHA.length + 2;
+  // CADA TAMANHO vira um PAR de colunas: o que foi pedido e, colado nele, uma casa VAZIA
+  // onde o cortador escreve a caneta quanto saiu daquele tamanho (18/08 — antes era um
+  // campo digitável na aba CORTE, que ele não preenchia: corta em pé, com o papel na mesa).
+  // Anotar embaixo do próprio tamanho é o que evita o erro caro: escrever 8 na coluna do M
+  // quando o 8 era do G.
+  const colSpan = (tu ? 1 : SZ_FICHA.length * 2 + 1) + 2;
   const rowsHtml = rows => rows.map((r, idx) => {
     const bg = idx % 2 === 1 ? '#faf8f5' : '#fff';
-    const sizeCells = tu ? '' : r.vals.map(v => `<td style="text-align:center;padding:7px 8px;border:1px solid #ddd;background:${bg};color:${v ? '#111' : '#ccc'};">${v || '—'}</td>`).join('');
+    const sizeCells = tu ? '' : r.vals.map(v => `<td style="text-align:center;padding:7px 6px;border:1px solid #ddd;background:${bg};color:${v ? '#111' : '#ccc'};">${v || '—'}</td><td class="cut-cell"></td>`).join('');
     return `
     <tr>
       <td style="text-align:left;font-weight:600;padding:7px 12px;border:1px solid #ddd;background:${bg};">${r.cor}</td>
       ${sizeCells}
-      <td style="text-align:center;padding:7px 8px;border:1px solid #ddd;background:${bg};font-weight:700;">${r.tot || '—'}</td>
+      <td style="text-align:center;padding:7px 6px;border:1px solid #ddd;background:${bg};font-weight:700;">${r.tot || '—'}</td>
+      <td class="cut-cell"></td>
     </tr>`;
   }).join('');
   const colorRowsHtml = rowsHtml(prodRows);
@@ -7380,6 +7326,16 @@ async function gerarFicha(keyArg) {
   .prod-table th:first-child { text-align: left; }
   .prod-table .section-hd { background: #C4A882; color: #fff; font-size: 9px; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase; padding: 5px 12px; border: none; }
   .prod-table .total-row td { background: #111 !important; color: #fff; font-weight: 800; border: 1px solid #333; padding: 8px 10px; text-align: center; }
+  /* Par de colunas por tamanho: o número pedido e, colada nele, a casa em branco do que
+     cortou. A casa é branca e alta o bastante para caber caneta, e a moldura dourada é o
+     que diz "escreva aqui" sem precisar de legenda. */
+  .prod-table .sub-hd th { background: #2a2a2a; font-size: 8px; letter-spacing: 0.04em; padding: 3px 4px; font-weight: 700; }
+  .prod-table .sub-hd .sub-ped { color: #bbb; }
+  .prod-table .cut-th { background: #F5F0E8 !important; color: #6b5740; border: 1px solid #C4A882; }
+  .prod-table .cut-cell { background: #fff !important; border: 1px solid #C4A882; min-width: 34px; height: 30px; }
+  .prod-table .cut-cell-tot { background: #fff !important; }
+  /* Com o dobro de colunas o número não pode mais respirar tanto quanto respirava */
+  .prod-table th { padding: 6px 4px; }
   .prod-table .total-row td:first-child { text-align: left; letter-spacing: 0.04em; }
 
   /* ── CROQUIS ── */
@@ -7445,9 +7401,12 @@ async function gerarFicha(keyArg) {
     <table class="prod-table">
       <thead>
         <tr>
-          <th style="text-align:left;width:22%">Cor</th>
-          ${tu ? '' : SZ_FICHA.map(s => '<th>' + s + '</th>').join('')}
-          <th style="background:#C4A882;">Total</th>
+          <th rowspan="2" style="text-align:left;width:16%">Cor</th>
+          ${tu ? '' : SZ_FICHA.map(s => '<th colspan="2">' + s + '</th>').join('')}
+          <th colspan="2" style="background:#C4A882;">Total</th>
+        </tr>
+        <tr class="sub-hd">
+          ${(tu ? [''] : SZ_FICHA).map(() => '<th class="sub-ped">pedi</th><th class="cut-th">cortou ✍</th>').join('')}
         </tr>
       </thead>
       <tbody>
@@ -7458,8 +7417,9 @@ async function gerarFicha(keyArg) {
       <tfoot>
         <tr class="total-row">
           <td>TOTAL GERAL</td>
-          ${tu ? '' : prodTots.map(v => `<td>${v}</td>`).join('')}
+          ${tu ? '' : prodTots.map(v => `<td>${v}</td><td class="cut-cell cut-cell-tot"></td>`).join('')}
           <td style="color:#C4A882;">${prodTotal}</td>
+          <td class="cut-cell cut-cell-tot"></td>
         </tr>
       </tfoot>
     </table>
@@ -9698,9 +9658,7 @@ setInterval(() => {
     crtSincronizarPrioridade().catch(() => {}); // recalcula a ordem do corte e grava se mudou
     crtArquivarConcluidas().catch(() => {});    // leva que saiu do corte vira histórico
     cstFatSincronizar().catch(() => {});        // leva que saiu da costura vira valor a pagar
-    // crtOcupado: não redesenhar a aba CORTE enquanto ele digita o que cortou — o
-    // innerHTML novo levaria junto o que ainda não foi gravado.
-    if (modeloAtual === '__corte__') { if (!crtOcupado()) renderCorte(); }
+    if (modeloAtual === '__corte__') renderCorte(); // só leitura desde 18/08: nada digitado para perder
     else if (modeloAtual === '__costura__') renderCostura(); // só leitura: nada digitado para perder
       else if (modeloAtual === '__dashboard__') renderDashboard();
     else if (modeloAtual === '__confeccao__' && confLiberada()) renderConfeccao(); // atualiza os selos de etapa do catálogo
