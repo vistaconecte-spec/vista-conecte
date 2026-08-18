@@ -7329,10 +7329,10 @@ async function gerarFicha(keyArg) {
   /* Par de colunas por tamanho: o número pedido e, colada nele, a casa em branco do que
      cortou. A casa é branca e alta o bastante para caber caneta, e a moldura dourada é o
      que diz "escreva aqui" sem precisar de legenda. */
-  .prod-table .sub-hd th { background: #2a2a2a; font-size: 8px; letter-spacing: 0.04em; padding: 3px 4px; font-weight: 700; }
-  .prod-table .sub-hd .sub-ped { color: #bbb; }
-  .prod-table .cut-th { background: #F5F0E8 !important; color: #6b5740; border: 1px solid #C4A882; }
-  .prod-table .cut-cell { background: #fff !important; border: 1px solid #C4A882; min-width: 34px; height: 30px; }
+  .prod-table .sub-hd th { background: #2a2a2a; font-size: 9px; letter-spacing: 0.06em; padding: 4px 4px; font-weight: 700; border-color: #333; }
+  .prod-table .sub-hd .sub-ped { color: #8a8a8a; font-weight: 600; }
+  .prod-table .cut-th { color: #C4A882; }
+  .prod-table .cut-cell { background: #fff !important; border: 1px solid #C4A882; min-width: 38px; height: 32px; }
   .prod-table .cut-cell-tot { background: #fff !important; }
   /* Com o dobro de colunas o número não pode mais respirar tanto quanto respirava */
   .prod-table th { padding: 6px 4px; }
@@ -7406,11 +7406,12 @@ async function gerarFicha(keyArg) {
           <th colspan="2" style="background:#C4A882;">Total</th>
         </tr>
         <tr class="sub-hd">
-          ${(tu ? [''] : SZ_FICHA).map(() => '<th class="sub-ped">pedi</th><th class="cut-th">cortou ✍</th>').join('')}
+          ${(tu ? [''] : SZ_FICHA).map(() => '<th class="sub-ped">Pedido</th><th class="cut-th">Cortado</th>').join('')}
+          <th class="sub-ped">Pedido</th><th class="cut-th">Cortado</th>
         </tr>
       </thead>
       <tbody>
-        <tr><td colspan="${colSpan}" class="section-hd">Total de peças a produzir${leva2RowsHtml ? ' — leva principal' + (status ? ' (' + status + ')' : '') : ''}</td></tr>
+        ${leva2RowsHtml ? `<tr><td colspan="${colSpan}" class="section-hd">Leva principal${status ? ' — ' + status : ''}</td></tr>` : ''}
         ${colorRowsHtml || `<tr><td colspan="${colSpan}" style="text-align:center;color:#bbb;padding:12px;">Nenhuma peça em produção</td></tr>`}
         ${leva2RowsHtml}
       </tbody>
@@ -7727,8 +7728,8 @@ function gerarFichaCompraGlobal() {
 <body>
 
 <div class="toolbar no-print">
-  <span class="toolbar-hint">✏️ Ajuste metros ou remova cores antes de imprimir</span>
-  <button class="btn-print" onclick="window.print()">🖨️ Imprimir Ficha</button>
+  <span class="toolbar-hint">Ajuste metros ou remova cores antes de imprimir</span>
+  <button class="btn-print" onclick="window.print()">Imprimir Ficha</button>
 </div>
 
 <div class="header">
@@ -7933,7 +7934,7 @@ function gerarFichaProducaoGeral() {
 <body>
 
 <div class="toolbar no-print">
-  <button class="btn-print" onclick="window.print()">🖨️ Imprimir Ficha</button>
+  <button class="btn-print" onclick="window.print()">Imprimir Ficha</button>
 </div>
 
 <div class="header">

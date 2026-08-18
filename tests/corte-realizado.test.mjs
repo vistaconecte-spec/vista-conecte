@@ -72,16 +72,21 @@ ok('e a tela diz onde anotar agora', /coluna <b>Cortado<\/b> da ficha impressa/.
 console.log('\n2) A coluna do papel: existe e sai VAZIA');
 const ficha = main.slice(main.indexOf('async function gerarFicha(keyArg)'), main.indexOf('function gerarFichaConfeccao'));
 ok('cada TAMANHO tem seu par de colunas: o pedido e a casa em branco ao lado',
-   /<th colspan="2">' \+ s \+ '<\/th>/.test(ficha) && /<th class="sub-ped">pedi<\/th><th class="cut-th">cortou/.test(ficha), true);
+   /<th colspan="2">' \+ s \+ '<\/th>/.test(ficha) && /<th class="sub-ped">Pedido<\/th><th class="cut-th">Cortado<\/th>/.test(ficha), true);
 ok('e a casa em branco vem colada no número daquele tamanho, não no fim da linha',
    /\$\{v \|\| '—'\}<\/td><td class="cut-cell"><\/td>/.test(ficha), true);
 ok('cada linha de cor tem a célula em branco — sem nada interpolado dentro',
    /<td class="cut-cell"><\/td>/.test(ficha), true);
+ok('a coluna Total também tem o par rotulado (senão sobra coluna sem cabeçalho)',
+   (ficha.match(/<th class="sub-ped">Pedido<\/th>/g) || []).length, 2);
+ok('e nenhum emoji no cabeçalho da ficha', /\p{Extended_Pictographic}/u.test(ficha), false);
 ok('o TOTAL GERAL também tem onde escrever', /<td class="cut-cell cut-cell-tot"><\/td>/.test(ficha), true);
 ok('o colspan das faixas conta o dobro de colunas (senão a faixa fica curta)',
    /const colSpan = \(tu \? 1 : SZ_FICHA\.length \* 2 \+ 1\) \+ 2;/.test(ficha), true);
 ok('a célula é branca e alta o bastante para escrever a caneta',
-   /\.cut-cell \{[^}]*background: #fff[^}]*height: 30px/.test(ficha), true);
+   (() => { const m = ficha.match(/\.cut-cell \{([^}]*)\}/);
+      return !!m && /background: #fff/.test(m[1])
+             && (parseInt((m[1].match(/height: (\d+)px/) || [])[1], 10) || 0) >= 30; })(), true);
 ok('e imprime com a moldura visível (print-color-adjust já está ligado)',
    /print-color-adjust: exact/.test(ficha), true);
 
