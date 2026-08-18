@@ -77,12 +77,14 @@ ok('e a casa em branco vem colada no número daquele tamanho, não no fim da lin
    /\$\{v \|\| '—'\}<\/td><td class="cut-cell"><\/td>/.test(ficha), true);
 ok('cada linha de cor tem a célula em branco — sem nada interpolado dentro',
    /<td class="cut-cell"><\/td>/.test(ficha), true);
-ok('a coluna Total também tem o par rotulado (senão sobra coluna sem cabeçalho)',
-   (ficha.match(/<th class="sub-ped">Pedido<\/th>/g) || []).length, 2);
+ok('não existe mais coluna Total por linha — só o par de cada tamanho',
+   (ficha.match(/<th class="sub-ped">Pedido<\/th>/g) || []).length, 1);
+ok('em tamanho único a coluna Total continua (senão a ficha fica sem quantidade)',
+   ficha.includes("tu ? '<th colspan=\"2\" style=\"background:#C4A882;\">Total</th>' :"), true);
 ok('e nenhum emoji no cabeçalho da ficha', /\p{Extended_Pictographic}/u.test(ficha), false);
 ok('o TOTAL GERAL também tem onde escrever', /<td class="cut-cell cut-cell-tot"><\/td>/.test(ficha), true);
 ok('o colspan das faixas conta o dobro de colunas (senão a faixa fica curta)',
-   /const colSpan = \(tu \? 1 : SZ_FICHA\.length \* 2 \+ 1\) \+ 2;/.test(ficha), true);
+   /const colSpan = tu \? 3 : SZ_FICHA\.length \* 2 \+ 1;/.test(ficha), true);
 ok('a célula é branca e alta o bastante para escrever a caneta',
    (() => { const m = ficha.match(/\.cut-cell \{([^}]*)\}/);
       return !!m && /background: #fff/.test(m[1])

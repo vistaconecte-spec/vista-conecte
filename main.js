@@ -4947,6 +4947,7 @@ function avisoCardHTML(icone, titulo, total, frase, linhas, extra, cor) {
 
 function renderCorte() {
   const el    = document.getElementById('corte-lista');
+  const compraEl = document.getElementById('corte-compra');
   const totEl = document.getElementById('corte-total');
   if (!el) return;
   const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c]));
@@ -5019,14 +5020,16 @@ function renderCorte() {
      </div>`);
 
   if (levas.length === 0) {
-    el.innerHTML = blocoCompra + '<div style="font-size:14px;color:var(--text-ter);padding:10px 0">'
+    if (compraEl) compraEl.innerHTML = blocoCompra;
+    el.innerHTML = '<div style="font-size:14px;color:var(--text-ter);padding:10px 0">'
       + (compra.length ? 'Nenhuma ficha em corte no momento — assim que o tecido chegar, as fichas aparecem aqui.'
                        : 'Nenhuma ficha para cortar no momento. 👍') + '</div>' + crtHistoricoHTML();
     return;
   }
 
   // Uma ficha por linha, ocupando a largura toda (ver .crt-grid no style.css).
-  el.innerHTML = blocoCompra + '<div class="crt-grid">' + levas.map((l, pos) => {
+  if (compraEl) compraEl.innerHTML = blocoCompra;
+  el.innerHTML = '<div class="crt-grid">' + levas.map((l, pos) => {
     const cor = '#7C3AED'; // roxo do "Em corte", igual ao resto do app
     const prazoTxt = l.prazo ? new Date(l.prazo + 'T12:00:00').toLocaleDateString('pt-BR') : '—';
     return `
@@ -7250,7 +7253,7 @@ async function gerarFicha(keyArg) {
   // campo digitável na aba CORTE, que ele não preenchia: corta em pé, com o papel na mesa).
   // Anotar embaixo do próprio tamanho é o que evita o erro caro: escrever 8 na coluna do M
   // quando o 8 era do G.
-  const colSpan = (tu ? 1 : SZ_FICHA.length * 2 + 1) + 2;
+  const colSpan = tu ? 3 : SZ_FICHA.length * 2 + 1;
   const rowsHtml = rows => rows.map((r, idx) => {
     const bg = idx % 2 === 1 ? '#faf8f5' : '#fff';
     const sizeCells = tu ? '' : r.vals.map(v => `<td style="text-align:center;padding:7px 6px;border:1px solid #ddd;background:${bg};color:${v ? '#111' : '#ccc'};">${v || '—'}</td><td class="cut-cell"></td>`).join('');
@@ -7258,8 +7261,7 @@ async function gerarFicha(keyArg) {
     <tr>
       <td style="text-align:left;font-weight:600;padding:7px 12px;border:1px solid #ddd;background:${bg};">${r.cor}</td>
       ${sizeCells}
-      <td style="text-align:center;padding:7px 6px;border:1px solid #ddd;background:${bg};font-weight:700;">${r.tot || '—'}</td>
-      <td class="cut-cell"></td>
+      ${tu ? `<td style="text-align:center;padding:7px 6px;border:1px solid #ddd;background:${bg};font-weight:700;">${r.tot || '—'}</td><td class="cut-cell"></td>` : ''}
     </tr>`;
   }).join('');
   const colorRowsHtml = rowsHtml(prodRows);
@@ -7330,8 +7332,8 @@ async function gerarFicha(keyArg) {
      cortou. A casa é branca e alta o bastante para caber caneta, e a moldura dourada é o
      que diz "escreva aqui" sem precisar de legenda. */
   .prod-table .sub-hd th { background: #2a2a2a; font-size: 9px; letter-spacing: 0.06em; padding: 4px 4px; font-weight: 700; border-color: #333; }
-  .prod-table .sub-hd .sub-ped { color: #8a8a8a; font-weight: 600; }
-  .prod-table .cut-th { color: #C4A882; }
+  .prod-table .sub-hd .sub-ped { color: #fff; font-weight: 600; }
+  .prod-table .cut-th { color: #fff; }
   .prod-table .cut-cell { background: #fff !important; border: 1px solid #C4A882; min-width: 38px; height: 32px; }
   .prod-table .cut-cell-tot { background: #fff !important; }
   /* Com o dobro de colunas o número não pode mais respirar tanto quanto respirava */
@@ -7402,12 +7404,10 @@ async function gerarFicha(keyArg) {
       <thead>
         <tr>
           <th rowspan="2" style="text-align:left;width:16%">Cor</th>
-          ${tu ? '' : SZ_FICHA.map(s => '<th colspan="2">' + s + '</th>').join('')}
-          <th colspan="2" style="background:#C4A882;">Total</th>
+          ${tu ? '<th colspan="2" style="background:#C4A882;">Total</th>' : SZ_FICHA.map(s => '<th colspan="2">' + s + '</th>').join('')}
         </tr>
         <tr class="sub-hd">
           ${(tu ? [''] : SZ_FICHA).map(() => '<th class="sub-ped">Pedido</th><th class="cut-th">Cortado</th>').join('')}
-          <th class="sub-ped">Pedido</th><th class="cut-th">Cortado</th>
         </tr>
       </thead>
       <tbody>
@@ -7418,9 +7418,8 @@ async function gerarFicha(keyArg) {
       <tfoot>
         <tr class="total-row">
           <td>TOTAL GERAL</td>
-          ${tu ? '' : prodTots.map(v => `<td>${v}</td><td class="cut-cell cut-cell-tot"></td>`).join('')}
-          <td style="color:#C4A882;">${prodTotal}</td>
-          <td class="cut-cell cut-cell-tot"></td>
+          ${tu ? `<td style="color:#C4A882;">${prodTotal}</td><td class="cut-cell cut-cell-tot"></td>`
+                : prodTots.map(v => `<td>${v}</td><td class="cut-cell cut-cell-tot"></td>`).join('')}
         </tr>
       </tfoot>
     </table>
