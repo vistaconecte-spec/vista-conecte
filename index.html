@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Bodoni+Moda:ital,opsz,wght@0,6..96,700;0,6..96,900&family=Bebas+Neue&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css">
-<link rel="stylesheet" href="style.css?v=2026081830">
+<link rel="stylesheet" href="style.css?v=2026081831">
 </head>
 <body>
 
@@ -298,15 +298,6 @@
             <tfoot id="prod-tfoot"><tr class="total-row"><td>Total</td><td id="p-PP">0</td><td id="p-P">0</td><td id="p-M">0</td><td id="p-G">0</td><td id="p-GG">0</td><td id="p-tot">0</td></tr></tfoot></table>
           </div>
         </div>
-        <!-- Um pedido por linha, com o número levando para a Shopify. A tabela agregada
-             acima diz QUANTO; esta diz DE QUEM. -->
-        <div class="card">
-          <div class="card-header">
-            <div class="card-title"><i class="ti ti-list-details"></i> PEDIDOS DESTE MODELO</div>
-            <span id="pedidos-modelo-tot" style="font-size:11px;font-weight:700"></span>
-          </div>
-          <div id="pedidos-modelo"></div>
-        </div>
         <!-- 2ª LEVA DE PRODUÇÃO: leva extra com status próprio (ex.: leva 1 na costura + nova compra de tecido) -->
         <div id="leva2-vazio" style="margin-bottom:10px">
           <button class="btn-outline" style="font-size:11px;padding:6px 14px;color:#7C3AED;border-color:#7C3AED" onclick="adicionarLeva2()"><i class="ti ti-plus"></i> Adicionar 2ª leva de produção</button>
@@ -374,6 +365,16 @@
             <button class="btn-primary" style="font-size:12px;padding:7px 14px" onclick="gerarFichaCompra()"><i class="ti ti-file-invoice"></i> Ficha de Compra</button>
           </div>
           <div class="tecido-grid" id="tecido-grid"></div>
+        </div>
+        <!-- Um pedido por linha, com o número levando para a Shopify. As tabelas por
+             tamanho dizem QUANTO; esta diz DE QUEM. Fecha a aba (pedido dela, 18/08): é
+             consulta, não o trabalho — ficava empurrando produção e tecido para baixo. -->
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title"><i class="ti ti-list-details"></i> PEDIDOS DESTE MODELO</div>
+            <span id="pedidos-modelo-tot" style="font-size:11px;font-weight:700"></span>
+          </div>
+          <div id="pedidos-modelo"></div>
         </div>
       </div>
       <div id="panel-arquivos" class="tab-panel">
@@ -961,7 +962,7 @@
   </div>
 </div>
 <script src="data.js?v=2026081514"></script>
-<script src="main.js?v=2026081830"></script>
+<script src="main.js?v=2026081831"></script>
 <script async src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js" onload="initSupabase()"></script>
 </body>
 </html>
