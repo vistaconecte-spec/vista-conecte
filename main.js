@@ -7256,7 +7256,7 @@ async function gerarFicha(keyArg) {
   const colSpan = tu ? 3 : SZ_FICHA.length * 2 + 1;
   const rowsHtml = rows => rows.map((r, idx) => {
     const bg = idx % 2 === 1 ? '#faf8f5' : '#fff';
-    const sizeCells = tu ? '' : r.vals.map(v => `<td style="text-align:center;padding:7px 6px;border:1px solid #ddd;background:${bg};color:${v ? '#111' : '#ccc'};">${v || '—'}</td><td class="cut-cell"></td>`).join('');
+    const sizeCells = tu ? '' : r.vals.map(v => `<td class="ped-cell" style="text-align:center;padding:7px 6px;border:1px solid #ddd;background:${bg};color:${v ? '#111' : '#ccc'};">${v || '—'}</td><td class="cut-cell"></td>`).join('');
     return `
     <tr>
       <td style="text-align:left;font-weight:600;padding:7px 12px;border:1px solid #ddd;background:${bg};">${r.cor}</td>
@@ -7334,7 +7334,12 @@ async function gerarFicha(keyArg) {
   .prod-table .sub-hd th { background: #2a2a2a; font-size: 9px; letter-spacing: 0.06em; padding: 4px 4px; font-weight: 700; border-color: #333; }
   .prod-table .sub-hd .sub-ped { color: #fff; font-weight: 600; }
   .prod-table .cut-th { color: #fff; }
-  .prod-table .cut-cell { background: #fff !important; border: 1px solid #C4A882; min-width: 38px; height: 32px; }
+  .prod-table .cut-cell { background: #fff !important; border: 1px solid #ddd; min-width: 38px; height: 32px; }
+  /* Uma linha GROSSA separa um tamanho do outro. Dentro do par (Pedido | Cortado) a
+     divisória é leve: são a mesma coluna vista de dois jeitos. A moldura dourada em volta
+     de cada casa deixava a folha listrada e competia com essa leitura. */
+  .prod-table .sz-th, .prod-table .sub-hd .sub-ped, .prod-table .ped-cell { border-left: 2px solid #111 !important; }
+  .prod-table .total-row .ped-cell { border-left: 2px solid #666 !important; }
   .prod-table .cut-cell-tot { background: #fff !important; }
   /* Com o dobro de colunas o número não pode mais respirar tanto quanto respirava */
   .prod-table th { padding: 6px 4px; }
@@ -7404,7 +7409,7 @@ async function gerarFicha(keyArg) {
       <thead>
         <tr>
           <th rowspan="2" style="text-align:left;width:16%">Cor</th>
-          ${tu ? '<th colspan="2" style="background:#C4A882;">Total</th>' : SZ_FICHA.map(s => '<th colspan="2">' + s + '</th>').join('')}
+          ${tu ? '<th colspan="2" style="background:#C4A882;">Total</th>' : SZ_FICHA.map(s => '<th colspan="2" class="sz-th">' + s + '</th>').join('')}
         </tr>
         <tr class="sub-hd">
           ${(tu ? [''] : SZ_FICHA).map(() => '<th class="sub-ped">Pedido</th><th class="cut-th">Cortado</th>').join('')}
@@ -7419,7 +7424,7 @@ async function gerarFicha(keyArg) {
         <tr class="total-row">
           <td>TOTAL GERAL</td>
           ${tu ? `<td style="color:#C4A882;">${prodTotal}</td><td class="cut-cell cut-cell-tot"></td>`
-                : prodTots.map(v => `<td>${v}</td><td class="cut-cell cut-cell-tot"></td>`).join('')}
+                : prodTots.map(v => `<td class="ped-cell">${v}</td><td class="cut-cell cut-cell-tot"></td>`).join('')}
         </tr>
       </tfoot>
     </table>

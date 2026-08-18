@@ -72,7 +72,10 @@ ok('e a tela diz onde anotar agora', /coluna <b>Cortado<\/b> da ficha impressa/.
 console.log('\n2) A coluna do papel: existe e sai VAZIA');
 const ficha = main.slice(main.indexOf('async function gerarFicha(keyArg)'), main.indexOf('function gerarFichaConfeccao'));
 ok('cada TAMANHO tem seu par de colunas: o pedido e a casa em branco ao lado',
-   /<th colspan="2">' \+ s \+ '<\/th>/.test(ficha) && /<th class="sub-ped">Pedido<\/th><th class="cut-th">Cortado<\/th>/.test(ficha), true);
+   /<th colspan="2" class="sz-th">' \+ s \+ '<\/th>/.test(ficha) && /<th class="sub-ped">Pedido<\/th><th class="cut-th">Cortado<\/th>/.test(ficha), true);
+ok('a divisória forte fica ENTRE tamanhos, não em volta de cada casa',
+   /.prod-table .sz-th, .prod-table .sub-hd .sub-ped, .prod-table .ped-cell { border-left: 2px solid #111/.test(ficha)
+   && !/.cut-cell {[^}]*#C4A882/.test(ficha), true);
 ok('e a casa em branco vem colada no número daquele tamanho, não no fim da linha',
    /\$\{v \|\| '—'\}<\/td><td class="cut-cell"><\/td>/.test(ficha), true);
 ok('cada linha de cor tem a célula em branco — sem nada interpolado dentro',
