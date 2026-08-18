@@ -862,6 +862,17 @@ input[type=number].preco-inp:focus { outline: none; border-color: var(--gold); }
 .dash-mv-val { font-size:18px; font-weight:700; color:var(--gold-dark); }
 .dash-mv-val span { font-size:10px; font-weight:400; color:var(--text-ter); }
 .dash-row:hover td { background:var(--bg-hover) !important; }
+/* Nome de modelo que abre a ficha ao toque. A linha inteira já era clicável, mas nada na
+   tela dizia isso: sem o sublinhado a Bárbara lia a lista como um aviso, não como atalho. */
+.dash-link {
+  font-weight: 700;
+  color: var(--text);
+  text-decoration: underline;
+  text-decoration-style: dotted;
+  text-decoration-color: var(--gold);
+  text-underline-offset: 3px;
+}
+tr:hover .dash-link { text-decoration-style: solid; color: var(--gold-dark); }
 
 /* ── SECTIONS 2-COL ── */
 .sections-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px; }

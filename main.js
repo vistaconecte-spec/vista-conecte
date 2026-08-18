@@ -3790,8 +3790,8 @@ function renderDashboard() {
           </tr></thead>
           <tbody>
             ${urgList.map(u => `
-              <tr style="cursor:pointer" onclick="abrirModeloPorNome('${u.nome.replace(/'/g,"\\'")}')">
-                <td style="font-weight:600">${u.nome}</td>
+              <tr style="cursor:pointer" onclick="selectModel(null,'${u.key}')" title="Abrir ${u.nome}">
+                <td><span class="dash-link">${u.nome}</span></td>
                 <td style="font-size:11px;color:var(--text-sec)">${u.status || '—'}</td>
                 ${u.tu
                   ? `<td colspan="${GRADE_ROUPA.length}" style="text-align:center;color:var(--text-ter)">${MODELOS[u.key]?.tamanhos ? 'Numeração' : 'Tam. único'}</td>`
@@ -3854,7 +3854,7 @@ function renderDashboard() {
         </tr></thead>
         <tbody>
           ${dupList.map(x => `
-            <tr style="cursor:pointer" onclick="abrirModeloPorNome('${x.nome.replace(/'/g,"\\'")}')">
+            <tr style="cursor:pointer" onclick="selectModel(null,'${x.key}')">
               <td style="font-weight:600">${x.nome}</td>
               <td style="font-size:11px;color:var(--text-sec)">${x.det}</td>
               <td style="text-align:center;font-weight:700;color:#d97706">${x.sobra}</td>
@@ -3903,7 +3903,7 @@ function renderDashboard() {
           </tr></thead>
           <tbody>
             ${prodList.map(p => `
-              <tr style="cursor:pointer" onclick="abrirModeloPorNome('${p.nome.replace(/'/g,"\\'")}')">
+              <tr style="cursor:pointer" onclick="selectModel(null,'${p.key}')">
                 <td style="font-weight:600">${p.nome}${p.leva2 ? ' <span style="font-size:9px;background:rgba(124,58,237,0.12);color:#7C3AED;border-radius:3px;padding:1px 5px;vertical-align:middle">2ª LEVA</span>' : ''}</td>
                 <td style="text-align:center;font-size:11px;color:#0891b2;font-weight:600">${p.status}</td>
                 <td style="text-align:center;font-weight:700;color:#0891b2">${p.total}</td>
@@ -3976,7 +3976,7 @@ function renderDashboard() {
           </tr></thead>
           <tbody>
             ${compraList.map(c => `
-              <tr style="cursor:pointer" onclick="abrirModeloPorNome('${c.nome.replace(/'/g,"\\'")}')">
+              <tr style="cursor:pointer" onclick="selectModel(null,'${c.key}')">
                 <td style="font-weight:600">${c.nome}${c.leva2 ? ' <span style="font-size:9px;background:rgba(124,58,237,0.12);color:#7C3AED;border-radius:3px;padding:1px 5px;vertical-align:middle">2ª LEVA</span>' : ''}</td>
                 <td style="color:var(--text-sec)">${c.tecido}</td>
                 <td style="text-align:center;font-weight:600">${c.metros.toFixed(2)}m</td>
@@ -4087,7 +4087,7 @@ function renderDashboard() {
       const sizeCells = r.tu
         ? `<td>—</td><td>—</td><td>—</td><td>—</td><td>—</td>`
         : r.sizes.map(v => `<td style="text-align:center" class="${v > 0 ? 'saldo-ok' : ''}">${v || '—'}</td>`).join('');
-      return `<tr class="dash-row" style="cursor:pointer" onclick="abrirModeloPorNome('${r.nome.replace(/'/g,"\\'")}')">
+      return `<tr class="dash-row" style="cursor:pointer" onclick="selectModel(null,'${r.key}')">
         <td style="font-weight:500">${r.nome}</td>
         <td>${r.cor}</td>
         ${sizeCells}
@@ -4115,7 +4115,7 @@ function renderDashboard() {
   const sorted = [...modelData].sort((a,b) => b.pedidos - a.pedidos);
   const TABELA_LIMIT = 10;
   const renderTabelaRows = (rows) => rows.map(m => `
-    <tr class="dash-row" style="cursor:pointer" onclick="abrirModeloPorNome('${m.nome.replace(/'/g,"\\'")}')">
+    <tr class="dash-row" style="cursor:pointer" onclick="selectModel(null,'${m.key}')">
       <td style="font-weight:500">${m.nome}</td>
       <td style="text-align:center" class="${m.pedidos > 0 ? 'val-areia' : ''}">${m.pedidos || '—'}</td>
       <td style="text-align:center">${m.estoque || '—'}</td>
@@ -4188,7 +4188,7 @@ function renderCorteCostura() {
     : `<table style="width:100%;border-collapse:collapse">
         <tbody>
           ${lista.map(p => `
-            <tr style="cursor:pointer;border-top:1px solid rgba(0,0,0,0.06)" onclick="abrirModeloPorNome('${p.nome.replace(/'/g,"\\'")}')">
+            <tr style="cursor:pointer;border-top:1px solid rgba(0,0,0,0.06)" onclick="selectModel(null,'${p.key}')">
               <td style="padding:5px 2px;font-size:13px;font-weight:600">${p.nome}${p.leva2 ? ' <span style="font-size:9px;background:rgba(124,58,237,0.12);color:#7C3AED;border-radius:3px;padding:1px 5px;vertical-align:middle">2ª LEVA</span>' : ''}</td>
               <td style="padding:5px 2px;text-align:right;font-size:13px;font-weight:700;color:${cor}">${p.total}</td>
             </tr>`).join('')}
