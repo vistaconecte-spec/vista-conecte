@@ -1176,3 +1176,16 @@ body.precos-mode .btn-hamburger:hover { background: var(--bg); }
 /* dá um respiro entre os grupos de colunas */
 #panel-precos table.prc-tbl th:nth-child(9),
 #panel-precos table.prc-tbl td:nth-child(9) { border-left: 1px solid var(--border); }
+
+/* ── PEDIDOS DESTE MODELO (aba PRODUÇÃO) ──
+   Um pedido por linha. O número é link para a Shopify — é o caminho que a dona fazia à
+   mão, saindo do modelo para caçar o pedido pelo número. */
+#pedidos-modelo table.pm-tab { width: 100%; border-collapse: collapse; font-size: 12px; table-layout: auto; }
+#pedidos-modelo table.pm-tab th { font-size: 10px; padding: 6px 8px; }
+#pedidos-modelo table.pm-tab td { padding: 7px 8px; border-bottom: 1px solid var(--bg); }
+#pedidos-modelo table.pm-tab tr:last-child td { border-bottom: none; }
+.pm-num { font-weight: 800; color: var(--text); text-decoration: none; border-bottom: 1px solid var(--gold); }
+.pm-num:hover { color: var(--gold-dark); }
+.pm-selo { font-size: 9px; font-weight: 700; border-radius: 3px; padding: 1px 5px; margin-left: 5px; vertical-align: middle; }
+.pm-parcial { background: rgba(124,58,237,0.12); color: #7C3AED; }
+.pm-naopago { background: rgba(220,38,38,0.12); color: #dc2626; }

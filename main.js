@@ -5642,6 +5642,96 @@ function renderAviamentos() {
     corpo, '', '#B45309');
 }
 
+// ─── PEDIDOS DESTE MODELO (aba PRODUÇÃO do modelo) ───────────────────────────
+// A tabela "PEDIDOS EM ABERTO" ao lado mostra o AGREGADO: cor × tamanho. Ela responde
+// "quanto", não "de quem". Quando a dona precisava olhar um pedido — conferir o cliente,
+// ver se é parcial, abrir na Shopify — tinha que sair do modelo e caçar pelo número.
+// Este card é a mesma informação destrinchada, um pedido por linha, com o número levando
+// direto para a Shopify.
+//
+// CONJUNTO conta aqui: o pedido de um Conjunto Boho aparece na página da Calça Boho,
+// porque é peça dela que precisa ser produzida. Quem distribui é requisitosDoItem, o mesmo
+// distribuidor da baixa de estoque e da produção — nunca uma conta paralela.
+function renderPedidosModelo(key) {
+  const el = document.getElementById('pedidos-modelo');
+  if (!el) return;
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c]));
+  const SZ = tamanhosDe(MODELOS[key] || {});
+  const rot = t => (MODELOS[key] && MODELOS[key].tamanhoUnico) ? 'Único' : (SZ[t] || '?');
+
+  const linhas = [];
+  for (const p of (window._shopifyDetalhados || [])) {
+    const meus = [];
+    for (const item of (p.itens || [])) {
+      for (const r of requisitosDoItem(item)) {
+        if (r.key !== key) continue;
+        meus.push(r);
+      }
+    }
+    if (!meus.length) continue;
+    const qtd = meus.reduce((s, r) => s + (r.qtd || 0), 0);
+    // agrupa cor+tamanho para a linha não virar uma lista de repetições
+    const porCor = {};
+    meus.forEach(r => {
+      (porCor[r.cor] = porCor[r.cor] || {});
+      porCor[r.cor][r.tam] = (porCor[r.cor][r.tam] || 0) + (r.qtd || 0);
+    });
+    const detalhe = Object.entries(porCor).map(([cor, tams]) =>
+      `${cor} ${Object.entries(tams).map(([t, q]) => rot(Number(t)) + (q > 1 ? `×${q}` : '')).join(', ')}`).join(' · ');
+    linhas.push({
+      numero: p.numero, cliente: p.cliente || 'Cliente', data: p.data, url: p.url,
+      qtd, detalhe, parcial: p.parcial,
+      pago: ['paid', 'partially_refunded'].includes(p.financial_status),
+      dias: diasDesde(p.data),
+    });
+  }
+  // do mais antigo para o mais novo: é a ordem em que precisam ser atendidos
+  linhas.sort((a, b) => new Date(a.data || 0) - new Date(b.data || 0));
+
+  const totEl = document.getElementById('pedidos-modelo-tot');
+  const pecas = linhas.reduce((s, l) => s + l.qtd, 0);
+  if (totEl) totEl.textContent = linhas.length
+    ? `${linhas.length} ${linhas.length === 1 ? 'pedido' : 'pedidos'} · ${pecas} ${pecas === 1 ? 'peça' : 'peças'}`
+    : '';
+
+  if (!linhas.length) {
+    el.innerHTML = '<div style="font-size:12px;color:var(--text-ter);padding:10px 2px">'
+      + (window._shopifyDetalhados ? 'Nenhum pedido em aberto com este modelo.'
+                                   : 'Carregando pedidos da Shopify…') + '</div>';
+    return;
+  }
+
+  el.innerHTML = `
+    <div style="overflow-x:auto">
+      <table class="pm-tab">
+        <thead><tr>
+          <th style="text-align:left">Pedido</th>
+          <th style="text-align:left">Cliente</th>
+          <th style="text-align:left">Peças deste modelo</th>
+          <th>Qtd</th>
+          <th style="text-align:right">Data</th>
+        </tr></thead>
+        <tbody>
+          ${linhas.map(l => `
+            <tr>
+              <td style="text-align:left;white-space:nowrap">
+                <a href="${esc(l.url || '#')}" target="_blank" rel="noopener" class="pm-num">${esc(l.numero)}</a>
+                ${l.parcial ? '<span class="pm-selo pm-parcial">parcial</span>' : ''}
+                ${l.pago ? '' : '<span class="pm-selo pm-naopago">não pago</span>'}
+              </td>
+              <td style="text-align:left">${esc(l.cliente)}</td>
+              <td style="text-align:left;font-size:11px;color:var(--text-sec)">${esc(l.detalhe)}</td>
+              <td style="text-align:center;font-weight:700">${l.qtd}</td>
+              <td style="text-align:right;white-space:nowrap;font-size:11px;color:var(--text-sec)">
+                ${l.data ? new Date(l.data).toLocaleDateString('pt-BR') : '—'}
+                ${l.dias > 0 ? ` <i>(${l.dias}d)</i>` : ''}
+              </td>
+            </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>`;
+}
+
 // ─── FATURAMENTO DO CORTE ────────────────────────────────────────────────────
 // Gêmeo do faturamento da costura, uma etapa antes: quanto o cortador tem a receber pelo
 // que está na mesa, pelo que já entregou, e o registro do que foi pago.
@@ -6509,6 +6599,7 @@ function renderModelo(key) {
   document.getElementById('model-title').textContent = nome;
   document.getElementById('model-sub').textContent = `TECIDO: ${tecido.toUpperCase()} • CONSUMO: ${consumo}M/PEÇA`;
   document.getElementById('preco-m').value = preco.toFixed(2);
+  renderPedidosModelo(key); // lista de pedidos deste modelo, clicáveis para a Shopify
   const statusSel = document.getElementById('prod-status');
   const opcoesStatus = def.revenda
     ? ['', 'Comprado']

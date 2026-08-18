@@ -298,6 +298,15 @@
             <tfoot id="prod-tfoot"><tr class="total-row"><td>Total</td><td id="p-PP">0</td><td id="p-P">0</td><td id="p-M">0</td><td id="p-G">0</td><td id="p-GG">0</td><td id="p-tot">0</td></tr></tfoot></table>
           </div>
         </div>
+        <!-- Um pedido por linha, com o número levando para a Shopify. A tabela agregada
+             acima diz QUANTO; esta diz DE QUEM. -->
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title"><i class="ti ti-list-details"></i> PEDIDOS DESTE MODELO</div>
+            <span id="pedidos-modelo-tot" style="font-size:11px;font-weight:700"></span>
+          </div>
+          <div id="pedidos-modelo"></div>
+        </div>
         <!-- 2ª LEVA DE PRODUÇÃO: leva extra com status próprio (ex.: leva 1 na costura + nova compra de tecido) -->
         <div id="leva2-vazio" style="margin-bottom:10px">
           <button class="btn-outline" style="font-size:11px;padding:6px 14px;color:#7C3AED;border-color:#7C3AED" onclick="adicionarLeva2()"><i class="ti ti-plus"></i> Adicionar 2ª leva de produção</button>
