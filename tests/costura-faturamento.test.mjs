@@ -129,5 +129,38 @@ ok('e o painel avulso sumiu', /panel-faturamento/.test(idx), false);
 ok('e nunca grava por cima sem conseguir ler antes',
    /const nuvem = await carregarNuvem\(CST_FAT_KEY\);\s*\r?\n\s*if \(nuvem === undefined\) return;/.test(main), true);
 
+console.log('\n9) A leva que JÁ FOI PAGA e volta pra costura vira cobrança de novo');
+// BUG DE 18/08/2026 (relatado pela Bárbara: "troco o status e o faturamento some").
+// O id da cobrança era 'chave|leva|carimbo'. Sem carimbo — e 'Em costura' não era carimbado
+// quando a troca vinha pelo dropdown da tela do modelo — TODA rodada da mesma leva caía no
+// mesmo id, batia em "já contabilizada" e era descartada calada.
+const semRef = { 'saia-midi|1': { ref: '', nome: 'Saia Midi', pecas: 10, unit: 4.5, desde: '' } };
+const rodada1 = F.cstFatAplicar({ abertas: semRef, aPagar: {}, pagas: [] }, {}, AGORA);
+ok('1a rodada vira cobrança', Object.values(rodada1.aPagar).map(p => p.valor), [45]);
+
+// a dona marcou pago: sai de aPagar e entra em pagas
+const paga9 = { abertas: semRef, aPagar: {}, pagas: Object.values(rodada1.aPagar).map(p => ({ ...p, pago_em: AGORA })) };
+const rodada2 = F.cstFatAplicar(paga9, {}, AGORA);
+ok('2a rodada da MESMA leva não some (era o bug)', rodada2 !== null && Object.keys(rodada2.aPagar).length, 1);
+ok('e não mexe no que já foi pago', rodada2.pagas.length, 1);
+ok('os dois registros têm id diferente',
+   Object.keys(rodada2.aPagar)[0] !== rodada2.pagas[0].id, true);
+
+// COM carimbo, reler a mesma rodada continua não duplicando
+const comRef = { 'saia-midi|1': { ref: 'r9', nome: 'Saia Midi', pecas: 10, unit: 4.5, desde: 'r9' } };
+const r1 = F.cstFatAplicar({ abertas: comRef, aPagar: {}, pagas: [] }, {}, AGORA);
+const r2 = F.cstFatAplicar({ abertas: comRef, aPagar: r1.aPagar, pagas: [] }, {}, AGORA);
+ok('com carimbo, a MESMA rodada relida não duplica', Object.keys(r2.aPagar).length, 1);
+
+console.log('\n10) Os dois caminhos de troca de status carimbam igual');
+// Eram listas diferentes: o botão do card carimbava 'Em costura', o dropdown da tela não —
+// e um save da tela apagava o carimbo posto pelo botão.
+const listaSalvar = (main.match(/status_at: \[([^\]]*)\]\.includes\(statusVal\)/) || [])[1] || '';
+const listaBotao  = (main.match(/saved\.status_at\s*= \[([^\]]*)\]\.includes\(novoStatus\)/) || [])[1] || '';
+ok('salvarModelo carimba Em costura', /Em costura/.test(listaSalvar), true);
+ok('confirmarStatus também', /Em costura/.test(listaBotao), true);
+ok('e a leva 2 idem',
+   /status2_at: \['Comprando tecido', 'Em corte', 'Em costura'\]/.test(main), true);
+
 console.log(falhas ? `\n✗ ${total - falhas}/${total} passaram` : `\n✓ ${total}/${total} passaram`);
 process.exit(falhas ? 1 : 0);

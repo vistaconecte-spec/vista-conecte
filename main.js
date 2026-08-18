@@ -541,7 +541,7 @@ function salvarModelo() {
       status2:    statusVal2,
       prazo2:     document.getElementById('prod2-prazo')?.value || '',
       prod2_at:   prod2Editado ? new Date().toISOString() : (existente.prod2_at || null),
-      status2_at: ['Comprando tecido', 'Em corte'].includes(statusVal2)
+      status2_at: ['Comprando tecido', 'Em corte', 'Em costura'].includes(statusVal2)
         ? (existente.status2 === statusVal2 && existente.status2_at ? existente.status2_at : new Date().toISOString())
         : null,
     } : {}),
@@ -557,8 +557,11 @@ function salvarModelo() {
     est_at:      estEditado  ? new Date().toISOString() : (existente.est_at  || null),
     prod_at:     prodEditado ? new Date().toISOString() : (existente.prod_at || null),
     updated_at:  new Date().toISOString(),
-    // Registra timestamp ao entrar em status com prazo monitorado
-    status_at: ['Comprando tecido', 'Em corte'].includes(statusVal)
+    // Registra timestamp ao entrar em status monitorado. A lista tem que ser a MESMA de
+    // confirmarStatus (linha ~3548): eram duas e 'Em costura' ficava sem carimbo quando a
+    // troca vinha por aqui — o faturamento usa esse carimbo para separar uma rodada da
+    // outra, e sem ele a segunda passagem da leva sumia.
+    status_at: ['Comprando tecido', 'Em corte', 'Em costura'].includes(statusVal)
       ? (existente.status === statusVal && existente.status_at ? existente.status_at : new Date().toISOString())
       : null,
   };
@@ -5322,9 +5325,18 @@ function cstFatAplicar(dados, atuais, agora) {
 
 function cstFatEntregar(d, id, ant, agora) {
   const [key, levaTxt] = id.split('|');
-  const idFat = id + '|' + (ant.ref || '');
-  if (d.aPagar[idFat] || d.pagas.some(p => p.id === idFat)) return; // já contabilizada
-  if (!ant.pecas) return;                                           // leva vazia não vira cobrança
+  if (!ant.pecas) return; // leva vazia não vira cobrança
+  // O carimbo (ref) separa uma rodada da outra. Quando ele falta — todo o histórico anterior
+  // a 18/08/2026 e qualquer leva carimbada fora do fluxo — o id repetia e a rodada nova era
+  // engolida como "já contabilizada". Agora ela ganha sufixo e vira um registro próprio:
+  // perder uma entrega é pior que ter duas linhas parecidas, que a dona vê e confere.
+  const base = id + '|' + (ant.ref || '');
+  let idFat = base, n = 1;
+  const existe = x => d.aPagar[x] || d.pagas.some(p => p.id === x);
+  while (existe(idFat)) {
+    if (ant.ref && idFat === base) return; // com carimbo, id repetido é a MESMA rodada relida
+    idFat = base + '#' + (++n);
+  }
   d.aPagar[idFat] = {
     id: idFat, key, leva: Number(levaTxt) || 1, nome: ant.nome,
     pecas: ant.pecas, unit: ant.unit,
