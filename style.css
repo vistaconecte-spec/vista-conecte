@@ -865,6 +865,7 @@ input[type=number].preco-inp:focus { outline: none; border-color: var(--gold); }
 /* Nome de modelo que abre a ficha ao toque. A linha inteira já era clicável, mas nada na
    tela dizia isso: sem o sublinhado a Bárbara lia a lista como um aviso, não como atalho. */
 .dash-link {
+  cursor: pointer;
   font-weight: 700;
   color: var(--text);
   text-decoration: underline;

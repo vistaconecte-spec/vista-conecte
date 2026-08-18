@@ -5035,6 +5035,10 @@ function renderCorte() {
   // Uma ficha por linha, ocupando a largura toda (ver .crt-grid no style.css).
   if (compraEl) compraEl.innerHTML = blocoCompra;
   renderFaturamentoCorte(); // dinheiro do cortador, mesmo desenho do card da costura
+  // O nome abre a ficha do modelo (pedido dela, 18/08): da aba dá para pular direto para a
+  // grade daquele modelo, em vez de procurá-lo na Confecção. Só para a DONA — o aparelho do
+  // cortador não alcança pedido, cliente nem preço, e é isso que a tela do modelo mostra.
+  const podeAbrir = !ehPerfilOficina();
   el.innerHTML = '<div class="crt-grid">' + levas.map((l, pos) => {
     const cor = '#7C3AED'; // roxo do "Em corte", igual ao resto do app
     const prazoTxt = l.prazo ? new Date(l.prazo + 'T12:00:00').toLocaleDateString('pt-BR') : '—';
@@ -5042,7 +5046,9 @@ function renderCorte() {
       <div class="crt-card">
         <div class="crt-card-hd">
           <div>
-            <div class="crt-nome">${l.prioritaria ? `<span class="crt-pos${pos === 0 ? ' crt-pos-1' : ''}">${pos + 1}º</span>` : ''}${esc(l.nome)}${l.leva === 2 ? ' <span class="crt-selo">2ª LEVA</span>' : ''}</div>
+            <div class="crt-nome">${l.prioritaria ? `<span class="crt-pos${pos === 0 ? ' crt-pos-1' : ''}">${pos + 1}º</span>` : ''}${podeAbrir
+              ? `<span class="dash-link" onclick="selectModel(null,'${l.key}')" title="Abrir ${esc(l.nome)}">${esc(l.nome)}</span>`
+              : esc(l.nome)}${l.leva === 2 ? ' <span class="crt-selo">2ª LEVA</span>' : ''}</div>
             ${l.prioritaria ? crtMotivoHTML(l.p, 'CORTAR PRIMEIRO') : ''}
             <div class="crt-meta">
               <span style="color:${cor};font-weight:700">${esc(l.status)}</span>

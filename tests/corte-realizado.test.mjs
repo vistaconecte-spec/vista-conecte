@@ -68,6 +68,10 @@ ok('o CSS do campo foi junto — regra órfã vira mistério na próxima leitura
    /crt-in\b|crt-cel|crt-rot|crt-lin-cut/.test(css), false);
 ok('a tabela da aba mostra o PEDIDO, sem a linha CORTOU', /CORTOU/.test(corte), false);
 ok('e a tela diz onde anotar agora', /coluna <b>Cortado<\/b> da ficha impressa/.test(corte), true);
+ok('o nome do modelo abre a ficha dele — atalho da dona para a grade daquele modelo',
+   /class="dash-link" onclick="selectModel\(null,'\$\{l\.key\}'\)/.test(corte), true);
+ok('e o aparelho da oficina NÃO ganha esse atalho (a tela do modelo tem pedido e preço)',
+   /const podeAbrir = !ehPerfilOficina\(\);/.test(corte) && corte.includes('${podeAbrir'), true);
 
 console.log('\n2) A coluna do papel: existe e sai VAZIA');
 const ficha = main.slice(main.indexOf('async function gerarFicha(keyArg)'), main.indexOf('function gerarFichaConfeccao'));
