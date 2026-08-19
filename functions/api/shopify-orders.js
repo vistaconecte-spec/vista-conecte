@@ -73,7 +73,7 @@ const PRODUCT_MAP = {
   'Blusa Canelada punho dedindo':                           'blusa-canelada',
   'Blusa Canelada punho dedinho':                           'blusa-canelada',
   'Regata Oversized':                                       'regata-oversized',
-  'Regata Canelada':                                        'regata-canelada',
+  'Regata Canelada':                                        'blusa-canelada-simples',
   'Cropped com Mini saia Canelada':                         'cropped-mini-saia',
   'Cropped Moletom':                                        'cropped-moletom',
   // Sapatos

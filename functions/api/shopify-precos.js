@@ -26,7 +26,7 @@ const PRODUCT_MAP = {
   'Carneirinho Cropped': 'carneirinho-cropped', 'Casaco Carneirinho Cropped Feminino': 'carneirinho-cropped',
   'Cropped Peace': 'cropped-peace', 'Camiseta Oversized': 'camiseta-oversized',
   'Blusa Canelada punho dedindo': 'blusa-canelada', 'Blusa Canelada punho dedinho': 'blusa-canelada',
-  'Regata Oversized': 'regata-oversized', 'Regata Canelada': 'regata-canelada',
+  'Regata Oversized': 'regata-oversized', 'Regata Canelada': 'blusa-canelada-simples',
   'Cropped com Mini saia Canelada': 'cropped-mini-saia', 'Cropped Moletom': 'cropped-moletom',
   'Flat': 'flat', 'Sandália Gladiadora': 'sandalia-gladiadora', 'Sandalia Gladiadora': 'sandalia-gladiadora', 'Saia Midi': 'saia-midi', 'Mini Saia Canelada': 'mini-saia-canelada',
   'Moletom Gola Alta': 'moletom-gola-alta', 'Moletom Zíper com Bolsos': 'moletom-ziper-bolsos', 'Moletom Ziper com Bolsos': 'moletom-ziper-bolsos', 'Moletom Cozy': 'moletom-ziper-bolsos', 'Moletom Mood': 'moletom-ziper-bolsos',

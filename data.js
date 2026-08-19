@@ -59,7 +59,6 @@ const MODELOS = {
   'blusa-canelada-simples':{nome:'Blusa Canelada',tecido:'Canelado',consumo:0.9,preco:19,componentes:'1 Frente – 1 Costas – 2 Mangas',obs:'',cores:['Preto','Nude'],aberto:{'Preto':[0,0,0,0,0],'Nude':[0,0,0,0,0]}},
   'blusa-canelada':{nome:'Blusa Canelada Punho Dedinho',tecido:'Canelado',consumo:1.0,preco:19,componentes:'1 Frente – 1 Costas – 2 Mangas – Punho',obs:'',cores:['Off White','Preto','Marrom','Telha','Militar'],aberto:{'Off White':[0,0,0,0,0],'Preto':[0,0,0,0,0],'Marrom':[0,0,0,0,0],'Telha':[0,0,0,0,0],'Militar':[0,0,0,0,0]}},
   'regata-oversized':{nome:'Regata Oversized',tecido:'Malha',consumo:0.8,preco:15,componentes:'1 Frente – 1 Costas',obs:'',cores:['Preto','Off White'],aberto:{'Preto':[0,0,0,0,0],'Off White':[0,0,0,0,0]}},
-  'regata-canelada':{nome:'Regata Canelada',tecido:'Canelado',consumo:0.7,preco:19,componentes:'1 Frente – 1 Costas',obs:'',cores:['Preto','Nude'],aberto:{'Preto':[0,0,0,0,0],'Nude':[0,0,0,0,0]}},
   'cropped-mini-saia':{nome:'Cropped + Mini Saia Canelada',tecido:'Canelado',consumo:1.2,preco:19,componentes:'',obs:'',cores:['Preto','Off White','Branco','Marrom'],aberto:{'Preto':[0,0,0,0,0],'Off White':[0,0,0,0,0],'Branco':[0,0,0,0,0],'Marrom':[0,0,0,0,0]}},
   'cropped-canelado':{nome:'Cropped Canelado',tecido:'Canelado',consumo:0.6,preco:19,componentes:'1 Frente – 1 Costas',obs:'',cores:['Preto','Off White','Branco','Marrom','Nude','Cinza'],aberto:{'Preto':[0,0,0,0,0],'Off White':[0,0,0,0,0],'Branco':[0,0,0,0,0],'Marrom':[0,0,0,0,0],'Nude':[0,0,0,0,0]},croquiFrente:'/croqui-cropped-canelado-frente.jpg?v=2026061601'},
 
@@ -87,7 +86,7 @@ const SIDEBAR_ESTRUTURA = [
   {titulo:'VESTIDOS',    modelos:['vestido-frente-unica-longo','vestido-frente-unica-curto','vestido-amplo']},
   {titulo:'CALÇAS',      modelos:['calca-pantalona','calca-basica-moletom','calca-pantalona-viscolycra','calca-flare','calca-peace','calca-bolso-frontal','calca-boho']},
   {titulo:'CASACOS',     modelos:['casaco-sherpa','casaco-sherpa-capuz','casaco-pele-persa','carneirinho-cropped','sherpa-ziper-bolsos']},
-  {titulo:'TOPS',        modelos:['camiseta-oversized','blusa-canelada-simples','blusa-canelada','regata-oversized','regata-canelada','cropped-canelado','cropped-moletom','cropped-peace','cropped-frente-unica','blusa-boho']},
+  {titulo:'TOPS',        modelos:['camiseta-oversized','blusa-canelada-simples','blusa-canelada','regata-oversized','cropped-canelado','cropped-moletom','cropped-peace','cropped-frente-unica','blusa-boho']},
   {titulo:'SAIAS',       modelos:['saia-midi','mini-saia-canelada']},
   {titulo:'SAPATOS',     modelos:['flat','sandalia-gladiadora']},
   {titulo:'OUTROS',      modelos:['moletom-gola-alta','moletom-ziper-bolsos','canguru-amplo']},

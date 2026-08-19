@@ -26,7 +26,7 @@ const PRODUCT_MAP = {
   'Casaco Bear': 'sherpa-ziper-bolsos',
   'Cropped Peace': 'cropped-peace', 'Camiseta Oversized': 'camiseta-oversized',
   'Blusa Canelada punho dedindo': 'blusa-canelada', 'Blusa Canelada punho dedinho': 'blusa-canelada',
-  'Regata Oversized': 'regata-oversized', 'Regata Canelada': 'regata-canelada',
+  'Regata Oversized': 'regata-oversized', 'Regata Canelada': 'blusa-canelada-simples',
   'Cropped com Mini saia Canelada': 'cropped-mini-saia', 'Cropped Moletom': 'cropped-moletom',
   'Flat': 'flat', 'Sandália Gladiadora': 'sandalia-gladiadora', 'Sandalia Gladiadora': 'sandalia-gladiadora', 'Saia Midi': 'saia-midi', 'Mini Saia Canelada': 'mini-saia-canelada',
   'Moletom Gola Alta': 'moletom-gola-alta', 'Moletom Zíper com Bolsos': 'moletom-ziper-bolsos', 'Moletom Ziper com Bolsos': 'moletom-ziper-bolsos', 'Moletom Cozy': 'moletom-ziper-bolsos', 'Moletom Mood': 'moletom-ziper-bolsos',
@@ -42,7 +42,7 @@ const PESO_G = {
   'conjunto-regata-mini-saia': 450, 'conjunto-camiseta-mini-saia': 450, 'cropped-mini-saia': 400, 'conjunto-saia-midi-oversized': 450, 'conjunto-calca-bolso-camiseta': 600,
   'moletom-gola-alta': 500, 'moletom-ziper-bolsos': 500, 'canguru-amplo': 500,
   'calca-pantalona': 400, 'calca-basica-moletom': 400, 'calca-peace': 400, 'calca-bolso-frontal': 400, 'calca-flare': 350, 'calca-pantalona-viscolycra': 350,
-  'cropped-moletom': 200, 'cropped-canelado': 200, 'cropped-peace': 200, 'blusa-canelada': 200, 'blusa-canelada-simples': 200, 'blusa-peace': 200, 'camiseta-oversized': 200, 'regata-oversized': 180, 'regata-canelada': 180, 'saia-midi': 250, 'mini-saia-canelada': 200,
+  'cropped-moletom': 200, 'cropped-canelado': 200, 'cropped-peace': 200, 'blusa-canelada': 200, 'blusa-canelada-simples': 200, 'blusa-peace': 200, 'camiseta-oversized': 200, 'regata-oversized': 180, 'saia-midi': 250, 'mini-saia-canelada': 200,
   'vestido-frente-unica-longo': 400, 'vestido-frente-unica-curto': 350, 'vestido-amplo': 400, 'macacao-amplo': 450, 'macacao-manga-longa': 450, 'macaquinho-amplo': 350, 'macaquinho-ruel': 300,
   'flat': 700, 'sandalia-gladiadora': 600,
 };
