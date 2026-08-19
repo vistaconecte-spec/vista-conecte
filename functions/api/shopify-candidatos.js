@@ -6,6 +6,10 @@
 const API_VERSION = '2024-04';
 
 const PRODUCT_MAP = {
+  'Cropped Frente Única': 'cropped-frente-unica',
+  'Conjunto Moletom Gola Alta Preto + Short Bolso Frontal Preto': 'conjunto-moletom-short-bolso',
+  'Calça Boho': 'calca-boho',
+  'Blusa Boho': 'blusa-boho',
   'Macacão Amplo': 'macacao-amplo', 'Macacão Manga Longa': 'macacao-manga-longa',
   'Macaquinho Amplo': 'macaquinho-amplo', 'Macaquinho Ruel': 'macaquinho-ruel',
   'Vestido Frente Única Longo': 'vestido-frente-unica-longo', 'Vestido Frente Única Curto': 'vestido-frente-unica-curto', 'Vestido Amplo': 'vestido-amplo',
