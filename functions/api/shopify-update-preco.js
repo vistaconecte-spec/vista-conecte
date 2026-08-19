@@ -17,6 +17,7 @@ const API_VERSION = '2024-04';
 
 // Espelha o mapeamento de shopify-precos.js (título Shopify → chave do modelo)
 const PRODUCT_MAP = {
+  'Canguru Longo Moletom': 'canguru-amplo',
   'Cropped Frente Única': 'cropped-frente-unica',
   'Conjunto Moletom Gola Alta Preto + Short Bolso Frontal Preto': 'conjunto-moletom-short-bolso',
   'Calça Boho': 'calca-boho',

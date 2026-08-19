@@ -15,6 +15,7 @@ const SHOE_SIZES = ['34', '35', '36', '37', '38', '39', '40']; // calçados 34-4
 
 // Mapa: prefixo exato do título Shopify → chave do modelo no sistema
 const PRODUCT_MAP = {
+  'Canguru Longo Moletom': 'canguru-amplo',
   'Calça Boho': 'calca-boho',
   'Blusa Boho': 'blusa-boho',
   // Macacões
