@@ -8853,6 +8853,7 @@ const CONJUNTO_PECAS = {
   'conjunto-pantalona-blusa':         ['calca-pantalona-viscolycra', 'blusa-canelada-simples'],
   'conjunto-peace':                   ['calca-peace', 'cropped-peace'],
   'conjunto-calca-flare-moletom':     ['calca-flare', 'moletom-gola-alta'],
+  'conjunto-calca-flare-camiseta':    ['calca-flare', 'camiseta-oversized'],
   'conjunto-moletom-saia-midi':       ['moletom-gola-alta', 'saia-midi'],
   'conjunto-moletom-short-bolso':     ['moletom-gola-alta', 'calca-bolso-frontal'],
   // Calça Off White + Camiseta Preta — cores fixas por peça

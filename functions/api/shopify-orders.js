@@ -32,6 +32,7 @@ const PRODUCT_MAP = {
   'Conjunto Canelado':                                      'conjunto-canelado',
   // Conjuntos novos
   'Conjunto Calça flare com Moletom gola alta':             'conjunto-calca-flare-moletom',
+  'Conjunto Calça Flare + Camiseta Oversized':      'conjunto-calca-flare-camiseta',
   'Conjunto calça flare com moletom gola alta':             'conjunto-calca-flare-moletom',
   'Conjunto calça flare com Moletom gola alta':             'conjunto-calca-flare-moletom',
   'Conjunto Calça Pantalona com Moletom Gola Alta':         'conjunto-calca-pantalona-moletom',
