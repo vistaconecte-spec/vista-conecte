@@ -5410,6 +5410,43 @@ async function cstFatPagar(id, desfazer) {
   renderFaturamento();
 }
 
+// Paga TODAS as levas entregues de uma vez — ela acerta com a costureira por semana, não
+// leva a leva, e marcar seis botões seguidos é onde se esquece um.
+//
+// A conta do aviso sai da NUVEM, não da tela: entre abrir o app e apertar o botão outra
+// leva pode ter sido entregue (a entrega é automática, ao sair de "Em costura"). Perguntar
+// com o número velho seria pedir autorização para pagar uma coisa e pagar outra.
+async function cstFatPagarTudo() {
+  if (ehPerfilOficina()) return;
+  const nuvem = await carregarNuvem(CST_FAT_KEY);
+  if (nuvem === undefined) { alert('Sem conexão com a nuvem — tente de novo em instantes.'); return; }
+  const d = {
+    abertas: (nuvem && nuvem.abertas) || {},
+    aPagar:  (nuvem && nuvem.aPagar)  || {},
+    pagas:   (nuvem && Array.isArray(nuvem.pagas)) ? nuvem.pagas : [],
+  };
+  const itens = Object.values(d.aPagar);
+  if (!itens.length) { alert('Nada entregue esperando pagamento.'); renderFaturamento(); return; }
+  const total = itens.reduce((soma, p) => soma + (p.valor || 0), 0);
+  const lista = itens.map(p => `• ${p.nome}${p.leva === 2 ? ' (2ª leva)' : ''} — ${finBRL(p.valor || 0)}`).join('\n');
+  if (!confirm(`Marcar como PAGO ${itens.length} ${itens.length === 1 ? 'leva' : 'levas'}, `
+             + `${finBRL(total)} no total?
+
+${lista}
+
+Dá para desfazer uma a uma no "JÁ PAGO".`)) return;
+
+  const agora = new Date().toISOString();
+  itens.forEach(p => { p.pago_em = agora; });
+  // Mais recente primeiro, igual ao pagamento avulso (cstFatPagar usa unshift)
+  d.pagas = itens.concat(d.pagas).slice(0, CST_PAGAS_MAX);
+  d.aPagar = {};
+  d.updated_at = agora;
+  saveLocal('vc:' + CST_FAT_KEY, d);
+  await salvarNuvem(CST_FAT_KEY, d);
+  renderFaturamento();
+}
+
 // Mora DENTRO da aba COSTURA, logo abaixo do que vem por aí — não é aba própria (pedido da
 // Bárbara, 15/08). Vem fechado, no mesmo card de "ver mais" das outras faixas: o que ela abre
 // para consultar não pode empurrar a ficha do dia para baixo da dobra.
@@ -5470,7 +5507,14 @@ function renderFaturamento() {
       agora.length ? linhas(agora) : '<div class="fat-vazio">Nada em costura no momento.</div>')
     + bloco('#dc2626', 'ti-cash', 'ENTREGUE — A RECEBER', totalAPagar,
       'Levas que saíram da costura e ainda não foram pagas.',
-      aPagar.length ? aPagar.map(p => `
+      (podePagar && aPagar.length > 1 ? `
+        <div class="fat-pagar-tudo">
+          <button class="btn-primary" onclick="cstFatPagarTudo()">
+            <i class="ti ti-checks"></i> Pagar todas — ${finBRL(totalAPagar)}
+          </button>
+          <span>acerto da semana inteiro de uma vez</span>
+        </div>` : '')
+      + (aPagar.length ? aPagar.map(p => `
         <div class="fat-lin">
           <div>
             <div class="fat-nome">${esc(p.nome)}${p.leva === 2 ? ' <span class="crt-selo">2ª LEVA</span>' : ''}</div>
@@ -5480,7 +5524,7 @@ function renderFaturamento() {
             <span class="fat-val">${finBRL(p.valor)}</span>
             ${podePagar ? `<button class="btn-outline" style="font-size:11px;padding:4px 9px" onclick="cstFatPagar('${esc(p.id)}')"><i class="ti ti-check"></i> pago</button>` : ''}
           </div>
-        </div>`).join('') : '<div class="fat-vazio">Nada entregue esperando pagamento. 👍</div>')
+        </div>`).join('') : '<div class="fat-vazio">Nada entregue esperando pagamento. 👍</div>'))
     + bloco('#7C3AED', 'ti-scissors', 'VEM POR AÍ', totalVindo,
       'O que está no corte e o tecido em compra, pelo valor de <b>costura</b> da peça — é a previsão do que ela vai receber, não o que se paga pelo corte.',
       vindo.length ? linhas(vindo, l => ` · ${l.etapa === 'Em corte' ? 'no corte' : 'comprando tecido'}`)

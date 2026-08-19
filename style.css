@@ -590,6 +590,15 @@ input[type=number].ci:focus {
 .fat-sub { font-size: 12px; color: var(--text-sec); margin-top: 2px; }
 .fat-val { font-size: 15px; font-weight: 800; white-space: nowrap; }
 .fat-acao { display: flex; align-items: center; gap: 9px; }
+/* Acerto da semana inteiro: fica ACIMA da lista, não no rodapé — quem abre o bloco já
+   decidiu pagar tudo, e procurar o botão depois de rolar seis levas é o caminho errado.
+   Só aparece com duas ou mais esperando: com uma só, o botão da linha já resolve. */
+.fat-pagar-tudo {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 8px 0 10px; border-bottom: 1px solid var(--border); margin-bottom: 4px;
+}
+.fat-pagar-tudo button { font-size: 12px; padding: 7px 14px; }
+.fat-pagar-tudo span { font-size: 11px; color: var(--text-ter); }
 .fat-vazio { font-size: 13px; color: var(--text-ter); padding: 8px 0 2px; }
 .fat-alerta { color: #dc2626; font-weight: 700; }
 /* Modelo sem valor de costura na Precificação soma zero — o aviso existe para o total nunca

@@ -162,5 +162,30 @@ ok('confirmarStatus também', /Em costura/.test(listaBotao), true);
 ok('e a leva 2 idem',
    /status2_at: \['Comprando tecido', 'Em corte', 'Em costura'\]/.test(main), true);
 
+console.log('\n11) Pagar TODAS de uma vez');
+// Ela acerta com a costureira por semana: seis botoes seguidos e onde se esquece um.
+const tudo = main.slice(main.indexOf('async function cstFatPagarTudo'),
+                        main.indexOf('\n}', main.indexOf('async function cstFatPagarTudo')));
+ok('o aparelho da costureira nao paga nada', /if \(ehPerfilOficina\(\)\) return;/.test(tudo), true);
+ok('le a nuvem antes (outra leva pode ter sido entregue enquanto a tela estava aberta)',
+   tudo.indexOf('await carregarNuvem(CST_FAT_KEY)') < tudo.indexOf('confirm('), true);
+ok('leitura falhou -> avisa e NAO grava por cima',
+   /if \(nuvem === undefined\) \{ alert\([^)]*\); return; \}/.test(tudo), true);
+ok('pergunta antes, com quantidade e total do que vai pagar',
+   /confirm\(`Marcar como PAGO \$\{itens\.length\}/.test(tudo) && /finBRL\(total\)/.test(tudo), true);
+ok('e o total sai do que veio da nuvem, nao do que estava na tela',
+   /const total = itens\.reduce\(\(soma, p\) => soma \+ \(p\.valor \|\| 0\), 0\);/.test(tudo), true);
+ok('nada a pagar nao vira gravacao vazia',
+   /if \(!itens\.length\) \{ alert\([^)]*\); renderFaturamento\(\); return; \}/.test(tudo), true);
+ok('cada leva paga leva a data do pagamento', /itens\.forEach\(p => \{ p\.pago_em = agora; \}\);/.test(tudo), true);
+ok('a lista de pagas continua com teto', /slice\(0, CST_PAGAS_MAX\)/.test(tudo), true);
+ok('e o "a pagar" fica realmente vazio depois', /d\.aPagar = \{\};/.test(tudo), true);
+
+const cardFat = main.slice(main.indexOf('function renderFaturamento'), main.indexOf('\n}', main.indexOf('function renderFaturamento')));
+ok('o botao so aparece para quem pode pagar e com 2+ levas esperando',
+   /podePagar && aPagar\.length > 1/.test(cardFat), true);
+ok('e mostra o valor do acerto no proprio botao',
+   /Pagar todas .{1,3} \$\{finBRL\(totalAPagar\)\}/.test(cardFat), true);
+
 console.log(falhas ? `\n✗ ${total - falhas}/${total} passaram` : `\n✓ ${total}/${total} passaram`);
 process.exit(falhas ? 1 : 0);
