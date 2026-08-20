@@ -45,6 +45,9 @@ ok('cada medida virou uma linha', (bloco.match(/<tr>/g) || []).length, 4); // ca
 ok('tamanho sem nenhum valor não vira coluna', bloco.includes('<th>G1</th>'), false);
 ok('tamanhos usados', tamanhosUsados(LINHAS, TAMANHOS), ['PP', 'P', 'M', 'G', 'GG']);
 ok('valor preenchido aparece', bloco.includes('<td>113cm</td>'), true);
+// O tema esconde a descrição inteira na PDP e só deixa passar este wrapper — sem ele a
+// tabela fica no HTML mas não aparece na página do produto.
+ok('a tabela vem dentro de .vc-tabela-medidas', bloco.includes('<div class="vc-tabela-medidas">') && bloco.includes('</div>'), true);
 
 console.log('\n2) Linha pela metade não estraga a tabela');
 const comBuracos = [
