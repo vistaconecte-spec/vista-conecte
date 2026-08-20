@@ -3618,8 +3618,9 @@ function verificarAvisosStatus() {
   if (!alertEl) return;
 
   // Regras: { status, horasMin, urgente (bool = lembrete 12h extra), proxStatus, label, emoji, cor }
+  // "Comprando tecido" nao gera aviso: o status marca a compra em andamento, entao ficar
+  // dias nele e o esperado — o alerta afirmava que o tecido ja tinha chegado e cobrava o corte.
   const REGRAS = [
-    { status: 'Comprando tecido', horasMin: 24,  urgente: false, proxStatus: 'Em corte',   label: 'Confirmar → Em corte',   emoji: '✂️', cor: '#f59e0b', bg: '#fff8e6', borda: '#f59e0b', txtTitulo: '#b45309', txtInfo: '#92400e' },
     { status: 'Em corte',         horasMin: 48,  urgente: false, proxStatus: 'Em costura', label: 'Confirmar → Em costura', emoji: '🧵', cor: '#7C3AED', bg: '#f5f0ff', borda: '#7C3AED', txtTitulo: '#5b21b6', txtInfo: '#6d28d9' },
     { status: 'Em corte',         horasMin: 60,  urgente: true,  proxStatus: 'Em costura', label: 'Confirmar → Em costura', emoji: '🧵', cor: '#dc2626', bg: '#fff1f2', borda: '#dc2626', txtTitulo: '#991b1b', txtInfo: '#b91c1c' },
   ];
@@ -3670,11 +3671,7 @@ function verificarAvisosStatus() {
   alertEl.style.display = '';
   alertEl.innerHTML = Object.values(blocos).map(b => {
     const r = b.regra;
-    const titulo = r.status === 'Em corte'
-      ? `${r.urgente ? '🔴' : '⚠️'} Peças em corte há mais de ${fmtDias(r.horasMin, true)}`
-      : r.urgente
-        ? `🔴 Lembrete — confirmar ${r.proxStatus.toLowerCase()} (aguardando há +12h)`
-        : '⚠️ Tecido comprado — confirmar início do corte';
+    const titulo = `${r.urgente ? '🔴' : '⚠️'} Peças em corte há mais de ${fmtDias(r.horasMin, true)}`;
     // Só aviso, sem botão de confirmar (a confirmação continua no status do modelo): o
     // cartão é nome + dias parados. No topo, o resumo — quantos modelos e há quantos dias
     // está parado o mais antigo deles.
