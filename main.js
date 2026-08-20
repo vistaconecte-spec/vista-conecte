@@ -308,8 +308,9 @@ async function carregarTodosNuvem() {
     rows.forEach(row => {
       if (!row.id || !row.dados) return;
       if (ehChaveHistorico(row.id)) return;
-      // Nunca sobrescreve se o usuário tem edições pendentes no modelo aberto
-      if (row.id === modeloAtual && (estEditado || prodEditado || cfgEditado)) return;
+      // Nunca sobrescreve se o usuário tem edições pendentes no modelo aberto, nem o que
+      // ainda está subindo para a nuvem
+      if (protegidoDeSobrescrita(row.id)) return;
       // Na carga da página, a NUVEM é a fonte da verdade (evita problema de relógio
       // dessincronizado entre dispositivos — celular vs computador). Sempre puxa a
       // versão da nuvem, exceto o modelo aberto com edição pendente (guard acima).
@@ -321,6 +322,12 @@ async function carregarTodosNuvem() {
 async function salvarNuvemREST(key, dados) {
   // Upsert com retry (3 tentativas) e alerta visual em caso de falha
   const MAX_TRIES = 3;
+  // Entra na fila ANTES da primeira tentativa: a partir daqui a chave está protegida de
+  // ser sobrescrita pela versão que ainda está na nuvem.
+  _gravacoesPendentes.set(key, { dados, emVoo: true });
+  // Só o dono da gravação mais recente mexe na fila — um save posterior não pode ter a
+  // proteção cancelada pelo fim de um save anterior.
+  const souOAtual = () => { const p = _gravacoesPendentes.get(key); return p && p.dados === dados; };
   for (let i = 0; i < MAX_TRIES; i++) {
     try {
       const res = await fetch(`${SUPABASE_URL}/rest/v1/vc_modelos`, {
@@ -334,13 +341,16 @@ async function salvarNuvemREST(key, dados) {
         body: JSON.stringify({ id: key, dados })
       });
       if (res.ok || res.status === 201 || res.status === 200) {
+        if (souOAtual()) _gravacoesPendentes.delete(key);
         showCloudOk();
         return; // sucesso
       }
     } catch(e) {}
     if (i < MAX_TRIES - 1) await new Promise(r => setTimeout(r, 1000 * (i + 1)));
   }
-  // Todas as tentativas falharam — alerta visual
+  // Todas as tentativas falharam — o dado FICA na fila (segue protegido e será reenviado
+  // no próximo ciclo); sem isso a nuvem antiga voltaria por cima do que foi digitado.
+  if (souOAtual()) _gravacoesPendentes.set(key, { dados, emVoo: false });
   showCloudError();
 }
 
@@ -369,8 +379,9 @@ function iniciarRealtime() {
     .on('postgres_changes', { event: '*', schema: 'public', table: 'vc_modelos' }, payload => {
       const row = payload.new;
       if (!row || !row.id || !row.dados) return;
-      // Nunca sobrescreve edições pendentes nem salvamento recente do modelo aberto
-      if (modeloAbertoProtegido(row.id)) return;
+      // Nunca sobrescreve edição pendente, salvamento recente nem gravação que a nuvem
+      // ainda não confirmou
+      if (protegidoDeSobrescrita(row.id)) return;
       // Atualiza o localStorage do modelo alterado (qualquer modelo)
       saveLocal('vc:' + row.id, row.dados);
       // Re-renderiza a tela atual para refletir a mudança vinda de outro dispositivo
@@ -384,6 +395,8 @@ function iniciarRealtime() {
 // Garante sincronização entre dispositivos mesmo se o realtime não estiver ativo.
 async function sincronizarNuvem() {
   try {
+    // Primeiro sobe o que ficou pendente; só depois vale a pena ler a nuvem.
+    await reenviarPendentes();
     const res = await fetch(
       `${SUPABASE_URL}/rest/v1/vc_modelos?select=id,dados`,
       { headers: { 'apikey': SUPABASE_KEY, 'Authorization': 'Bearer ' + SUPABASE_KEY }, cache: 'no-store' }
@@ -393,8 +406,8 @@ async function sincronizarNuvem() {
     let mudou = false;
     rows.forEach(row => {
       if (!row.id || !row.dados) return;
-      // Protege edições pendentes e salvamento recente do modelo aberto (carência)
-      if (modeloAbertoProtegido(row.id)) return;
+      // Protege edição pendente, salvamento recente (carência) e o que ainda não subiu
+      if (protegidoDeSobrescrita(row.id)) return;
       const atual = JSON.stringify(loadLocal('vc:' + row.id));
       const novo  = JSON.stringify(row.dados);
       if (atual !== novo) { saveLocal('vc:' + row.id, row.dados); mudou = true; }
@@ -444,6 +457,39 @@ const SYNC_CARENCIA_MS = 6000;
 function modeloAbertoProtegido(id) {
   return id === modeloAtual &&
     (estEditado || prodEditado || prod2Editado || cfgEditado || (Date.now() - _ultimoSaveTs < SYNC_CARENCIA_MS));
+}
+
+// Gravações que a nuvem ainda NÃO confirmou (em voo ou que falharam nas 3 tentativas).
+//
+// POR QUE ISTO EXISTE: a carência de 6 segundos acima supõe que o POST termina rápido.
+// Num celular em rede ruim, ou quando os 3 retries entram (1s + 2s de espera entre eles),
+// ele passa disso — a carência vence, o ciclo de 15s lê a nuvem com o valor ANTIGO e grava
+// por cima do localStorage. Era isso que fazia a quantidade digitada em estoque/produção
+// "voltar sozinha" com a tela aberta. Enquanto a chave estiver nesta fila, nenhuma
+// sincronização (realtime, ciclo de 15s ou carga da página) pode trazer a versão da nuvem
+// por cima dela.
+const _gravacoesPendentes = new Map(); // key -> { dados, emVoo }
+const temGravacaoPendente = key => _gravacoesPendentes.has(key);
+
+// Vale para QUALQUER chave, não só o modelo aberto: a baixa de estoque, o corte e o
+// financeiro gravam chaves que não estão na tela, e elas voltavam do mesmo jeito.
+function protegidoDeSobrescrita(id) {
+  return temGravacaoPendente(id) || modeloAbertoProtegido(id);
+}
+
+// Sobe de novo o que ficou para trás quando a rede voltar. Sem isto a chave ficaria
+// protegida para sempre depois de uma falha, e este aparelho pararia de receber o que os
+// outros gravassem nela.
+let _reenviando = false;
+async function reenviarPendentes() {
+  if (_reenviando || !_gravacoesPendentes.size) return;
+  _reenviando = true;
+  try {
+    for (const [key, item] of [..._gravacoesPendentes]) {
+      if (item.emVoo) continue; // já tem uma tentativa correndo
+      await salvarNuvemREST(key, item.dados);
+    }
+  } finally { _reenviando = false; }
 }
 
 // Salva estado atual no localStorage IMEDIATAMENTE (sem esperar o debounce)
