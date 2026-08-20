@@ -9248,6 +9248,10 @@ const mdlBRL = n => n.toLocaleString('pt-BR', { style: 'currency', currency: 'BR
 // ficaria escondida atrás de um "pago" que era de outro número.
 const MDL_PAGOS_KEY = 'modelagem-pagos';
 
+// A lista de acertos antigos só cresce e empurra a grade para baixo, então nasce fechada.
+// O estado fica aqui fora porque o card é redesenhado inteiro a cada marcação de pago.
+let mdlJaAcertadoAberto = false;
+
 function mdlPagos() {
   const d = loadLocal('vc:' + MDL_PAGOS_KEY);
   return (d && typeof d === 'object' && d.pagos) ? d.pagos : {};
@@ -9341,8 +9345,10 @@ function mdlRenderTotalModelista() {
       </table>` : `<div style="font-size:12px;color:#16a34a;font-weight:600;padding:6px 0">
         <i class="ti ti-circle-check"></i> Nada em aberto com a modelista.</div>`}
       ${jaPago.length ? `
-      <div style="margin-top:12px">
-        <div style="font-size:11px;font-weight:700;color:var(--text-ter);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px">Já acertado</div>
+      <details style="margin-top:12px" ${mdlJaAcertadoAberto ? 'open' : ''} ontoggle="mdlJaAcertadoAberto = this.open">
+        <summary style="font-size:11px;font-weight:700;color:var(--text-ter);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;cursor:pointer;user-select:none">Já acertado
+          <span style="font-weight:600;text-transform:none;letter-spacing:0"> · ${jaPago.length} modelo${jaPago.length > 1 ? 's' : ''} · ${mdlBRL(totalPago)}</span>
+        </summary>
         <table style="width:100%">
           <tbody>
             ${jaPago.map(p => `<tr style="opacity:.75">
@@ -9355,7 +9361,7 @@ function mdlRenderTotalModelista() {
               </td></tr>`).join('')}
           </tbody>
         </table>
-      </div>` : ''}
+      </details>` : ''}
       ${ilegiveis.length ? `<div style="font-size:11px;color:#b45309;margin-top:8px">
         <i class="ti ti-alert-triangle"></i> ${ilegiveis.length} modelo(s) com valor que não dá para somar
         (${ilegiveis.map(p => esc(p.title) + ': "' + esc(p.valorAjuste) + '"').join(' · ')}) — ficaram de fora do total.</div>` : ''}
