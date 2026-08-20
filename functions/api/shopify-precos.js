@@ -7,6 +7,7 @@ const API_VERSION = '2024-04';
 
 // Mapa: prefixo do título Shopify → chave do modelo (espelha shopify-orders.js)
 const PRODUCT_MAP = {
+  'Conjunto Calça Flare + Camiseta Oversized': 'conjunto-calca-flare-camiseta',
   'Canguru Longo Moletom': 'canguru-amplo',
   'Cropped Frente Única': 'cropped-frente-unica',
   'Conjunto Moletom Gola Alta Preto + Short Bolso Frontal Preto': 'conjunto-moletom-short-bolso',
