@@ -297,6 +297,15 @@ const ITENS_MANUAIS = {
     { modelKey: 'calca-pantalona-viscolycra', color: 'Cinza', size: 'GG' },
     { modelKey: 'cropped-canelado',           color: 'Cinza', size: 'M'  },
   ],
+  // #8864 — confirmado com a Bárbara em 20/08/2026: Conjunto Canelado MARROM com a CALÇA
+  // no G e a BLUSA no P. O título veio sem variante, então o leitor pegava só o último
+  // termo como tamanho (P para as duas peças) e transformava todo o resto em cor —
+  // criando a cor inexistente "MARROM CALÇA G E BLUSA" no conjunto e, por tabela, nas
+  // duas peças dele no painel.
+  'CONJUNTO CANELADO MARROM CALÇA G E BLUSA P': [
+    { modelKey: 'calca-flare',    color: 'Marrom', size: 'G' },
+    { modelKey: 'blusa-canelada', color: 'Marrom', size: 'P' },
+  ],
 };
 
 const normalizarTitulo = t => String(t || '').toUpperCase().replace(/\s+/g, ' ').trim();
