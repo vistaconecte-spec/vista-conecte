@@ -1,7 +1,7 @@
 /**
  * Cloudflare Pages Function: /api/modelagem-list
  * Lista os modelos (projetos) como "pastas" pra grid da aba Modelagem.
- * GET → { projetos: [{ id, title, category, status, croquiKey, alteracoesPendentes, temAudaces, pendenciasAbertas, semConsumo, valorAjuste }] }
+ * GET → { projetos: [{ id, title, category, status, croquiKey, alteracoesPendentes, temAudaces, pendenciasAbertas, semConsumo, semMedidas, valorAjuste }] }
  */
 const SB_URL = 'https://hckzsblwyabmhzbjdjgx.supabase.co';
 
@@ -17,6 +17,18 @@ function sbHeaders(env, extra = {}) {
   };
 }
 
+// Medidas ficam num JSON de texto na coluna `medidas` ({ Comprimento: {PP:'113cm'}, __obs:'' }).
+// Só conta como preenchido o que tem NOME e pelo menos um valor: linha em branco salva por
+// engano não pode calar o alerta, porque é justamente ela que vira produto sem tabela na loja.
+function temMedidas(txt) {
+  let m;
+  try { m = txt ? JSON.parse(txt) : {}; } catch (_) { return false; }
+  if (!m || typeof m !== 'object') return false;
+  return Object.keys(m).some(k => k !== '__obs'
+    && m[k] && typeof m[k] === 'object'
+    && Object.values(m[k]).some(v => (v ?? '').toString().trim()));
+}
+
 export async function onRequest(context) {
   const { env } = context;
   const headers = { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' };
@@ -26,7 +38,7 @@ export async function onRequest(context) {
 
   try {
     const [projRes, croquiRes, changesRes, filesRes, pendenciasRes, consumoRes] = await Promise.all([
-      fetch(`${SB_URL}/rest/v1/projects?select=id,title,category,status,createdAt,valorAjuste&order=title.asc`, { headers: sbHeaders(env) }),
+      fetch(`${SB_URL}/rest/v1/projects?select=id,title,category,status,createdAt,valorAjuste,medidas&order=title.asc`, { headers: sbHeaders(env) }),
       fetch(`${SB_URL}/rest/v1/project_croquis?select=projectId,fileKey,createdAt&order=createdAt.desc`, { headers: sbHeaders(env) }),
       fetch(`${SB_URL}/rest/v1/project_changes?select=projectId,status`, { headers: sbHeaders(env) }),
       fetch(`${SB_URL}/rest/v1/project_files?select=projectId,category`, { headers: sbHeaders(env) }),
@@ -68,6 +80,8 @@ export async function onRequest(context) {
       temAudaces: !!audacesPorProjeto[p.id],
       pendenciasAbertas: pendenciasAbertasPorProjeto[p.id] || 0,
       semConsumo: !consumoPreenchidoPorProjeto[p.id],
+      // Sem medidas o modelo não tem tabela para mandar para a descrição do produto.
+      semMedidas: !temMedidas(p.medidas),
       // Valor cobrado pela modelista por este projeto (texto livre, ex.: "50,00").
       // Vai na listagem para a tela somar quanto se deve no total.
       valorAjuste: p.valorAjuste || '',

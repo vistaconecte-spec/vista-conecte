@@ -9368,8 +9368,35 @@ function mdlRenderTotalModelista() {
     </div>`;
 }
 
+// Aviso no topo da aba: modelo sem medida preenchida é produto sem tabela de medidas
+// na loja, e isso só aparece quando a cliente reclama do tamanho. Some sozinho quando
+// todos estão preenchidos.
+function mdlRenderAlertaMedidas() {
+  const el = document.getElementById('mdl-alerta-medidas');
+  if (!el) return;
+  const sem = (mdlProjetos || []).filter(p => p.semMedidas);
+  if (!sem.length) { el.style.display = 'none'; el.innerHTML = ''; return; }
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c]));
+  el.style.display = '';
+  el.innerHTML = `
+    <div class="card" style="border-left:3px solid #b45309">
+      <div class="card-header">
+        <div class="card-title" style="color:#b45309"><i class="ti ti-ruler-measure"></i> MODELOS SEM MEDIDAS</div>
+        <span style="font-size:11px;font-weight:700;color:var(--text-sec)">${sem.length} de ${(mdlProjetos || []).length}</span>
+      </div>
+      <div style="font-size:11px;color:var(--text-sec);margin-bottom:8px">
+        Sem a tabela de MEDIDAS DA PEÇA preenchida não dá para publicar a tabela de medidas
+        na descrição do produto na loja. Clique no modelo para preencher.
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px">
+        ${sem.map(p => `<button class="btn-outline" style="font-size:11px;padding:5px 10px" onclick="mdlAbrirDetalhe(${p.id})">${esc(p.title || '(sem nome)')}</button>`).join('')}
+      </div>
+    </div>`;
+}
+
 function mdlRenderLista() {
   mdlRenderTotalModelista();
+  mdlRenderAlertaMedidas();
   const grid = document.getElementById('mdl-grid');
   const busca = (document.getElementById('mdl-busca').value || '').toLowerCase().trim();
   const nPend = p => (p.alteracoesPendentes || 0); // grade destaca só alterações/ajustes no projeto (consumo e pendências antigas não contam)
@@ -9389,9 +9416,15 @@ function mdlRenderLista() {
     const faixaPendencia = totalPendencias > 0
       ? `<div style="background:#dc2626;color:#fff;font-size:8px;font-weight:700;letter-spacing:0.03em;text-align:center;padding:2px 6px"><i class="ti ti-alert-triangle"></i> ${totalPendencias} PENDÊNCIA${totalPendencias > 1 ? 'S' : ''}</div>`
       : '';
+    // Âmbar, e não o vermelho das pendências: falta de medida não trava a produção,
+    // mas segura a tabela na descrição do produto.
+    const faixaSemMedidas = p.semMedidas
+      ? `<div style="background:#b45309;color:#fff;font-size:8px;font-weight:700;letter-spacing:0.03em;text-align:center;padding:2px 6px"><i class="ti ti-ruler-measure"></i> SEM MEDIDAS</div>`
+      : '';
     return `
       <div class="card" style="padding:0;cursor:pointer;overflow:hidden" onclick="mdlAbrirDetalhe(${p.id})">
         ${faixaPendencia}
+        ${faixaSemMedidas}
         <div style="position:relative;aspect-ratio:4/5;background:${p.croquiKey ? '#fff' : '#f5f0e8'};display:flex;align-items:center;justify-content:center">
           ${thumb}
         </div>
@@ -9647,7 +9680,165 @@ function mdlRenderDetalhe() {
         <button class="btn-primary" style="font-size:12px;padding:8px;align-self:flex-start;margin-top:8px" onclick="mdlSalvarMedidas(${d.projeto.id})"><i class="ti ti-device-floppy"></i> Salvar medidas</button>
       </div>
 
+      ${mdlCardLojaHtml(d.projeto, medidas)}
+
     </div>`;
+}
+
+// ─── TABELA DE MEDIDAS NA LOJA ───────────────────────────────────────────────
+// O vínculo modelo → produto(s) da Shopify mora em vc_modelos (mesma tabela chave-valor
+// dos pagamentos), e não numa coluna nova: não precisa mexer no banco e o histórico de
+// versões cobre de graça.
+//
+// É uma LISTA de produtos de propósito: cada modelo costuma ter o produto unificado e os
+// produtos antigos por cor, que continuam ativos por causa dos anúncios — a tabela tem de
+// ir para todos eles, senão quem chega pelo anúncio antigo não vê medida nenhuma.
+const MDL_LOJA_KEY = 'modelagem-produtos';
+
+function mdlProdutosLoja() {
+  const d = loadLocal('vc:' + MDL_LOJA_KEY);
+  return (d && typeof d === 'object' && d.vinculos) ? d.vinculos : {};
+}
+
+function mdlProdutosDoModelo(id) {
+  const v = mdlProdutosLoja()[String(id)];
+  return Array.isArray(v) ? v : [];
+}
+
+// Lê a nuvem antes de gravar: o vínculo pode ter sido feito no outro computador, e
+// gravar o mapa local por cima apagaria aquele. Leitura que falha não vira gravação.
+async function mdlGravarProdutosLoja(id, lista) {
+  const naNuvem = await carregarNuvem(MDL_LOJA_KEY);
+  if (naNuvem === undefined) { alert('Não consegui ler a nuvem agora — nada foi alterado. Tente de novo.'); return false; }
+  const vinculos = { ...((naNuvem && naNuvem.vinculos) || {}), ...mdlProdutosLoja() };
+  if (lista.length) vinculos[String(id)] = lista; else delete vinculos[String(id)];
+  const dados = { vinculos };
+  saveLocal('vc:' + MDL_LOJA_KEY, dados);
+  await salvarNuvem(MDL_LOJA_KEY, dados);
+  showSaved();
+  return true;
+}
+
+function mdlCardLojaHtml(projeto, medidas) {
+  const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c]));
+  const linhas = mdlMedidasParaLinhas(medidas);
+  const vinculados = mdlProdutosDoModelo(projeto.id);
+  const podePublicar = linhas.length > 0 && vinculados.length > 0;
+  return `
+      <div class="card" style="grid-column:1/-1">
+        ${!linhas.length ? '<div style="background:#b45309;color:#fff;font-size:10px;font-weight:700;letter-spacing:0.03em;text-align:center;padding:4px 6px;margin:-12px -16px 10px"><i class="ti ti-alert-triangle"></i> SEM MEDIDAS PARA PUBLICAR</div>' : ''}
+        <div class="card-header">
+          <div class="card-title"><i class="ti ti-building-store"></i> TABELA DE MEDIDAS NA LOJA</div>
+          <span style="font-size:11px;font-weight:700;color:var(--text-sec)">${vinculados.length} produto${vinculados.length === 1 ? '' : 's'} vinculado${vinculados.length === 1 ? '' : 's'}</span>
+        </div>
+        <div style="font-size:11px;color:var(--text-sec);margin-bottom:10px">
+          Publica a tabela acima na descrição do produto na Shopify. O texto de venda que já
+          está lá não é tocado — só o bloco da tabela entra ou é trocado. Vincule também os
+          produtos antigos por cor, que continuam recebendo tráfego de anúncio.
+        </div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px">
+          ${vinculados.length ? vinculados.map(v => `
+            <span style="display:inline-flex;align-items:center;gap:6px;border:1px solid var(--border);border-radius:14px;padding:4px 10px;font-size:11px">
+              ${esc(v.title)}
+              <i class="ti ti-x" title="Desvincular" style="cursor:pointer;color:#dc2626" onclick="mdlDesvincularProduto(${projeto.id},'${esc(v.id)}')"></i>
+            </span>`).join('') : '<span style="font-size:11px;color:var(--text-ter)">Nenhum produto vinculado ainda.</span>'}
+        </div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">
+          <input id="mdl-loja-busca" value="${esc(projeto.title || '')}" placeholder="Buscar produto na loja pelo título..."
+            onkeydown="if(event.key==='Enter')mdlBuscarProdutosLoja(${projeto.id})"
+            style="flex:1;min-width:200px;padding:7px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px">
+          <button class="btn-outline" style="font-size:12px;padding:7px 12px" onclick="mdlBuscarProdutosLoja(${projeto.id})"><i class="ti ti-search"></i> Buscar na loja</button>
+        </div>
+        <div id="mdl-loja-res" style="margin-bottom:10px"></div>
+        <button class="btn-primary" ${podePublicar ? '' : 'disabled'}
+          style="font-size:12px;padding:8px;align-self:flex-start;background:#16a34a;border-color:#16a34a${podePublicar ? '' : ';opacity:.45;cursor:not-allowed'}"
+          onclick="mdlPublicarMedidas(${projeto.id})"><i class="ti ti-upload"></i> Publicar medidas na loja</button>
+      </div>`;
+}
+
+// { Comprimento: {PP:'113cm'} } → [{ nome:'Comprimento', valores:{...} }], só o que está preenchido.
+function mdlMedidasParaLinhas(medidas) {
+  return Object.keys(medidas || {})
+    .filter(k => k !== '__obs')
+    .map(nome => ({ nome, valores: medidas[nome] || {} }))
+    .filter(l => Object.values(l.valores).some(v => (v || '').toString().trim()));
+}
+
+async function mdlBuscarProdutosLoja(idProjeto) {
+  const box = document.getElementById('mdl-loja-res');
+  const q = (document.getElementById('mdl-loja-busca') || {}).value || '';
+  if (!box) return;
+  if (!q.trim()) { box.innerHTML = '<div style="font-size:11px;color:var(--text-ter)">Digite parte do título do produto.</div>'; return; }
+  box.innerHTML = '<div style="font-size:11px;color:var(--text-ter)">Buscando na loja…</div>';
+  try {
+    const res = await fetch('/api/shopify-medidas?q=' + encodeURIComponent(q.trim()));
+    const data = await res.json();
+    if (data.erro) throw new Error(data.erro);
+    const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c]));
+    const jaTem = new Set(mdlProdutosDoModelo(idProjeto).map(v => String(v.id)));
+    const produtos = data.produtos || [];
+    if (!produtos.length) { box.innerHTML = '<div style="font-size:11px;color:var(--text-ter)">Nenhum produto com esse título.</div>'; return; }
+    box.innerHTML = `
+      <div style="border:1px solid var(--border);border-radius:8px;max-height:230px;overflow-y:auto">
+        ${produtos.map(pr => `
+          <div style="display:flex;align-items:center;gap:8px;padding:6px 10px;border-bottom:1px solid var(--border);font-size:12px">
+            <div style="flex:1">${esc(pr.title)}
+              <span style="font-size:10px;color:var(--text-ter)"> · ${esc(pr.status)}${pr.temTabela ? ' · já tem tabela' : ''}</span>
+            </div>
+            ${jaTem.has(String(pr.id))
+              ? '<span style="font-size:10px;color:#16a34a;font-weight:700">vinculado</span>'
+              : `<button class="btn-outline" style="font-size:10px;padding:4px 8px" onclick="mdlVincularProduto(${idProjeto},'${esc(pr.id)}','${esc(pr.title).replace(/'/g, "&#39;")}')">vincular</button>`}
+          </div>`).join('')}
+      </div>`;
+  } catch (e) {
+    box.innerHTML = '<div style="font-size:11px;color:#dc2626">Erro ao buscar: ' + e.message + '</div>';
+  }
+}
+
+async function mdlVincularProduto(idProjeto, produtoId, title) {
+  const lista = mdlProdutosDoModelo(idProjeto);
+  if (lista.some(v => String(v.id) === String(produtoId))) return;
+  if (!await mdlGravarProdutosLoja(idProjeto, [...lista, { id: String(produtoId), title }])) return;
+  mdlRenderDetalhe();
+}
+
+async function mdlDesvincularProduto(idProjeto, produtoId) {
+  const lista = mdlProdutosDoModelo(idProjeto).filter(v => String(v.id) !== String(produtoId));
+  if (!await mdlGravarProdutosLoja(idProjeto, lista)) return;
+  mdlRenderDetalhe();
+}
+
+// Publica em dois tempos: primeiro o dry-run (que devolve o que mudaria em cada produto),
+// depois, só com o OK na tela, a gravação. Descrição de produto no ar é o que a cliente lê
+// na hora de escolher o tamanho — não pode ser trocada por um clique sem confirmação.
+async function mdlPublicarMedidas(idProjeto) {
+  const proj = (mdlProjetoAtual && mdlProjetoAtual.projeto) || {};
+  let medidas = {};
+  try { medidas = proj.medidas ? JSON.parse(proj.medidas) : {}; } catch (_) { medidas = {}; }
+  const linhas = mdlMedidasParaLinhas(medidas);
+  const vinculados = mdlProdutosDoModelo(idProjeto);
+  if (!linhas.length) { alert('Preencha e salve as medidas antes de publicar.'); return; }
+  if (!vinculados.length) { alert('Vincule ao menos um produto da loja antes de publicar.'); return; }
+  const corpo = { produtoIds: vinculados.map(v => v.id), linhas, tamanhos: MDL_TAMANHOS };
+  try {
+    const prev = await fetch('/api/shopify-medidas', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(corpo),
+    }).then(r => r.json());
+    if (prev.erro) throw new Error(prev.erro);
+    const resumo = (prev.resultados || []).map(r => '- ' + (r.erro ? r.title + ': ' + r.erro : r.title + ' — ' + r.acao)).join('\n');
+    if (!confirm('Vai gravar a tabela de medidas na descrição destes produtos:\n\n' + resumo
+      + '\n\nO texto de venda continua igual. Confirmar?')) return;
+    const res = await fetch('/api/shopify-medidas?apply=1', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(corpo),
+    }).then(r => r.json());
+    if (res.erro) throw new Error(res.erro);
+    const falhas = (res.resultados || []).filter(r => r.resultado !== 'aplicado');
+    alert(falhas.length
+      ? 'Publicado com problema em ' + falhas.length + ' produto(s):\n' + falhas.map(r => '- ' + (r.title || r.id) + ': ' + (r.erro || r.resultado)).join('\n')
+      : 'Tabela publicada em ' + (res.resultados || []).length + ' produto(s).');
+  } catch (e) {
+    alert('Erro ao publicar medidas: ' + e.message);
+  }
 }
 
 async function mdlSalvarConsumo(id) {
