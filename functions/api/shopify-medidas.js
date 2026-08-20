@@ -45,9 +45,10 @@ export function montarTabelaHtml(linhas, tamanhos) {
     const cels = ts.map(t => `<td>${esc(((l.valores || {})[t] || '').toString().trim() || '-')}</td>`).join('');
     return `<tr><td>${esc(l.nome.trim())}</td>${cels}</tr>`;
   }).join('\n');
-  // O wrapper .vc-tabela-medidas não é enfeite: na PDP o tema esconde a descrição inteira
-  // (o texto de venda foi tirado dali de propósito em 04/07/2026) e mostra só este bloco.
-  // Sem a classe, a tabela some da página do produto.
+  // As marcas de início e fim não são só para republicar sem duplicar: o tema RECORTA o que
+  // está entre elas (snippets/product-form.liquid) e mostra só isso na PDP, logo abaixo do
+  // Provador Virtual — a descrição inteira segue oculta desde 04/07/2026. Bloco sem a marca
+  // de fim não é renderizado na loja.
   return `${MARCA_INI}
 <div class="vc-tabela-medidas">
 <p><strong>Tabela de medidas (peça pronta, em cm)</strong></p>
