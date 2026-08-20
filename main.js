@@ -9416,15 +9416,9 @@ function mdlRenderLista() {
     const faixaPendencia = totalPendencias > 0
       ? `<div style="background:#dc2626;color:#fff;font-size:8px;font-weight:700;letter-spacing:0.03em;text-align:center;padding:2px 6px"><i class="ti ti-alert-triangle"></i> ${totalPendencias} PENDÊNCIA${totalPendencias > 1 ? 'S' : ''}</div>`
       : '';
-    // Âmbar, e não o vermelho das pendências: falta de medida não trava a produção,
-    // mas segura a tabela na descrição do produto.
-    const faixaSemMedidas = p.semMedidas
-      ? `<div style="background:#b45309;color:#fff;font-size:8px;font-weight:700;letter-spacing:0.03em;text-align:center;padding:2px 6px"><i class="ti ti-ruler-measure"></i> SEM MEDIDAS</div>`
-      : '';
     return `
       <div class="card" style="padding:0;cursor:pointer;overflow:hidden" onclick="mdlAbrirDetalhe(${p.id})">
         ${faixaPendencia}
-        ${faixaSemMedidas}
         <div style="position:relative;aspect-ratio:4/5;background:${p.croquiKey ? '#fff' : '#f5f0e8'};display:flex;align-items:center;justify-content:center">
           ${thumb}
         </div>

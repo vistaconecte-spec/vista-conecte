@@ -122,7 +122,9 @@ ok('linha salva sem valor não conta', temMedidas(JSON.stringify({ Busto: {} }))
 ok('linha só com espaço não conta', temMedidas(JSON.stringify({ Busto: { PP: '   ' } })), false);
 ok('uma medida preenchida basta', temMedidas(JSON.stringify({ Busto: { PP: '88' } })), true);
 ok('o card do alerta existe na tela', /id="mdl-alerta-medidas"/.test(idx), true);
-ok('a grade marca o modelo sem medidas', /SEM MEDIDAS/.test(main), true);
+// O aviso mora só no card do topo: a faixa no cartão da grade foi retirada a pedido.
+ok('a grade NÃO carimba faixa no cartão do modelo', /faixaSemMedidas/.test(main), false);
+ok('o aviso continua no card do topo', /MODELOS SEM MEDIDAS/.test(main), true);
 ok('o alerta é redesenhado junto com a lista', /mdlRenderLista\(\) \{\n  mdlRenderTotalModelista\(\);\n  mdlRenderAlertaMedidas\(\);/.test(main), true);
 
 console.log('\n9) O vínculo modelo → produto aguenta os dois links do mesmo modelo');
