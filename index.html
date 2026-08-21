@@ -246,7 +246,12 @@
         <div class="card" style="border:1.5px solid var(--text)">
           <div class="card-header">
             <div class="card-title" style="color:var(--text);font-weight:800"><i class="ti ti-needle-thread"></i> FICHAS EM COSTURA</div>
-            <span id="costura-total" style="font-size:11px;font-weight:700"></span>
+            <div style="display:flex;align-items:center;gap:10px">
+              <span id="costura-total" style="font-size:11px;font-weight:700"></span>
+              <!-- Costureira entregou: todas as levas viram estoque de uma vez. Aparece só
+                   para a dona e só quando há ficha (renderCostura controla) -->
+              <button id="cst-btn-estoque" class="btn-outline" style="display:none;font-size:11px;padding:5px 10px;color:#16a34a;border-color:#16a34a" onclick="mandarTudoParaEstoque()"><i class="ti ti-package-import"></i> Tudo para o estoque</button>
+            </div>
           </div>
           <div class="aviso-txt" style="margin:0 0 10px">É o que já está em produção na costura.</div>
           <div id="costura-lista" class="crt-lista"></div>
@@ -966,7 +971,7 @@
   </div>
 </div>
 <script src="data.js?v=2026081912"></script>
-<script src="main.js?v=2026082101"></script>
+<script src="main.js?v=2026082102"></script>
 <script async src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js" onload="initSupabase()"></script>
 </body>
 </html>

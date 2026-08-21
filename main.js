@@ -5273,6 +5273,91 @@ function cstLevasDe(statusAlvo) {
   return out;
 }
 
+// ─── MANDAR AS FICHAS EM COSTURA PARA O ESTOQUE (todas de uma vez) ──────────
+// Gêmeo do "Mandar tudo para o corte", uma etapa adiante: quando a costureira entrega, a
+// leva vira estoque. É o que o botão "→ Estoque" da tela do modelo já faz (soma a leva ao
+// estoque e zera a leva), só que para todas as levas "Em costura" de uma vez — sem abrir
+// modelo por modelo.
+//
+// Soma a leva ao estoque e zera a leva, no objeto salvo do modelo. Separada e sem tela para
+// poder ser testada fora do navegador. Diferente do botão da tela do modelo, respeita grade
+// maior que 5 (G1, calçado 34-40): lá o `map` sobre um estoque de 5 posições descartava em
+// silêncio o que passasse disso.
+function levaParaEstoque(saved, cores, qual, nTam) {
+  const prod = (qual === 2 ? saved.prod2 : saved.prod) || {};
+  if (!saved.est) saved.est = {};
+  let total = 0;
+  cores.forEach(cor => {
+    const pv = prod[cor];
+    if (!pv) return;
+    const t = pv.reduce((a, b) => a + (b || 0), 0);
+    const n = Math.max(nTam || 0, (saved.est[cor] || []).length, pv.length);
+    if (t > 0) {
+      const atual = saved.est[cor] || [];
+      saved.est[cor] = Array.from({ length: n }, (_, i) => (atual[i] || 0) + (pv[i] || 0));
+      total += t;
+    }
+    // Zera a leva em TODAS as cores (inclusive as que já estavam em zero): sem isso a
+    // re-renderização volta a preencher a linha pelo fallback e a leva "renasce".
+    prod[cor] = new Array(n).fill(0);
+  });
+  return total;
+}
+
+async function mandarTudoParaEstoque() {
+  if (ehPerfilOficina()) return; // quem fecha a leva é a dona
+  // Retrato do faturamento em dia ANTES de mexer: sair de "Em costura" é a entrega
+  // (cstFatAplicar), e só vira "a pagar" o que o app viu na máquina. De quebra sincroniza o
+  // local com a nuvem, então a lista abaixo já sai do dado fresco. Os dois faturamentos
+  // andam sempre juntos — corte e costura compartilham o núcleo do dinheiro.
+  await cstFatSincronizar().catch(() => {});
+  await crtFatSincronizar().catch(() => {});
+
+  const levas = cstLevasDe('Em costura');
+  if (!levas.length) { alert('Nenhuma ficha em costura para mandar ao estoque.'); return; }
+  const totalPecas = levas.reduce((s, l) => s + l.total, 0);
+  const lista = levas.map(l => `• ${l.nome}${l.leva === 2 ? ' (2ª leva)' : ''} — ${l.total} peças`).join('\n');
+  if (!confirm(`Mandar ${levas.length} ficha${levas.length > 1 ? 's' : ''} da costura para o estoque — ${totalPecas} peças?\n\n${lista}\n\nAs peças entram no ESTOQUE, a leva é zerada e sai de "Em costura" (vira a pagar no faturamento da costura).`)) return;
+
+  const porModelo = {};
+  levas.forEach(l => { (porModelo[l.key] = porModelo[l.key] || []).push(l); });
+  let erros = 0;
+  for (const [key, ls] of Object.entries(porModelo)) {
+    const saved = loadLocal('vc:' + key) || {};
+    const def   = MODELOS[key];
+    const cores = coresDoModelo(def, saved);
+    const nTam  = tamanhosDe(def).length;
+    const agora = new Date().toISOString();
+    ls.forEach(l => {
+      levaParaEstoque(saved, cores, l.leva, nTam);
+      // Fim da rodada: sem status e sem carimbo, igual ao que salvarModelo grava quando a
+      // dona escolhe "— Sem status —" no dropdown.
+      if (l.leva === 2) { saved.status2 = ''; saved.status2_at = null; saved.prod2_at = agora; }
+      else              { saved.status  = ''; saved.status_at  = null; saved.prod_at  = agora; }
+      if (modeloAtual === key) {
+        const sel = document.getElementById(l.leva === 2 ? 'prod2-status' : 'prod-status');
+        if (sel) sel.value = '';
+      }
+    });
+    saved.est_at     = agora;
+    saved.updated_at = agora;
+    saveLocal('vc:' + key, saved);
+    _ultimoSaveTs = Date.now();
+    try { await salvarNuvem(key, saved); } catch (e) { erros++; }
+  }
+  buildSidebar();
+  verificarAvisosStatus();
+  // Agora que as levas saíram de "Em costura", a sincronização fecha o valor de cada uma
+  // como entregue (a pagar), com o preço congelado do retrato.
+  await cstFatSincronizar().catch(() => {});
+  await crtFatSincronizar().catch(() => {});
+  if (modeloAtual === '__costura__')       renderCostura();
+  else if (modeloAtual === '__corte__')    renderCorte();
+  else if (modeloAtual === '__dashboard__') renderDashboard();
+  else if (MODELOS[modeloAtual])           renderModelo(modeloAtual);
+  if (erros) alert(`${erros} modelo(s) não subiram para a nuvem agora — a mudança está neste aparelho e vai subir na próxima sincronização.`);
+}
+
 function abrirCostura(item) {
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   if (item) item.classList.add('active');
@@ -5331,6 +5416,9 @@ function renderCostura() {
       ? `${levas.length} ficha${levas.length > 1 ? 's' : ''} · ${totalPecas} peças`
       : ((emCorte.length || compra.length) ? 'nada para costurar ainda' : '');
   }
+  // "Tudo para o estoque": só a dona fecha leva, e só faz sentido com ficha na tela
+  const btnEst = document.getElementById('cst-btn-estoque');
+  if (btnEst) btnEst.style.display = (levas.length && !ehPerfilOficina()) ? '' : 'none';
 
   // A linha embaixo do nome só tem o que ela usa: há quantos dias a leva está com ela e a
   // data de entrega. Status ("Em costura"), tecido e a palavra "entrega" saíram a pedido da
