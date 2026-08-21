@@ -5683,6 +5683,55 @@ Dá para desfazer uma a uma no "JÁ PAGO".`)) return;
 // Mora DENTRO da aba COSTURA, logo abaixo do que vem por aí — não é aba própria (pedido da
 // Bárbara, 15/08). Vem fechado, no mesmo card de "ver mais" das outras faixas: o que ela abre
 // para consultar não pode empurrar a ficha do dia para baixo da dobra.
+// ─── FECHAMENTO DO MÊS DA COSTUREIRA ────────────────────────────────────────
+// Ela pergunta duas coisas no fim do mês: "quanto eu entreguei?" e "quanto ainda tenho a
+// receber?". Os blocos abaixo respondem leva a leva, mas nenhum deles fecha um total do mês
+// — e somar seis linhas na mão é onde a conta diverge da da dona.
+//
+// O mês é o da ENTREGA (`entregue_em`), não o do pagamento: é o trabalho dela que aconteceu
+// naquele mês. Uma leva entregue em julho e paga em agosto conta em julho, e some do "a
+// receber" quando é paga.
+//
+// Mês pelo relógio LOCAL, nunca por `slice(0,7)` do ISO: entrega das 21h do dia 31 é UTC do
+// dia 1 e cairia no mês seguinte, bem na virada, que é justamente quando ela confere.
+function cstFatMesDe(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (isNaN(d)) return '';
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+}
+
+// Totais de um mês ('AAAA-MM') a partir da linha do faturamento. Pura, para ser testada fora
+// do navegador. `aReceber` é o total em aberto HOJE (de qualquer mês) — é o número que ela
+// quer ouvir; `atrasado` é a parte dele que vem de meses anteriores.
+function cstFatMes(dados, mes) {
+  const d       = dados || {};
+  const abertas = Object.values(d.aPagar || {});
+  const pagas   = (d.pagas || []).slice();
+  const doMes   = p => cstFatMesDe(p.entregue_em) === mes;
+  const soma    = arr => Math.round(arr.reduce((s, p) => s + (p.valor || 0), 0) * 100) / 100;
+  const pecas   = arr => arr.reduce((s, p) => s + (p.pecas  || 0), 0);
+  const entregues  = abertas.concat(pagas).filter(doMes);
+  const pagasMes   = pagas.filter(doMes);
+  const abertasMes = abertas.filter(doMes);
+  const atrasadas  = abertas.filter(p => !doMes(p));
+  return {
+    mes,
+    entregue:  { valor: soma(entregues),  pecas: pecas(entregues), levas: entregues.length },
+    pago:      { valor: soma(pagasMes),   levas: pagasMes.length },
+    aberto:    { valor: soma(abertasMes), levas: abertasMes.length },
+    atrasado:  { valor: soma(atrasadas),  levas: atrasadas.length },
+    aReceber:  { valor: soma(abertas),    levas: abertas.length },
+  };
+}
+
+// Rótulo do mês em português ("agosto de 2026" → título e frase do bloco)
+function cstFatMesLabel(mes) {
+  const [a, m] = String(mes || '').split('-');
+  if (!a || !m) return '';
+  return new Date(Number(a), Number(m) - 1, 1).toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+}
+
 function renderFaturamento() {
   const el = document.getElementById('faturamento-lista');
   if (!el) return;
@@ -5734,7 +5783,42 @@ function renderFaturamento() {
       ${corpo}
     </div>`;
 
-  const corpo =
+  // 0. O MÊS DELA — primeiro bloco do card: é a pergunta que ela faz, e as levas soltas dos
+  // blocos seguintes não fecham conta nenhuma. Mês anterior aparece na frase para a virada
+  // do mês não deixar a tela vazia justo quando ela vai conferir o que fechou.
+  const hoje    = new Date();
+  const mesAtual = hoje.getFullYear() + '-' + String(hoje.getMonth() + 1).padStart(2, '0');
+  const mesAnt   = new Date(hoje.getFullYear(), hoje.getMonth() - 1, 1);
+  const chaveAnt = mesAnt.getFullYear() + '-' + String(mesAnt.getMonth() + 1).padStart(2, '0');
+  const mes    = cstFatMes(d, mesAtual);
+  const antMes = cstFatMes(d, chaveAnt);
+  const linMes = (nome, sub, valor, forte) => `
+    <div class="fat-lin">
+      <div>
+        <div class="fat-nome"${forte ? ' style="font-weight:800"' : ''}>${nome}</div>
+        ${sub ? `<div class="fat-sub">${sub}</div>` : ''}
+      </div>
+      <div class="fat-val"${forte ? ' style="font-size:15px"' : ''}>${finBRL(valor)}</div>
+    </div>`;
+  const nLevas = n => `${n} ${n === 1 ? 'leva' : 'levas'}`;
+  const blocoMes = bloco('#0f766e', 'ti-calendar-dollar',
+    'FATURAMENTO DE ' + cstFatMesLabel(mesAtual).toUpperCase(), mes.entregue.valor,
+    mes.entregue.levas
+      ? `Entregue neste mês: ${nLevas(mes.entregue.levas)} · ${mes.entregue.pecas} ${mes.entregue.pecas === 1 ? 'peça' : 'peças'}.`
+      : 'Nenhuma leva entregue neste mês ainda.',
+    (mes.entregue.levas
+      ? linMes('Já pago', nLevas(mes.pago.levas), mes.pago.valor)
+        + linMes('Entregue e ainda não pago', nLevas(mes.aberto.levas), mes.aberto.valor)
+      : '')
+    + (mes.atrasado.valor
+      ? linMes('De meses anteriores', nLevas(mes.atrasado.levas) + ' entregues antes deste mês, ainda sem pagamento', mes.atrasado.valor)
+      : '')
+    + linMes('TOTAL A RECEBER', mes.aReceber.levas ? nLevas(mes.aReceber.levas) + ' esperando pagamento' : 'tudo em dia 👍', mes.aReceber.valor, true)
+    + (antMes.entregue.levas ? `<div class="fat-sub" style="margin-top:6px">
+         ${cstFatMesLabel(chaveAnt)}: entregue ${finBRL(antMes.entregue.valor)}${antMes.aberto.valor ? ` · falta receber ${finBRL(antMes.aberto.valor)}` : ' · tudo pago'}
+       </div>` : ''));
+
+  const corpo = blocoMes +
     bloco('#0891b2', 'ti-needle-thread', 'NA MÁQUINA AGORA', totalAgora,
       'É o que está em costura hoje — vira a receber quando a leva for entregue.',
       agora.length ? linhas(agora) : '<div class="fat-vazio">Nada em costura no momento.</div>')
@@ -5791,7 +5875,10 @@ function renderFaturamento() {
   // ATENÇÃO ao rótulo "Em corte": o valor é o da COSTURA daquelas peças — previsão do que ela
   // vai receber quando elas chegarem à máquina —, e NÃO o que se paga pelo corte. Sem o
   // "previsão do que vai receber" escrito ali, a linha se lê como custo de corte.
+  // A primeira linha é o mês dela: fechado, o card já responde "quanto entreguei este mês".
   const resumo = [
+    ['Entregue em ' + cstFatMesLabel(mesAtual).replace(/ de \d{4}$/, ''),
+     `${mes.entregue.pecas} ${mes.entregue.pecas === 1 ? 'peça' : 'peças'} no mês`, mes.entregue.valor],
     ['Na máquina agora', 'ainda não entregue', totalAgora],
     ['Em corte', 'previsão do que vai receber', totalCorte],
   ].concat(totalAPagar ? [['Entregue e não pago', 'a receber', totalAPagar]] : []);
