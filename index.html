@@ -191,6 +191,9 @@
             <div style="display:flex;align-items:center;gap:10px">
               <span id="dash-compra-total" style="font-size:12px;font-weight:700;color:var(--gold-dark)"></span>
               <button class="btn-primary" style="font-size:11px;padding:5px 12px" onclick="gerarFichaCompraGlobal()"><i class="ti ti-file-invoice"></i> Ficha de Compra</button>
+              <!-- Tecido chegou: todas as levas em compra viram "Em corte" de uma vez (mesmo
+                   botão da aba CORTE) — antes era abrir modelo por modelo e mexer no dropdown -->
+              <button class="btn-outline" style="font-size:11px;padding:5px 12px" onclick="mandarTudoParaCorte()"><i class="ti ti-scissors"></i> Mandar tudo p/ corte</button>
             </div>
           </div>
           <div id="dash-compra"></div>
@@ -963,7 +966,7 @@
   </div>
 </div>
 <script src="data.js?v=2026081912"></script>
-<script src="main.js?v=2026082003"></script>
+<script src="main.js?v=2026082101"></script>
 <script async src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js" onload="initSupabase()"></script>
 </body>
 </html>

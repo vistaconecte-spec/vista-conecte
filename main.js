@@ -4931,6 +4931,103 @@ function gerarFichaCorteTotal() {
   win.document.close();
 }
 
+// ─── MANDAR O TECIDO COMPRADO PARA O CORTE (todas as levas de uma vez) ───────
+// O tecido chega junto, então a mudança de etapa também é junta — mas o único jeito de
+// trocar o status era abrir modelo por modelo e mexer no dropdown: com dez modelos em
+// compra, dez telas para dizer a mesma coisa. Estas duas funções fazem o mesmo
+// "Comprando tecido → Em corte" de uma vez só.
+//
+// ⚠️ Congelar a quantidade FAZ PARTE da transferência. A leva 1 sem nada digitado vive de
+// fallback (Pedidos − Estoque − 2ª leva): o número aparece na Ficha de Compra, mas não está
+// salvo em `prod`. E as fichas de oficina (renderCorte/cstLevasDe) só desenham leva COM
+// `prod` salvo — sem gravar, a leva trocaria de status e sumiria das DUAS telas (saiu do
+// tecido em compra, não virou ficha). Então o que foi comprado vira o pedido de corte.
+function levasEmCompraParaCorte() {
+  const out = [];
+  for (const [key, def] of Object.entries(MODELOS)) {
+    if (CONJUNTO_PECAS[key]) continue; // conjunto não é peça de oficina
+    const saved = loadLocal('vc:' + key) || {};
+    const SZ    = tamanhosDe(def);
+    const tu    = !!def.tamanhoUnico;
+    const cores = coresDoModelo(def, saved);
+    [{ n: 1, status: saved.status,  prod: saved.prod  },
+     { n: 2, status: saved.status2, prod: saved.prod2 }].forEach(l => {
+      if (l.status !== 'Comprando tecido') return;
+      const prod = {};
+      let total = 0;
+      cores.forEach(cor => {
+        const pv = l.prod && l.prod[cor];
+        // Fallback é só da leva 1: a 2ª leva vale o que a dona digitou, e nada mais —
+        // mesma regra da Ficha de Compra e do card COMPRANDO TECIDO do painel.
+        const arr = pv
+          ? Array.from({ length: SZ.length }, (_, i) => pv[i] || 0)
+          : (l.n === 1
+              ? necessidadeLeva(def.aberto[cor] || [0,0,0,0,0],
+                                (saved.est   && saved.est[cor])   || [0,0,0,0,0],
+                                (saved.prod2 && saved.prod2[cor]) || [], tu, SZ.length)
+              : null);
+        if (!arr) return;
+        const t = arr.reduce((a, b) => a + b, 0);
+        if (t === 0) return;
+        prod[cor] = arr;
+        total += t;
+      });
+      // Leva sem peça nenhuma fica onde está: virar "Em corte" com zero peças só a faria
+      // sumir das listas (ficha exige total > 0) sem nada ter acontecido de verdade.
+      if (total === 0) return;
+      out.push({ key, nome: saved.nome || def.nome, leva: l.n, prod, total, congelar: !l.prod });
+    });
+  }
+  return out;
+}
+
+// Botão "Mandar tudo para o corte" — aba CORTE (card do tecido em compra) e card
+// COMPRANDO TECIDO do painel. Grava modelo a modelo (cada um é uma linha do Supabase) e só
+// redesenha no fim, para não refazer a tela inteira a cada leva.
+async function mandarTudoParaCorte() {
+  if (ehPerfilOficina()) return; // quem confirma etapa é a dona; oficina só lê
+  const levas = levasEmCompraParaCorte();
+  if (!levas.length) { alert('Nenhuma leva com tecido em compra para mandar ao corte.'); return; }
+  const totalPecas = levas.reduce((s, l) => s + l.total, 0);
+  const lista = levas.map(l => `• ${l.nome}${l.leva === 2 ? ' (2ª leva)' : ''} — ${l.total} peças`).join('\n');
+  if (!confirm(`Mandar ${levas.length} leva${levas.length > 1 ? 's' : ''} para o corte — ${totalPecas} peças?\n\n${lista}\n\nO status muda de "Comprando tecido" para "Em corte" e as fichas aparecem na aba CORTE.`)) return;
+
+  const agora = new Date().toISOString();
+  const porModelo = {};
+  levas.forEach(l => { (porModelo[l.key] = porModelo[l.key] || []).push(l); });
+  let erros = 0;
+  for (const [key, ls] of Object.entries(porModelo)) {
+    const saved = loadLocal('vc:' + key) || {};
+    ls.forEach(l => {
+      // Carimbo de entrada no corte: MESMA regra de confirmarStatus e salvarModelo — é o
+      // `ref` que separa uma rodada da outra no faturamento do corte e da costura.
+      if (l.leva === 2) {
+        saved.status2 = 'Em corte'; saved.status2_at = agora;
+        if (l.congelar) saved.prod2 = { ...(saved.prod2 || {}), ...l.prod };
+      } else {
+        saved.status = 'Em corte'; saved.status_at = agora;
+        if (l.congelar) saved.prod = { ...(saved.prod || {}), ...l.prod };
+      }
+      if (modeloAtual === key) {
+        const sel = document.getElementById(l.leva === 2 ? 'prod2-status' : 'prod-status');
+        if (sel) sel.value = 'Em corte';
+      }
+    });
+    saved.updated_at = new Date().toISOString();
+    saveLocal('vc:' + key, saved);
+    try { await salvarNuvem(key, saved); } catch (e) { erros++; }
+  }
+  buildSidebar();
+  verificarAvisosStatus();
+  // Mesma sincronização de confirmarStatus: leva entrando no corte abre o valor da rodada.
+  await crtFatSincronizar().catch(() => {});
+  await cstFatSincronizar().catch(() => {});
+  if (modeloAtual === '__corte__')        renderCorte();
+  else if (modeloAtual === '__costura__') renderCostura();
+  else if (modeloAtual === '__dashboard__') renderDashboard();
+  if (erros) alert(`${erros} modelo(s) não subiram para a nuvem agora — a mudança está neste aparelho e vai subir na próxima sincronização.`);
+}
+
 function abrirCorte(item) {
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   if (item) item.classList.add('active');
@@ -5056,14 +5153,19 @@ function renderCorte() {
   // Mesmo card de aviso da aba COSTURA (15/08): fechado, mostrando total e frase, abrindo em
   // uma linha por tecido. A Ficha total continua aqui dentro — é o papel que ele leva para a
   // compra —, mas fora do <summary>, senão o clique no botão abriria e fecharia o card.
+  // "Mandar tudo para o corte" só aparece para a DONA: é ela que confirma etapa (a oficina
+  // nem grava status), e o botão está aqui porque é aqui que ela vê o tecido que chegou.
   const blocoCompra = compra.length === 0 ? '' : avisoCardHTML(
     'ti-shopping-cart', 'TECIDO SENDO COMPRADO', compraPecas,
     `Ainda não é para cortar — é o que vem por aí. ${nMetros(compraMetros)}m no total.`,
     compra.map(g => avisoLinhaHTML(esc(g.tecido), '', g.pecas)).join(''),
-    `<div style="margin-top:10px">
+    `<div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
        <button class="btn-outline" style="font-size:11px;padding:5px 10px" onclick="gerarFichaCorteTotal()">
          <i class="ti ti-file-text"></i> Ficha total
        </button>
+       ${ehPerfilOficina() ? '' : `<button class="btn-primary" style="font-size:11px;padding:5px 10px" onclick="mandarTudoParaCorte()">
+         <i class="ti ti-scissors"></i> Mandar tudo para o corte
+       </button>`}
      </div>`);
 
   if (levas.length === 0) {
