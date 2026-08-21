@@ -119,7 +119,8 @@ ok('sem valor ao lado do título — os números vivem na frase de baixo',
 ok('e o selo do total nem é desenhado quando vem vazio',
    /\$\{tot \? `<span class="aviso-tot">\$\{tot\}<\/span>` : ''\}/.test(main), true);
 ok('não sobrou aba/rota própria de faturamento', /__faturamento__|abrirFaturamento/.test(main), false);
-ok('fechado, o resumo tem "na máquina agora (ainda não entregue)" e "em corte"',
+// 21/08: o resumo saiu do card fechado — dinheiro só depois do toque (ver bloco 13).
+ok('o resumo tem "na máquina agora (ainda não entregue)" e "em corte"',
    /\['Na máquina agora', 'ainda não entregue', totalAgora\][\s\S]{0,120}\['Em corte', 'previsão do que vai entrar', totalCorte\]/.test(main), true);
 // 21/08: o resumo passou a ser as cinco linhas que a costureira ditou — o "entregue e não
 // pago" saiu dele (o acerto que vem é a linha da semana; o total em aberto vive no bloco
@@ -234,6 +235,12 @@ ok('a sincronização da costura não CHAMA mais o resgate do corte (só o cita 
    /crtFatResgatarCostura\(/.test(/async function cstFatSincronizar\(\)[\s\S]*?\n\}/.exec(main)[0]), false);
 ok('e a do corte chama, sobre a base que ela mesma grava',
    /async function crtFatSincronizar\(\)[\s\S]*?const resgatou = crtFatResgatarCostura\(d0, agora2\);[\s\S]*?salvarNuvem\(CRT_FAT_KEY/.test(main), true);
+
+console.log('\n13) Fechado, o card não mostra valor nenhum (pedido da Bárbara, 21/08)');
+ok('o resumo entra no CORPO do card, não no <summary>',
+   /avisoCardHTML\('ti-cash', 'FATURAMENTO DA COSTURA', '',[\s\S]{0,90}toque para ver\.', frase \+ corpo/.test(main), true);
+ok('e a frase que fica à mostra não tem número nenhum',
+   /'O mês, o acerto da semana e o que vem por aí — toque para ver\.'/.test(main), true);
 
 console.log(falhas ? `\n✗ ${total - falhas}/${total} passaram` : `\n✓ ${total}/${total} passaram`);
 process.exit(falhas ? 1 : 0);

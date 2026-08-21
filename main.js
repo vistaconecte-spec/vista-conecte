@@ -5990,7 +5990,11 @@ function renderFaturamento() {
     </div>`).join('')}</div>`;
   // Sem valor ao lado do título (pedido da Bárbara, 15/08): os dois números que importam já
   // estão na frase logo abaixo, e repetir um deles em cima só enchia o topo.
-  el.innerHTML = avisoCardHTML('ti-cash', 'FATURAMENTO DA COSTURA', '', frase, corpo, '', '#0f766e');
+  // 21/08: o resumo saiu do <summary> e virou a primeira coisa do CORPO — fechado o card não
+  // mostra valor nenhum (pedido dela: dinheiro só aparece para quem abre). Na aba, a
+  // costureira e quem estiver por perto veem a tela; o número agora depende de um toque.
+  el.innerHTML = avisoCardHTML('ti-cash', 'FATURAMENTO DA COSTURA', '',
+    'O mês, o acerto da semana e o que vem por aí — toque para ver.', frase + corpo, '', '#0f766e');
 }
 
 // ─── AVIAMENTOS A COMPRAR ─────────────────────────────────────────────────────
@@ -6485,7 +6489,9 @@ function renderFaturamentoCorte() {
       <span>${rot}${obs ? ` <i>(${obs})</i>` : ''}</span>
       <b>${finBRL(v)}</b>
     </div>`).join('')}</div>`;
-  el.innerHTML = avisoCardHTML('ti-cash', 'FATURAMENTO DO CORTE', '', frase, corpo, '', '#7C3AED');
+  // Mesmo desenho da costura (21/08): resumo só depois do toque, nada de valor no card fechado.
+  el.innerHTML = avisoCardHTML('ti-cash', 'FATURAMENTO DO CORTE', '',
+    'O mês, o acerto da semana e o que vem por aí — toque para ver.', frase + corpo, '', '#7C3AED');
 }
 
 // ─── O QUE FOI REALMENTE CORTADO ─────────────────────────────────────────────

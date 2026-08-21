@@ -100,6 +100,8 @@ ok('acima do card das fichas',
 ok('renderCorte desenha o card', /renderFaturamentoCorte\(\); \/\//.test(main), true);
 ok('mesmo card "ver mais" das outras faixas',
    /avisoCardHTML\('ti-cash', 'FATURAMENTO DO CORTE', '',/.test(main), true);
+ok('e, como o da costura, só mostra valor depois do toque (resumo no corpo, não no summary)',
+   /avisoCardHTML\('ti-cash', 'FATURAMENTO DO CORTE', '',[\s\S]{0,90}toque para ver\.', frase \+ corpo/.test(main), true);
 ok('congela junto com o da costura, nos mesmos pontos',
    (main.match(/crtFatSincronizar\(\)\.catch/g) || []).length,
    (main.match(/cstFatSincronizar\(\)\.catch/g) || []).length);
