@@ -87,6 +87,12 @@ const r = main.slice(main.indexOf('function renderFaturamento()'), main.indexOf(
 ok('o card monta o mês corrente e o anterior', /const mes    = cstFatMes\(d, mesAtual\);/.test(r) && /cstFatMes\(d, chaveAnt\)/.test(r), true);
 ok('o bloco do mês é o PRIMEIRO do card', /const corpo = blocoMes \+/.test(r), true);
 ok('com o total a receber em destaque', /linMes\('TOTAL A RECEBER'/.test(r), true);
+ok('e a linha do que vai entrar no total: a receber + na máquina + vem por aí',
+   /const totalPrevisto = Math\.round\(\(mes\.aReceber\.valor \+ totalAgora \+ totalVindo\) \* 100\) \/ 100;/.test(r), true);
+ok('ela vem DEPOIS do "a receber" — é previsão, não pode ocupar o lugar do que já é dela',
+   r.indexOf("linMes('TOTAL A RECEBER'") < r.indexOf("linMes('TOTAL QUE VAI ENTRAR'"), true);
+ok('e o resumo fechado também soma as partes por ela',
+   /\['Total que vai entrar', 'com o que ainda está em produção', totalPrevisto\]/.test(r), true);
 ok('e o resumo fechado abre pelo mês dela', /const resumo = \[\s*\['Entregue em ' \+ cstFatMesLabel/.test(r), true);
 ok('o mês vem do relógio local, como a função', /hoje\.getFullYear\(\) \+ '-' \+ String\(hoje\.getMonth\(\) \+ 1\)/.test(r), true);
 ok('a costureira vê tudo isso — o card inteiro só esconde BOTÃO dela (podePagar)',

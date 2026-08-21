@@ -5792,6 +5792,8 @@ function renderFaturamento() {
   const chaveAnt = mesAnt.getFullYear() + '-' + String(mesAnt.getMonth() + 1).padStart(2, '0');
   const mes    = cstFatMes(d, mesAtual);
   const antMes = cstFatMes(d, chaveAnt);
+  // Tudo que ainda vira dinheiro para ela: entregue e não pago + na máquina + vem por aí
+  const totalPrevisto = Math.round((mes.aReceber.valor + totalAgora + totalVindo) * 100) / 100;
   const linMes = (nome, sub, valor, forte) => `
     <div class="fat-lin">
       <div>
@@ -5814,6 +5816,11 @@ function renderFaturamento() {
       ? linMes('De meses anteriores', nLevas(mes.atrasado.levas) + ' entregues antes deste mês, ainda sem pagamento', mes.atrasado.valor)
       : '')
     + linMes('TOTAL A RECEBER', mes.aReceber.levas ? nLevas(mes.aReceber.levas) + ' esperando pagamento' : 'tudo em dia 👍', mes.aReceber.valor, true)
+    // A conta que fecha a tela: o que ela já ganhou e ainda não recebeu MAIS o que está a
+    // caminho de virar dinheiro (na máquina + no corte + tecido em compra). É previsão — os
+    // dois últimos ainda dependem de a leva chegar e ser entregue —, e é por isso que a
+    // linha vem depois do "a receber", nunca no lugar dele.
+    + linMes('TOTAL QUE VAI ENTRAR', 'a receber + o que está na máquina + o que vem por aí', totalPrevisto, true)
     + (antMes.entregue.levas ? `<div class="fat-sub" style="margin-top:6px">
          ${cstFatMesLabel(chaveAnt)}: entregue ${finBRL(antMes.entregue.valor)}${antMes.aberto.valor ? ` · falta receber ${finBRL(antMes.aberto.valor)}` : ' · tudo pago'}
        </div>` : ''));
@@ -5881,7 +5888,10 @@ function renderFaturamento() {
      `${mes.entregue.pecas} ${mes.entregue.pecas === 1 ? 'peça' : 'peças'} no mês`, mes.entregue.valor],
     ['Na máquina agora', 'ainda não entregue', totalAgora],
     ['Em corte', 'previsão do que vai receber', totalCorte],
-  ].concat(totalAPagar ? [['Entregue e não pago', 'a receber', totalAPagar]] : []);
+  ].concat(totalAPagar ? [['Entregue e não pago', 'a receber', totalAPagar]] : [])
+  // Fecha o resumo com a soma de tudo que ainda vira dinheiro — as linhas de cima são as
+  // partes, e ela não deveria precisar somá-las de cabeça no card fechado.
+   .concat([['Total que vai entrar', 'com o que ainda está em produção', totalPrevisto]]);
   const frase = `<div class="fat-resumo">${resumo.map(([rot, obs, v]) => `
     <div class="fat-resumo-lin">
       <span>${rot}${obs ? ` <i>(${obs})</i>` : ''}</span>
