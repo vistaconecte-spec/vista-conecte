@@ -10,6 +10,7 @@
  *   ?busca=texto           (filtra pelo nome do anúncio)
  *   ?desde=YYYY-MM-DD      (só anúncios criados a partir dessa data, hora local BRT)
  *   ?ate=YYYY-MM-DD        (só anúncios criados até o fim desse dia, hora local BRT)
+ *   ?leve=1                (não expande o criativo — chamada barata, sem os links)
  */
 const API_VERSION = 'v23.0';
 const CONTA_PADRAO = 'act_968164338120112';
@@ -33,13 +34,15 @@ export async function onRequest(context) {
     return new Response(JSON.stringify({ erro: 'Datas devem estar no formato YYYY-MM-DD.' }), { status: 400, headers });
   }
 
+  // A expansão do criativo é o que pesa no rate limit da conta; ?leve=1 dispensa.
+  const leve = url.searchParams.get('leve') === '1';
   const creativeFields = [
     'id', 'name', 'object_type', 'url_tags', 'template_url',
     'object_story_spec', 'asset_feed_spec',
   ].join(',');
   const fields = [
     'name', 'effective_status', 'created_time', 'updated_time', 'adset{name}', 'campaign{name}',
-    `creative{${creativeFields}}`,
+    ...(leve ? [] : [`creative{${creativeFields}}`]),
   ].join(',');
 
   // Junta todos os links que aparecem no criativo (imagem, vídeo, carrossel, catálogo).
@@ -113,7 +116,7 @@ export async function onRequest(context) {
     const semLink = anuncios.filter(a => a.links.length === 0).map(a => a.anuncio);
     return new Response(JSON.stringify({
       conta,
-      filtro: { status: soAtivos ? 'ativos' : 'todos', busca: busca || null, desde: desdeStr || null, ate: ateStr || null },
+      filtro: { status: soAtivos ? 'ativos' : 'todos', busca: busca || null, desde: desdeStr || null, ate: ateStr || null, leve },
       total: anuncios.length,
       sem_link_detectado: semLink,
       anuncios,
