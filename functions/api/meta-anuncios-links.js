@@ -8,6 +8,8 @@
  * Query:
  *   ?status=ativos|todos   (padrão: ativos — só effective_status ACTIVE)
  *   ?busca=texto           (filtra pelo nome do anúncio)
+ *   ?desde=YYYY-MM-DD      (só anúncios criados a partir dessa data, hora local BRT)
+ *   ?ate=YYYY-MM-DD        (só anúncios criados até o fim desse dia, hora local BRT)
  */
 const API_VERSION = 'v23.0';
 const CONTA_PADRAO = 'act_968164338120112';
@@ -22,13 +24,21 @@ export async function onRequest(context) {
   const url = new URL(request.url);
   const soAtivos = (url.searchParams.get('status') || 'ativos') !== 'todos';
   const busca = (url.searchParams.get('busca') || '').toLowerCase();
+  // Janela de criação (opcional). Datas são interpretadas no fuso de Brasília (-03:00).
+  const desdeStr = url.searchParams.get('desde') || '';
+  const ateStr = url.searchParams.get('ate') || '';
+  const desdeTs = desdeStr ? Date.parse(`${desdeStr}T00:00:00-03:00`) : null;
+  const ateTs = ateStr ? Date.parse(`${ateStr}T23:59:59-03:00`) : null;
+  if ((desdeStr && !desdeTs) || (ateStr && !ateTs)) {
+    return new Response(JSON.stringify({ erro: 'Datas devem estar no formato YYYY-MM-DD.' }), { status: 400, headers });
+  }
 
   const creativeFields = [
     'id', 'name', 'object_type', 'url_tags', 'template_url',
     'object_story_spec', 'asset_feed_spec',
   ].join(',');
   const fields = [
-    'name', 'effective_status', 'adset{name}', 'campaign{name}',
+    'name', 'effective_status', 'created_time', 'updated_time', 'adset{name}', 'campaign{name}',
     `creative{${creativeFields}}`,
   ].join(',');
 
@@ -72,10 +82,15 @@ export async function onRequest(context) {
       for (const ad of (data.data || [])) {
         if (soAtivos && ad.effective_status !== 'ACTIVE') continue;
         if (busca && !(ad.name || '').toLowerCase().includes(busca)) continue;
+        const criadoTs = ad.created_time ? Date.parse(ad.created_time) : null;
+        if (desdeTs && !(criadoTs >= desdeTs)) continue;
+        if (ateTs && !(criadoTs <= ateTs)) continue;
         anuncios.push({
           id: ad.id,
           anuncio: ad.name,
           status: ad.effective_status,
+          criado_em: ad.created_time || null,
+          atualizado_em: ad.updated_time || null,
           campanha: (ad.campaign || {}).name || null,
           adset: (ad.adset || {}).name || null,
           tipo_criativo: (ad.creative || {}).object_type || null,
@@ -86,10 +101,13 @@ export async function onRequest(context) {
       api = (data.paging || {}).next || null;
     }
 
+    // Mais recentes primeiro, pra facilitar "o que entrou nos últimos dias".
+    anuncios.sort((a, b) => Date.parse(b.criado_em || 0) - Date.parse(a.criado_em || 0));
+
     const semLink = anuncios.filter(a => a.links.length === 0).map(a => a.anuncio);
     return new Response(JSON.stringify({
       conta,
-      filtro: { status: soAtivos ? 'ativos' : 'todos', busca: busca || null },
+      filtro: { status: soAtivos ? 'ativos' : 'todos', busca: busca || null, desde: desdeStr || null, ate: ateStr || null },
       total: anuncios.length,
       sem_link_detectado: semLink,
       anuncios,
