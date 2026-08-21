@@ -104,6 +104,7 @@ export async function onRequest(context) {
       ...(limiteUsos ? { usageLimit: limiteUsos } : {}),
       appliesOncePerCustomer: umPorCliente,
       ...(minimoSubtotal ? { minimumRequirement: { subtotal: { greaterThanOrEqualToSubtotal: String(minimoSubtotal) } } } : {}),
+      customerSelection: { all: true },
       customerGets: { value: { percentage: pct / 100 }, items: { all: true } },
       // Mesma regra da escada CONECTA: não empilha com outro desconto de PEDIDO (cupom/escada),
       // mas deixa passar desconto de produto e de frete.
