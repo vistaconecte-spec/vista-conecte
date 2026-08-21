@@ -5866,10 +5866,11 @@ function renderFaturamento() {
   const semana = cstFatSemana(d);
   // Tudo que ainda vira dinheiro para ela: entregue e não pago + na máquina + vem por aí
   const totalPrevisto = Math.round((mes.aReceber.valor + totalAgora + totalVindo) * 100) / 100;
-  // Como o mês deve fechar: o que já foi entregue nele + o que ainda está na mão dela e no
-  // corte. Não é a mesma conta do "vai entrar": aqui o que já foi PAGO no mês continua
-  // contando (é ganho do mês) e o tecido em compra fica de fora (não fecha até o mês virar).
-  const totalMes = Math.round((mes.entregue.valor + totalAgora + totalCorte) * 100) / 100;
+  // Como o mês deve fechar — e é EXATAMENTE a soma das quatro linhas do resumo (pago no mês
+  // + tudo a receber + na máquina + em corte). O tecido em compra fica de fora: não vira
+  // entrega até o mês virar. Somar o "entregue no mês" inteiro aqui contaria o a receber
+  // duas vezes, porque ele já está dentro dele.
+  const totalMes = Math.round((mes.pago.valor + mes.aReceber.valor + totalAgora + totalCorte) * 100) / 100;
   const linMes = (nome, sub, valor, forte) => `
     <div class="fat-lin">
       <div>
@@ -5965,17 +5966,22 @@ function renderFaturamento() {
   // vai receber quando elas chegarem à máquina —, e NÃO o que se paga pelo corte. Sem o
   // "previsão do que vai receber" escrito ali, a linha se lê como custo de corte.
   // As cinco linhas são as que a costureira ditou (21/08): do que já é dela até o
-  // fechamento previsto do mês, na ordem em que ela pensa. "Entregue essa semana" é o
-  // acerto que vem; quando sobra coisa de antes, o saldo antigo entra na observação — sem
-  // isso a linha pareceria ser tudo o que ela tem a receber.
+  // fechamento previsto do mês, na ordem em que ela pensa.
+  //
+  // ⚠️ POR QUE A PRIMEIRA LINHA MOSTRA SÓ O QUE JÁ FOI PAGO: ela soma as linhas de cima para
+  // conferir o total, e o "entregue no mês" contém o "entregue essa semana" — as duas juntas
+  // contavam o mesmo trabalho duas vezes (em 21/08: 4.881,70 já incluía os 2.622,00 a
+  // receber). Partindo o mês em PAGO + A RECEBER, as quatro primeiras linhas somam exatamente
+  // o total do mês, e nada some: o entregue do mês inteiro continua no bloco aberto.
   const resumo = [
-    ['Total já entregue em ' + cstFatMesLabel(mesAtual).replace(/ de \d{4}$/, ''),
-     `${mes.entregue.pecas} ${mes.entregue.pecas === 1 ? 'peça' : 'peças'} no mês`, mes.entregue.valor],
+    ['Já entregue e pago em ' + cstFatMesLabel(mesAtual).replace(/ de \d{4}$/, ''),
+     `${mes.entregue.pecas} ${mes.entregue.pecas === 1 ? 'peça' : 'peças'} entregues no mês`, mes.pago.valor],
     ['Entregue essa semana',
-     'a receber' + (semana.antes.valor ? ` · mais ${finBRL(semana.antes.valor)} de antes` : ''), semana.aReceber.valor],
+     'a receber' + (semana.antes.valor ? ` · sendo ${finBRL(semana.aReceber.valor)} desta semana` : ''),
+     mes.aReceber.valor],
     ['Na máquina agora', 'ainda não entregue', totalAgora],
     ['Em corte', 'previsão do que vai entrar', totalCorte],
-    ['Total do mês', 'entregue + na máquina + em corte', totalMes],
+    ['Total do mês', 'a soma das quatro linhas acima', totalMes],
   ];
   const frase = `<div class="fat-resumo">${resumo.map(([rot, obs, v]) => `
     <div class="fat-resumo-lin">
@@ -6385,7 +6391,9 @@ function renderFaturamentoCorte() {
   const antMes = cstFatMes(d, chaveAnt);
   const semana = cstFatSemana(d);
   const totalPrevisto = Math.round((mes.aReceber.valor + totalAgora + totalVindo) * 100) / 100;
-  const totalMes      = Math.round((mes.entregue.valor + totalAgora + totalVindo) * 100) / 100;
+  // Igual ao da costura: é EXATAMENTE a soma das quatro linhas do resumo. Somar o "entregue
+  // no mês" inteiro contaria o a receber duas vezes — ele já está dentro dele.
+  const totalMes      = Math.round((mes.pago.valor + mes.aReceber.valor + totalAgora + totalVindo) * 100) / 100;
   const linMes = (nome, sub, valor, forte) => `
     <div class="fat-lin">
       <div>
@@ -6463,13 +6471,14 @@ function renderFaturamentoCorte() {
   // As mesmas cinco linhas da aba COSTURA, com os rótulos do corte: o que vem por aí, aqui,
   // é o tecido em compra — o que está em costura já passou pela mesa dele e não volta.
   const resumo = [
-    ['Total já entregue em ' + cstFatMesLabel(mesAtual).replace(/ de \d{4}$/, ''),
-     `${mes.entregue.pecas} ${mes.entregue.pecas === 1 ? 'peça' : 'peças'} no mês`, mes.entregue.valor],
+    ['Já entregue e pago em ' + cstFatMesLabel(mesAtual).replace(/ de \d{4}$/, ''),
+     `${mes.entregue.pecas} ${mes.entregue.pecas === 1 ? 'peça' : 'peças'} entregues no mês`, mes.pago.valor],
     ['Entregue essa semana',
-     'a receber' + (semana.antes.valor ? ` · mais ${finBRL(semana.antes.valor)} de antes` : ''), semana.aReceber.valor],
+     'a receber' + (semana.antes.valor ? ` · sendo ${finBRL(semana.aReceber.valor)} desta semana` : ''),
+     mes.aReceber.valor],
     ['Na mesa agora', 'ainda não entregue', totalAgora],
     ['Tecido em compra', 'previsão do que vai entrar', totalVindo],
-    ['Total do mês', 'entregue + na mesa + tecido em compra', totalMes],
+    ['Total do mês', 'a soma das quatro linhas acima', totalMes],
   ];
   const frase = `<div class="fat-resumo">${resumo.map(([rot, obs, v]) => `
     <div class="fat-resumo-lin">

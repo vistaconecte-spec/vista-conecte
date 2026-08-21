@@ -112,10 +112,13 @@ ok('o bloco do mês é o primeiro do card', /const corpo = blocoMes \+/.test(rc)
 ok('com total a receber, total que vai entrar e total do mês',
    ["linMes('TOTAL A RECEBER'", "linMes('TOTAL QUE VAI ENTRAR'", "linMes('TOTAL DO MÊS (previsto)'"].every(t => rc.includes(t)), true);
 const resumoCorte = rc.slice(rc.indexOf('const resumo = ['), rc.indexOf('const frase ='));
-const rotCorte = ["['Total já entregue em '", "['Entregue essa semana'", "['Na mesa agora'", "['Tecido em compra'", "['Total do mês'"];
+const rotCorte = ["['Já entregue e pago em '", "['Entregue essa semana'", "['Na mesa agora'", "['Tecido em compra'", "['Total do mês'"];
 ok('as cinco linhas do resumo, com os rótulos do corte', rotCorte.filter(t => resumoCorte.includes(t)).length, 5);
 ok('nesta ordem', rotCorte.map(t => resumoCorte.indexOf(t)).every((v, i, a) => i === 0 || v > a[i - 1]), true);
 ok('e nada mais no meio', (resumoCorte.match(/\['/g) || []).length, 5);
+ok('a primeira linha é só o já PAGO e o total do mês é a soma exata das quatro (igual à costura)',
+   /mes\.pago\.valor\]/.test(resumoCorte)
+   && /const totalMes      = Math\.round\(\(mes\.pago\.valor \+ mes\.aReceber\.valor \+ totalAgora \+ totalVindo\) \* 100\) \/ 100;/.test(rc), true);
 ok('"vem por aí" do corte é o TECIDO EM COMPRA, não o que está em costura',
    /const vindo = cstLevasDe\('Comprando tecido'\)/.test(rc), true);
 ok('e o valor por peça continua sendo o do CORTE em todos eles',

@@ -125,7 +125,7 @@ ok('fechado, o resumo tem "na máquina agora (ainda não entregue)" e "em corte"
 // pago" saiu dele (o acerto que vem é a linha da semana; o total em aberto vive no bloco
 // TOTAL A RECEBER, aberto). Ver tests/costura-mes.test.mjs.
 ok('e abre pelo mês, fechando no total do mês',
-   /\['Total já entregue em ' \+ cstFatMesLabel[\s\S]{0,600}\['Total do mês', 'entregue \+ na máquina \+ em corte', totalMes\]/.test(main), true);
+   /\['Já entregue e pago em ' \+ cstFatMesLabel[\s\S]{0,700}\['Total do mês', 'a soma das quatro linhas acima', totalMes\]/.test(main), true);
 ok('o total em aberto continua dito por extenso no bloco do mês',
    /linMes\('TOTAL A RECEBER'/.test(main), true);
 ok('o valor do corte é só do corte (o tecido em compra não entra nele)',

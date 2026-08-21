@@ -114,19 +114,27 @@ ok('e a linha do que vai entrar no total: a receber + na máquina + vem por aí'
 ok('ela vem DEPOIS do "a receber" — é previsão, não pode ocupar o lugar do que já é dela',
    r.indexOf("linMes('TOTAL A RECEBER'") < r.indexOf("linMes('TOTAL QUE VAI ENTRAR'"), true);
 ok('e o bloco fecha com a previsão do mês (o que já foi pago conta; tecido em compra não)',
-   /const totalMes = Math\.round\(\(mes\.entregue\.valor \+ totalAgora \+ totalCorte\) \* 100\) \/ 100;/.test(r), true);
+   /const totalMes = Math\.round\(\(mes\.pago\.valor \+ mes\.aReceber\.valor \+ totalAgora \+ totalCorte\) \* 100\) \/ 100;/.test(r), true);
 
 console.log('\n7) As cinco linhas do resumo fechado, na ordem que ela pediu');
 const bloco5 = r.slice(r.indexOf('const resumo = ['), r.indexOf('const frase ='));
-const rotulos = ["['Total já entregue em '", "['Entregue essa semana'", "['Na máquina agora'", "['Em corte'", "['Total do mês'"];
+const rotulos = ["['Já entregue e pago em '", "['Entregue essa semana'", "['Na máquina agora'", "['Em corte'", "['Total do mês'"];
 ok('as cinco estão lá', rotulos.filter(t => bloco5.includes(t)).length, 5);
 ok('nesta ordem', rotulos.map(t => bloco5.indexOf(t)).every((v, i, a) => i === 0 || v > a[i - 1]), true);
 ok('e nenhuma outra linha se meteu no meio', (bloco5.match(/\['/g) || []).length, 5);
-ok('a linha da semana avisa quando sobrou saldo de antes (senão parece ser tudo que ela tem a receber)',
-   /semana\.antes\.valor \? ` · mais \$\{finBRL\(semana\.antes\.valor\)\} de antes` : ''/.test(r), true);
+ok('a linha da semana mostra tudo o que está a receber e diz quanto é desta semana',
+   /semana\.antes\.valor \? ` · sendo \$\{finBRL\(semana\.aReceber\.valor\)\} desta semana` : ''/.test(r), true);
 ok('"em corte" continua dizendo que é previsão — sem isso a linha se lê como custo de corte',
    /\['Em corte', 'previsão do que vai entrar', totalCorte\]/.test(r), true);
-ok('e o total do mês fecha a lista', /\['Total do mês', 'entregue \+ na máquina \+ em corte', totalMes\]/.test(r), true);
+ok('e o total do mês fecha a lista', /\['Total do mês', 'a soma das quatro linhas acima', totalMes\]/.test(r), true);
+// 21/08, pedido da Bárbara: ela soma as linhas para conferir. O "entregue no mês" CONTÉM o
+// "entregue essa semana" (4.881,70 já incluía os 2.622,00 a receber), então a primeira linha
+// mostra só a parte já paga e as quatro somam exatamente o total.
+ok('a primeira linha é só o já PAGO — senão o a receber entraria duas vezes na soma',
+   /\['Já entregue e pago em ' \+ cstFatMesLabel\(mesAtual\)[\s\S]{0,160}mes\.pago\.valor\]/.test(r), true);
+ok('a segunda é tudo o que está a receber', /mes\.aReceber\.valor\],/.test(r), true);
+ok('e o total do mês é a soma exata dessas quatro',
+   /const totalMes = Math\.round\(\(mes\.pago\.valor \+ mes\.aReceber\.valor \+ totalAgora \+ totalCorte\) \* 100\) \/ 100;/.test(r), true);
 ok('o mês vem do relógio local, como a função', /hoje\.getFullYear\(\) \+ '-' \+ String\(hoje\.getMonth\(\) \+ 1\)/.test(r), true);
 ok('a costureira vê tudo isso — o card inteiro só esconde BOTÃO dela (podePagar)',
    /const podePagar = !ehPerfilOficina\(\);/.test(r) && !/ehPerfilOficina\(\) \? '' : blocoMes/.test(r), true);
