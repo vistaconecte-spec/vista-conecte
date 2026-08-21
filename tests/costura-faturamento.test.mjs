@@ -27,7 +27,11 @@ function extrair(nome) {
   return main.slice(i, fim + 2);
 }
 
-const F = new Function(extrair('cstFatAplicar') + '\n' + extrair('cstFatEntregar')
+// As travas contra entrega fantasma (21/08) moram em constantes do main.js — entram no
+// sandbox pelo valor REAL do arquivo, para o teste falhar se elas sumirem ou mudarem de nome.
+const consts = (main.match(/^const CST_FAT_(CARENCIA_MS|SUMICO_MIN|CONFIRMA_MS).*$/gm) || []).join('\n');
+if (consts.split('\n').filter(Boolean).length !== 3) throw new Error('travas do faturamento não encontradas em main.js');
+const F = new Function(consts + '\n' + extrair('cstFatAplicar') + '\n' + extrair('cstFatEntregar')
   + '\n' + extrair('flxCustoModelo')
   + '; return { cstFatAplicar, cstFatEntregar, flxCustoModelo };')();
 
@@ -191,6 +195,45 @@ ok('o botao so aparece para quem pode pagar e com 2+ levas esperando',
    /podePagar && aPagar\.length > 1/.test(cardFat), true);
 ok('e mostra o valor do acerto no proprio botao',
    /Pagar todas .{1,3} \$\{finBRL\(totalAPagar\)\}/.test(cardFat), true);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 21/08/2026 — ENTREGA FANTASMA. O retrato é montado do localStorage; quando ele fica
+// desatualizado por um instante (gravação em massa em voo, carregarTodosNuvem no meio),
+// as levas somem do retrato e viram "entregue". Aconteceu de verdade: 21 levas entraram no
+// corte às 15:01 e às 15:22 estavam cobradas — R$ 822,20 —, ainda na mesa.
+console.log('\n11) As duas travas contra entrega fantasma');
+const hs = h => new Date(Date.parse('2026-08-15T12:00:00.000Z') - h * 3600000).toISOString();
+const nova = { 'a|1': { ref: hs(0.1), nome: 'A', pecas: 5, unit: 10, desde: hs(0.1) } };  // entrou há 6 min
+const dNova = F.cstFatAplicar(vazio(), nova, AGORA);
+ok('leva recém-chegada à etapa não pode ser entregue no minuto seguinte',
+   F.cstFatAplicar(dNova, {}, AGORA), null);
+ok('e continua no retrato, esperando', Object.keys(dNova.abertas), ['a|1']);
+const dVelha = F.cstFatAplicar(vazio(), { 'a|1': { ref: hs(5), nome: 'A', pecas: 5, unit: 10, desde: hs(5) } }, AGORA);
+ok('passada a carência, sair da etapa volta a ser entrega normalmente',
+   Object.keys(F.cstFatAplicar(dVelha, {}, AGORA).aPagar).length, 1);
+
+const muitas = {};
+for (let i = 1; i <= 6; i++) muitas['m' + i + '|1'] = { ref: hs(5), nome: 'M' + i, pecas: 2, unit: 10, desde: hs(5) };
+const dMuitas = F.cstFatAplicar(vazio(), muitas, AGORA);
+const sumiu1 = F.cstFatAplicar(dMuitas, {}, AGORA);
+ok('seis levas sumindo de uma vez não viram cobrança na hora', Object.keys(sumiu1.aPagar).length, 0);
+ok('o sumiço fica anotado para a segunda olhada', sumiu1.sumico.ids.length, 6);
+ok('e elas continuam no retrato', Object.keys(sumiu1.abertas).length, 6);
+const voltou = F.cstFatAplicar(sumiu1, muitas, AGORA);
+ok('se elas reaparecem (era leitura ruim), ninguém é cobrado e a anotação some',
+   [voltou && Object.keys(voltou.aPagar).length, voltou && voltou.sumico], [0, undefined]);
+const DEPOIS = '2026-08-15T12:06:00.000Z'; // 6 min depois, além de CST_FAT_CONFIRMA_MS
+const sumiu2 = F.cstFatAplicar(sumiu1, {}, DEPOIS);
+ok('mas se continuam sumidas na segunda olhada, aí sim é entrega', Object.keys(sumiu2.aPagar).length, 6);
+ok('e o retrato fica vazio', Object.keys(sumiu2.abertas).length, 0);
+ok('uma ou duas levas saindo continuam sendo cobradas na hora (não é sumiço em massa)',
+   Object.keys(F.cstFatAplicar(dMuitas, Object.fromEntries(Object.entries(muitas).slice(0, 5)), AGORA).aPagar).length, 1);
+
+console.log('\n12) Resgate de leva antiga é cobrança do CORTE, na linha do CORTE');
+ok('a sincronização da costura não CHAMA mais o resgate do corte (só o cita no comentário)',
+   /crtFatResgatarCostura\(/.test(/async function cstFatSincronizar\(\)[\s\S]*?\n\}/.exec(main)[0]), false);
+ok('e a do corte chama, sobre a base que ela mesma grava',
+   /async function crtFatSincronizar\(\)[\s\S]*?const resgatou = crtFatResgatarCostura\(d0, agora2\);[\s\S]*?salvarNuvem\(CRT_FAT_KEY/.test(main), true);
 
 console.log(falhas ? `\n✗ ${total - falhas}/${total} passaram` : `\n✓ ${total}/${total} passaram`);
 process.exit(falhas ? 1 : 0);

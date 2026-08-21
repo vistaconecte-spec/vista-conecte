@@ -5517,6 +5517,20 @@ function renderCostura() {
 // custo duas vezes. Quem decidir trocar a fonte um dia precisa desligar lá antes.
 const CST_FAT_KEY  = 'costura-faturamento';
 const CST_PAGAS_MAX = 300;
+// ⚠️ DUAS TRAVAS CONTRA ENTREGA FANTASMA (achado 21/08/2026, custou R$ 822,20 no corte e
+// cobrança repetida na costura). O retrato de quem está na etapa é montado a partir do
+// localStorage; quando ele fica desatualizado por um instante — gravação em massa em voo,
+// carregarTodosNuvem no meio do caminho —, as levas somem do retrato e o app entende
+// "saiu da etapa" = ENTREGOU. Foi o que aconteceu quando 21 levas entraram no corte às
+// 15:01 e às 15:22 apareceram como entregues, ainda estando na mesa.
+//   1. CARÊNCIA: leva que entrou na etapa há menos de meia hora não pode ter sido entregue.
+//   2. CONFIRMAÇÃO EM DOIS TEMPOS: quando METADE OU MAIS do retrato some de uma vez, o
+//      sumiço é anotado (`d.sumico`) e só vira cobrança se continuar sumido no ciclo
+//      seguinte, alguns minutos depois. Leitura ruim não sobrevive à segunda olhada;
+//      entrega de verdade sobrevive e é cobrada com poucos minutos de atraso.
+const CST_FAT_CARENCIA_MS = 30 * 60 * 1000; // 30 min na etapa antes de poder ser entrega
+const CST_FAT_SUMICO_MIN  = 4;              // a partir de 4 levas de uma vez já é suspeito
+const CST_FAT_CONFIRMA_MS = 5 * 60 * 1000;  // e o sumiço precisa se repetir por 5 min
 
 function cstFatTudo() {
   const d = loadLocal('vc:' + CST_FAT_KEY);
@@ -5546,21 +5560,44 @@ function cstFatAbertasAgora() {
 // Separada do resto para poder ser testada fora do navegador.
 function cstFatAplicar(dados, atuais, agora) {
   const d = { abertas: { ...dados.abertas }, aPagar: { ...dados.aPagar }, pagas: (dados.pagas || []).slice() };
+  if (dados.sumico) d.sumico = dados.sumico;
   let mudou = false;
+  // Trava 1 — carência: quem entrou na etapa agora há pouco não terminou nada ainda (ver
+  // CST_FAT_CARENCIA_MS). Carimbo sem data (histórico antigo) não tem carência nenhuma.
+  const tAgora  = Date.parse(agora) || Date.now();
+  const recente = ant => {
+    const t = Date.parse((ant && (ant.desde || ant.ref)) || '');
+    return !isNaN(t) && (tAgora - t) < CST_FAT_CARENCIA_MS;
+  };
   for (const [id, a] of Object.entries(atuais)) {
     const ant = d.abertas[id];
     if (!ant || ant.ref !== a.ref || ant.pecas !== a.pecas || ant.unit !== a.unit) {
       // Rodada NOVA da mesma leva (voltou pra costura com carimbo novo): a anterior é entrega.
-      if (ant && ant.ref !== a.ref) cstFatEntregar(d, id, ant, agora);
+      if (ant && ant.ref !== a.ref && !recente(ant)) cstFatEntregar(d, id, ant, agora);
       d.abertas[id] = a;
       mudou = true;
     }
   }
-  for (const [id, ant] of Object.entries(d.abertas)) {
-    if (atuais[id]) continue;          // continua na máquina
-    cstFatEntregar(d, id, ant, agora); // saiu de "Em costura" = entregou
-    delete d.abertas[id];
-    mudou = true;
+  // Trava 2 — sumiço em massa: metade ou mais do retrato desaparecendo de uma vez é sintoma
+  // de leitura ruim, não de entrega. Anota e espera a segunda olhada (CST_FAT_CONFIRMA_MS).
+  const ausentes = Object.keys(d.abertas).filter(id => !atuais[id] && !recente(d.abertas[id]));
+  const emMassa  = ausentes.length >= CST_FAT_SUMICO_MIN
+                && ausentes.length * 2 >= Object.keys(d.abertas).length;
+  let confirmado = true;
+  if (emMassa) {
+    const marca  = (d.sumico && Array.isArray(d.sumico.ids)) ? d.sumico : null;
+    const mesmos = !!marca && ausentes.every(id => marca.ids.includes(id));
+    const t0     = marca ? Date.parse(marca.em) : NaN;
+    confirmado   = mesmos && !isNaN(t0) && (tAgora - t0) >= CST_FAT_CONFIRMA_MS;
+    if (!confirmado && !mesmos) { d.sumico = { ids: ausentes, em: agora }; mudou = true; }
+  }
+  if (confirmado) {
+    for (const id of ausentes) {
+      cstFatEntregar(d, id, d.abertas[id], agora); // saiu da etapa = entregou
+      delete d.abertas[id];
+      mudou = true;
+    }
+    if (d.sumico) { delete d.sumico; mudou = true; }
   }
   return mudou ? d : null;
 }
@@ -5601,9 +5638,13 @@ async function cstFatSincronizar() {
   if (nuvem === undefined) return; // não deu para ler: tenta no próximo ciclo (nunca grava por cima às cegas)
   const base = (nuvem && typeof nuvem === 'object') ? nuvem : {};
   const agora2 = new Date().toISOString();
-  const d0 = { abertas: base.abertas || {}, aPagar: base.aPagar || {}, pagas: Array.isArray(base.pagas) ? base.pagas : [] };
-  const resgatou = crtFatResgatarCostura(d0, agora2);
-  const novo = cstFatAplicar(d0, atuais, agora2) || (resgatou ? d0 : null);
+  // ⚠️ O resgate de leva antiga (crtFatResgatarCostura) NÃO entra aqui: ele cobra pelo valor
+  // do CORTE e pertence à linha do cortador. Até 21/08/2026 ele rodava neste ponto, sobre a
+  // linha da COSTURA — R$ 128,70 de corte foram parar no faturamento da costureira (ids
+  // terminados em "|costura", com unit de corte). Ver crtFatSincronizar.
+  const d0 = { abertas: base.abertas || {}, aPagar: base.aPagar || {},
+               pagas: Array.isArray(base.pagas) ? base.pagas : [], sumico: base.sumico };
+  const novo = cstFatAplicar(d0, atuais, agora2);
   if (!novo) return;
   novo.pagas = novo.pagas.slice(0, CST_PAGAS_MAX);
   novo.updated_at = new Date().toISOString();
@@ -6242,9 +6283,14 @@ async function crtFatSincronizar() {
   const nuvem = await carregarNuvem(CRT_FAT_KEY);
   if (nuvem === undefined) return; // não deu para ler: nunca grava por cima às cegas
   const base = (nuvem && typeof nuvem === 'object') ? nuvem : {};
-  const novo = cstFatAplicar(
-    { abertas: base.abertas || {}, aPagar: base.aPagar || {}, pagas: Array.isArray(base.pagas) ? base.pagas : [] },
-    atuais, new Date().toISOString());
+  const agora2 = new Date().toISOString();
+  // O resgate roda AQUI, sobre a linha do corte que vai ser gravada — é cobrança do cortador,
+  // pelo valor do corte. Até 21/08/2026 ele era aplicado na base da COSTURA (e nesta função
+  // era jogado fora), o que misturava as duas contas.
+  const d0 = { abertas: base.abertas || {}, aPagar: base.aPagar || {},
+               pagas: Array.isArray(base.pagas) ? base.pagas : [], sumico: base.sumico };
+  const resgatou = crtFatResgatarCostura(d0, agora2);
+  const novo = cstFatAplicar(d0, atuais, agora2) || (resgatou ? d0 : null);
   if (!novo) return;
   novo.pagas = novo.pagas.slice(0, CST_PAGAS_MAX);
   novo.updated_at = new Date().toISOString();
