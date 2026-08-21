@@ -28,8 +28,8 @@ function extrair(nome) {
   const fim = main.indexOf('\n}', i);
   return main.slice(i, fim + 2);
 }
-const nomes = ['cstFatMesDe', 'cstFatMes', 'cstFatMesLabel'];
-const { cstFatMesDe, cstFatMes, cstFatMesLabel } =
+const nomes = ['cstFatMesDe', 'cstFatMes', 'cstFatMesLabel', 'cstFatInicioSemana', 'cstFatSemana'];
+const { cstFatMesDe, cstFatMes, cstFatMesLabel, cstFatInicioSemana, cstFatSemana } =
   new Function(nomes.map(extrair).join('\n') + `; return { ${nomes.join(', ')} };`)();
 
 let falhas = 0, total = 0;
@@ -82,7 +82,29 @@ ok('a leva paga em agosto conta como entrega de julho', jul.entregue.valor, 80);
 ok('e em julho ela já está paga', jul.pago.valor, 30);
 ok('sobrando o que julho ainda não recebeu', jul.aberto.valor, 50);
 
-console.log('\n5) Na tela');
+console.log('\n5) A semana do acerto (segunda → domingo)');
+const seg = new Date(2026, 7, 17, 9, 0, 0);   // segunda-feira
+const qui = new Date(2026, 7, 20, 9, 0, 0);   // quinta da mesma semana
+const dom = new Date(2026, 7, 23, 23, 0, 0);  // domingo à noite: ainda é a mesma semana
+ok('a semana começa na segunda', new Date(cstFatInicioSemana(qui)).getDate(), 17);
+ok('e domingo à noite ainda pertence a ela', cstFatInicioSemana(dom), cstFatInicioSemana(seg));
+ok('a segunda seguinte já abre outra', cstFatInicioSemana(new Date(2026, 7, 24, 8, 0, 0)) > cstFatInicioSemana(dom), true);
+
+const semanal = {
+  aPagar: {
+    s1: { id: 's1', pecas: 5, valor: 50, entregue_em: new Date(2026, 7, 18, 10, 0).toISOString() }, // terça desta semana
+    s2: { id: 's2', pecas: 2, valor: 20, entregue_em: new Date(2026, 7, 20, 10, 0).toISOString() }, // quinta desta semana
+    s0: { id: 's0', pecas: 4, valor: 40, entregue_em: new Date(2026, 7, 13, 10, 0).toISOString() }, // quinta PASSADA, não paga
+  },
+  pagas: [{ id: 'sp', pecas: 3, valor: 30, entregue_em: new Date(2026, 7, 19, 10, 0).toISOString(), pago_em: new Date(2026, 7, 21, 10, 0).toISOString() }],
+};
+const sem = cstFatSemana(semanal, qui);
+ok('"entregue essa semana (a receber)" só conta o que ainda não foi pago', sem.aReceber.valor, 70);
+ok('em levas', sem.aReceber.levas, 2);
+ok('o que ficou de antes sem pagamento aparece separado', sem.antes.valor, 40);
+ok('e o entregue da semana conta também o que já foi pago', sem.entregue.valor, 100);
+
+console.log('\n6) Na tela');
 const r = main.slice(main.indexOf('function renderFaturamento()'), main.indexOf('// ─── AVIAMENTOS A COMPRAR'));
 ok('o card monta o mês corrente e o anterior', /const mes    = cstFatMes\(d, mesAtual\);/.test(r) && /cstFatMes\(d, chaveAnt\)/.test(r), true);
 ok('o bloco do mês é o PRIMEIRO do card', /const corpo = blocoMes \+/.test(r), true);
@@ -91,9 +113,20 @@ ok('e a linha do que vai entrar no total: a receber + na máquina + vem por aí'
    /const totalPrevisto = Math\.round\(\(mes\.aReceber\.valor \+ totalAgora \+ totalVindo\) \* 100\) \/ 100;/.test(r), true);
 ok('ela vem DEPOIS do "a receber" — é previsão, não pode ocupar o lugar do que já é dela',
    r.indexOf("linMes('TOTAL A RECEBER'") < r.indexOf("linMes('TOTAL QUE VAI ENTRAR'"), true);
-ok('e o resumo fechado também soma as partes por ela',
-   /\['Total que vai entrar', 'com o que ainda está em produção', totalPrevisto\]/.test(r), true);
-ok('e o resumo fechado abre pelo mês dela', /const resumo = \[\s*\['Entregue em ' \+ cstFatMesLabel/.test(r), true);
+ok('e o bloco fecha com a previsão do mês (o que já foi pago conta; tecido em compra não)',
+   /const totalMes = Math\.round\(\(mes\.entregue\.valor \+ totalAgora \+ totalCorte\) \* 100\) \/ 100;/.test(r), true);
+
+console.log('\n7) As cinco linhas do resumo fechado, na ordem que ela pediu');
+const bloco5 = r.slice(r.indexOf('const resumo = ['), r.indexOf('const frase ='));
+const rotulos = ["['Total já entregue em '", "['Entregue essa semana'", "['Na máquina agora'", "['Em corte'", "['Total do mês'"];
+ok('as cinco estão lá', rotulos.filter(t => bloco5.includes(t)).length, 5);
+ok('nesta ordem', rotulos.map(t => bloco5.indexOf(t)).every((v, i, a) => i === 0 || v > a[i - 1]), true);
+ok('e nenhuma outra linha se meteu no meio', (bloco5.match(/\['/g) || []).length, 5);
+ok('a linha da semana avisa quando sobrou saldo de antes (senão parece ser tudo que ela tem a receber)',
+   /semana\.antes\.valor \? ` · mais \$\{finBRL\(semana\.antes\.valor\)\} de antes` : ''/.test(r), true);
+ok('"em corte" continua dizendo que é previsão — sem isso a linha se lê como custo de corte',
+   /\['Em corte', 'previsão do que vai entrar', totalCorte\]/.test(r), true);
+ok('e o total do mês fecha a lista', /\['Total do mês', 'entregue \+ na máquina \+ em corte', totalMes\]/.test(r), true);
 ok('o mês vem do relógio local, como a função', /hoje\.getFullYear\(\) \+ '-' \+ String\(hoje\.getMonth\(\) \+ 1\)/.test(r), true);
 ok('a costureira vê tudo isso — o card inteiro só esconde BOTÃO dela (podePagar)',
    /const podePagar = !ehPerfilOficina\(\);/.test(r) && !/ehPerfilOficina\(\) \? '' : blocoMes/.test(r), true);

@@ -5732,6 +5732,36 @@ function cstFatMesLabel(mes) {
   return new Date(Number(a), Number(m) - 1, 1).toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
 }
 
+// Começo da semana corrente — SEGUNDA, 00:00, relógio local. O acerto dela é semanal
+// (o botão "Pagar todas" é o acerto da semana inteiro), então "o que entreguei essa semana"
+// é a pergunta que antecede o pagamento.
+function cstFatInicioSemana(ref) {
+  const d = ref ? new Date(ref) : new Date();
+  const dow = (d.getDay() + 6) % 7; // domingo (0) vira 6: a semana fecha no domingo à noite
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate() - dow).getTime();
+}
+
+// O que ela entregou na semana corrente e ainda NÃO recebeu — mais o que ficou de antes,
+// que é o que diferencia o acerto desta semana do total em aberto. Pura, para ser testada
+// fora do navegador.
+function cstFatSemana(dados, ref) {
+  const ini     = cstFatInicioSemana(ref);
+  const abertas = Object.values((dados || {}).aPagar || {});
+  const pagas   = ((dados || {}).pagas || []);
+  const naSemana = p => { const t = new Date(p.entregue_em).getTime(); return !isNaN(t) && t >= ini; };
+  const soma  = arr => Math.round(arr.reduce((s, p) => s + (p.valor || 0), 0) * 100) / 100;
+  const pecas = arr => arr.reduce((s, p) => s + (p.pecas || 0), 0);
+  const daSemana = abertas.filter(naSemana);
+  const antes    = abertas.filter(p => !naSemana(p));
+  const entregues = abertas.concat(pagas).filter(naSemana);
+  return {
+    inicio:   ini,
+    aReceber: { valor: soma(daSemana),  levas: daSemana.length },
+    antes:    { valor: soma(antes),     levas: antes.length },
+    entregue: { valor: soma(entregues), levas: entregues.length, pecas: pecas(entregues) },
+  };
+}
+
 function renderFaturamento() {
   const el = document.getElementById('faturamento-lista');
   if (!el) return;
@@ -5792,8 +5822,13 @@ function renderFaturamento() {
   const chaveAnt = mesAnt.getFullYear() + '-' + String(mesAnt.getMonth() + 1).padStart(2, '0');
   const mes    = cstFatMes(d, mesAtual);
   const antMes = cstFatMes(d, chaveAnt);
+  const semana = cstFatSemana(d);
   // Tudo que ainda vira dinheiro para ela: entregue e não pago + na máquina + vem por aí
   const totalPrevisto = Math.round((mes.aReceber.valor + totalAgora + totalVindo) * 100) / 100;
+  // Como o mês deve fechar: o que já foi entregue nele + o que ainda está na mão dela e no
+  // corte. Não é a mesma conta do "vai entrar": aqui o que já foi PAGO no mês continua
+  // contando (é ganho do mês) e o tecido em compra fica de fora (não fecha até o mês virar).
+  const totalMes = Math.round((mes.entregue.valor + totalAgora + totalCorte) * 100) / 100;
   const linMes = (nome, sub, valor, forte) => `
     <div class="fat-lin">
       <div>
@@ -5812,6 +5847,9 @@ function renderFaturamento() {
       ? linMes('Já pago', nLevas(mes.pago.levas), mes.pago.valor)
         + linMes('Entregue e ainda não pago', nLevas(mes.aberto.levas), mes.aberto.valor)
       : '')
+    + linMes('Entregue essa semana', semana.aReceber.levas
+        ? nLevas(semana.aReceber.levas) + ' desde segunda, a receber no próximo acerto'
+        : 'nada entregue desde segunda', semana.aReceber.valor)
     + (mes.atrasado.valor
       ? linMes('De meses anteriores', nLevas(mes.atrasado.levas) + ' entregues antes deste mês, ainda sem pagamento', mes.atrasado.valor)
       : '')
@@ -5821,6 +5859,9 @@ function renderFaturamento() {
     // dois últimos ainda dependem de a leva chegar e ser entregue —, e é por isso que a
     // linha vem depois do "a receber", nunca no lugar dele.
     + linMes('TOTAL QUE VAI ENTRAR', 'a receber + o que está na máquina + o que vem por aí', totalPrevisto, true)
+    // Fechamento previsto do mês: aqui o que já foi pago CONTA (é ganho do mês) e o tecido
+    // em compra não entra — dificilmente vira entrega ainda neste mês.
+    + linMes('TOTAL DO MÊS (previsto)', 'entregue no mês + na máquina + em corte', totalMes, true)
     + (antMes.entregue.levas ? `<div class="fat-sub" style="margin-top:6px">
          ${cstFatMesLabel(chaveAnt)}: entregue ${finBRL(antMes.entregue.valor)}${antMes.aberto.valor ? ` · falta receber ${finBRL(antMes.aberto.valor)}` : ' · tudo pago'}
        </div>` : ''));
@@ -5882,16 +5923,19 @@ function renderFaturamento() {
   // ATENÇÃO ao rótulo "Em corte": o valor é o da COSTURA daquelas peças — previsão do que ela
   // vai receber quando elas chegarem à máquina —, e NÃO o que se paga pelo corte. Sem o
   // "previsão do que vai receber" escrito ali, a linha se lê como custo de corte.
-  // A primeira linha é o mês dela: fechado, o card já responde "quanto entreguei este mês".
+  // As cinco linhas são as que a costureira ditou (21/08): do que já é dela até o
+  // fechamento previsto do mês, na ordem em que ela pensa. "Entregue essa semana" é o
+  // acerto que vem; quando sobra coisa de antes, o saldo antigo entra na observação — sem
+  // isso a linha pareceria ser tudo o que ela tem a receber.
   const resumo = [
-    ['Entregue em ' + cstFatMesLabel(mesAtual).replace(/ de \d{4}$/, ''),
+    ['Total já entregue em ' + cstFatMesLabel(mesAtual).replace(/ de \d{4}$/, ''),
      `${mes.entregue.pecas} ${mes.entregue.pecas === 1 ? 'peça' : 'peças'} no mês`, mes.entregue.valor],
+    ['Entregue essa semana',
+     'a receber' + (semana.antes.valor ? ` · mais ${finBRL(semana.antes.valor)} de antes` : ''), semana.aReceber.valor],
     ['Na máquina agora', 'ainda não entregue', totalAgora],
-    ['Em corte', 'previsão do que vai receber', totalCorte],
-  ].concat(totalAPagar ? [['Entregue e não pago', 'a receber', totalAPagar]] : [])
-  // Fecha o resumo com a soma de tudo que ainda vira dinheiro — as linhas de cima são as
-  // partes, e ela não deveria precisar somá-las de cabeça no card fechado.
-   .concat([['Total que vai entrar', 'com o que ainda está em produção', totalPrevisto]]);
+    ['Em corte', 'previsão do que vai entrar', totalCorte],
+    ['Total do mês', 'entregue + na máquina + em corte', totalMes],
+  ];
   const frase = `<div class="fat-resumo">${resumo.map(([rot, obs, v]) => `
     <div class="fat-resumo-lin">
       <span>${rot}${obs ? ` <i>(${obs})</i>` : ''}</span>

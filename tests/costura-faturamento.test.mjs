@@ -83,7 +83,7 @@ const fnValor = /function cstValorPeca\(key\) \{[\s\S]*?\n\}/.exec(main)[0];
 ok('cstValorPeca lê o campo costura', fnValor.includes('c.costura'), true);
 ok('e nunca o campo corte (viraria o que se paga ao cortador)', /c\.corte/.test(fnValor), false);
 ok('a tela avisa que o valor do corte é previsão do que ela recebe',
-   /\['Em corte', 'previsão do que vai receber', totalCorte\]/.test(main), true);
+   /\['Em corte', 'previsão do que vai entrar', totalCorte\]/.test(main), true);
 ok('e o bloco "vem por aí" diz de onde vem o número',
    /pelo valor de <b>costura<\/b> da peça — é a previsão do que ela vai receber, não o que se paga pelo corte/.test(main), true);
 const pc = { global: { custoMetro: 12 }, modelos: { 'saia-midi': { costura: 4.5, corte: 2, consumo: 1 }, 'blusa': { costura: 3 } } };
@@ -116,9 +116,14 @@ ok('e o selo do total nem é desenhado quando vem vazio',
    /\$\{tot \? `<span class="aviso-tot">\$\{tot\}<\/span>` : ''\}/.test(main), true);
 ok('não sobrou aba/rota própria de faturamento', /__faturamento__|abrirFaturamento/.test(main), false);
 ok('fechado, o resumo tem "na máquina agora (ainda não entregue)" e "em corte"',
-   /\['Na máquina agora', 'ainda não entregue', totalAgora\][\s\S]{0,120}\['Em corte', 'previsão do que vai receber', totalCorte\]/.test(main), true);
-ok('"entregue e não pago" só entra no resumo quando existe',
-   /concat\(totalAPagar \? \[\['Entregue e não pago'/.test(main), true);
+   /\['Na máquina agora', 'ainda não entregue', totalAgora\][\s\S]{0,120}\['Em corte', 'previsão do que vai entrar', totalCorte\]/.test(main), true);
+// 21/08: o resumo passou a ser as cinco linhas que a costureira ditou — o "entregue e não
+// pago" saiu dele (o acerto que vem é a linha da semana; o total em aberto vive no bloco
+// TOTAL A RECEBER, aberto). Ver tests/costura-mes.test.mjs.
+ok('e abre pelo mês, fechando no total do mês',
+   /\['Total já entregue em ' \+ cstFatMesLabel[\s\S]{0,600}\['Total do mês', 'entregue \+ na máquina \+ em corte', totalMes\]/.test(main), true);
+ok('o total em aberto continua dito por extenso no bloco do mês',
+   /linMes\('TOTAL A RECEBER'/.test(main), true);
 ok('o valor do corte é só do corte (o tecido em compra não entra nele)',
    /const totalCorte  = vindo\.filter\(l => l\.etapa === 'Em corte'\)/.test(main), true);
 const idx = readFileSync(join(raiz, 'index.html'), 'utf8');
