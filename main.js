@@ -6374,7 +6374,50 @@ function renderFaturamentoCorte() {
       ${corpoBloco}
     </div>`;
 
-  const corpo =
+  // 0. O MÊS DELE — mesmo bloco da aba COSTURA (21/08), com os rótulos do corte. As funções
+  // do mês e da semana são as mesmas (cstFatMes/cstFatSemana): a linha do corte tem o mesmo
+  // formato, então conta de dinheiro corrigida vale para os dois de uma vez.
+  const hoje     = new Date();
+  const mesAtual = hoje.getFullYear() + '-' + String(hoje.getMonth() + 1).padStart(2, '0');
+  const mesAnt   = new Date(hoje.getFullYear(), hoje.getMonth() - 1, 1);
+  const chaveAnt = mesAnt.getFullYear() + '-' + String(mesAnt.getMonth() + 1).padStart(2, '0');
+  const mes    = cstFatMes(d, mesAtual);
+  const antMes = cstFatMes(d, chaveAnt);
+  const semana = cstFatSemana(d);
+  const totalPrevisto = Math.round((mes.aReceber.valor + totalAgora + totalVindo) * 100) / 100;
+  const totalMes      = Math.round((mes.entregue.valor + totalAgora + totalVindo) * 100) / 100;
+  const linMes = (nome, sub, valor, forte) => `
+    <div class="fat-lin">
+      <div>
+        <div class="fat-nome"${forte ? ' style="font-weight:800"' : ''}>${nome}</div>
+        ${sub ? `<div class="fat-sub">${sub}</div>` : ''}
+      </div>
+      <div class="fat-val"${forte ? ' style="font-size:15px"' : ''}>${finBRL(valor)}</div>
+    </div>`;
+  const nLevas = n => `${n} ${n === 1 ? 'leva' : 'levas'}`;
+  const blocoMes = bloco('#0f766e', 'ti-calendar-dollar',
+    'FATURAMENTO DE ' + cstFatMesLabel(mesAtual).toUpperCase(), mes.entregue.valor,
+    mes.entregue.levas
+      ? `Entregue neste mês: ${nLevas(mes.entregue.levas)} · ${mes.entregue.pecas} ${mes.entregue.pecas === 1 ? 'peça' : 'peças'}.`
+      : 'Nenhuma leva entregue neste mês ainda.',
+    (mes.entregue.levas
+      ? linMes('Já pago', nLevas(mes.pago.levas), mes.pago.valor)
+        + linMes('Entregue e ainda não pago', nLevas(mes.aberto.levas), mes.aberto.valor)
+      : '')
+    + linMes('Entregue essa semana', semana.aReceber.levas
+        ? nLevas(semana.aReceber.levas) + ' desde segunda, a receber no próximo acerto'
+        : 'nada entregue desde segunda', semana.aReceber.valor)
+    + (mes.atrasado.valor
+      ? linMes('De meses anteriores', nLevas(mes.atrasado.levas) + ' entregues antes deste mês, ainda sem pagamento', mes.atrasado.valor)
+      : '')
+    + linMes('TOTAL A RECEBER', mes.aReceber.levas ? nLevas(mes.aReceber.levas) + ' esperando pagamento' : 'tudo em dia 👍', mes.aReceber.valor, true)
+    + linMes('TOTAL QUE VAI ENTRAR', 'a receber + o que está na mesa + o tecido em compra', totalPrevisto, true)
+    + linMes('TOTAL DO MÊS (previsto)', 'entregue no mês + na mesa + tecido em compra', totalMes, true)
+    + (antMes.entregue.levas ? `<div class="fat-sub" style="margin-top:6px">
+         ${cstFatMesLabel(chaveAnt)}: entregue ${finBRL(antMes.entregue.valor)}${antMes.aberto.valor ? ` · falta receber ${finBRL(antMes.aberto.valor)}` : ' · tudo pago'}
+       </div>` : ''));
+
+  const corpo = blocoMes +
     bloco('#7C3AED', 'ti-scissors', 'NA MESA AGORA', totalAgora,
       'É o que está em corte hoje — vira a receber quando a leva sair da mesa.',
       agora.length ? linhas(agora) : '<div class="fat-vazio">Nada em corte no momento.</div>')
@@ -6417,9 +6460,17 @@ function renderFaturamentoCorte() {
         ${semValor} ${semValor === 1 ? 'leva está' : 'levas estão'} com R$ 0 por peça — falta o valor de
         <b>corte</b> desse modelo na Precificação.</div>` : '');
 
+  // As mesmas cinco linhas da aba COSTURA, com os rótulos do corte: o que vem por aí, aqui,
+  // é o tecido em compra — o que está em costura já passou pela mesa dele e não volta.
   const resumo = [
+    ['Total já entregue em ' + cstFatMesLabel(mesAtual).replace(/ de \d{4}$/, ''),
+     `${mes.entregue.pecas} ${mes.entregue.pecas === 1 ? 'peça' : 'peças'} no mês`, mes.entregue.valor],
+    ['Entregue essa semana',
+     'a receber' + (semana.antes.valor ? ` · mais ${finBRL(semana.antes.valor)} de antes` : ''), semana.aReceber.valor],
     ['Na mesa agora', 'ainda não entregue', totalAgora],
-  ].concat(totalAPagar ? [['Entregue e não pago', 'a receber', totalAPagar]] : []);
+    ['Tecido em compra', 'previsão do que vai entrar', totalVindo],
+    ['Total do mês', 'entregue + na mesa + tecido em compra', totalMes],
+  ];
   const frase = `<div class="fat-resumo">${resumo.map(([rot, obs, v]) => `
     <div class="fat-resumo-lin">
       <span>${rot}${obs ? ` <i>(${obs})</i>` : ''}</span>

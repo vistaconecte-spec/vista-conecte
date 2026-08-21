@@ -88,8 +88,10 @@ ok('só entra quem não tem cobrança NENHUMA (não paga duas vezes)',
 ok('leva ainda tida como na mesa fica com o fluxo normal', /if \(d.abertas\[id\]\) return;/.test(resg), true);
 ok('leva vazia não vira cobrança', /if \(!l.total\) return;/.test(resg), true);
 ok('o registro fica marcado de onde veio', /origem: 'costura'/.test(resg), true);
-ok('e roda nas duas passadas do sincronizador (local e nuvem)',
+ok('e roda nas duas passadas do sincronizador DO CORTE (local e nuvem), em lugar nenhum mais',
    (main.match(/crtFatResgatarCostura\(/g) || []).length, 3);
+ok('nunca na sincronização da costura — lá ele levava valor de corte para a conta dela',
+   /crtFatResgatarCostura\(/.test(/async function cstFatSincronizar\(\)[\s\S]*?\n\}/.exec(main)[0]), false);
 
 console.log('\n6) Mora na aba CORTE, junto das fichas');
 ok('o div existe no HTML', /id="corte-faturamento"/.test(idx), true);
@@ -101,6 +103,23 @@ ok('mesmo card "ver mais" das outras faixas',
 ok('congela junto com o da costura, nos mesmos pontos',
    (main.match(/crtFatSincronizar\(\)\.catch/g) || []).length,
    (main.match(/cstFatSincronizar\(\)\.catch/g) || []).length);
+
+console.log('\n7) O mês do cortador — mesmo formato da aba COSTURA (21/08/2026)');
+const rc = main.slice(main.indexOf('function renderFaturamentoCorte()'), main.indexOf('// ─── O QUE FOI REALMENTE CORTADO'));
+ok('usa as MESMAS funções de mês e semana da costura (conta corrigida vale para os dois)',
+   /cstFatMes\(d, mesAtual\)/.test(rc) && /cstFatSemana\(d\)/.test(rc), true);
+ok('o bloco do mês é o primeiro do card', /const corpo = blocoMes \+/.test(rc), true);
+ok('com total a receber, total que vai entrar e total do mês',
+   ["linMes('TOTAL A RECEBER'", "linMes('TOTAL QUE VAI ENTRAR'", "linMes('TOTAL DO MÊS (previsto)'"].every(t => rc.includes(t)), true);
+const resumoCorte = rc.slice(rc.indexOf('const resumo = ['), rc.indexOf('const frase ='));
+const rotCorte = ["['Total já entregue em '", "['Entregue essa semana'", "['Na mesa agora'", "['Tecido em compra'", "['Total do mês'"];
+ok('as cinco linhas do resumo, com os rótulos do corte', rotCorte.filter(t => resumoCorte.includes(t)).length, 5);
+ok('nesta ordem', rotCorte.map(t => resumoCorte.indexOf(t)).every((v, i, a) => i === 0 || v > a[i - 1]), true);
+ok('e nada mais no meio', (resumoCorte.match(/\['/g) || []).length, 5);
+ok('"vem por aí" do corte é o TECIDO EM COMPRA, não o que está em costura',
+   /const vindo = cstLevasDe\('Comprando tecido'\)/.test(rc), true);
+ok('e o valor por peça continua sendo o do CORTE em todos eles',
+   /crtValorPeca\(l\.key\)/.test(rc) && !/cstValorPeca\(/.test(rc), true);
 
 console.log(falhas ? `\n✗ ${total - falhas}/${total} passaram` : `\n✓ ${total}/${total} passaram`);
 process.exit(falhas ? 1 : 0);
