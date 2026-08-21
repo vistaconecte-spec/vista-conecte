@@ -70,7 +70,13 @@ export async function onRequest(context) {
 
   try {
     const anuncios = [];
-    let api = `https://graph.facebook.com/${API_VERSION}/${conta}/ads?fields=${encodeURIComponent(fields)}&limit=100&access_token=${encodeURIComponent(token)}`;
+    // Filtrar por data no lado da Meta evita paginar a conta inteira (~2000 anúncios),
+    // o que estoura o rate limit da ad-account (código 80004).
+    const filtros = [];
+    if (desdeTs) filtros.push({ field: 'ad.created_time', operator: 'GREATER_THAN', value: Math.floor(desdeTs / 1000) });
+    if (ateTs) filtros.push({ field: 'ad.created_time', operator: 'LESS_THAN', value: Math.floor(ateTs / 1000) });
+    const filtering = filtros.length ? `&filtering=${encodeURIComponent(JSON.stringify(filtros))}` : '';
+    let api = `https://graph.facebook.com/${API_VERSION}/${conta}/ads?fields=${encodeURIComponent(fields)}&limit=100${filtering}&access_token=${encodeURIComponent(token)}`;
     let guard = 0;
     while (api && guard < 20) {
       guard++;
