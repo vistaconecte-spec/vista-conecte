@@ -1,4 +1,21 @@
 const MODELOS = {
+  // ── PILOTOS ───────────────────────────────────────────────────────────────
+  // Coleção nova recebida da modelista em 28/08/2026, ainda em pilotagem: o molde do
+  // Audaces tem UM tamanho só (P, M ou base), a grade PP–GG ainda não foi feita.
+  // `tecido`, `consumo`, `preco` e `cores` ficam VAZIOS de propósito — número chutado
+  // aqui vira metragem errada na ficha de compra e custo errado na costura. Preencher
+  // quando a peça voltar da prova, e então mover a linha para o grupo definitivo.
+  // Croqui, arquivo .adsx e medidas ficam na aba MODELAGEM (projetos 390007–390015).
+  // A imagem do croqui traz frente E costas no mesmo desenho, por isso só croquiFrente.
+  'vestido-sereia':{nome:'Vestido Sereia',tecido:'',consumo:0,preco:0,componentes:'1 Frente – 1 Costas – 1 Gola',obs:'PILOTO — molde tamanho P, sem grade. Pesponto na reta. Gola de ribana com colocação em anel. Viés na cava. Barra de galoneira de 2cm.',cores:[],aberto:{},croquiFrente:'/croqui-vestido-sereia.jpg?v=2026082801'},
+  'vestido-bolso':{nome:'Vestido com Bolso',tecido:'',consumo:0,preco:0,componentes:'1 Frente – 1 Costas – 4 Bolsos – 2 Forros Frente/Costas',obs:'PILOTO — molde tamanho base, sem grade. Decote e cava duplos. Bolso embutido. Abertura na barra (frente e costas). Barra de galoneira de 2 viras de 1cm.',cores:[],aberto:{},croquiFrente:'/croqui-vestido-bolso.jpg?v=2026082801'},
+  'saia-longa-bolso-faca':{nome:'Saia Longa com Bolso Faca',tecido:'',consumo:0,preco:0,componentes:'1 Frente – 2 Costas – 2 Bolsos – 2 Espelhos de Bolso – 1 Cós',obs:'PILOTO — molde tamanho base, sem grade. Cós franzido com 72cm de elástico. Bolso faca. Abertura de 40cm. Barra limpa na overlock.',cores:[],aberto:{},croquiFrente:'/croqui-saia-longa-bolso-faca.jpg?v=2026082801'},
+  'mini-saia-envelope':{nome:'Mini Saia Envelope',tecido:'',consumo:0,preco:0,componentes:'1 Saia – 2 Laços – 1 Cós',obs:'PILOTO — molde tamanho base, sem grade. Cós costurado na overlock com pesponto na reta. Etiqueta da marca no cós, atrás. Barra limpa na overlock.',cores:[],aberto:{},croquiFrente:'/croqui-mini-saia-envelope.jpg?v=2026082801'},
+  'top-basico':{nome:'Top Básico',tecido:'',consumo:0,preco:0,componentes:'2 Frentes – 2 Costas – 2 Alças',obs:'PILOTO — molde tamanho P, sem grade. Peça toda dupla. Alça em rolote. Elástico de 0,5cm embutido na barra.',cores:[],aberto:{},croquiFrente:'/croqui-top-basico.jpg?v=2026082801'},
+  'top-v':{nome:'Top V',tecido:'',consumo:0,preco:0,componentes:'2 Frentes – 2 Costas',obs:'PILOTO — molde tamanho P, sem grade. Peça toda dupla. Viés de 3cm. Costura do V feita na máquina reta. Bainha de 4cm.',cores:[],aberto:{},croquiFrente:'/croqui-top-v.jpg?v=2026082801'},
+  'top-laco':{nome:'Top Laço',tecido:'',consumo:0,preco:0,componentes:'4 Frentes – 2 Costas – 2 Alças',obs:'PILOTO — molde tamanho M, sem grade. Top todo duplo. Alça em rolote. Laço amarrado na frente.',cores:[],aberto:{},croquiFrente:'/croqui-top-laco.jpg?v=2026082801'},
+  'blusa-basica':{nome:'Blusa Básica',tecido:'',consumo:0,preco:0,componentes:'1 Frente – 1 Costas – 2 Alças – 2 Forros Frente – 1 Forro Costas',obs:'PILOTO — molde tamanho P, sem grade. Alça em rolote. Pesponto interno na galoneira. Forro da frente duplo com elástico de 0,5cm. Forro fica solto na barra.',cores:[],aberto:{},croquiFrente:'/croqui-blusa-basica.jpg?v=2026082801'},
+
   // ── MACACÕES ──────────────────────────────────────────────────────────────
   'macacao-amplo':{nome:'Macacão Amplo',tecido:'Viscose',consumo:1.8,preco:28,componentes:'2 Frentes – 1 Costas – 2 Mangas – 1 Cós – 1 Zíper',obs:'Verificar alinhamento do tecido antes do corte. Manter margem de costura de 1cm.',cores:['Preto','Off White','Marrom','Militar','Roxo','Marsala'],aberto:{'Preto':[0,0,0,0,0],'Off White':[0,0,0,0,0],'Marrom':[0,0,0,0,0],'Militar':[0,0,0,0,0],'Roxo':[0,0,0,0,0],'Marsala':[0,0,0,0,0]},croquiFrente:'/croqui-macacao-amplo-frente.jpg?v=2026060804',croquiCostas:'/croqui-macacao-amplo-costas.jpg?v=2026060804'},
   'macacao-manga-longa':{nome:'Macacão Manga Longa',tecido:'Crepe',consumo:2.1,preco:32,componentes:'2 Frentes – 1 Costas – 2 Mangas Longas – 1 Cós',obs:'',cores:['Preto','Off White','Marrom','Militar'],aberto:{'Preto':[0,0,0,0,0],'Off White':[0,0,0,0,0],'Marrom':[0,0,0,0,0],'Militar':[0,0,0,0,0]}},
@@ -82,6 +99,10 @@ const MODELOS = {
 };
 
 const SIDEBAR_ESTRUTURA = [
+  // Fica no topo e separado de propósito: peça em pilotagem não pode ser confundida
+  // com peça de produção na hora de mandar corte/compra. Quando o piloto for aprovado,
+  // a chave sai daqui e entra no grupo definitivo (VESTIDOS, SAIAS, TOPS...).
+  {titulo:'PILOTOS',     modelos:['vestido-sereia','vestido-bolso','saia-longa-bolso-faca','mini-saia-envelope','top-basico','top-v','top-laco','blusa-basica']},
   {titulo:'MACACÕES',    modelos:['macacao-amplo','macacao-manga-longa']},
   {titulo:'MACAQUINHOS', modelos:['macaquinho-amplo','macaquinho-ruel']},
   {titulo:'VESTIDOS',    modelos:['vestido-frente-unica-longo','vestido-frente-unica-curto','vestido-amplo']},
