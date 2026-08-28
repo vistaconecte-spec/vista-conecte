@@ -11,6 +11,54 @@ const J = (o, s = 200) => new Response(JSON.stringify(o, null, 2), {
 // nunca deixar a api_key vazar em mensagem de erro
 const limpa = s => String(s).replace(/api_key=[^&"\s]+/g, 'api_key=***');
 
+// O MDR (taxa percentual) NAO esta na transacao: `cost` la e so a tarifa fixa (~R$0,30).
+// A taxa de verdade fica no recebivel (payable): fee = MDR, anticipation_fee = antecipacao.
+async function lerPayables(sk, desde, ate, limpa) {
+  const cents = v => (typeof v === 'number' ? v / 100 : 0);
+  const linhas = [];
+  try {
+    for (let page = 1; page <= 20; page++) {
+      const q = new URLSearchParams({ api_key: sk, count: '250', page: String(page) });
+      const r = await fetch('https://api.pagar.me/1/payables?' + q);
+      if (!r.ok) return { erro: 'payables HTTP ' + r.status, detalhe: limpa((await r.text()).slice(0, 200)) };
+      const lote = await r.json();
+      if (!Array.isArray(lote) || lote.length === 0) break;
+      linhas.push(...lote);
+      const ultima = (lote[lote.length - 1].payment_date || lote[lote.length - 1].created_at || '').slice(0, 10);
+      if (ultima && ultima < desde) break;
+      if (lote.length < 250) break;
+    }
+  } catch (e) { return { erro: limpa(e) }; }
+
+  const noPer = linhas.filter(p => {
+    const d = (p.created_at || p.payment_date || '').slice(0, 10);
+    return d >= desde && d <= ate && p.type === 'credit' && p.status !== 'canceled';
+  });
+  const porParcela = {};
+  let bruto = 0, fee = 0, antec = 0;
+  for (const p of noPer) {
+    const a = cents(p.amount), f = cents(p.fee), an = cents(p.anticipation_fee);
+    bruto += a; fee += f; antec += an;
+    const k = String(p.installment || 1);
+    (porParcela[k] = porParcela[k] || { parcelas_recebidas: 0, bruto: 0, fee: 0, antecipacao: 0 });
+    const o = porParcela[k];
+    o.parcelas_recebidas++; o.bruto += a; o.fee += f; o.antecipacao += an;
+  }
+  for (const k of Object.keys(porParcela)) {
+    const o = porParcela[k];
+    o.bruto = +o.bruto.toFixed(2); o.fee = +o.fee.toFixed(2); o.antecipacao = +o.antecipacao.toFixed(2);
+    o.custo_total_pct = o.bruto ? +(100 * (o.fee + o.antecipacao) / o.bruto).toFixed(2) : null;
+  }
+  return {
+    recebiveis_lidos: linhas.length, no_periodo: noPer.length,
+    bruto: +bruto.toFixed(2), mdr: +fee.toFixed(2), antecipacao: +antec.toFixed(2),
+    mdr_pct: bruto ? +(100 * fee / bruto).toFixed(2) : null,
+    antecipacao_pct: bruto ? +(100 * antec / bruto).toFixed(2) : null,
+    custo_total_pct: bruto ? +(100 * (fee + antec) / bruto).toFixed(2) : null,
+    por_parcela: porParcela
+  };
+}
+
 export async function onRequestGet({ env, request }) {
   const sk = env.PAGARME_SECRET_KEY;
   if (!sk) return J({ erro: 'PAGARME_SECRET_KEY ausente no projeto Cloudflare' }, 500);
@@ -76,6 +124,8 @@ export async function onRequestGet({ env, request }) {
     taxa_efetiva_pct: bruto ? +(100 * custo / bruto).toFixed(2) : null,
     por_parcela: porParcela,
     por_mes: porMes,
-    status_encontrados: [...new Set(noPeriodo.map(t => t.status))]
+    por_status: noPeriodo.reduce((a, t) => { a[t.status] = (a[t.status] || 0) + 1; return a; }, {}),
+    recusa_pct: noPeriodo.length ? +(100 * noPeriodo.filter(t => t.status === 'refused').length / noPeriodo.length).toFixed(1) : null,
+    mdr: await lerPayables(sk, desde, ate, limpa)
   });
 }
