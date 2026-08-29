@@ -46,20 +46,21 @@ const SALVO = {
 };
 
 // Roda a ficha com o DOM de mentira e devolve o HTML que iria para a impressora.
-async function ficha(leva, salvo = SALVO) {
+async function ficha(leva, salvo = SALVO, piloto = false, def = DEF) {
   let saida = null;
   const fn = new Function(
-    'MODELOS', 'loadLocal', 'coresDoModelo', 'tamanhosDe', 'document', 'urlToBase64', 'modeloAtual', 'window',
+    'MODELOS', 'loadLocal', 'coresDoModelo', 'tamanhosDe', 'document', 'urlToBase64', 'modeloAtual', 'window', 'ehPiloto',
     src + '; return gerarFicha;'
   )(
-    { 'calca-pantalona': DEF },
+    { 'calca-pantalona': def },
     k => (k === 'vc:calca-pantalona' ? salvo : null),
     def => def.cores,
     () => ['PP', 'P', 'M', 'G', 'GG'],
     { getElementById: () => null, querySelectorAll: () => [] },
     async () => null,
     null,
-    { open: () => ({ document: { write: h => { saida = h; }, close: () => {} } }) }
+    { open: () => ({ document: { write: h => { saida = h; }, close: () => {} } }) },
+    () => piloto
   );
   await fn('calca-pantalona', leva);
   return saida;
@@ -124,6 +125,60 @@ ok('a ficha da aba CORTE sai com a leva daquele card',
 ok('a da aba COSTURA também', /gerarFicha\('\$\{l\.key\}',\$\{l\.leva\}\)/.test(costura), true);
 ok('e a 2ª leva da tela do modelo tem botão próprio (o de cima é o da principal)',
    /onclick="gerarFicha\(modeloAtual,2\)"/.test(html), true);
+
+console.log('\n7) Peça em pilotagem sai carimbada como PILOTO');
+// "Peça em pilotagem não pode ser confundida com peça de produção na hora de mandar
+// corte/compra" (comentário do grupo PILOTOS, no data.js). Piloto tem molde de UM tamanho e
+// se corta UMA peça — cortar a grade inteira achando que é produção é rolo perdido.
+const pil = await ficha(1, { ...SALVO, status: 'Em corte' }, true);
+ok('a folha do piloto carimba no cabeçalho, não só na observação do rodapé',
+   /class="ficha-piloto">Piloto — peça de prova</.test(pil), true);
+// Piloto se corta UMA peça, então o singular é o caso comum justamente nesta folha.
+const uma = await ficha(1, { ...SALVO, prod: { Preto: [0, 0, 1, 0, 0] }, prod2: {} }, true);
+ok('uma peça só sai no singular, não "1 peças"', /1 peça</.test(uma), true);
+ok('e a peça de produção não ganha carimbo nenhum', /class="ficha-piloto"/.test(f1), false);
+ok('o carimbo é moldura, não tarja pintada (a folha é de pouca tinta)',
+   /\.ficha-piloto \{[^}]*border: 2px solid #000/.test(pil)
+   && !/\.ficha-piloto \{[^}]*background/.test(pil), true);
+
+// No piloto, tecido e consumo ficam vazios DE PROPÓSITO (data.js): número chutado aqui vira
+// metragem errada na compra. "0m" seria um número — e o cortador separa rolo por ele.
+const PILOTO_DEF = { ...DEF, tecido: '', consumo: 0 };
+const semDados = await ficha(1, { ...SALVO, tecido: '', consumo: 0 }, true, PILOTO_DEF);
+// Sem regex: o valor impresso ao lado do rotulo, lido na unha. A folha traz um comentario
+// HTML que cita "0m" ao explicar a regra, e um /0m/ solto casaria com ele em vez do numero.
+const valorDe = (html, rotulo) => {
+  const marca = '<div class="item-label">' + rotulo + '</div>';
+  const i = html.indexOf(marca);
+  if (i < 0) return null;
+  const abre = '<div class="item-val">';
+  const j = html.indexOf(abre, i);
+  if (j < 0) return null;
+  const ini = j + abre.length;
+  return html.slice(ini, html.indexOf('<', ini));
+};
+ok('sem consumo definido a folha diz travessão, não "0m"', valorDe(semDados, 'Consumo / Peça'), '—');
+ok('e o tecido em branco também vira travessão', valorDe(semDados, 'Tecido'), '—');
+ok('mas a peça de produção continua mostrando os números dela',
+   [valorDe(f1, 'Tecido'), valorDe(f1, 'Consumo / Peça')], ['Moletom', '1.3m']);
+
+console.log('\n8) Quem decide se é piloto é o grupo PILOTOS da barra lateral');
+// Sem flag nova no modelo: quando o piloto é aprovado a chave muda de grupo e o carimbo
+// some sozinho. Uma flag separada dependeria de alguém lembrar de apagá-la.
+const dataJs = readFileSync(join(raiz, 'data.js'), 'utf8');
+const iP = main.indexOf('function ehPiloto(');
+const ehPilotoReal = new Function('SIDEBAR_ESTRUTURA',
+  main.slice(iP, main.indexOf('\n}', iP) + 2) + '; return ehPiloto;');
+const ESTRUTURA = new Function(dataJs + '; return SIDEBAR_ESTRUTURA;')();
+const eh = ehPilotoReal(ESTRUTURA);
+ok('a coleção nova de 28/08 é piloto', [eh('vestido-sereia'), eh('top-laco')], [true, true]);
+ok('peça de produção não é', [eh('calca-pantalona'), eh('macacao-amplo')], [false, false]);
+ok('chave que não existe não quebra', eh('nao-existe'), false);
+ok('aprovado o piloto, a chave muda de grupo e o carimbo some sozinho',
+   ehPilotoReal(ESTRUTURA.map(g => g.titulo === 'PILOTOS'
+     ? { ...g, modelos: g.modelos.filter(k => k !== 'top-laco') } : g))('top-laco'), false);
+ok('e sem o grupo PILOTOS nada é piloto (não explode)',
+   ehPilotoReal(ESTRUTURA.filter(g => g.titulo !== 'PILOTOS'))('top-laco'), false);
 
 console.log(`\n${falhas ? '✗' : '✓'} ${total - falhas}/${total} passaram\n`);
 process.exit(falhas ? 1 : 0);

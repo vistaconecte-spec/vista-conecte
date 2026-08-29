@@ -8436,6 +8436,18 @@ async function urlToBase64(src) {
   } catch(_) { return null; }
 }
 
+// A peça está em PILOTAGEM? Quem responde é o grupo PILOTOS da barra lateral
+// (SIDEBAR_ESTRUTURA, no data.js) — não um campo novo no modelo. O grupo já é a fonte da
+// verdade do fluxo: "quando o piloto for aprovado, a chave sai daqui e entra no grupo
+// definitivo". Lendo dali, a ficha para de carimbar PILOTO no dia da aprovação, sozinha,
+// sem depender de alguém lembrar de apagar uma flag — que é justamente o esquecimento que
+// faria a oficina cortar uma grade inteira achando que ainda era prova.
+function ehPiloto(key) {
+  const g = (typeof SIDEBAR_ESTRUTURA === 'undefined' ? [] : SIDEBAR_ESTRUTURA)
+    .find(x => x.titulo === 'PILOTOS');
+  return !!g && g.modelos.includes(key);
+}
+
 // Sem argumento: ficha do modelo aberto, lendo a TELA — sai com o que acabou de ser
 // digitado, mesmo antes de salvar. Com uma chave: monta a partir do que está SALVO, que
 // é como a aba CORTE abre a ficha de qualquer modelo sem precisar abrir o modelo.
@@ -8462,6 +8474,7 @@ async function gerarFicha(keyArg, levaArg) {
   const componentes = saved.componentes || def.componentes || '—';
   const obs = saved.obs || def.obs || '';
   const cores = coresDoModelo(def, saved);
+  const piloto = ehPiloto(key);
   // Só lê a tela quando é mesmo o modelo aberto e a tabela existe no DOM
   const daTela = !keyArg && key === modeloAtual && !!document.getElementById('prod-tbody');
   const statusDe = n => daTela
@@ -8588,6 +8601,15 @@ async function gerarFicha(keyArg, levaArg) {
      folha precisa se identificar: sem isso, duas fichas do mesmo modelo, com números
      diferentes, ficam idênticas na mesa. */
   .ficha-leva { font-size: 10px; font-weight: 800; letter-spacing: 0.14em; text-transform: uppercase; color: #000; margin-top: 6px; }
+  /* Carimbo de PILOTO. Moldura grossa em vez de tarja pintada: a folha é de pouca tinta
+     (ver o bloco lá em cima), e uma caixa vazia com traço de 2px salta na mesa igual. Está
+     no cabeçalho, e não só na observação do rodapé, porque a consequência é grande — piloto
+     tem molde de UM tamanho e se corta uma peça, não a grade. */
+  .ficha-piloto {
+    display: inline-block; margin-top: 9px; padding: 4px 13px;
+    border: 2px solid #000; border-radius: 3px;
+    font-size: 13px; font-weight: 900; letter-spacing: 0.16em; text-transform: uppercase; color: #000;
+  }
   .header-meta { text-align: right; font-size: 10px; color: #555; line-height: 1.9; }
   .header-meta strong { color: #000; font-weight: 800; }
 
@@ -8661,6 +8683,7 @@ async function gerarFicha(keyArg, levaArg) {
     <div>
       <div class="brand-mark">Vista Conecte &nbsp;•&nbsp; Gestão de Confecção</div>
       <div class="ficha-titulo">FICHA TÉCNICA</div>
+      ${piloto ? '<div class="ficha-piloto">Piloto — peça de prova</div>' : ''}
       <div class="ficha-leva">${leva === 2 ? '2ª leva de produção' : 'Leva principal'}</div>
     </div>
     <div class="header-meta">
@@ -8678,15 +8701,18 @@ async function gerarFicha(keyArg, levaArg) {
     </div>
     <div class="item">
       <div class="item-label">Tecido</div>
-      <div class="item-val">${tecido}</div>
+      <div class="item-val">${tecido || '—'}</div>
     </div>
     <div class="item">
+      <!-- Sem consumo definido sai "—", nunca "0m": no piloto o tecido e a metragem ficam
+           vazios DE PROPÓSITO (ver o grupo PILOTOS no data.js — número chutado aqui vira
+           metragem errada na compra), e "0m" é um número, não um "ainda não sei". -->
       <div class="item-label">Consumo / Peça</div>
-      <div class="item-val">${consumo}m</div>
+      <div class="item-val">${consumo ? consumo + 'm' : '—'}</div>
     </div>
     <div class="item">
       <div class="item-label">Total a produzir</div>
-      <div class="item-val">${prodTotal} peças</div>
+      <div class="item-val">${prodTotal} ${prodTotal === 1 ? 'peça' : 'peças'}</div>
     </div>
     <div class="item" style="flex:1">
       <div class="item-label">Cores</div>
