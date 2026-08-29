@@ -4877,10 +4877,10 @@ function gerarFichaCorteTotal() {
       <table>
         <thead><tr><th style="text-align:left">Cor</th><th style="text-align:left">Modelos</th><th>Peças</th><th>Metros</th></tr></thead>
         <tbody>
-          ${g.cores.map((c, i) => `
-            <tr style="background:${i % 2 ? '#faf8f5' : '#fff'}">
+          ${g.cores.map(c => `
+            <tr>
               <td style="font-weight:700">${esc(c.cor)}</td>
-              <td style="font-size:11px;color:#666">${esc(c.modelos.join(' · '))}</td>
+              <td style="font-size:11px;color:#333">${esc(c.modelos.join(' · '))}</td>
               <td style="text-align:center;font-weight:700">${c.pecas}</td>
               <td style="text-align:right;font-weight:700">${nMetros(c.metros)}m</td>
             </tr>`).join('')}
@@ -4891,25 +4891,28 @@ function gerarFichaCorteTotal() {
   const html = `<!DOCTYPE html>
 <html lang="pt-BR"><head><meta charset="UTF-8"><title>Corte — Total (${esc(hoje)})</title>
 <style>
+  /* Pouca tinta, mesma regra da ficha técnica (ver gerarFicha): nenhum fundo cheio nem
+     cor forte — o cortador imprime na impressora dele. Só traço preto e caixa alta. */
   *{box-sizing:border-box;margin:0;padding:0}
-  body{font-family:Arial,sans-serif;color:#111;background:#fff;font-size:13px}
-  .header{background:#111;color:#fff;padding:20px 32px 16px;display:flex;justify-content:space-between;align-items:flex-end}
-  .brand{font-size:8px;font-weight:700;letter-spacing:.18em;color:#C4A882;margin-bottom:6px;text-transform:uppercase}
-  .titulo{font-size:26px;font-weight:900;letter-spacing:.06em;line-height:1}
-  .header-meta{text-align:right;font-size:11px;color:#aaa;line-height:1.9}
-  .header-meta strong{color:#C4A882}
-  .resumo{background:#F5F0E8;border-bottom:2px solid #C4A882;padding:14px 32px;display:flex;gap:40px;flex-wrap:wrap}
-  .rl{font-size:8px;font-weight:800;letter-spacing:.1em;color:#9a8870;text-transform:uppercase;margin-bottom:2px}
-  .rv{font-size:15px;font-weight:900;color:#111}
+  body{font-family:Arial,sans-serif;color:#000;background:#fff;font-size:13px}
+  .header{padding:18px 32px 14px;border-bottom:3px solid #000;display:flex;justify-content:space-between;align-items:flex-end}
+  .brand{font-size:8px;font-weight:700;letter-spacing:.18em;color:#555;margin-bottom:6px;text-transform:uppercase}
+  .titulo{font-size:26px;font-weight:900;letter-spacing:.06em;line-height:1;color:#000}
+  .header-meta{text-align:right;font-size:11px;color:#555;line-height:1.9}
+  .header-meta strong{color:#000;font-weight:800}
+  .resumo{border-bottom:1px solid #000;padding:14px 32px;display:flex;gap:40px;flex-wrap:wrap}
+  .rl{font-size:8px;font-weight:800;letter-spacing:.1em;color:#666;text-transform:uppercase;margin-bottom:2px}
+  .rv{font-size:15px;font-weight:900;color:#000}
   .body{padding:20px 32px}
   .sec{margin-bottom:22px;break-inside:avoid}
-  .sec-hd{display:flex;justify-content:space-between;align-items:baseline;border-bottom:2px solid #111;padding-bottom:5px;margin-bottom:8px}
+  .sec-hd{display:flex;justify-content:space-between;align-items:baseline;border-bottom:2px solid #000;padding-bottom:5px;margin-bottom:8px}
   .sec-hd span:first-child{font-size:15px;font-weight:900;letter-spacing:.04em;text-transform:uppercase}
-  .sec-tot{font-size:12px;font-weight:700;color:#9A7A56}
+  .sec-tot{font-size:12px;font-weight:700;color:#000}
   table{width:100%;border-collapse:collapse}
-  th{font-size:8px;font-weight:800;letter-spacing:.1em;color:#9a8870;text-transform:uppercase;padding:6px 10px;border-bottom:1px solid #e5ded2;text-align:center}
-  td{padding:8px 10px;border-bottom:1px solid #f0ece6}
-  .footer{background:#111;color:#666;font-size:8px;padding:8px 32px;display:flex;justify-content:space-between;letter-spacing:.06em}
+  th{font-size:8px;font-weight:800;letter-spacing:.1em;color:#000;text-transform:uppercase;padding:6px 10px;border-bottom:1px solid #000;text-align:center}
+  td{padding:8px 10px;border-bottom:1px solid #bbb}
+  .footer{color:#666;font-size:8px;padding:8px 32px;border-top:1px solid #999;display:flex;justify-content:space-between;letter-spacing:.06em}
+  .footer span{color:#000;font-weight:700}
   @media print{.no-print{display:none}}
 </style></head><body>
   <div class="header">
@@ -5095,6 +5098,9 @@ function renderCorte() {
   const totEl = document.getElementById('corte-total');
   if (!el) return;
   const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c]));
+  // Lista de moldes da MODELAGEM: busca uma vez (TTL de 5 min) e, quando chega, redesenha
+  // esta aba sozinha — é o que faz o selo "MOLDE V3" aparecer na ficha sem ele tocar em nada.
+  moldeCarregarLista();
 
   // Ficha por modelo é só de quem já está EM CORTE — é o que ele corta agora.
   let levas = [];
@@ -5205,11 +5211,17 @@ function renderCorte() {
             <div style="text-align:right">
               <div class="crt-big">${l.total}<span> ${l.total === 1 ? 'peça' : 'peças'} pedidas</span></div>
             </div>
-            <button class="btn-primary" style="font-size:12px;padding:7px 13px" onclick="gerarFicha('${l.key}')">
-              <i class="ti ti-file-text"></i> Abrir ficha
-            </button>
+            <div class="crt-card-btns">
+              <button class="btn-primary" style="font-size:12px;padding:7px 13px" onclick="gerarFicha('${l.key}')">
+                <i class="ti ti-file-text"></i> Abrir ficha
+              </button>
+              <button class="btn-outline" style="font-size:12px;padding:7px 13px" onclick="crtAbrirMolde('${l.key}')">
+                <i class="ti ti-ruler-measure"></i> Molde
+              </button>
+            </div>
           </div>
         </div>
+        ${moldeSeloHTML(l.key)}
         <div class="crt-aviso"><span>O que cortou vai na coluna <b>Cortado</b> da ficha impressa, a caneta.</span></div>
         <div style="overflow-x:auto">
           <table class="crt-tab">
@@ -6778,6 +6790,413 @@ async function crtSincronizarPrioridade() {
   if (modeloAtual === '__corte__') renderCorte();
 }
 
+// ─── O MOLDE ATUALIZADO NA MÃO DO CORTADOR ───────────────────────────────────
+// Pedido da Bárbara (29/08/2026): a modelista subia o molde novo na aba MODELAGEM e
+// DEPOIS mandava o mesmo arquivo no WhatsApp, porque o cortador não tinha como chegar
+// nele. Agora cada ficha da aba CORTE tem o botão do molde: ele imprime o desenho e as
+// medidas, ou baixa o arquivo da Audaces, direto do sistema.
+//
+// DUAS LISTAS, UM CASAMENTO. A CONFECÇÃO é a lista fixa do data.js ('macacao-amplo');
+// a MODELAGEM é a lista do Supabase, escrita pela modelista ("Macacão Amplo"). Nada liga
+// as duas, então aqui o casamento é por NOME e o resultado fica guardado: no primeiro
+// acerto o vínculo vai para a nuvem e ninguém mais depende do palpite.
+const MOLDE_VINCULO_KEY = 'corte-molde';   // { vinculos: { 'macacao-amplo': 390007 } }
+const MOLDE_LISTA_TTL   = 5 * 60 * 1000;   // a modelista sobe molde novo, não a cada minuto
+let _moldeLista   = null;   // [{ id, title, temArquivo, versao, atualizadoEm, croquiKey }]
+let _moldeListaEm = 0;
+let _moldeBuscando = false;
+let _moldeAberto  = null;   // { key, nome, projetoId, det } do que está no modal
+
+// `esc` no resto do arquivo é local de cada render; esta seção tem a sua.
+const moldeEsc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c]));
+
+const moldeNorm = s => String(s == null ? '' : s)
+  .normalize('NFD').replace(/[̀-ͯ]/g, '')
+  .toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+
+const moldeData = iso => {
+  if (!iso) return '';
+  const t = new Date(iso);
+  return isNaN(t.getTime()) ? '' : t.toLocaleDateString('pt-BR');
+};
+const moldeDataHora = iso => {
+  if (!iso) return '';
+  const t = new Date(iso);
+  return isNaN(t.getTime()) ? ''
+    : `${t.toLocaleDateString('pt-BR')} ${t.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`;
+};
+
+function moldeVinculos() {
+  const d = loadLocal('vc:' + MOLDE_VINCULO_KEY);
+  return (d && typeof d === 'object' && d.vinculos) ? d.vinculos : {};
+}
+
+// Lê a nuvem antes de gravar: o vínculo pode ter sido feito no aparelho do corte enquanto
+// a dona mexia no computador, e gravar o mapa local por cima apagaria o outro.
+async function moldeGravarVinculo(key, projetoId) {
+  const naNuvem = await carregarNuvem(MOLDE_VINCULO_KEY);
+  const vinculos = { ...((naNuvem && naNuvem.vinculos) || {}), ...moldeVinculos() };
+  if (projetoId) vinculos[key] = projetoId; else delete vinculos[key];
+  const dados = { vinculos };
+  saveLocal('vc:' + MOLDE_VINCULO_KEY, dados);
+  // salvarNuvemREST e não salvarNuvem: é um mapa de apontamentos, não vale versão no
+  // histórico — e o perfil 'corte' precisa conseguir gravar (grava direto no Supabase).
+  await salvarNuvemREST(MOLDE_VINCULO_KEY, dados);
+}
+
+// Casa pelo NOME, e só quando não há dúvida. Exato primeiro; depois palavras em comum,
+// com um vencedor único e folgado. Empate ou parecença fraca NÃO viram vínculo: molde
+// errado na mesa é pior do que molde nenhum — ele corta o tecido inteiro em cima dele.
+function moldeAuto(nome, lista) {
+  const alvo = moldeNorm(nome);
+  if (!alvo || !Array.isArray(lista)) return null;
+
+  const exatos = lista.filter(m => moldeNorm(m.title) === alvo);
+  if (exatos.length === 1) return exatos[0];
+  if (exatos.length > 1) return null;
+
+  const palavras = t => new Set(moldeNorm(t).split(' ').filter(p => p.length > 2));
+  const alvoP = palavras(nome);
+  if (!alvoP.size) return null;
+
+  let melhor = null, melhorNota = 0, empatado = false;
+  for (const m of lista) {
+    const mP = palavras(m.title);
+    if (!mP.size) continue;
+    let comuns = 0;
+    mP.forEach(p => { if (alvoP.has(p)) comuns++; });
+    const nota = comuns / Math.max(alvoP.size, mP.size);
+    if (nota > melhorNota) { melhorNota = nota; melhor = m; empatado = false; }
+    else if (nota === melhorNota && nota > 0) empatado = true;
+  }
+  return (!empatado && melhorNota >= 0.6) ? melhor : null;
+}
+
+// Vínculo salvo > palpite pelo nome. Devolve o projeto da MODELAGEM, ou null.
+function moldeProjetoDe(key) {
+  if (!_moldeLista) return null;
+  const id = moldeVinculos()[key];
+  if (id) return _moldeLista.find(m => String(m.id) === String(id)) || null;
+  const def = MODELOS[key];
+  const saved = loadLocal('vc:' + key) || {};
+  return moldeAuto(saved.nome || (def && def.nome) || '', _moldeLista);
+}
+
+// Busca a lista uma vez (e no máximo de 5 em 5 minutos). Quando ela chega, a aba CORTE é
+// redesenhada: é o que faz o selo "MOLDE V3" aparecer nas fichas sem o cortador tocar em nada.
+async function moldeCarregarLista(forcar) {
+  if (_moldeBuscando) return _moldeLista;
+  if (!forcar && _moldeLista && Date.now() - _moldeListaEm < MOLDE_LISTA_TTL) return _moldeLista;
+  _moldeBuscando = true;
+  try {
+    const res = await fetch('/api/molde');
+    const data = await res.json();
+    if (data.erro) throw new Error(data.erro);
+    const primeiraVez = !_moldeLista;
+    _moldeLista = data.moldes || [];
+    _moldeListaEm = Date.now();
+    if (primeiraVez && modeloAtual === '__corte__') renderCorte();
+    return _moldeLista;
+  } catch (e) {
+    _moldeListaEm = Date.now(); // erro também espera o TTL: sem isso vira 1 requisição por render
+    return _moldeLista;
+  } finally {
+    _moldeBuscando = false;
+  }
+}
+
+// Selo do molde na ficha da aba CORTE. Antes da lista chegar não promete nada.
+function moldeSeloHTML(key) {
+  const p = moldeProjetoDe(key);
+  if (!p) return _moldeLista
+    ? '<span class="crt-molde-selo crt-molde-sem">MOLDE NÃO VINCULADO</span>'
+    : '';
+  if (!p.temArquivo) return '<span class="crt-molde-selo crt-molde-sem">MOLDE SEM ARQUIVO</span>';
+  return `<span class="crt-molde-selo">MOLDE V${p.versao}${p.atualizadoEm ? ' · ' + moldeEsc(moldeData(p.atualizadoEm)) : ''}</span>`;
+}
+
+function moldeFechar() {
+  _moldeAberto = null;
+  const m = document.getElementById('modal-molde');
+  if (m) m.style.display = 'none';
+}
+
+function moldeCorpo(html) {
+  const el = document.getElementById('molde-corpo');
+  if (el) el.innerHTML = html;
+}
+
+async function crtAbrirMolde(key) {
+  const def = MODELOS[key];
+  const saved = loadLocal('vc:' + key) || {};
+  const nome = saved.nome || (def && def.nome) || key;
+  _moldeAberto = { key, nome, projetoId: null, det: null };
+
+  const modal = document.getElementById('modal-molde');
+  if (modal) modal.style.display = 'flex';
+  document.getElementById('molde-titulo').textContent = nome;
+  moldeCorpo('<div style="font-size:13px;color:var(--text-ter);padding:8px 0">Procurando o molde…</div>');
+
+  await moldeCarregarLista();
+  if (!_moldeAberto || _moldeAberto.key !== key) return; // fechou ou trocou enquanto carregava
+  if (!_moldeLista) {
+    moldeCorpo('<div style="font-size:13px;color:#dc2626">Não consegui falar com o sistema agora. Tente de novo em instantes.</div>');
+    return;
+  }
+  const p = moldeProjetoDe(key);
+  if (!p) { moldeRenderEscolha(key); return; }
+  await moldeCarregarDetalhe(key, p.id);
+}
+
+async function moldeCarregarDetalhe(key, projetoId) {
+  moldeCorpo('<div style="font-size:13px;color:var(--text-ter);padding:8px 0">Abrindo o molde…</div>');
+  try {
+    const res = await fetch('/api/molde?id=' + encodeURIComponent(projetoId));
+    const det = await res.json();
+    if (det.erro) throw new Error(det.erro);
+    if (!_moldeAberto || _moldeAberto.key !== key) return;
+    _moldeAberto.projetoId = projetoId;
+    _moldeAberto.det = det;
+    moldeRenderDetalhe();
+  } catch (e) {
+    moldeCorpo(`<div style="font-size:13px;color:#dc2626">Não consegui abrir o molde: ${moldeEsc(e.message)}</div>`);
+  }
+}
+
+// Lista de projetos para ele apontar qual é o molde deste modelo. Aparece quando o nome
+// não casou sozinho, e pelo link "não é este?" quando casou errado.
+function moldeRenderEscolha(key) {
+  const lista = (_moldeLista || []).slice().sort((a, b) => a.title.localeCompare(b.title, 'pt-BR'));
+  const atual = moldeVinculos()[key];
+  moldeCorpo(`
+    <div style="font-size:12px;color:var(--text-sec);margin-bottom:10px">
+      Qual pasta da MODELAGEM é o molde de <b>${moldeEsc(_moldeAberto.nome)}</b>?
+      A escolha fica salva — na próxima vez o botão abre direto.
+    </div>
+    <input id="molde-busca" placeholder="Filtrar pelo nome…" oninput="moldeFiltrarEscolha()"
+      style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px;margin-bottom:8px">
+    <div id="molde-escolha-lista" style="border:1px solid var(--border);border-radius:8px;max-height:46vh;overflow-y:auto">
+      ${lista.map(m => `
+        <div class="molde-op" data-nome="${moldeEsc(moldeNorm(m.title))}"
+             onclick="moldeEscolher('${moldeEsc(key)}',${m.id})"
+             style="display:flex;align-items:center;gap:10px;padding:9px 12px;border-bottom:1px solid var(--border);cursor:pointer;font-size:13px${String(m.id) === String(atual) ? ';font-weight:700' : ''}">
+          <i class="ti ti-folder" style="color:var(--gold-dark)"></i>
+          <span style="flex:1">${moldeEsc(m.title)}</span>
+          <span style="font-size:10px;color:var(--text-ter);white-space:nowrap">${m.temArquivo ? 'V' + m.versao + ' · ' + moldeEsc(moldeData(m.atualizadoEm)) : 'sem arquivo'}</span>
+        </div>`).join('') || '<div style="padding:12px;font-size:12px;color:var(--text-ter)">Nenhuma pasta na aba MODELAGEM ainda.</div>'}
+    </div>`);
+}
+
+function moldeFiltrarEscolha() {
+  const q = moldeNorm((document.getElementById('molde-busca') || {}).value || '');
+  document.querySelectorAll('#molde-escolha-lista .molde-op').forEach(el => {
+    el.style.display = (!q || (el.dataset.nome || '').includes(q)) ? '' : 'none';
+  });
+}
+
+async function moldeEscolher(key, projetoId) {
+  await moldeCarregarDetalhe(key, projetoId);
+  moldeGravarVinculo(key, projetoId).then(() => {
+    if (modeloAtual === '__corte__') renderCorte(); // o selo da ficha passa a mostrar a versão
+  }).catch(() => {});
+}
+
+function moldeRenderDetalhe() {
+  const a = _moldeAberto;
+  if (!a || !a.det) return;
+  const d = a.det;
+  const arq = d.arquivos || [];
+  const atual = arq[0] || null;
+  const imagens = [...(d.croquis || []), ...(d.fotos || [])];
+  const pendentes = (d.alteracoes || []).filter(x => x.status === 'pending');
+  const consumo = d.consumo || {};
+  const urlArq = k => '/api/modelagem-storage?key=' + encodeURIComponent(k);
+
+  moldeCorpo(`
+    <div style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+      <span style="font-size:13px;font-weight:700">${moldeEsc(d.projeto.title)}</span>
+      <span class="dash-link" style="font-size:11px" onclick="moldeRenderEscolha('${moldeEsc(a.key)}')">não é este molde?</span>
+    </div>
+
+    ${atual
+      ? `<div style="border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:10px">
+           <div style="font-size:10px;font-weight:800;letter-spacing:.08em;color:var(--text-ter)">ARQUIVO DO MOLDE</div>
+           <div style="display:flex;align-items:center;gap:8px;margin-top:5px;flex-wrap:wrap">
+             <span style="font-size:11px;font-weight:700;border-radius:4px;padding:1px 7px;background:var(--gold-dark);color:#fff">V${atual.versao}</span>
+             <span style="font-size:12px;flex:1;min-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${moldeEsc(atual.name)}</span>
+             <span style="font-size:10px;color:var(--text-ter)">${moldeEsc(moldeDataHora(atual.createdAt))}</span>
+           </div>
+           <a href="${urlArq(atual.fileKey)}" target="_blank" rel="noopener"
+              class="btn-outline" style="display:inline-flex;align-items:center;gap:6px;font-size:12px;padding:6px 12px;margin-top:8px;text-decoration:none;color:inherit">
+             <i class="ti ti-download"></i> Baixar arquivo do molde
+           </a>
+           ${arq.length > 1 ? `<div style="font-size:10px;color:var(--text-ter);margin-top:6px">Versões anteriores: ${arq.slice(1).map(x => 'V' + x.versao + ' (' + moldeEsc(moldeData(x.createdAt)) + ')').join(' · ')}</div>` : ''}
+         </div>`
+      : `<div style="border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:10px;font-size:12px;color:var(--text-sec)">
+           A modelista ainda não subiu arquivo de molde nesta pasta.
+         </div>`}
+
+    ${pendentes.length ? `
+      <div style="border:1px solid #b45309;border-radius:8px;padding:10px 12px;margin-bottom:10px">
+        <div style="font-size:10px;font-weight:800;letter-spacing:.08em;color:#b45309">ALTERAÇÃO AINDA PENDENTE</div>
+        ${pendentes.map(x => `<div style="font-size:12px;margin-top:4px">• ${moldeEsc(x.description)}</div>`).join('')}
+      </div>` : ''}
+
+    ${imagens.length ? `
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:8px;margin-bottom:10px">
+        ${imagens.slice(0, 6).map(i => `<img src="${urlArq(i.fileKey)}" loading="lazy"
+            style="width:100%;height:110px;object-fit:contain;border:1px solid var(--border);border-radius:8px;background:#fff">`).join('')}
+      </div>` : ''}
+
+    <div style="font-size:11px;color:var(--text-sec);margin-bottom:12px">
+      ${(consumo.larguraTecido || '').trim() ? 'Largura do tecido: <b>' + moldeEsc(consumo.larguraTecido) + '</b>. ' : ''}
+      ${(consumo.consumoPorPeca || '').trim() ? 'Consumo por peça: <b>' + moldeEsc(consumo.consumoPorPeca) + '</b>.' : ''}
+    </div>
+
+    <button class="btn-primary" style="width:100%;padding:11px;font-size:14px" onclick="moldeImprimir()">
+      <i class="ti ti-printer"></i> Imprimir molde
+    </button>
+    <div style="font-size:11px;color:var(--text-ter);margin-top:6px;text-align:center">
+      Sai o desenho, as medidas e o que mudou — em preto e branco, sem fundo colorido.
+    </div>`);
+}
+
+// A folha do molde. Mesma regra de tinta da ficha técnica: nada de fundo cheio, só traço.
+// Vai o que dá para pôr no papel — desenho, medidas, alterações e consumo. O arquivo da
+// Audaces não se imprime aqui (é projeto de CAD): ele desce pelo botão de baixar.
+function moldeImprimir() {
+  const a = _moldeAberto;
+  if (!a || !a.det) return;
+  const d = a.det;
+  const arq = d.arquivos || [];
+  const atual = arq[0] || null;
+  const consumo = d.consumo || {};
+  const hoje = new Date().toLocaleDateString('pt-BR');
+  const org = location.origin;
+  const urlArq = k => org + '/api/modelagem-storage?key=' + encodeURIComponent(k);
+
+  // Colunas da tabela: a grade padrão primeiro, e depois qualquer tamanho fora dela que a
+  // modelista tenha usado — senão a medida existe no sistema e some do papel.
+  const linhas = Object.keys(d.medidas || {}).filter(k => k !== '__obs')
+    .map(nome => ({ nome, valores: d.medidas[nome] || {} }))
+    .filter(l => Object.values(l.valores).some(v => (v ?? '').toString().trim()));
+  const extras = [];
+  linhas.forEach(l => Object.keys(l.valores).forEach(t => {
+    if (!MDL_TAMANHOS.includes(t) && !extras.includes(t) && (l.valores[t] ?? '').toString().trim()) extras.push(t);
+  }));
+  const cols = MDL_TAMANHOS.concat(extras)
+    .filter(t => linhas.some(l => (l.valores[t] ?? '').toString().trim()));
+
+  const medidasHtml = linhas.length ? `
+    <div class="sec">
+      <div class="sec-hd">MEDIDAS DA PEÇA</div>
+      <table class="tab">
+        <thead><tr><th style="text-align:left">Medida</th>${cols.map(t => `<th>${moldeEsc(t)}</th>`).join('')}</tr></thead>
+        <tbody>
+          ${linhas.map(l => `<tr><td style="text-align:left;font-weight:600">${moldeEsc(l.nome)}</td>${cols.map(t => `<td>${moldeEsc((l.valores[t] ?? '').toString().trim() || '—')}</td>`).join('')}</tr>`).join('')}
+        </tbody>
+      </table>
+      ${(d.medidas.__obs || '').toString().trim() ? `<div class="obs">${moldeEsc(d.medidas.__obs)}</div>` : ''}
+    </div>` : '';
+
+  const alt = d.alteracoes || [];
+  const alteracoesHtml = alt.length ? `
+    <div class="sec">
+      <div class="sec-hd">ALTERAÇÕES DESTA MODELAGEM</div>
+      <table class="tab">
+        <thead><tr><th style="width:52px">Versão</th><th style="text-align:left">O que mudou</th><th style="width:88px">Situação</th></tr></thead>
+        <tbody>
+          ${alt.map(x => `<tr>
+            <td>${moldeEsc(x.version || '')}</td>
+            <td style="text-align:left">${moldeEsc(x.description || '')}</td>
+            <td>${x.status === 'done' ? 'Feita' : 'PENDENTE'}</td>
+          </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>` : '';
+
+  const imagens = [
+    ...(d.croquis || []).map(c => ({ ...c, rotulo: 'Croqui' })),
+    ...(d.fotos   || []).map(f => ({ ...f, rotulo: 'Foto' })),
+  ];
+  const imagensHtml = imagens.length ? `
+    <div class="sec">
+      <div class="sec-hd">DESENHO</div>
+      <div class="img-grid">
+        ${imagens.map(i => `
+          <div class="img-cell">
+            <img src="${urlArq(i.fileKey)}">
+            <div class="img-cap">${moldeEsc(i.rotulo)}${i.name ? ' — ' + moldeEsc(i.name) : ''}</div>
+          </div>`).join('')}
+      </div>
+    </div>` : '<div class="sec"><div class="vazio">Nenhum croqui ou foto nesta pasta da MODELAGEM.</div></div>';
+
+  const infos = [
+    ['Modelo na confecção', a.nome],
+    ['Pasta na modelagem', d.projeto.title],
+    ['Versão do molde', atual ? `V${atual.versao} · ${moldeDataHora(atual.createdAt)}` : 'sem arquivo enviado'],
+    ['Largura do tecido', (consumo.larguraTecido || '').trim() || '—'],
+    ['Consumo por peça', (consumo.consumoPorPeca || '').trim() || '—'],
+  ];
+
+  const html = `<!DOCTYPE html>
+<html lang="pt-BR"><head><meta charset="UTF-8"><title>Molde — ${moldeEsc(d.projeto.title)}</title>
+<style>
+  /* Pouca tinta, mesma regra da ficha técnica (ver gerarFicha): nenhum fundo cheio nem cor
+     forte — esta folha sai na impressora do cortador. Só traço preto e caixa alta. */
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:Arial,sans-serif;color:#000;background:#fff;font-size:12px}
+  .header{padding:16px 28px 12px;border-bottom:3px solid #000;display:flex;justify-content:space-between;align-items:flex-end}
+  .brand{font-size:8px;font-weight:700;letter-spacing:.18em;color:#555;margin-bottom:5px;text-transform:uppercase}
+  .titulo{font-size:26px;font-weight:900;letter-spacing:.06em;line-height:1}
+  .header-meta{text-align:right;font-size:10px;color:#555;line-height:1.9}
+  .header-meta strong{color:#000;font-weight:800}
+  .strip{border-bottom:1px solid #000;padding:10px 28px;display:flex;gap:26px;flex-wrap:wrap;font-size:11px}
+  .strip .item-label{font-size:8px;font-weight:800;letter-spacing:.1em;color:#666;text-transform:uppercase}
+  .strip .item-val{font-size:12px;font-weight:700}
+  .body{padding:16px 28px}
+  .sec{margin-bottom:18px;break-inside:avoid}
+  .sec-hd{font-size:10px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;border-bottom:2px solid #000;padding-bottom:4px;margin-bottom:8px}
+  .tab{width:100%;border-collapse:collapse;border:1.5px solid #000}
+  .tab th{padding:6px 8px;font-size:9px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;border:1px solid #000;text-align:center}
+  .tab td{padding:6px 8px;font-size:11px;border:1px solid #999;text-align:center}
+  .obs{font-size:11px;margin-top:6px;padding:7px 9px;border:1px solid #999;border-radius:3px}
+  .vazio{font-size:11px;color:#666;padding:10px 0}
+  .img-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .img-cell{border:1px solid #999;border-radius:3px;padding:10px;text-align:center;break-inside:avoid}
+  .img-cell img{max-width:100%;max-height:330px;object-fit:contain}
+  .img-cap{font-size:8px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;margin-top:8px}
+  .rodape-nota{font-size:10px;color:#333;border:1px solid #999;border-radius:3px;padding:8px 10px;margin-bottom:16px}
+  .footer{color:#666;font-size:8px;padding:8px 28px;border-top:1px solid #999;display:flex;justify-content:space-between;letter-spacing:.06em}
+  .footer span{color:#000;font-weight:700}
+  @media print{@page{margin:0;size:A4 portrait}body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+</style></head><body>
+  <div class="header">
+    <div><div class="brand">Vista Conecte &nbsp;•&nbsp; Modelagem</div><div class="titulo">MOLDE</div></div>
+    <div class="header-meta">
+      <div>Peça <strong>${moldeEsc(a.nome)}</strong></div>
+      <div>Versão <strong>${atual ? 'V' + atual.versao : '—'}</strong></div>
+      <div>Impresso em <strong>${moldeEsc(hoje)}</strong></div>
+    </div>
+  </div>
+  <div class="strip">
+    ${infos.map(([r, v]) => `<div><div class="item-label">${moldeEsc(r)}</div><div class="item-val">${moldeEsc(v)}</div></div>`).join('')}
+  </div>
+  <div class="body">
+    ${atual ? `<div class="rodape-nota">O arquivo da Audaces (<b>${moldeEsc(atual.name)}</b>, V${atual.versao} de ${moldeEsc(moldeDataHora(atual.createdAt))}) não sai nesta folha — ele se abre na Audaces. Baixe pelo botão do molde, na aba CORTE.</div>` : ''}
+    ${alteracoesHtml}
+    ${medidasHtml}
+    ${imagensHtml}
+  </div>
+  <div class="footer"><span>VISTA CONECTE · MOLDE</span><span>${moldeEsc(hoje)}</span></div>
+  <script>window.onload = () => window.print();<\/script>
+</body></html>`;
+
+  const win = window.open('', '_blank');
+  win.document.write(html);
+  win.document.close();
+}
+
 // ─── MINI CARDS: LIBERADOS HOJE · LIBERADOS NA SEMANA · PEDIDOS EM ABERTO ────
 // Três números de cabeceira, sem lista de peças: quanto saiu hoje, quanto saiu na
 // semana e quanto ainda falta sair. Em cada um o número grande é PEDIDO e a linha
@@ -8079,14 +8498,16 @@ async function gerarFicha(keyArg) {
   // Anotar embaixo do próprio tamanho é o que evita o erro caro: escrever 8 na coluna do M
   // quando o 8 era do G.
   const colSpan = tu ? 3 : SZ_FICHA.length * 2 + 1;
-  const rowsHtml = rows => rows.map((r, idx) => {
-    const bg = idx % 2 === 1 ? '#faf8f5' : '#fff';
-    const sizeCells = tu ? '' : r.vals.map(v => `<td class="ped-cell" style="text-align:center;padding:7px 6px;border:1px solid #ddd;background:${bg};color:${v ? '#111' : '#ccc'};">${v || '—'}</td><td class="cut-cell"></td>`).join('');
+  const rowsHtml = rows => rows.map(r => {
+    // Sem zebra e sem cinza no zero: o traço da célula já separa a linha, e "—" em cinza
+    // claro é justamente o que a impressora fraca do cortador não desenha (fica em branco
+    // e o tamanho parece esquecido em vez de zerado).
+    const sizeCells = tu ? '' : r.vals.map(v => `<td class="ped-cell" style="text-align:center;padding:7px 6px;border:1px solid #999;color:#000;">${v || '—'}</td><td class="cut-cell"></td>`).join('');
     return `
     <tr>
-      <td style="text-align:left;font-weight:600;padding:7px 12px;border:1px solid #ddd;background:${bg};">${r.cor}</td>
+      <td style="text-align:left;font-weight:600;padding:7px 12px;border:1px solid #999;">${r.cor}</td>
       ${sizeCells}
-      ${tu ? `<td style="text-align:center;padding:7px 6px;border:1px solid #ddd;background:${bg};font-weight:700;">${r.tot || '—'}</td><td class="cut-cell"></td>` : ''}
+      ${tu ? `<td style="text-align:center;padding:7px 6px;border:1px solid #999;font-weight:700;">${r.tot || '—'}</td><td class="cut-cell"></td>` : ''}
     </tr>`;
   }).join('');
   const colorRowsHtml = rowsHtml(prodRows);
@@ -8097,12 +8518,12 @@ async function gerarFicha(keyArg) {
 
   const makeCroqui = (base64, label) => base64
     ? `<div style="text-align:center;padding:14px 10px;">
-        <div style="font-size:8px;font-weight:800;letter-spacing:0.14em;color:#C4A882;margin-bottom:10px;text-transform:uppercase;">${label}</div>
+        <div style="font-size:8px;font-weight:800;letter-spacing:0.14em;color:#000;margin-bottom:10px;text-transform:uppercase;">${label}</div>
         <img src="${base64}" style="max-width:100%;max-height:300px;object-fit:contain;">
        </div>`
-    : `<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;padding:20px;color:#ccc;">
-        <svg width="32" height="32" fill="none" stroke="#ddd" stroke-width="1.5" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
-        <div style="font-size:8px;font-weight:800;letter-spacing:0.14em;color:#C4A882;margin-top:10px;text-transform:uppercase;">${label}</div>
+    : `<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;padding:20px;color:#666;">
+        <svg width="32" height="32" fill="none" stroke="#999" stroke-width="1.5" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
+        <div style="font-size:8px;font-weight:800;letter-spacing:0.14em;color:#000;margin-top:10px;text-transform:uppercase;">${label}</div>
         <div style="font-size:10px;margin-top:4px;">Sem imagem</div>
        </div>`;
 
@@ -8113,84 +8534,100 @@ async function gerarFicha(keyArg) {
 <title>Ficha Técnica — ${nome}</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: 'Arial', sans-serif; color: #111; background: #fff; padding: 0; font-size: 12px; }
+  body { font-family: 'Arial', sans-serif; color: #000; background: #fff; padding: 0; font-size: 12px; }
 
-  /* ── CABEÇALHO ESCURO ── */
-  .header-dark {
-    background: #111;
-    color: #fff;
-    padding: 18px 28px 14px;
+  /* ── FICHA DE POUCA TINTA (29/08/2026) ──────────────────────────────────────
+     O cortador imprime uma ficha por leva na impressora DELE, e as faixas pretas
+     e a tarja dourada comiam o cartucho: só o cabeçalho era um retângulo cheio de
+     ponta a ponta. Nada aqui tem fundo colorido nem sombreado — a hierarquia é
+     feita com PESO DE TRAÇO, caixa alta e espaço em branco.
+     Regra para quem mexer nesta ficha depois: nenhuma regra de background
+     diferente de #fff, e cor de texto só em preto/cinza. O que era faixa preta
+     virou régua preta; o que era tarja dourada virou título com filete.
+     O teste tests/corte-realizado.test.mjs (item 2b) reprova fundo colorido. */
+
+  /* ── CABEÇALHO ── */
+  .header {
+    padding: 16px 28px 12px;
+    border-bottom: 3px solid #000;
     display: flex;
     justify-content: space-between;
     align-items: flex-end;
   }
-  .brand-mark { font-size: 8px; font-weight: 700; letter-spacing: 0.18em; color: #C4A882; margin-bottom: 5px; text-transform: uppercase; }
-  .ficha-titulo { font-size: 26px; font-weight: 900; letter-spacing: 0.06em; color: #fff; line-height: 1; }
-  .header-meta { text-align: right; font-size: 10px; color: #aaa; line-height: 1.9; }
-  .header-meta strong { color: #C4A882; font-weight: 700; }
+  .brand-mark { font-size: 8px; font-weight: 700; letter-spacing: 0.18em; color: #555; margin-bottom: 5px; text-transform: uppercase; }
+  .ficha-titulo { font-size: 26px; font-weight: 900; letter-spacing: 0.06em; color: #000; line-height: 1; }
+  .header-meta { text-align: right; font-size: 10px; color: #555; line-height: 1.9; }
+  .header-meta strong { color: #000; font-weight: 800; }
 
   /* ── FAIXA DE MODELO ── */
   .model-strip {
-    background: #F5F0E8;
-    border-bottom: 2px solid #C4A882;
+    border-bottom: 1px solid #000;
     padding: 10px 28px;
     display: flex;
     gap: 32px;
     font-size: 11px;
   }
   .model-strip .item { display: flex; flex-direction: column; gap: 1px; }
-  .model-strip .item-label { font-size: 8px; font-weight: 800; letter-spacing: 0.1em; color: #9a8870; text-transform: uppercase; }
-  .model-strip .item-val { font-size: 12px; font-weight: 700; color: #111; }
+  .model-strip .item-label { font-size: 8px; font-weight: 800; letter-spacing: 0.1em; color: #666; text-transform: uppercase; }
+  .model-strip .item-val { font-size: 12px; font-weight: 700; color: #000; }
   .model-strip .cores-list { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; }
-  .cor-tag { padding: 2px 9px; border-radius: 20px; border: 1px solid #C4A882; font-size: 10px; font-weight: 600; color: #6b5740; background: #fff; }
+  .cor-tag { padding: 2px 9px; border-radius: 20px; border: 1px solid #666; font-size: 10px; font-weight: 600; color: #000; background: #fff; }
 
   /* ── CORPO ── */
   .body-wrap { padding: 18px 28px 0; }
 
   /* ── TABELA DE PRODUÇÃO ── */
-  .prod-table { width: 100%; border-collapse: collapse; margin-bottom: 18px; border: 1.5px solid #111; }
-  .prod-table th { background: #111; color: #fff; padding: 8px 10px; text-align: center; font-size: 10px; font-weight: 700; letter-spacing: 0.06em; border: 1px solid #333; }
+  .prod-table { width: 100%; border-collapse: collapse; margin-bottom: 18px; border: 1.5px solid #000; }
+  .prod-table th { background: #fff; color: #000; padding: 8px 10px; text-align: center; font-size: 10px; font-weight: 800; letter-spacing: 0.06em; border: 1px solid #000; text-transform: uppercase; }
   .prod-table th:first-child { text-align: left; }
-  .prod-table .section-hd { background: #C4A882; color: #fff; font-size: 9px; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase; padding: 5px 12px; border: none; }
-  .prod-table .total-row td { background: #111 !important; color: #fff; font-weight: 800; border: 1px solid #333; padding: 8px 10px; text-align: center; }
+  /* Sem faixa preta, é este filete que separa o cabeçalho das linhas de cor */
+  .prod-table thead tr:last-child th { border-bottom: 2px solid #000; }
+  /* Onde havia tarja dourada, agora o nome da leva sozinho entre dois filetes */
+  .prod-table .section-hd { background: #fff; color: #000; font-size: 9px; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase; padding: 6px 12px; border: none; border-top: 2px solid #000; border-bottom: 1px solid #000; }
+  .prod-table .total-row td { background: #fff; color: #000; font-weight: 800; border: 1px solid #000; border-top: 2px solid #000; padding: 8px 10px; text-align: center; }
   /* Par de colunas por tamanho: o número pedido e, colada nele, a casa em branco do que
-     cortou. A casa é branca e alta o bastante para caber caneta, e a moldura dourada é o
+     cortou. A casa é branca e alta o bastante para caber caneta, e a moldura fina é o
      que diz "escreva aqui" sem precisar de legenda. */
-  .prod-table .sub-hd th { background: #2a2a2a; font-size: 9px; letter-spacing: 0.06em; padding: 4px 4px; font-weight: 700; border-color: #333; }
-  .prod-table .sub-hd .sub-ped { color: #fff; font-weight: 600; }
-  .prod-table .cut-th { color: #fff; }
-  .prod-table .cut-cell { background: #fff !important; border: 1px solid #ddd; min-width: 38px; height: 32px; }
+  .prod-table .sub-hd th { background: #fff; color: #000; font-size: 9px; letter-spacing: 0.06em; padding: 4px 4px; font-weight: 700; border-color: #000; }
+  .prod-table .sub-hd .sub-ped { color: #000; font-weight: 600; }
+  .prod-table .cut-th { color: #000; }
+  .prod-table .cut-cell { background: #fff !important; border: 1px solid #999; min-width: 38px; height: 32px; }
   /* Uma linha GROSSA separa um tamanho do outro. Dentro do par (Pedido | Cortado) a
-     divisória é leve: são a mesma coluna vista de dois jeitos. A moldura dourada em volta
-     de cada casa deixava a folha listrada e competia com essa leitura. */
+     divisória é leve: são a mesma coluna vista de dois jeitos. Sem fundo em lugar nenhum,
+     é o traço que agrupa — por isso ele não pode sumir junto com as faixas. */
   .prod-table .sz-th, .prod-table .sub-hd .sub-ped, .prod-table .ped-cell { border-left: 2px solid #111 !important; }
   .prod-table .total-row .ped-cell { border-left: 2px solid #666 !important; }
   .prod-table .cut-cell-tot { background: #fff !important; }
+  /* Sem zebra: linha alternada pintava metade da tabela. Quem separa é o filete de cada
+     célula, que já existe. */
+  .prod-table td { background: #fff; }
   /* Com o dobro de colunas o número não pode mais respirar tanto quanto respirava */
   .prod-table th { padding: 6px 4px; }
   .prod-table .total-row td:first-child { text-align: left; letter-spacing: 0.04em; }
 
   /* ── CROQUIS ── */
   .croqui-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 18px; }
-  .croqui-cell { border: 1.5px solid #ddd; min-height: 200px; display: flex; flex-direction: column; justify-content: center; background: #fafafa; border-radius: 3px; }
+  .croqui-cell { border: 1px solid #999; min-height: 200px; display: flex; flex-direction: column; justify-content: center; background: #fff; border-radius: 3px; }
 
   /* ── INFO RODAPÉ ── */
   .info-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 18px; }
-  .info-card { border: 1px solid #e0d8cc; border-radius: 3px; padding: 12px 14px; background: #faf8f5; }
-  .info-card .ic-label { font-size: 8px; font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase; color: #C4A882; margin-bottom: 5px; }
-  .info-card .ic-val { font-size: 11px; color: #333; line-height: 1.6; }
+  .info-card { border: 1px solid #999; border-radius: 3px; padding: 12px 14px; background: #fff; }
+  .info-card .ic-label { font-size: 8px; font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase; color: #000; margin-bottom: 5px; border-bottom: 1px solid #000; padding-bottom: 3px; }
+  .info-card .ic-val { font-size: 11px; color: #000; line-height: 1.6; }
 
   /* ── RODAPÉ ── */
-  .footer { background: #111; color: #666; font-size: 8px; padding: 8px 28px; display: flex; justify-content: space-between; letter-spacing: 0.06em; }
-  .footer span { color: #C4A882; font-weight: 700; }
+  .footer { background: #fff; color: #666; font-size: 8px; padding: 8px 28px; margin-top: 4px; border-top: 1px solid #999; display: flex; justify-content: space-between; letter-spacing: 0.06em; }
+  .footer span { color: #000; font-weight: 700; }
 
+  /* print-color-adjust continua ligado de propósito: sem ele o navegador pode "economizar"
+     justamente as bordas, e é o traço que segura o desenho inteiro agora. */
   @media print { @page { margin: 0; size: A4 portrait; } body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
 </style>
 </head>
 <body>
 
-  <!-- Cabeçalho escuro -->
-  <div class="header-dark">
+  <!-- Cabeçalho -->
+  <div class="header">
     <div>
       <div class="brand-mark">Vista Conecte &nbsp;•&nbsp; Gestão de Confecção</div>
       <div class="ficha-titulo">FICHA TÉCNICA</div>
@@ -8234,7 +8671,7 @@ async function gerarFicha(keyArg) {
       <thead>
         <tr>
           <th rowspan="2" style="text-align:left;width:16%">Cor</th>
-          ${tu ? '<th colspan="2" style="background:#C4A882;">Total</th>' : SZ_FICHA.map(s => '<th colspan="2" class="sz-th">' + s + '</th>').join('')}
+          ${tu ? '<th colspan="2" class="sz-th">Total</th>' : SZ_FICHA.map(s => '<th colspan="2" class="sz-th">' + s + '</th>').join('')}
         </tr>
         <tr class="sub-hd">
           ${(tu ? [''] : SZ_FICHA).map(() => '<th class="sub-ped">Pedido</th><th class="cut-th">Cortado</th>').join('')}
@@ -8248,7 +8685,7 @@ async function gerarFicha(keyArg) {
       <tfoot>
         <tr class="total-row">
           <td>TOTAL GERAL</td>
-          ${tu ? `<td style="color:#C4A882;">${prodTotal}</td><td class="cut-cell cut-cell-tot"></td>`
+          ${tu ? `<td>${prodTotal}</td><td class="cut-cell cut-cell-tot"></td>`
                 : prodTots.map(v => `<td class="ped-cell">${v}</td><td class="cut-cell cut-cell-tot"></td>`).join('')}
         </tr>
       </tfoot>

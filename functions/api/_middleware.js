@@ -14,11 +14,21 @@ import { lerSessao } from '../_sessao.js';
 const PUBLICO = new Set(['/api/login', '/api/logout', '/api/sessao', '/api/shopify-callback']);
 
 // Os perfis de oficina ('corte' e 'costura') abrem UMA aba cada — CORTE e COSTURA —,
-// montadas com o que já veio do Supabase, e não chamam /api nenhuma vez. Por isso a
-// lista do que eles podem é VAZIA, e não uma lista do que não podem: com denylist,
-// todo endpoint novo nasceria liberado pra oficina sem ninguém notar.
+// montadas com o que já veio do Supabase. O que eles alcançam é uma ALLOWLIST, e não uma
+// lista do que não podem: com denylist, todo endpoint novo nasceria liberado pra oficina
+// sem ninguém notar. Cada entrada diz também QUAIS MÉTODOS — sem isso, abrir uma rota de
+// leitura abriria junto o POST que ela por acaso também atende.
+//
+// Só o molde está aqui (29/08/2026): a modelista mandava o molde atualizado no WhatsApp
+// peça por peça, e agora o cortador pega o arquivo e imprime direto da aba CORTE.
+//   /api/molde             → recorte só-leitura da MODELAGEM, SEM o valor pago à modelista
+//   /api/modelagem-storage → baixa o arquivo/imagem cuja chave veio do /api/molde
+// Pedido, cliente e preço continuam fora do alcance dos dois perfis.
 const OFICINA = new Set(['corte', 'costura']);
-const OFICINA_LIBERA = new Set([]);
+const OFICINA_LIBERA = new Map([
+  ['/api/molde', new Set(['GET'])],
+  ['/api/modelagem-storage', new Set(['GET', 'HEAD'])],
+]);
 
 const nega = (erro, status) => new Response(JSON.stringify({ erro }), {
   status, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }
@@ -51,8 +61,9 @@ export async function onRequest(context) {
 
   const sessao = await lerSessao(request, env.SESSION_SECRET);
   if (!sessao) return nega('Sessão ausente ou expirada', 401);
-  if (OFICINA.has(sessao.perfil) && !OFICINA_LIBERA.has(pathname)) {
-    return nega('Perfil sem acesso a esta rota', 403);
+  if (OFICINA.has(sessao.perfil)) {
+    const metodos = OFICINA_LIBERA.get(pathname);
+    if (!metodos || !metodos.has(request.method)) return nega('Perfil sem acesso a esta rota', 403);
   }
   return next();
 }

@@ -659,6 +659,18 @@ input[type=number].ci:focus {
 .crt-motivo .crt-motivo-n { color: var(--text); font-weight: 600; margin-left: 7px; }
 .crt-big { font-size: 20px; font-weight: 800; line-height: 1; }
 .crt-big span { font-size: 11px; font-weight: 600; color: var(--text-sec); }
+/* Ficha e Molde, um do lado do outro. No celular do cortador a coluna é estreita: eles
+   empilham em vez de espremer o texto do botão. */
+.crt-card-btns { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+/* Qual versão do molde está no sistema. Fica na ficha para ele conferir o papel da mesa
+   contra o que a modelista subiu por último — é o que substituiu o envio no WhatsApp. */
+.crt-molde-selo {
+  display: inline-block; margin-bottom: 6px;
+  font-size: 10px; font-weight: 800; letter-spacing: .04em;
+  padding: 2px 7px; border-radius: 4px;
+  background: rgba(196,168,130,0.16); color: var(--gold-dark);
+}
+.crt-molde-sem { background: rgba(0,0,0,0.05); color: var(--text-ter); }
 /* Frase que manda anotar no papel: o cortador não digita mais nada no app (18/08) —
    o que ele cortou vai a caneta na coluna "Cortado" da ficha impressa. */
 .crt-aviso {

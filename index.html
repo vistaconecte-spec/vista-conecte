@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Bodoni+Moda:ital,opsz,wght@0,6..96,700;0,6..96,900&family=Bebas+Neue&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css">
-<link rel="stylesheet" href="style.css?v=2026081912">
+<link rel="stylesheet" href="style.css?v=2026082901">
 </head>
 <body>
 
@@ -68,6 +68,21 @@
       <button onclick="ignorarEnvios()" style="background:none;border:1px solid var(--border);border-radius:8px;padding:8px 20px;cursor:pointer;font-size:13px;color:var(--text-sec)">Ignorar</button>
       <button onclick="confirmarBaixaEstoque()" style="background:var(--gold-dark);border:none;border-radius:8px;padding:8px 20px;cursor:pointer;font-size:13px;font-weight:600;color:#fff">Confirmar baixa no estoque</button>
     </div>
+  </div>
+</div>
+
+<!-- Modal: o molde que a modelista subiu na aba MODELAGEM, para o cortador imprimir ou
+     baixar sem depender de alguém mandar no WhatsApp (ver "O MOLDE ATUALIZADO" no main.js) -->
+<div id="modal-molde" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9999;align-items:center;justify-content:center;padding:16px">
+  <div style="background:var(--surface);border-radius:12px;max-width:560px;width:100%;max-height:90vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.3)">
+    <div style="padding:20px 24px 0">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+        <i class="ti ti-ruler-measure" style="font-size:22px;color:var(--gold-dark)"></i>
+        <span style="font-weight:700;font-size:16px">Molde — <span id="molde-titulo"></span></span>
+        <button onclick="moldeFechar()" title="Fechar" style="margin-left:auto;background:none;border:none;cursor:pointer;font-size:20px;line-height:1;color:var(--text-ter);padding:4px 6px">&times;</button>
+      </div>
+    </div>
+    <div style="padding:0 24px 24px" id="molde-corpo"></div>
   </div>
 </div>
 
@@ -971,7 +986,7 @@
   </div>
 </div>
 <script src="data.js?v=2026081912"></script>
-<script src="main.js?v=2026082109"></script>
+<script src="main.js?v=2026082901"></script>
 <script async src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js" onload="initSupabase()"></script>
 </body>
 </html>

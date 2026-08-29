@@ -87,7 +87,7 @@ ok('cada linha de cor tem a célula em branco — sem nada interpolado dentro',
 ok('não existe mais coluna Total por linha — só o par de cada tamanho',
    (ficha.match(/<th class="sub-ped">Pedido<\/th>/g) || []).length, 1);
 ok('em tamanho único a coluna Total continua (senão a ficha fica sem quantidade)',
-   ficha.includes("tu ? '<th colspan=\"2\" style=\"background:#C4A882;\">Total</th>' :"), true);
+   ficha.includes("tu ? '<th colspan=\"2\" class=\"sz-th\">Total</th>' :"), true);
 ok('e nenhum emoji no cabeçalho da ficha', /\p{Extended_Pictographic}/u.test(ficha), false);
 ok('o TOTAL GERAL também tem onde escrever', /<td class="cut-cell cut-cell-tot"><\/td>/.test(ficha), true);
 ok('o colspan das faixas conta o dobro de colunas (senão a faixa fica curta)',
@@ -98,6 +98,32 @@ ok('a célula é branca e alta o bastante para escrever a caneta',
              && (parseInt((m[1].match(/height: (\d+)px/) || [])[1], 10) || 0) >= 30; })(), true);
 ok('e imprime com a moldura visível (print-color-adjust já está ligado)',
    /print-color-adjust: exact/.test(ficha), true);
+
+console.log('\n2b) A ficha imprime com POUCA TINTA (29/08/2026)');
+// O cortador imprime uma ficha por leva na impressora DELE e o cartucho acabava: as faixas
+// pretas de ponta a ponta e a tarja dourada eram retângulos cheios. Estes testes travam o
+// que a folha não pode voltar a ter — nenhum `background` fora do branco, nas TRÊS folhas
+// que saem da aba CORTE (ficha do modelo, Ficha total do tecido, folha do molde).
+const corpo = nome => {
+  const i = main.indexOf(nome);
+  if (i < 0) throw new Error(`${nome} não encontrada em main.js`);
+  return main.slice(i, main.indexOf('\n}', i) + 2);
+};
+const fundosDe = txt => (txt.match(/background:\s*#[0-9a-fA-F]{3,6}/g) || [])
+  .map(s => s.replace(/\s+/g, '').toLowerCase())
+  .filter(s => s !== 'background:#fff' && s !== 'background:#ffffff');
+const fichaModelo = corpo('async function gerarFicha(keyArg)');
+const fichaTotal  = corpo('function gerarFichaCorteTotal()');
+const folhaMolde  = corpo('function moldeImprimir()');
+ok('a ficha do modelo não tem nenhum fundo que não seja branco', fundosDe(fichaModelo), []);
+ok('a Ficha total do tecido também não', fundosDe(fichaTotal), []);
+ok('e a folha do molde nasce com a mesma regra', fundosDe(folhaMolde), []);
+ok('sumiu a zebra das linhas de cor (pintava metade da tabela)',
+   /#faf8f5/.test(fichaModelo) || /#faf8f5/.test(fichaTotal), false);
+ok('nem sobrou o dourado da marca em texto ou faixa',
+   /C4A882/i.test(fichaModelo) || /C4A882/i.test(fichaTotal) || /C4A882/i.test(folhaMolde), false);
+ok('o traço preto continua segurando o desenho no lugar do fundo',
+   /border-bottom: 3px solid #000/.test(fichaModelo) && /border-bottom:3px solid #000/.test(folhaMolde), true);
 
 console.log('\n3) O que foi anotado ANTES continua legível');
 ok('a linha própria do Supabase continua sendo a fonte',

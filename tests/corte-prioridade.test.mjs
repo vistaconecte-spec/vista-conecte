@@ -130,10 +130,29 @@ ok('e o helper serve mais de uma tela', (main.match(/blocoCompactoHTML\(/g) || [
 
 console.log('\n6) A oficina (corte e costura) continua sem acesso a pedido/cliente');
 const mid = readFileSync(join(raiz, 'functions/api/_middleware.js'), 'utf8');
-ok('a allowlist dos perfis de oficina continua VAZIA', /const OFICINA_LIBERA = new Set\(\[\]\);/.test(mid), true);
+// A allowlist deixou de ser vazia em 29/08/2026 (o molde), mas continua sendo ALLOWLIST:
+// endpoint novo nasce bloqueado para a oficina, e cada rota liberada diz quais métodos.
+const liberadas = [...mid.matchAll(/\['(\/api\/[a-z-]+)', new Set\(\[([^\]]*)\]\)\]/g)]
+  .map(m => [m[1], m[2].replace(/['\s]/g, '').split(',').filter(Boolean)]);
+ok('a oficina só alcança o molde — nada de pedido, cliente ou preço',
+   liberadas.map(([r]) => r).sort(), ['/api/modelagem-storage', '/api/molde']);
+ok('e só para LEITURA (sem isso, abrir a rota abriria o POST que ela atende)',
+   liberadas.every(([, ms]) => ms.every(m => m === 'GET' || m === 'HEAD')), true);
+ok('o detalhe cheio da modelagem continua fora (é ele que carrega o valor da modelista)',
+   liberadas.some(([r]) => r === '/api/modelagem-projeto'), false);
 ok('e o bloqueio vale para os dois perfis, não só para o corte',
    /const OFICINA = new Set\(\['corte', 'costura'\]\);/.test(mid)
-   && /OFICINA\.has\(sessao\.perfil\) && !OFICINA_LIBERA\.has\(pathname\)/.test(mid), true);
+   && /const metodos = OFICINA_LIBERA\.get\(pathname\);/.test(mid)
+   && /if \(!metodos \|\| !metodos\.has\(request\.method\)\) return nega\('Perfil sem acesso a esta rota', 403\);/.test(mid), true);
+// Sem os comentários: eles citam de propósito o que o CÓDIGO não pode ter.
+const molde = readFileSync(join(raiz, 'functions/api/molde.js'), 'utf8')
+  .replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+ok('o /api/molde nunca busca valorAjuste (dinheiro não é assunto do cortador)',
+   /valorAjuste/.test(molde), false);
+ok('e lista as colunas de projects uma a uma (select=* faria coluna nova vazar sozinha)',
+   /select=\*/.test(molde), false);
+ok('e recusa qualquer método que não seja GET',
+   /if \(request\.method !== 'GET'\)/.test(molde), true);
 ok('a prioridade é gravada no Supabase, não servida por /api',
    /await salvarNuvemREST\(CORTE_PRIO_KEY, novo\)/.test(main), true);
 ok('e os perfis de oficina nem calculam (só leem)',
