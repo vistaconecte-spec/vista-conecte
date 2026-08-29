@@ -72,6 +72,11 @@ ok('o nome do modelo abre a ficha dele — atalho da dona para a grade daquele m
    /class="dash-link" onclick="selectModel\(null,'\$\{l\.key\}'\)/.test(corte), true);
 ok('e o aparelho da oficina NÃO ganha esse atalho (a tela do modelo tem pedido e preço)',
    /const podeAbrir = !ehPerfilOficina\(\);/.test(corte) && corte.includes('${podeAbrir'), true);
+// Para quem corta, leva 1 e 2ª leva são a mesma coisa: um monte de peça para cortar. O
+// número da leva é conversa de produção e no card só somava ruído (pedido dela, 29/08/2026).
+ok('o card não carimba mais o selo 2ª LEVA ao lado do nome', /crt-selo/.test(corte), false);
+ok('mas o selo continua onde tem consequência — no faturamento, cada leva é uma cobrança',
+   /crt-selo/.test(extrair('renderFaturamentoCorte')), true);
 
 console.log('\n2) A coluna do papel: existe e sai VAZIA');
 const ficha = main.slice(main.indexOf('async function gerarFicha('), main.indexOf('function gerarFichaConfeccao'));

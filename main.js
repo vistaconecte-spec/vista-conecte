@@ -5197,9 +5197,14 @@ function renderCorte() {
       <div class="crt-card">
         <div class="crt-card-hd">
           <div>
+            <!-- SEM o selo "2ª LEVA" aqui (pedido da Bárbara, 29/08/2026): para quem corta,
+                 leva 1 e 2ª leva são a mesma coisa — um monte de peça para cortar. O número
+                 da leva é conversa de produção, e no card só somava ruído ao lado do nome.
+                 Continua onde tem consequência: no FATURAMENTO do corte, em que cada leva é
+                 uma cobrança separada e duas linhas do mesmo modelo ficariam idênticas. -->
             <div class="crt-nome">${l.prioritaria ? `<span class="crt-pos${pos === 0 ? ' crt-pos-1' : ''}">${pos + 1}º</span>` : ''}${podeAbrir
               ? `<span class="dash-link" onclick="selectModel(null,'${l.key}')" title="Abrir ${esc(l.nome)}">${esc(l.nome)}</span>`
-              : esc(l.nome)}${l.leva === 2 ? ' <span class="crt-selo">2ª LEVA</span>' : ''}</div>
+              : esc(l.nome)}</div>
             ${l.prioritaria ? crtMotivoHTML(l.p, 'CORTAR PRIMEIRO') : ''}
             <div class="crt-meta">
               <span style="color:${cor};font-weight:700">${esc(l.status)}</span>
