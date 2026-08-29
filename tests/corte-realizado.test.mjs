@@ -74,7 +74,7 @@ ok('e o aparelho da oficina NÃO ganha esse atalho (a tela do modelo tem pedido 
    /const podeAbrir = !ehPerfilOficina\(\);/.test(corte) && corte.includes('${podeAbrir'), true);
 
 console.log('\n2) A coluna do papel: existe e sai VAZIA');
-const ficha = main.slice(main.indexOf('async function gerarFicha(keyArg)'), main.indexOf('function gerarFichaConfeccao'));
+const ficha = main.slice(main.indexOf('async function gerarFicha('), main.indexOf('function gerarFichaConfeccao'));
 ok('cada TAMANHO tem seu par de colunas: o pedido e a casa em branco ao lado',
    /<th colspan="2" class="sz-th">' \+ s \+ '<\/th>/.test(ficha) && /<th class="sub-ped">Pedido<\/th><th class="cut-th">Cortado<\/th>/.test(ficha), true);
 ok('a divisória forte fica ENTRE tamanhos, não em volta de cada casa',
@@ -112,7 +112,7 @@ const corpo = nome => {
 const fundosDe = txt => (txt.match(/background:\s*#[0-9a-fA-F]{3,6}/g) || [])
   .map(s => s.replace(/\s+/g, '').toLowerCase())
   .filter(s => s !== 'background:#fff' && s !== 'background:#ffffff');
-const fichaModelo = corpo('async function gerarFicha(keyArg)');
+const fichaModelo = corpo('async function gerarFicha(');
 const fichaTotal  = corpo('function gerarFichaCorteTotal()');
 const folhaMolde  = corpo('function moldeImprimir()');
 ok('a ficha do modelo não tem nenhum fundo que não seja branco', fundosDe(fichaModelo), []);

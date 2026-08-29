@@ -5212,7 +5212,7 @@ function renderCorte() {
               <div class="crt-big">${l.total}<span> ${l.total === 1 ? 'peça' : 'peças'} pedidas</span></div>
             </div>
             <div class="crt-card-btns">
-              <button class="btn-primary" style="font-size:12px;padding:7px 13px" onclick="gerarFicha('${l.key}')">
+              <button class="btn-primary" style="font-size:12px;padding:7px 13px" onclick="gerarFicha('${l.key}',${l.leva})">
                 <i class="ti ti-file-text"></i> Abrir ficha
               </button>
               <button class="btn-outline" style="font-size:12px;padding:7px 13px" onclick="crtAbrirMolde('${l.key}')">
@@ -5450,7 +5450,7 @@ function renderCostura() {
           <div class="crt-meta">${meta}</div>
           <div class="cst-ficha-acoes">
             <div class="crt-big">${l.total}<span> ${l.total === 1 ? 'peça' : 'peças'}</span></div>
-            <button class="btn-outline" style="font-size:11px;padding:5px 10px" onclick="gerarFicha('${l.key}')">
+            <button class="btn-outline" style="font-size:11px;padding:5px 10px" onclick="gerarFicha('${l.key}',${l.leva})">
               <i class="ti ti-file-text"></i> Abrir ficha
             </button>
           </div>
@@ -8434,7 +8434,18 @@ async function urlToBase64(src) {
 // Sem argumento: ficha do modelo aberto, lendo a TELA — sai com o que acabou de ser
 // digitado, mesmo antes de salvar. Com uma chave: monta a partir do que está SALVO, que
 // é como a aba CORTE abre a ficha de qualquer modelo sem precisar abrir o modelo.
-async function gerarFicha(keyArg) {
+//
+// UMA LEVA POR FOLHA (29/08/2026, pedido da Bárbara). Antes a ficha desenhava a leva 1 e a
+// 2ª leva na mesma folha, em duas seções, e somava as duas no TOTAL GERAL — e a produção
+// se perdia: as duas levas podem estar em ETAPAS diferentes (a leva 1 em costura e a 2ª
+// ainda no corte), então o papel misturava o que é para cortar agora com o que não é, e o
+// total não era o total de nada. Agora cada leva tem a sua folha, e a ficha da aba CORTE
+// sai com a leva daquele card — a que está "Em corte". É a mesma regra das abas CORTE e
+// COSTURA, onde leva 1 e 2ª leva já são fichas separadas.
+//
+// `levaArg` é 1 ou 2. Sem ele (botão GERAR FICHA da tela do modelo), vale a leva que está
+// EM CORTE; se nenhuma estiver, a que tiver qualquer status; empatou, a leva 1.
+async function gerarFicha(keyArg, levaArg) {
   const key = keyArg || modeloAtual;
   const def = MODELOS[key];
   if (!def) return;
@@ -8448,8 +8459,22 @@ async function gerarFicha(keyArg) {
   const cores = coresDoModelo(def, saved);
   // Só lê a tela quando é mesmo o modelo aberto e a tabela existe no DOM
   const daTela = !keyArg && key === modeloAtual && !!document.getElementById('prod-tbody');
-  const status  = daTela ? document.getElementById('prod-status').value : (saved.status || '');
-  const prazo   = daTela ? document.getElementById('prod-prazo').value  : (saved.prazo || '');
+  const statusDe = n => daTela
+    ? ((document.getElementById(n === 2 ? 'prod2-status' : 'prod-status') || {}).value || '')
+    : ((n === 2 ? saved.status2 : saved.status) || '');
+  const escolherLeva = () => {
+    const s1 = statusDe(1), s2 = statusDe(2);
+    if (s1 === 'Em corte') return 1;
+    if (s2 === 'Em corte') return 2;
+    if (s1) return 1;
+    if (s2) return 2;
+    return 1;
+  };
+  const leva = (levaArg === 2 || levaArg === '2') ? 2 : (levaArg ? 1 : escolherLeva());
+  const status = statusDe(leva);
+  const prazo = daTela
+    ? ((document.getElementById(leva === 2 ? 'prod2-prazo' : 'prod-prazo') || {}).value || '')
+    : ((leva === 2 ? saved.prazo2 : saved.prazo) || '');
   // prioridade: upload manual → legado → caminho padrão do modelo
   const croquiFrenteRaw = loadLocal('vc:croqui-frente:' + key) || loadLocal('vc:croqui:' + key) || def.croquiFrente || null;
   const croquiCostasRaw = loadLocal('vc:croqui-costas:' + key) || def.croquiCostas || null;
@@ -8460,7 +8485,7 @@ async function gerarFicha(keyArg) {
     urlToBase64(croquiCostasRaw)
   ]);
 
-  // Coleta dados de produção (leva 1 + 2ª leva, seções separadas na ficha)
+  // Coleta as quantidades DESTA leva — a outra não entra na folha (ver cabeçalho)
   // grade do modelo (pode ter G1) — nunca assumir 5 colunas
   const SZ_FICHA = tamanhosDe(def);
   const lerRows = sel => {
@@ -8479,14 +8504,16 @@ async function gerarFicha(keyArg) {
     const vals = Array.from({ length: SZ_FICHA.length }, (_, i) => orig[i] || 0);
     return { cor, vals, tot: vals.reduce((a, b) => a + b, 0) };
   });
-  const prodRows  = daTela ? lerRows('#prod-tbody')  : rowsDeSalvo(saved.prod);
-  const prod2Rows = (daTela ? lerRows('#prod2-tbody') : rowsDeSalvo(saved.prod2)).filter(r => r.tot > 0);
-  const status2   = daTela ? (document.getElementById('prod2-status')?.value || '') : (saved.status2 || '');
+  const seletor = leva === 2 ? '#prod2-tbody' : '#prod-tbody';
+  const mapa    = leva === 2 ? saved.prod2 : saved.prod;
+  // A 2ª leva só existe onde foi digitada: cor zerada nela é cor que não entrou na leva, e
+  // linha de zero no papel faz o cortador procurar tecido que ninguém pediu. A leva 1 mostra
+  // todas as cores — é a folha da produção inteira do modelo.
+  const prodRows = leva === 2
+    ? (daTela ? lerRows(seletor) : rowsDeSalvo(mapa)).filter(r => r.tot > 0)
+    : (daTela ? lerRows(seletor) : rowsDeSalvo(mapa));
   const prodTots = new Array(SZ_FICHA.length).fill(0);
   prodRows.forEach(r => r.vals.forEach((v,i) => prodTots[i] += v));
-  const prod2Tots = new Array(SZ_FICHA.length).fill(0);
-  prod2Rows.forEach(r => r.vals.forEach((v,i) => prod2Tots[i] += v));
-  prod2Rows.forEach(r => r.vals.forEach((v,i) => prodTots[i] += v)); // total geral = leva 1 + 2ª leva
   const prodTotal = prodTots.reduce((a,b) => a+b, 0);
 
   const hoje = new Date().toLocaleDateString('pt-BR');
@@ -8511,10 +8538,6 @@ async function gerarFicha(keyArg) {
     </tr>`;
   }).join('');
   const colorRowsHtml = rowsHtml(prodRows);
-  // Seção extra da 2ª leva (só entra se tiver quantidades)
-  const leva2RowsHtml = prod2Rows.length > 0
-    ? `<tr><td colspan="${colSpan}" class="section-hd">2ª leva${status2 ? ' — ' + status2 : ''}</td></tr>` + rowsHtml(prod2Rows)
-    : '';
 
   const makeCroqui = (base64, label) => base64
     ? `<div style="text-align:center;padding:14px 10px;">
@@ -8556,6 +8579,10 @@ async function gerarFicha(keyArg) {
   }
   .brand-mark { font-size: 8px; font-weight: 700; letter-spacing: 0.18em; color: #555; margin-bottom: 5px; text-transform: uppercase; }
   .ficha-titulo { font-size: 26px; font-weight: 900; letter-spacing: 0.06em; color: #000; line-height: 1; }
+  /* Qual leva é esta folha. Uma leva por ficha (ver cabeçalho de gerarFicha), então a
+     folha precisa se identificar: sem isso, duas fichas do mesmo modelo, com números
+     diferentes, ficam idênticas na mesa. */
+  .ficha-leva { font-size: 10px; font-weight: 800; letter-spacing: 0.14em; text-transform: uppercase; color: #000; margin-top: 6px; }
   .header-meta { text-align: right; font-size: 10px; color: #555; line-height: 1.9; }
   .header-meta strong { color: #000; font-weight: 800; }
 
@@ -8582,8 +8609,6 @@ async function gerarFicha(keyArg) {
   .prod-table th:first-child { text-align: left; }
   /* Sem faixa preta, é este filete que separa o cabeçalho das linhas de cor */
   .prod-table thead tr:last-child th { border-bottom: 2px solid #000; }
-  /* Onde havia tarja dourada, agora o nome da leva sozinho entre dois filetes */
-  .prod-table .section-hd { background: #fff; color: #000; font-size: 9px; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase; padding: 6px 12px; border: none; border-top: 2px solid #000; border-bottom: 1px solid #000; }
   .prod-table .total-row td { background: #fff; color: #000; font-weight: 800; border: 1px solid #000; border-top: 2px solid #000; padding: 8px 10px; text-align: center; }
   /* Par de colunas por tamanho: o número pedido e, colada nele, a casa em branco do que
      cortou. A casa é branca e alta o bastante para caber caneta, e a moldura fina é o
@@ -8631,12 +8656,12 @@ async function gerarFicha(keyArg) {
     <div>
       <div class="brand-mark">Vista Conecte &nbsp;•&nbsp; Gestão de Confecção</div>
       <div class="ficha-titulo">FICHA TÉCNICA</div>
+      <div class="ficha-leva">${leva === 2 ? '2ª leva de produção' : 'Leva principal'}</div>
     </div>
     <div class="header-meta">
       <div>Data <strong>${hoje}</strong></div>
       <div>Prazo <strong>${prazoFmt}</strong></div>
-      <div>Status <strong>${status}</strong></div>
-      ${prod2Rows.length > 0 && status2 ? `<div>Status 2ª leva <strong>${status2}</strong></div>` : ''}
+      <div>Status <strong>${status || '—'}</strong></div>
     </div>
   </div>
 
@@ -8678,13 +8703,11 @@ async function gerarFicha(keyArg) {
         </tr>
       </thead>
       <tbody>
-        ${leva2RowsHtml ? `<tr><td colspan="${colSpan}" class="section-hd">Leva principal${status ? ' — ' + status : ''}</td></tr>` : ''}
-        ${colorRowsHtml || `<tr><td colspan="${colSpan}" style="text-align:center;color:#bbb;padding:12px;">Nenhuma peça em produção</td></tr>`}
-        ${leva2RowsHtml}
+        ${colorRowsHtml || `<tr><td colspan="${colSpan}" style="text-align:center;color:#666;padding:12px;">Nenhuma peça nesta leva</td></tr>`}
       </tbody>
       <tfoot>
         <tr class="total-row">
-          <td>TOTAL GERAL</td>
+          <td>TOTAL</td>
           ${tu ? `<td>${prodTotal}</td><td class="cut-cell cut-cell-tot"></td>`
                 : prodTots.map(v => `<td class="ped-cell">${v}</td><td class="cut-cell cut-cell-tot"></td>`).join('')}
         </tr>
