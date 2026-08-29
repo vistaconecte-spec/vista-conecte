@@ -11058,6 +11058,61 @@ async function mdlRemoverArquivo(id, tipo, fileId) {
   }
 }
 
+// Exclui o modelo inteiro. É a única ação da aba que não dá para desfazer: leva junto croquis,
+// fotos, arquivos da Audaces, medidas, consumo, alterações e pendências, e nada disso existe em
+// outro lugar (o croqui e o .adsx da modelista só estão aqui). Por isso, além do confirm() com o
+// inventário do que vai embora, pede o nome digitado — confirm() sozinho é um "OK" no automático.
+async function mdlExcluirModelo() {
+  const d = mdlProjetoAtual;
+  if (!d || !d.projeto) return;
+  const titulo = d.projeto.title || '(sem nome)';
+  const conta = (arr, um, muitos) => (arr || []).length ? `${arr.length} ${arr.length > 1 ? muitos : um}` : null;
+  const naLista = (mdlProjetos || []).find(p => p.id === d.projeto.id);
+  const itens = [
+    conta(d.croquis, 'croqui', 'croquis'),
+    conta(d.fotos, 'foto', 'fotos'),
+    conta(d.audaces, 'arquivo da Audaces', 'arquivos da Audaces'),
+    conta(d.alteracoes, 'alteração', 'alterações'),
+    conta(d.pendencias, 'pendência', 'pendências'),
+    d.consumo ? 'o consumo de tecido' : null,
+    // quem decide se a medida está preenchida é o `semMedidas` do /api/modelagem-list —
+    // linha em branco salva por engano não conta como tabela de medidas nem lá nem aqui
+    (naLista && !naLista.semMedidas) ? 'a tabela de medidas' : null,
+  ].filter(Boolean);
+  const resumo = itens.length ? `\n\nVai apagar junto: ${itens.join(', ')}.` : '';
+  if (!confirm(`Excluir o modelo "${titulo}"?${resumo}\n\nEsta ação NÃO pode ser desfeita.`)) return;
+  const digitado = prompt(`Para confirmar, digite o nome do modelo:\n\n${titulo}`);
+  if (digitado === null) return; // cancelou
+  if (digitado.trim().toLowerCase() !== titulo.trim().toLowerCase()) {
+    alert('O nome não confere — nada foi excluído.');
+    return;
+  }
+  try {
+    const res = await fetch('/api/modelagem-projeto', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: d.projeto.id, acao: 'projeto-excluir' }),
+    });
+    const data = await res.json();
+    if (data.erro) throw new Error(data.erro);
+    // O acerto com a modelista mora fora do Supabase da modelagem (`modelagem-pagos`, por id).
+    // Sem limpar aqui sobra um pagamento apontando para modelo que não existe mais.
+    const pagos = { ...mdlPagos() };
+    if (pagos[String(d.projeto.id)]) {
+      delete pagos[String(d.projeto.id)];
+      const dados = { pagos };
+      saveLocal('vc:' + MDL_PAGOS_KEY, dados);
+      await salvarNuvem(MDL_PAGOS_KEY, dados);
+    }
+    // tira da lista em memória antes de voltar, senão a grade pisca com o card já apagado
+    mdlProjetos = (mdlProjetos || []).filter(p => p.id !== d.projeto.id);
+    mdlVoltarLista();
+    await mdlCarregarLista();
+  } catch (e) {
+    alert('Erro ao excluir modelo: ' + e.message);
+  }
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 
 // 1. Monta sidebar e restaura tela pelo hash da URL (ou abre dashboard)

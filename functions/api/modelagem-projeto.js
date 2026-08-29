@@ -13,6 +13,7 @@
  *   acao='medidas'          { medidas }            → grava JSON (texto) na coluna projects.medidas
  *   acao='valor-ajuste'     { valorAjuste }        → grava texto na coluna projects.valorAjuste
  *   acao='arquivo-remover'  { tipo, fileId }       → tipo 'croqui'|'foto'|'audaces'; apaga a linha e o objeto do Storage
+ *   acao='projeto-excluir'  { }                    → apaga o modelo inteiro: tabelas filhas + objetos do Storage
  */
 const SB_URL = 'https://hckzsblwyabmhzbjdjgx.supabase.co';
 const BUCKET = 'modelagem';
@@ -75,6 +76,24 @@ async function sbPatch(env, path, body) {
   if (!r.ok) throw new Error(`PATCH ${path}: ${r.status} ${await r.text()}`);
   const rows = await r.json();
   return rows[0];
+}
+
+// Apaga objetos do Storage em UMA requisição só (endpoint em lote do Supabase, o mesmo
+// que o `remove()` do supabase-js usa). Um DELETE por arquivo estouraria o limite de
+// ~50 subrequisições por invocação do plano gratuito da Cloudflare num modelo com muita foto.
+// Best-effort de propósito: a linha no banco é a fonte da verdade e objeto órfão no
+// Storage não quebra nada — falhar aqui não pode impedir a exclusão do registro.
+async function storageRemover(env, keys) {
+  const lista = [...new Set((keys || []).filter(Boolean))];
+  if (!lista.length) return;
+  await fetch(`${SB_URL}/storage/v1/object/${BUCKET}`, {
+    method: 'DELETE',
+    headers: {
+      Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ prefixes: lista }),
+  }).catch(() => {});
 }
 
 async function carregarDetalhe(env, id) {
@@ -218,15 +237,74 @@ export async function onRequest(context) {
         const tabela = tipo === 'croqui' ? 'project_croquis' : 'project_files';
         const [row] = await sbGet(env, `${tabela}?id=eq.${fileId}&projectId=eq.${id}&select=id,fileKey`);
         if (!row) return new Response(JSON.stringify({ erro: 'arquivo não encontrado' }), { status: 404, headers });
-        if (row.fileKey) {
-          // best-effort: a linha é a fonte da verdade; objeto órfão no Storage não quebra nada
-          await fetch(`${SB_URL}/storage/v1/object/${BUCKET}/${encodeURI(row.fileKey)}`, {
-            method: 'DELETE',
-            headers: { Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}` },
-          }).catch(() => {});
-        }
+        await storageRemover(env, [row.fileKey]);
         await sbDelete(env, `${tabela}?id=eq.${fileId}`);
         return new Response(JSON.stringify({ ok: true }), { headers });
+      }
+
+      if (acao === 'projeto-excluir') {
+        // `id` entra direto na URL do PostgREST e aqui o verbo é DELETE: um valor que não
+        // seja número poderia virar outro filtro (`neq.0`) e varrer a tabela inteira.
+        const pid = Number(id);
+        if (!Number.isInteger(pid) || pid <= 0) {
+          return new Response(JSON.stringify({ erro: 'id inválido' }), { status: 400, headers });
+        }
+        const [projeto] = await sbGet(env, `projects?id=eq.${pid}&select=id,title`);
+        if (!projeto) return new Response(JSON.stringify({ erro: 'projeto não encontrado' }), { status: 404, headers });
+
+        // O schema `modelagem` veio do app antigo SEM foreign key nenhuma — apagar só a linha
+        // de `projects` deixaria croquis, arquivos, pagamentos e histórico órfãos no banco e os
+        // objetos pendurados no Storage. Por isso cada tabela filha é apagada explicitamente
+        // aqui. Se surgir tabela nova com `projectId`, ela precisa entrar nesta lista.
+        const [croquis, arquivos, alteracoes, modelagens] = await Promise.all([
+          sbGet(env, `project_croquis?projectId=eq.${pid}&select=fileKey`),
+          sbGet(env, `project_files?projectId=eq.${pid}&select=fileKey`),
+          sbGet(env, `project_changes?projectId=eq.${pid}&select=id`),
+          sbGet(env, `modelagens?projectId=eq.${pid}&select=id`),
+        ]);
+        const idsAlteracoes = alteracoes.map(a => a.id);
+        const idsModelagens = modelagens.map(m => m.id);
+
+        // Netos: mídia de alteração e o que pende de uma "modelagem" interna (tabelas do app
+        // antigo, ainda com dado dentro). `in.()` vazio é erro de sintaxe no PostgREST — daí os guardas.
+        const [changeMedias, mdlAlteracoes, mdlArquivos] = await Promise.all([
+          idsAlteracoes.length ? sbGet(env, `project_change_medias?changeId=in.(${idsAlteracoes})&select=fileKey`) : [],
+          idsModelagens.length ? sbGet(env, `modelagem_alteracoes?modelagemId=in.(${idsModelagens})&select=id`) : [],
+          idsModelagens.length ? sbGet(env, `modelagem_files?modelagemId=in.(${idsModelagens})&select=fileKey`) : [],
+        ]);
+        const idsMdlAlteracoes = mdlAlteracoes.map(a => a.id);
+        const mdlMedias = idsMdlAlteracoes.length
+          ? await sbGet(env, `modelagem_alteracao_medias?alteracaoId=in.(${idsMdlAlteracoes})&select=fileKey`)
+          : [];
+
+        await storageRemover(env, [...croquis, ...arquivos, ...changeMedias, ...mdlArquivos, ...mdlMedias].map(r => r.fileKey));
+
+        // Filhas primeiro, `projects` por último: se algo falhar no meio, o modelo continua
+        // aparecendo na lista e dá para mandar excluir de novo. Na ordem inversa o registro
+        // sumiria da tela deixando lixo que ninguém mais alcança.
+        if (idsMdlAlteracoes.length) await sbDelete(env, `modelagem_alteracao_medias?alteracaoId=in.(${idsMdlAlteracoes})`);
+        if (idsModelagens.length) {
+          await Promise.all([
+            sbDelete(env, `modelagem_alteracoes?modelagemId=in.(${idsModelagens})`),
+            sbDelete(env, `modelagem_files?modelagemId=in.(${idsModelagens})`),
+            sbDelete(env, `modelagem_infos?modelagemId=in.(${idsModelagens})`),
+          ]);
+        }
+        if (idsAlteracoes.length) await sbDelete(env, `project_change_medias?changeId=in.(${idsAlteracoes})`);
+        await Promise.all([
+          sbDelete(env, `modelagens?projectId=eq.${pid}`),
+          sbDelete(env, `project_changes?projectId=eq.${pid}`),
+          sbDelete(env, `project_croquis?projectId=eq.${pid}`),
+          sbDelete(env, `project_fabric_consumption?projectId=eq.${pid}`),
+          sbDelete(env, `project_files?projectId=eq.${pid}`),
+          sbDelete(env, `project_messages?projectId=eq.${pid}`),
+          sbDelete(env, `project_payments?projectId=eq.${pid}`),
+          sbDelete(env, `project_pendencias?projectId=eq.${pid}`),
+          sbDelete(env, `project_status_history?projectId=eq.${pid}`),
+          sbDelete(env, `project_tech_info?projectId=eq.${pid}`),
+        ]);
+        await sbDelete(env, `projects?id=eq.${pid}`);
+        return new Response(JSON.stringify({ ok: true, excluido: projeto.title }), { headers });
       }
 
       return new Response(JSON.stringify({ erro: 'ação desconhecida' }), { status: 400, headers });
