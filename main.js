@@ -8685,7 +8685,9 @@ async function gerarFicha(keyArg, levaArg) {
     </div>
     <div class="item" style="flex:1">
       <div class="item-label">Cores</div>
-      <div class="cores-list">${cores.map(c => `<span class="cor-tag">${c}</span>`).join('')}</div>
+      <!-- As cores DESTA leva, não as do modelo: na folha da 2ª leva a faixa prometia cor
+           que não está na tabela abaixo, e é a faixa que ele lê antes de separar o rolo. -->
+      <div class="cores-list">${(prodRows.length ? prodRows.map(r => r.cor) : cores).map(c => `<span class="cor-tag">${c}</span>`).join('')}</div>
     </div>
   </div>
 

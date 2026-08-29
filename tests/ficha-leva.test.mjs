@@ -94,6 +94,11 @@ ok('a folha não fala do status da outra leva', /Status 2ª leva/.test(f1), fals
 console.log('\n4) Cor zerada na 2ª leva não vira linha (tecido que ninguém pediu)');
 ok('o Nude está na folha da leva 1 (tem 4 peças)', /Nude/.test(f1), true);
 ok('e some da folha da 2ª leva (tem 0)', /Nude<\/td>/.test(f2), false);
+// A faixa "Cores" é o que ele lê antes de separar o rolo: prometer cor que não está na
+// tabela abaixo manda buscar tecido à toa.
+ok('e some também da faixa de cores do topo, não só da tabela',
+   /<span class="cor-tag">Nude<\/span>/.test(f2), false);
+ok('mas continua na faixa da leva 1', /<span class="cor-tag">Nude<\/span>/.test(f1), true);
 
 console.log('\n5) Sem leva no argumento, vale a que está EM CORTE');
 // A regra vem da Bárbara: a ficha é o papel do corte, então quem manda é o status "Em corte".
