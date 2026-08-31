@@ -78,6 +78,24 @@ ok('o card não carimba mais o selo 2ª LEVA ao lado do nome', /crt-selo/.test(c
 ok('mas o selo continua onde tem consequência — no faturamento, cada leva é uma cobrança',
    /crt-selo/.test(extrair('renderFaturamentoCorte')), true);
 
+console.log('\n1b) PILOTO ao lado do nome, e o botão de aprovar (29/08/2026)');
+// O selo de leva saiu daqui porque não muda o que ele faz; o de piloto fica porque muda
+// tudo: piloto é UMA peça no tamanho do molde, não a grade. É também o que explica por que
+// aquelas fichas estão furando a fila lá em cima.
+ok('o card escreve PILOTO ao lado do nome', /class="crt-piloto">PILOTO</.test(corte), true);
+ok('e o botão de aprovar só aparece na ficha de piloto',
+   /\$\{l\.piloto && podeAbrir \? `<button[^`]*aprovarPiloto\('\$\{l\.key\}'\)/.test(corte), true);
+ok('o aparelho da oficina NÃO aprova peça (quem aprova a prova é a dona)',
+   /l\.piloto && podeAbrir/.test(corte), true);
+// Aprovar é gravação: sem o desfazer, um clique errado não teria volta.
+ok('aprovada e ainda no grupo do data.js, o card mostra APROVADA',
+   /class="crt-aprovada"/.test(corte) && /!l\.piloto && noGrupoPilotos\(l\.key\)/.test(corte), true);
+ok('e o selo APROVADA é o próprio desfazer',
+   /desfazerAprovacaoPiloto\('\$\{l\.key\}'\)/.test(corte), true);
+ok('os dois selos são condicionais — nenhum sai solto ao lado do nome',
+   /\$\{l\.piloto \? ' <span class="crt-piloto">PILOTO<\/span>' : ''\}/.test(corte)
+   && /: ''\}<\/div>/.test(corte), true);
+
 console.log('\n2) A coluna do papel: existe e sai VAZIA');
 const ficha = main.slice(main.indexOf('async function gerarFicha('), main.indexOf('function gerarFichaConfeccao'));
 ok('cada TAMANHO tem seu par de colunas: o pedido e a casa em branco ao lado',

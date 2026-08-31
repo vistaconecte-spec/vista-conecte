@@ -5128,19 +5128,32 @@ function renderCorte() {
     });
   }
 
-  // DUAS fichas ganham a tarja de prioridade, no máximo: lista em que tudo é prioridade
-  // não prioriza nada. São as duas de maior score ENTRE as que têm pedido esperando (ver
-  // "EM QUE ORDEM CORTAR"); da terceira em diante volta a ser a fila normal, do mais
-  // parado para o menos parado, sem número e sem tarja.
+  // PILOTO NA FRENTE DE TUDO (29/08/2026, pedido dela). Piloto é peça de prova: é UMA peça,
+  // sai em minutos e é ela que destrava a coleção inteira — atrás de uma leva de 300 peças
+  // ficaria esperando dias por um corte de minutos.
+  //
+  // A tarja de prioridade (o 1º/2º em vermelho) continua sendo disputada só entre as levas
+  // de PRODUÇÃO: o número quer dizer "corte esta antes daquela", e o piloto não está nessa
+  // fila — está fora dela, por cima.
+  //
+  // DUAS fichas de produção ganham a tarja, no máximo: lista em que tudo é prioridade não
+  // prioriza nada. São as duas de maior score ENTRE as que têm pedido esperando (ver "EM QUE
+  // ORDEM CORTAR"); da terceira em diante volta a ser a fila normal, do mais parado para o
+  // menos parado, sem número e sem tarja.
   const prio = crtPrioridade();
-  levas.forEach(l => { l.p = crtPrioridadeDe(l.key, prio); });
-  const prioritarias = levas.filter(l => l.p.pedidos > 0)
-                            .sort((a, b) => b.p.score - a.p.score)
-                            .slice(0, 2);
+  levas.forEach(l => { l.p = crtPrioridadeDe(l.key, prio); l.piloto = ehPiloto(l.key); });
+  const pilotos  = levas.filter(l => l.piloto).sort((a, b) => (b.dias ?? -1) - (a.dias ?? -1));
+  const producao = levas.filter(l => !l.piloto);
+  const prioritarias = producao.filter(l => l.p.pedidos > 0)
+                               .sort((a, b) => b.p.score - a.p.score)
+                               .slice(0, 2);
   const marcadas = new Set(prioritarias);
-  prioritarias.forEach(l => { l.prioritaria = true; });
-  levas = prioritarias.concat(
-    levas.filter(l => !marcadas.has(l)).sort((a, b) => (b.dias ?? -1) - (a.dias ?? -1))
+  // O número da tarja nasce AQUI, e não do índice do array: com o bloco de piloto no topo, o
+  // índice faria a primeira prioridade de produção sair como "3º".
+  prioritarias.forEach((l, i) => { l.prioritaria = true; l.ordem = i + 1; });
+  levas = pilotos.concat(
+    prioritarias,
+    producao.filter(l => !marcadas.has(l)).sort((a, b) => (b.dias ?? -1) - (a.dias ?? -1))
   );
 
   // Tecido em compra: um bloco só, consolidado, sem ficha por modelo
@@ -5202,9 +5215,15 @@ function renderCorte() {
                  da leva é conversa de produção, e no card só somava ruído ao lado do nome.
                  Continua onde tem consequência: no FATURAMENTO do corte, em que cada leva é
                  uma cobrança separada e duas linhas do mesmo modelo ficariam idênticas. -->
-            <div class="crt-nome">${l.prioritaria ? `<span class="crt-pos${pos === 0 ? ' crt-pos-1' : ''}">${pos + 1}º</span>` : ''}${podeAbrir
+            <div class="crt-nome">${l.prioritaria ? `<span class="crt-pos${l.ordem === 1 ? ' crt-pos-1' : ''}">${l.ordem}º</span>` : ''}${podeAbrir
               ? `<span class="dash-link" onclick="selectModel(null,'${l.key}')" title="Abrir ${esc(l.nome)}">${esc(l.nome)}</span>`
-              : esc(l.nome)}</div>
+              : esc(l.nome)}${l.piloto ? ' <span class="crt-piloto">PILOTO</span>' : ''}${
+              // Aprovada, mas a chave ainda no grupo PILOTOS do data.js (mudar de grupo é
+              // commit, não clique — ver PILOTO_KEY). O selo é também o desfazer: sem ele, um
+              // clique errado em "Peça aprovada" não teria de onde voltar.
+              (!l.piloto && noGrupoPilotos(l.key))
+                ? ` <span class="crt-aprovada"${podeAbrir ? ` onclick="desfazerAprovacaoPiloto('${l.key}')" title="Desfazer a aprovação"` : ''}>APROVADA</span>`
+                : ''}</div>
             ${l.prioritaria ? crtMotivoHTML(l.p, 'CORTAR PRIMEIRO') : ''}
             <div class="crt-meta">
               <span style="color:${cor};font-weight:700">${esc(l.status)}</span>
@@ -5223,6 +5242,9 @@ function renderCorte() {
               <button class="btn-outline" style="font-size:12px;padding:7px 13px" onclick="crtAbrirMolde('${l.key}')">
                 <i class="ti ti-ruler-measure"></i> Molde
               </button>
+              ${l.piloto && podeAbrir ? `<button class="btn-outline crt-btn-aprovar" style="font-size:12px;padding:7px 13px" onclick="aprovarPiloto('${l.key}')" title="A peça passou na prova: sai do topo e a ficha para de carimbar PILOTO">
+                <i class="ti ti-checks"></i> Peça aprovada
+              </button>` : ''}
             </div>
           </div>
         </div>
@@ -8436,16 +8458,66 @@ async function urlToBase64(src) {
   } catch(_) { return null; }
 }
 
-// A peça está em PILOTAGEM? Quem responde é o grupo PILOTOS da barra lateral
-// (SIDEBAR_ESTRUTURA, no data.js) — não um campo novo no modelo. O grupo já é a fonte da
-// verdade do fluxo: "quando o piloto for aprovado, a chave sai daqui e entra no grupo
-// definitivo". Lendo dali, a ficha para de carimbar PILOTO no dia da aprovação, sozinha,
-// sem depender de alguém lembrar de apagar uma flag — que é justamente o esquecimento que
-// faria a oficina cortar uma grade inteira achando que ainda era prova.
-function ehPiloto(key) {
+// ─── PEÇA EM PILOTAGEM ───────────────────────────────────────────────────────
+// Quem diz que a peça é piloto é o grupo PILOTOS da barra lateral (SIDEBAR_ESTRUTURA, no
+// data.js) — não um campo novo no modelo. O grupo já é a fonte da verdade do fluxo:
+// "quando o piloto for aprovado, a chave sai daqui e entra no grupo definitivo".
+//
+// SÓ QUE MUDAR DE GRUPO É COMMIT, NÃO CLIQUE: o data.js é arquivo do repositório, e a dona
+// aprova a peça na prova, no meio da semana. Por isso a aprovação é gravada numa LINHA do
+// Supabase e `ehPiloto` passa a responder não na hora — o carimbo sai da ficha e a peça
+// desce do topo da aba CORTE no mesmo minuto, sem esperar deploy. Mover a chave para
+// VESTIDOS/SAIAS/TOPS continua sendo tarefa de código, feita depois com calma; enquanto ela
+// não acontece, o card mostra APROVADA (e é de lá que se desfaz, se o clique foi errado).
+const PILOTO_KEY = 'pilotos-aprovados';   // { aprovados: { 'vestido-sereia': '2026-08-29T…' } }
+
+function noGrupoPilotos(key) {
   const g = (typeof SIDEBAR_ESTRUTURA === 'undefined' ? [] : SIDEBAR_ESTRUTURA)
     .find(x => x.titulo === 'PILOTOS');
   return !!g && g.modelos.includes(key);
+}
+
+function pilotosAprovados() {
+  const d = loadLocal('vc:' + PILOTO_KEY);
+  return (d && typeof d === 'object' && d.aprovados) ? d.aprovados : {};
+}
+
+function pilotoAprovado(key) { return !!pilotosAprovados()[key]; }
+
+// Piloto é o que está no grupo E ainda não foi aprovado. Os dois lados importam: a ficha
+// para de carimbar PILOTO no dia da aprovação (senão a oficina corta UMA peça achando que
+// ainda é prova, quando já era para cortar a grade), e para de carimbar de vez quando a
+// chave sai do grupo — sem depender de alguém lembrar de apagar uma flag.
+function ehPiloto(key) { return noGrupoPilotos(key) && !pilotoAprovado(key); }
+
+// Lê a nuvem antes de gravar: a aprovação pode ter sido feita no outro aparelho.
+async function gravarAprovacaoPiloto(key, aprovado) {
+  const naNuvem = await carregarNuvem(PILOTO_KEY);
+  if (naNuvem === undefined) { alert('Não consegui ler a nuvem agora — nada foi alterado. Tente de novo.'); return false; }
+  const aprovados = { ...((naNuvem && naNuvem.aprovados) || {}), ...pilotosAprovados() };
+  if (aprovado) aprovados[key] = new Date().toISOString(); else delete aprovados[key];
+  const dados = { aprovados };
+  saveLocal('vc:' + PILOTO_KEY, dados);
+  await salvarNuvemREST(PILOTO_KEY, dados);
+  return true;
+}
+
+async function aprovarPiloto(key) {
+  const nome = (loadLocal('vc:' + key) || {}).nome || (MODELOS[key] || {}).nome || key;
+  if (!confirm(`Aprovar a peça "${nome}"?\n\n`
+    + 'A ficha para de sair carimbada como PILOTO e a peça desce do topo da aba CORTE — '
+    + 'passa a ser tratada como produção.\n\n'
+    + 'Falta ainda, fora do app: preencher tecido, consumo, preço e cores, e mover o modelo '
+    + 'do grupo PILOTOS para o grupo definitivo.\n\nDá para desfazer no próprio card.')) return;
+  if (!await gravarAprovacaoPiloto(key, true)) return;
+  showSaved();
+  if (modeloAtual === '__corte__') renderCorte();
+}
+
+async function desfazerAprovacaoPiloto(key) {
+  if (!await gravarAprovacaoPiloto(key, false)) return;
+  showSaved();
+  if (modeloAtual === '__corte__') renderCorte();
 }
 
 // Sem argumento: ficha do modelo aberto, lendo a TELA — sai com o que acabou de ser

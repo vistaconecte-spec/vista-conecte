@@ -166,19 +166,40 @@ console.log('\n8) Quem decide se é piloto é o grupo PILOTOS da barra lateral')
 // Sem flag nova no modelo: quando o piloto é aprovado a chave muda de grupo e o carimbo
 // some sozinho. Uma flag separada dependeria de alguém lembrar de apagá-la.
 const dataJs = readFileSync(join(raiz, 'data.js'), 'utf8');
-const iP = main.indexOf('function ehPiloto(');
-const ehPilotoReal = new Function('SIDEBAR_ESTRUTURA',
-  main.slice(iP, main.indexOf('\n}', iP) + 2) + '; return ehPiloto;');
+// O bloco inteiro de pilotagem: ehPiloto sozinho não roda, ele pergunta às outras duas.
+const blocoPiloto = main.slice(main.indexOf('function noGrupoPilotos('),
+                               main.indexOf('async function gravarAprovacaoPiloto('));
 const ESTRUTURA = new Function(dataJs + '; return SIDEBAR_ESTRUTURA;')();
-const eh = ehPilotoReal(ESTRUTURA);
+// `aprovados` é o que estaria salvo na linha do Supabase
+const comBanco = (estrutura, aprovados = {}) => new Function(
+  'SIDEBAR_ESTRUTURA', 'loadLocal', 'PILOTO_KEY',
+  blocoPiloto + '; return { ehPiloto, noGrupoPilotos, pilotoAprovado };'
+)(estrutura, () => ({ aprovados }), 'pilotos-aprovados');
+
+const eh = comBanco(ESTRUTURA).ehPiloto;
 ok('a coleção nova de 28/08 é piloto', [eh('vestido-sereia'), eh('top-laco')], [true, true]);
 ok('peça de produção não é', [eh('calca-pantalona'), eh('macacao-amplo')], [false, false]);
 ok('chave que não existe não quebra', eh('nao-existe'), false);
 ok('aprovado o piloto, a chave muda de grupo e o carimbo some sozinho',
-   ehPilotoReal(ESTRUTURA.map(g => g.titulo === 'PILOTOS'
-     ? { ...g, modelos: g.modelos.filter(k => k !== 'top-laco') } : g))('top-laco'), false);
+   comBanco(ESTRUTURA.map(g => g.titulo === 'PILOTOS'
+     ? { ...g, modelos: g.modelos.filter(k => k !== 'top-laco') } : g)).ehPiloto('top-laco'), false);
 ok('e sem o grupo PILOTOS nada é piloto (não explode)',
-   ehPilotoReal(ESTRUTURA.filter(g => g.titulo !== 'PILOTOS'))('top-laco'), false);
+   comBanco(ESTRUTURA.filter(g => g.titulo !== 'PILOTOS')).ehPiloto('top-laco'), false);
+
+console.log('\n9) O botão "Peça aprovada" tira o PILOTO antes do commit');
+// Mover a chave de grupo é commit, não clique — e ela aprova a peça na prova, no meio da
+// semana. A aprovação fica numa linha do Supabase e vale na hora; a folha para de carimbar
+// PILOTO no mesmo minuto, senão a oficina corta UMA peça quando já era para cortar a grade.
+const aprovada = comBanco(ESTRUTURA, { 'top-laco': '2026-08-29T12:00:00.000Z' });
+ok('aprovada, deixa de ser piloto sem esperar deploy', aprovada.ehPiloto('top-laco'), false);
+ok('mas a chave continua no grupo PILOTOS do data.js (é de lá que sai o selo APROVADA)',
+   aprovada.noGrupoPilotos('top-laco'), true);
+ok('e a irmã não aprovada segue piloto', aprovada.ehPiloto('vestido-sereia'), true);
+ok('aprovar peça que nunca foi piloto não a torna nada',
+   comBanco(ESTRUTURA, { 'calca-pantalona': 'x' }).ehPiloto('calca-pantalona'), false);
+ok('linha da nuvem vazia ou estranha não quebra a leitura',
+   new Function('SIDEBAR_ESTRUTURA', 'loadLocal', 'PILOTO_KEY',
+     blocoPiloto + '; return ehPiloto;')(ESTRUTURA, () => null, 'k')('top-laco'), true);
 
 console.log(`\n${falhas ? '✗' : '✓'} ${total - falhas}/${total} passaram\n`);
 process.exit(falhas ? 1 : 0);

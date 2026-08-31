@@ -115,14 +115,33 @@ ok('mas a contagem de pedidos em preto',
 ok('sem sobrar roxo nesse pedaço',    /#7C3AED/.test(bloco), false);
 
 console.log('\n5c) Só DUAS fichas levam a tarja — lista em que tudo é prioridade não prioriza nada');
+// Procurar no arquivo INTEIRO não serve: a aba COSTURA tem um bloco de prioridade igualzinho,
+// e em 29/08/2026 estas asserções ficaram verdes casando com ele enquanto o bloco do CORTE já
+// tinha mudado. Daqui em diante, só o corpo do renderCorte responde.
+const corte = main.slice(main.indexOf('function renderCorte()'), main.indexOf('// ─── ABA COSTURA'));
 ok('corta a lista de prioritárias em 2',
-   /levas\.filter\(l => l\.p\.pedidos > 0\)[\s\S]{0,160}\.slice\(0, 2\)/.test(main), true);
+   /producao\.filter\(l => l\.p\.pedidos > 0\)[\s\S]{0,180}\.slice\(0, 2\)/.test(corte), true);
 ok('e só entra quem tem pedido esperando',
-   /const prioritarias = levas\.filter\(l => l\.p\.pedidos > 0\)/.test(main), true);
+   /const prioritarias = producao\.filter\(l => l\.p\.pedidos > 0\)/.test(corte), true);
 ok('da terceira em diante volta a fila antiga (mais parado no topo)',
-   /levas\.filter\(l => !marcadas\.has\(l\)\)\.sort\(\(a, b\) => \(b\.dias \?\? -1\) - \(a\.dias \?\? -1\)\)/.test(main), true);
+   /producao\.filter\(l => !marcadas\.has\(l\)\)\.sort\(\(a, b\) => \(b\.dias \?\? -1\) - \(a\.dias \?\? -1\)\)/.test(corte), true);
 ok('número e tarja só aparecem na ficha marcada',
-   /\$\{l\.prioritaria \? crtMotivoHTML\(l\.p, 'CORTAR PRIMEIRO'\) : ''\}/.test(main), true);
+   /\$\{l\.prioritaria \? crtMotivoHTML\(l\.p, 'CORTAR PRIMEIRO'\) : ''\}/.test(corte), true);
+
+console.log('\n5e) O piloto fura a fila, e a fila continua contando certo');
+// Piloto é UMA peça de prova, sai em minutos e destrava a coleção: atrás de uma leva de 300
+// peças esperaria dias por um corte de minutos. Mas ele NÃO disputa a tarja 1º/2º — essa é a
+// ordem entre levas de produção.
+ok('o bloco de piloto vai na frente de tudo',
+   /levas = pilotos\.concat\(\s*prioritarias,/.test(corte), true);
+ok('e a disputa da tarja é só entre as de produção (piloto fora dela)',
+   /const producao = levas\.filter\(l => !l\.piloto\)/.test(corte), true);
+ok('o número da tarja nasce da ordem, não do índice do array',
+   /prioritarias\.forEach\(\(l, i\) => \{ l\.prioritaria = true; l\.ordem = i \+ 1; \}\)/.test(corte), true);
+// Com o piloto no topo, `pos` (índice do array) faria a 1ª prioridade de produção sair "3º".
+ok('a tarja imprime l.ordem, e o índice do array não entra nela',
+   /class="crt-pos\$\{l\.ordem === 1 \? ' crt-pos-1' : ''\}">\$\{l\.ordem\}º/.test(corte), true);
+ok('nada de pos+1 sobrando no nome da ficha', /\$\{pos \+ 1\}º/.test(corte), false);
 
 console.log('\n5d) O alerta compacto é um desenho só, compartilhado com a aba COSTURA');
 ok('o alerta do corte usa o helper comum', /return blocoCompactoHTML\(r, titulo, resumo,/.test(main), true);

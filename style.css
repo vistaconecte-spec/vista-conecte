@@ -671,6 +671,23 @@ input[type=number].ci:focus {
   background: rgba(196,168,130,0.16); color: var(--gold-dark);
 }
 .crt-molde-sem { background: rgba(0,0,0,0.05); color: var(--text-ter); }
+/* PILOTO ao lado do nome, no âmbar de aviso do app — não no roxo da etapa. Não é "em que
+   ponto está", é "esta peça não é produção": corta UMA, no tamanho do molde, e não a grade.
+   O bloco de piloto fica no topo da aba (ver renderCorte), então este selo é o que explica
+   por que aquelas fichas furaram a fila. */
+.crt-piloto {
+  font-size: 10px; font-weight: 800; letter-spacing: .04em;
+  background: rgba(180,83,9,0.12); color: #b45309;
+  border-radius: 4px; padding: 2px 7px; vertical-align: middle;
+}
+/* Aprovada e ainda no grupo PILOTOS do data.js: some quando a chave for movida no código.
+   É clicável porque é daqui que se desfaz a aprovação. */
+.crt-aprovada {
+  font-size: 10px; font-weight: 800; letter-spacing: .04em;
+  background: rgba(22,163,74,0.12); color: #16a34a;
+  border-radius: 4px; padding: 2px 7px; vertical-align: middle; cursor: pointer;
+}
+.crt-btn-aprovar { color: #16a34a; border-color: #16a34a; }
 /* Frase que manda anotar no papel: o cortador não digita mais nada no app (18/08) —
    o que ele cortou vai a caneta na coluna "Cortado" da ficha impressa. */
 .crt-aviso {
