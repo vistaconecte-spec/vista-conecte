@@ -103,16 +103,19 @@ ok('modelo sem prod nenhum também não', semProd('Em costura').length, 0);
 console.log('\n4) A costureira não chega em pedido, cliente nem estoque');
 const mid = readFileSync(join(raiz, 'functions/api/_middleware.js'), 'utf8');
 ok("o perfil 'costura' está na trava da oficina",
-   /const OFICINA = new Set\(\['corte', 'costura'\]\);/.test(mid), true);
+   /\['costura', OFICINA_LIBERA\]/.test(mid), true);
 ok('e o que ela alcança é allowlist, não denylist (endpoint novo já nasce bloqueado)',
    /const OFICINA_LIBERA = new Map\(\[/.test(mid)
-   && /const metodos = OFICINA_LIBERA\.get\(pathname\);/.test(mid), true);
+   && /const metodos = libera\.get\(pathname\);/.test(mid), true);
 ok('a aba COSTURA não chama o molde (é papel do corte; ela não ganhou botão)',
    /molde/i.test(/function renderCostura\(\)[\s\S]*?\n\}/.exec(main)[0]), false);
 ok('não busca pedido na Shopify (403 a cada minuto, e a tela não precisa)',
-   /async function carregarPedidosShopify\(\) \{[\s\S]{0,400}?if \(ehPerfilOficina\(\)\) return;/.test(main), true);
+   /async function carregarPedidosShopify\(\) \{[\s\S]{0,400}?if \(ehPerfilDeUmaAba\(\)\) return;/.test(main), true);
+// ehPerfilDeUmaAba() = oficina + modelagem: quem abre uma aba só não responde pelo estoque.
 ok('e nunca dá baixa de estoque',
-   (main.match(/if \(!ehPerfilOficina\(\)\) await baixaImediataDeProcessados/g) || []).length, 2);
+   (main.match(/if \(!ehPerfilDeUmaAba\(\)\) await baixaImediataDeProcessados/g) || []).length, 2);
+ok('e a modelista entra nessa mesma trava (não é oficina, mas também não mexe em estoque)',
+   /function ehPerfilDeUmaAba\(\) \{ return ehPerfilOficina\(\) \|\| ehPerfilModelagem\(\); \}/.test(main), true);
 ok('a aba é só leitura: nada nela grava na nuvem',
    /function renderCostura\(\)[\s\S]*?\n\}/.exec(main)[0].includes('salvarNuvem'), false);
 

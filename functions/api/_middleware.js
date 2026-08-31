@@ -24,11 +24,34 @@ const PUBLICO = new Set(['/api/login', '/api/logout', '/api/sessao', '/api/shopi
 //   /api/molde             → recorte só-leitura da MODELAGEM, SEM o valor pago à modelista
 //   /api/modelagem-storage → baixa o arquivo/imagem cuja chave veio do /api/molde
 // Pedido, cliente e preço continuam fora do alcance dos dois perfis.
-const OFICINA = new Set(['corte', 'costura']);
 const OFICINA_LIBERA = new Map([
   ['/api/molde', new Set(['GET'])],
   ['/api/modelagem-storage', new Set(['GET', 'HEAD'])],
 ]);
+
+// A modelista (perfil 'modelagem', 31/08/2026) entra pela mesma porta e cai direto na aba
+// MODELAGEM: ela cria o modelo, sobe croqui/.adsx/foto, preenche medidas e consumo e anota
+// alterações e pendências. É a MESMA allowlist por método — o que está fora daqui (pedido,
+// estoque, cliente, financeiro, Shopify) responde 403 pra ela como responde pra oficina.
+const MODELAGEM_LIBERA = new Map([
+  ['/api/modelagem-list', new Set(['GET'])],
+  ['/api/modelagem-projeto', new Set(['GET', 'POST'])],
+  ['/api/modelagem-upload', new Set(['POST'])],
+  ['/api/modelagem-storage', new Set(['GET', 'HEAD'])],
+  ['/api/molde', new Set(['GET'])],
+]);
+
+// Perfis que só enxergam um pedaço do sistema. Quem não está aqui (hoje só a dona) passa direto.
+const RESTRITOS = new Map([
+  ['corte', OFICINA_LIBERA],
+  ['costura', OFICINA_LIBERA],
+  ['modelagem', MODELAGEM_LIBERA],
+]);
+
+// `/api/modelagem-projeto` é um endpoint só com várias ações no corpo, e uma delas apaga o
+// modelo inteiro (tabelas filhas + arquivos do Storage). Liberar o POST liberaria junto o
+// apagar, então a ação destrutiva fica de fora na mão: excluir modelo é da dona.
+const MODELAGEM_NEGA_ACOES = new Set(['projeto-excluir']);
 
 const nega = (erro, status) => new Response(JSON.stringify({ erro }), {
   status, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }
@@ -61,9 +84,15 @@ export async function onRequest(context) {
 
   const sessao = await lerSessao(request, env.SESSION_SECRET);
   if (!sessao) return nega('Sessão ausente ou expirada', 401);
-  if (OFICINA.has(sessao.perfil)) {
-    const metodos = OFICINA_LIBERA.get(pathname);
+  const libera = RESTRITOS.get(sessao.perfil);
+  if (libera) {
+    const metodos = libera.get(pathname);
     if (!metodos || !metodos.has(request.method)) return nega('Perfil sem acesso a esta rota', 403);
+    if (sessao.perfil === 'modelagem' && pathname === '/api/modelagem-projeto' && request.method === 'POST') {
+      // clone() porque o corpo só pode ser lido uma vez — a function precisa dele inteiro depois.
+      const acao = await request.clone().json().then(b => b && b.acao).catch(() => null);
+      if (MODELAGEM_NEGA_ACOES.has(acao)) return nega('Perfil sem acesso a esta ação', 403);
+    }
   }
   return next();
 }

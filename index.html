@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Bodoni+Moda:ital,opsz,wght@0,6..96,700;0,6..96,900&family=Bebas+Neue&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css">
-<link rel="stylesheet" href="style.css?v=2026082906">
+<link rel="stylesheet" href="style.css?v=2026083101">
 </head>
 <body>
 
@@ -980,7 +980,7 @@
           <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap">
             <button class="btn-outline" style="font-size:12px;padding:6px 12px" onclick="mdlVoltarLista()"><i class="ti ti-arrow-left"></i> Voltar</button>
             <div id="mdl-det-titulo" style="font-weight:700;font-size:18px"></div>
-            <button class="btn-outline" style="margin-left:auto;font-size:12px;padding:6px 12px;color:#dc2626;border-color:#f0b4b4" onclick="mdlExcluirModelo()" title="Excluir este modelo e tudo que está dentro dele"><i class="ti ti-trash"></i> Excluir modelo</button>
+            <button id="mdl-btn-excluir" class="btn-outline" style="margin-left:auto;font-size:12px;padding:6px 12px;color:#dc2626;border-color:#f0b4b4" onclick="mdlExcluirModelo()" title="Excluir este modelo e tudo que está dentro dele"><i class="ti ti-trash"></i> Excluir modelo</button>
           </div>
           <div id="mdl-det-body"></div>
         </div>
@@ -990,7 +990,7 @@
   </div>
 </div>
 <script src="data.js?v=2026081912"></script>
-<script src="main.js?v=2026082906"></script>
+<script src="main.js?v=2026083101"></script>
 <script async src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js" onload="initSupabase()"></script>
 </body>
 </html>

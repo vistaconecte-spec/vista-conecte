@@ -79,12 +79,21 @@ function perfilAtual() {
 
 function ehPerfilCorte() { return perfilAtual() === 'corte'; }
 function ehPerfilCostura() { return perfilAtual() === 'costura'; }
+// A modelista entra pela mesma tela de senha e vê só a aba MODELAGEM. Não é oficina: ela
+// ESCREVE (cria modelo, sobe croqui/.adsx, medidas, consumo) — o que ela não alcança é o
+// resto do sistema, barrado no servidor pelo _middleware.js.
+function ehPerfilModelagem() { return perfilAtual() === 'modelagem'; }
 
 // Corte e costura são os perfis de OFICINA: veem uma aba só, montada com o que já veio do
 // Supabase, e não chamam /api nenhuma vez (o middleware devolve 403 pros dois). Tudo que
 // só a dona pode fazer — baixa de estoque, avisos de status, buscar pedido na Shopify —
 // pergunta por aqui, e não por ehPerfilCorte(), senão a costureira daria baixa em estoque.
 function ehPerfilOficina() { return ehPerfilCorte() || ehPerfilCostura(); }
+
+// Perfis que abrem UMA aba e não respondem pelo estoque: oficina + modelagem. Serve para as
+// rotinas de boot (baixa de estoque, avisos, pedidos da Shopify) que só a dona deve rodar —
+// sem isto a modelista daria baixa em estoque só por abrir o app.
+function ehPerfilDeUmaAba() { return ehPerfilOficina() || ehPerfilModelagem(); }
 
 // Manda a senha pro servidor e devolve o perfil ('dona' | 'corte' | 'costura'), null se a senha
 // estiver errada, ou false se nem deu para perguntar (sem rede / servidor fora) — sem
@@ -109,6 +118,9 @@ async function conferirSenha(senha) {
 
 function aplicarPerfil(perfil) {
   if (perfil === 'dona') ABAS_DA_DONA.forEach(k => sessionStorage.setItem(k, '1'));
+  // A senha de entrada da modelista é a mesma da aba MODELAGEM: pedir de novo na porta
+  // seguinte seria digitar duas vezes o mesmo segredo.
+  if (perfil === 'modelagem') sessionStorage.setItem('mdl-ok', '1');
   const gate = document.getElementById('app-gate');
   if (gate) gate.style.display = 'none';
 }
@@ -669,6 +681,23 @@ function buildSidebar() {
     item.className = 'nav-item nav-dashboard active';
     item.innerHTML = '<i class="ti ti-needle-thread"></i> COSTURA';
     item.onclick = () => abrirCostura(item);
+    nav.appendChild(item);
+
+    const sair = document.createElement('div');
+    sair.className = 'nav-item nav-dashboard';
+    sair.innerHTML = '<i class="ti ti-logout"></i> SAIR';
+    sair.onclick = appSair;
+    nav.appendChild(sair);
+    return;
+  }
+
+  // Modelista: o menu tem MODELAGEM e SAIR. Ela cria o modelo, sobe croqui/.adsx/foto e
+  // preenche medidas e consumo — e não chega perto de pedido, estoque nem financeiro.
+  if (ehPerfilModelagem()) {
+    const item = document.createElement('div');
+    item.className = 'nav-item nav-dashboard active';
+    item.innerHTML = '<i class="ti ti-ruler-measure"></i> MODELAGEM';
+    item.onclick = () => abrirModelagem(item);
     nav.appendChild(item);
 
     const sair = document.createElement('div');
@@ -9699,9 +9728,9 @@ function gerarFichaCompra() {
 }
 
 async function carregarPedidosShopify() {
-  // Os perfis de oficina não têm acesso a /api/shopify-orders (as fichas saem do que já
-  // veio do Supabase). Sem esta saída, o middleware devolveria 403 a cada minuto.
-  if (ehPerfilOficina()) return;
+  // Os perfis de oficina e a modelagem não têm acesso a /api/shopify-orders (as fichas saem
+  // do que já veio do Supabase). Sem esta saída, o middleware devolveria 403 a cada minuto.
+  if (ehPerfilDeUmaAba()) return;
   try {
     const res = await fetch('/api/shopify-orders');
     if (!res.ok) return;
@@ -10512,6 +10541,9 @@ function mdlVoltarLista() {
 async function mdlAbrirDetalhe(id) {
   document.getElementById('mdl-lista').style.display = 'none';
   document.getElementById('mdl-detalhe').style.display = '';
+  // Excluir modelo é da dona: a modelista nem vê o botão (e o servidor nega a ação).
+  const btnExcluir = document.getElementById('mdl-btn-excluir');
+  if (btnExcluir) btnExcluir.style.display = ehPerfilModelagem() ? 'none' : '';
   document.getElementById('mdl-det-titulo').textContent = 'Carregando...';
   document.getElementById('mdl-det-body').innerHTML = '';
   try {
@@ -11168,6 +11200,7 @@ async function mdlRemoverArquivo(id, tipo, fileId) {
 async function mdlExcluirModelo() {
   const d = mdlProjetoAtual;
   if (!d || !d.projeto) return;
+  if (ehPerfilModelagem()) return; // o botão já fica escondido; aqui é o segundo freio
   const titulo = d.projeto.title || '(sem nome)';
   const conta = (arr, um, muitos) => (arr || []).length ? `${arr.length} ${arr.length > 1 ? muitos : um}` : null;
   const naLista = (mdlProjetos || []).find(p => p.id === d.projeto.id);
@@ -11231,8 +11264,9 @@ const _hashKey = location.hash.replace('#', '');
 const _ESPECIAIS = { confeccao: '__confeccao__', precos: '__precos__', financeiro: '__financeiro__', trafego: '__trafego__', fluxo: '__fluxo__', atendimento: '__atendimento__', modelagem: '__modelagem__', corte: '__corte__', costura: '__costura__' };
 modeloAtual = _ESPECIAIS[_hashKey] || ((_hashKey && MODELOS[_hashKey]) ? _hashKey : '__dashboard__');
 // Perfis de oficina não escolhem tela: entram direto na aba deles e ficam nela
-if (ehPerfilCorte())   modeloAtual = '__corte__';
-if (ehPerfilCostura()) modeloAtual = '__costura__';
+if (ehPerfilCorte())     modeloAtual = '__corte__';
+if (ehPerfilCostura())   modeloAtual = '__costura__';
+if (ehPerfilModelagem()) modeloAtual = '__modelagem__';
 // #macacao-amplo na URL não pode furar o cadeado da confecção
 if (MODELOS[modeloAtual] && !confLiberada()) modeloAtual = '__confeccao__';
 buildSidebar();
@@ -11280,10 +11314,10 @@ const _renderInicial = () => {
 carregarTodosNuvem().then(() => carregarPedidosShopify()).then(async () => {
   // Baixa de estoque dos pedidos que a Shopify já processou (inclusive o atraso de hoje).
   // Os perfis de oficina não mexem em estoque: eles só leem fichas.
-  if (!ehPerfilOficina()) await baixaImediataDeProcessados().catch(() => {});
+  if (!ehPerfilDeUmaAba()) await baixaImediataDeProcessados().catch(() => {});
 
   _renderInicial();
-  if (!ehPerfilOficina()) verificarAvisosStatus();
+  if (!ehPerfilDeUmaAba()) verificarAvisosStatus();
   crtSincronizarPrioridade().catch(() => {}); // solta: a ordem do corte não segura a tela
   cstFatSincronizar().catch(() => {});
   crtFatSincronizar().catch(() => {}); // idem para as levas que saíram do corte        // idem: fecha o valor das levas que saíram da costura
@@ -11296,8 +11330,8 @@ carregarTodosNuvem().then(() => carregarPedidosShopify()).then(async () => {
 setInterval(() => {
   carregarPedidosShopify().then(async () => {
     // Baixa de estoque na hora: se algum pedido foi processado desde o ciclo anterior,
-    // a peça sai do estoque agora, não às 16h. Os perfis de oficina nunca dão baixa.
-    if (!ehPerfilOficina()) await baixaImediataDeProcessados().catch(() => {});
+    // a peça sai do estoque agora, não às 16h. Oficina e modelagem nunca dão baixa.
+    if (!ehPerfilDeUmaAba()) await baixaImediataDeProcessados().catch(() => {});
     crtSincronizarPrioridade().catch(() => {}); // recalcula a ordem do corte e grava se mudou
     crtArquivarConcluidas().catch(() => {});    // leva que saiu do corte vira histórico
     cstFatSincronizar().catch(() => {});

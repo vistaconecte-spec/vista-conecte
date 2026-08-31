@@ -151,7 +151,10 @@ console.log('\n6) A oficina (corte e costura) continua sem acesso a pedido/clien
 const mid = readFileSync(join(raiz, 'functions/api/_middleware.js'), 'utf8');
 // A allowlist deixou de ser vazia em 29/08/2026 (o molde), mas continua sendo ALLOWLIST:
 // endpoint novo nasce bloqueado para a oficina, e cada rota liberada diz quais métodos.
-const liberadas = [...mid.matchAll(/\['(\/api\/[a-z-]+)', new Set\(\[([^\]]*)\]\)\]/g)]
+// Desde 31/08/2026 o middleware tem uma segunda allowlist (a da modelista), então o que
+// interessa aqui é SÓ o bloco da oficina — por isso o recorte antes do matchAll.
+const blocoOficina = /const OFICINA_LIBERA = new Map\(\[([\s\S]*?)\]\);/.exec(mid)[1];
+const liberadas = [...blocoOficina.matchAll(/\['(\/api\/[a-z-]+)', new Set\(\[([^\]]*)\]\)\]/g)]
   .map(m => [m[1], m[2].replace(/['\s]/g, '').split(',').filter(Boolean)]);
 ok('a oficina só alcança o molde — nada de pedido, cliente ou preço',
    liberadas.map(([r]) => r).sort(), ['/api/modelagem-storage', '/api/molde']);
@@ -160,8 +163,9 @@ ok('e só para LEITURA (sem isso, abrir a rota abriria o POST que ela atende)',
 ok('o detalhe cheio da modelagem continua fora (é ele que carrega o valor da modelista)',
    liberadas.some(([r]) => r === '/api/modelagem-projeto'), false);
 ok('e o bloqueio vale para os dois perfis, não só para o corte',
-   /const OFICINA = new Set\(\['corte', 'costura'\]\);/.test(mid)
-   && /const metodos = OFICINA_LIBERA\.get\(pathname\);/.test(mid)
+   /\['corte', OFICINA_LIBERA\]/.test(mid)
+   && /\['costura', OFICINA_LIBERA\]/.test(mid)
+   && /const metodos = libera\.get\(pathname\);/.test(mid)
    && /if \(!metodos \|\| !metodos\.has\(request\.method\)\) return nega\('Perfil sem acesso a esta rota', 403\);/.test(mid), true);
 // Sem os comentários: eles citam de propósito o que o CÓDIGO não pode ter.
 const molde = readFileSync(join(raiz, 'functions/api/molde.js'), 'utf8')
