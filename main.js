@@ -398,7 +398,7 @@ function iniciarRealtime() {
       saveLocal('vc:' + row.id, row.dados);
       // Re-renderiza a tela atual para refletir a mudança vinda de outro dispositivo
       if (modeloAtual === '__dashboard__') renderDashboard();
-      else if (!estEditado && !prodEditado && !prod2Editado && !cfgEditado) renderModelo(modeloAtual);
+      else renderModeloSeOcioso();
     })
     .subscribe();
 }
@@ -426,7 +426,7 @@ async function sincronizarNuvem() {
     });
     if (mudou) {
       if (modeloAtual === '__dashboard__') renderDashboard();
-      else if (!estEditado && !prodEditado && !prod2Editado && !cfgEditado) renderModelo(modeloAtual);
+      else renderModeloSeOcioso();
     }
   } catch (e) {}
 }
@@ -462,6 +462,9 @@ let estEditado  = false;
 let prodEditado = false;
 let prod2Editado = false; // 2ª leva de produção
 let cfgEditado  = false;
+// Ela mexeu no dropdown de status agora? É o que autoriza salvarModelo a tirar a etapa da
+// leva do <select> — sem isso, vale sempre o que está salvo (ver TRAVA DO STATUS).
+let statusTocado = false;
 // Marca o último salvamento LOCAL (relógio local). Durante a carência logo após,
 // a sincronização não sobrescreve o modelo aberto (evita corrida com o envio à nuvem).
 let _ultimoSaveTs = 0;
@@ -565,8 +568,20 @@ function marcarCfgEditado()  { cfgEditado  = true; mostrarBtnSalvar(); autoSave(
 // uma rodada da outra no faturamento do corte e da costura).
 function marcarStatusEditado() {
   cfgEditado = true;
+  statusTocado = true;
   clearTimeout(saveTimer);
   salvarModelo();
+}
+
+// Redesenho AUTOMÁTICO da tela do modelo (timer, realtime, baixa de envio): só pode acontecer
+// com a tela ociosa. É uma função ÚNICA de propósito — a guarda já divergiu uma vez: o ciclo
+// de 1 minuto ficou sem `prod2Editado`/`cfgEditado` e repintava no meio da edição, devolvendo
+// o status escolhido ao valor antigo (01/09/2026). Quem redesenha sozinho chama ISTO. Render
+// direto só para o que vem de um clique dela, onde redesenhar é o efeito esperado.
+function renderModeloSeOcioso() {
+  if (estEditado || prodEditado || prod2Editado || cfgEditado) return;
+  if (!MODELOS[modeloAtual]) return;
+  renderModelo(modeloAtual);
 }
 
 function salvarModelo() {
@@ -599,8 +614,23 @@ function salvarModelo() {
     }
   });
   const existente  = loadLocal('vc:' + modeloAtual) || {};
-  const statusVal  = document.getElementById('prod-status').value;
-  const statusVal2 = document.getElementById('prod2-status')?.value || '';
+  // ── TRAVA DO STATUS ────────────────────────────────────────────────────────────────────
+  // O status é o único campo desta tela que muda a ETAPA da leva, e o único que um redesenho
+  // consegue reverter sozinho: vem de um <select>, que qualquer render repinta com o valor
+  // salvo. Em 01/09/2026 foi assim que levas mandadas para a costura voltaram para o corte.
+  // Por isso ele só é aceito do DOM quando ela ACABOU de mexer no dropdown (statusTocado) ou
+  // quando o DOM já concorda com o que está salvo. Nos demais casos vale o salvo — inclusive
+  // quando o <select> nem está na tela, onde antes virava string vazia e apagava a etapa.
+  // Efeito: mesmo que um redesenho automático novo apareça sem as travas de edição, ele não
+  // consegue mais mandar uma leva de volta para a etapa anterior.
+  const statusDoDOM = (idSel, salvo) => {
+    const sel = document.getElementById(idSel);
+    const atual = salvo || '';
+    if (!sel) return atual;
+    return (statusTocado || sel.value === atual) ? sel.value : atual;
+  };
+  const statusVal  = statusDoDOM('prod-status',  existente.status);
+  const statusVal2 = statusDoDOM('prod2-status', existente.status2);
   const prod2Final = Object.keys(prod2).length ? prod2 : (existente.prod2 || null);
   const data = {
     est, prod,
@@ -639,6 +669,7 @@ function salvarModelo() {
   prodEditado = false;
   prod2Editado = false;
   cfgEditado  = false;
+  statusTocado = false; // a autorização vale para ESTE save, não para os próximos
   esconderBtnSalvar();
   saveLocal('vc:' + modeloAtual, data);
   _ultimoSaveTs = Date.now();   // inicia carência: protege o modelo aberto até a nuvem confirmar
@@ -10253,7 +10284,7 @@ async function _baixaImediataDeProcessados() {
     // sincronizações: redesenhar no meio da edição devolve o dropdown de status (e o que
     // estiver digitado e ainda não salvo) ao valor antigo. A tabela de estoque atualiza no
     // próximo redesenho, assim que ela terminar de mexer.
-    else if (!estEditado && !prodEditado && !prod2Editado && !cfgEditado && MODELOS[modeloAtual]) renderModelo(modeloAtual);
+    else renderModeloSeOcioso();
   }
 }
 
@@ -11363,7 +11394,7 @@ setInterval(() => {
     // meio da edição: o STATUS escolhido no dropdown voltava para o valor salvo, e o save
     // seguinte gravava esse valor velho — era isto que mandava a leva da costura de volta
     // para o corte (relatado em 01/09/2026).
-    else if (!estEditado && !prodEditado && !prod2Editado && !cfgEditado && MODELOS[modeloAtual]) renderModelo(modeloAtual); // só modelos reais; pula precos/financeiro
+    else renderModeloSeOcioso(); // só modelos reais e só com a tela ociosa
   }).catch(() => {});
 }, 1 * 60 * 1000);
 
