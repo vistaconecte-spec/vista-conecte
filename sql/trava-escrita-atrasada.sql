@@ -1,5 +1,5 @@
 -- ============================================================================
--- TRAVA CONTRA ESCRITA ATRASADA  —  vc_modelos
+-- TRAVA CONTRA ESCRITA ATRASADA  —  vc_modelos          (versão 2 — 02/09/2026)
 -- ============================================================================
 -- POR QUE ISTO EXISTE
 --
@@ -31,10 +31,35 @@
 --   • documentos de config    — financeiro, precificação, histórico etc. nem
 --                               entram na regra (não têm esses campos).
 --
+-- O QUE MUDOU NA VERSÃO 2
+--
+-- A v1 quebrava numa linha real: o `conjunto-peace` tinha `updated_at` gravado
+-- como NÚMERO (1787343044041) em vez de data. A conversão estourava e o banco
+-- recusava QUALQUER gravação naquele modelo — trava boa virando defeito. Agora
+-- todo carimbo passa por `vc_ts_ou_nulo`, que devolve NULL quando o valor não é
+-- uma data legível. Carimbo ilegível = desconhecido = não bloqueia nada. A trava
+-- só age quando tem certeza, que é como uma trava tem que se comportar.
+--
 -- COMO APLICAR
---   Supabase → SQL Editor → cole tudo → Run.
+--   Supabase → SQL Editor → cole tudo → Run.  Pode rodar por cima da v1.
 --   Para remover: DROP TRIGGER trg_vc_modelos_sem_escrita_atrasada ON vc_modelos;
 -- ============================================================================
+
+-- Converte texto em data SEM estourar: valor ilegível vira NULL.
+create or replace function vc_ts_ou_nulo(txt text)
+returns timestamptz
+language plpgsql
+immutable
+as $$
+begin
+  if txt is null or txt = '' then
+    return null;
+  end if;
+  return txt::timestamptz;
+exception when others then
+  return null;   -- número solto, texto qualquer, data fora de faixa: desconhecido
+end;
+$$;
 
 create or replace function vc_bloqueia_escrita_atrasada()
 returns trigger
@@ -52,10 +77,10 @@ begin
     return new;
   end if;
 
-  upd_velho := (old.dados->>'updated_at')::timestamptz;
-  upd_novo  := (new.dados->>'updated_at')::timestamptz;
+  upd_velho := vc_ts_ou_nulo(old.dados->>'updated_at');
+  upd_novo  := vc_ts_ou_nulo(new.dados->>'updated_at');
 
-  -- Sem updated_at nos dois lados não dá para saber a ordem: deixa passar.
+  -- Sem updated_at legível nos dois lados não dá para saber a ordem: deixa passar.
   if upd_velho is null or upd_novo is null then
     return new;
   end if;
@@ -68,10 +93,11 @@ begin
 
   foreach carimbo in array array['status_at', 'status2_at', 'prod_at', 'prod2_at', 'est_at']
   loop
-    velho_ts := (old.dados->>carimbo)::timestamptz;
-    novo_ts  := (new.dados->>carimbo)::timestamptz;
+    velho_ts := vc_ts_ou_nulo(old.dados->>carimbo);
+    novo_ts  := vc_ts_ou_nulo(new.dados->>carimbo);
 
-    -- NULL é fim de rodada (o app zera o carimbo de propósito), não é regressão.
+    -- NULL é fim de rodada (o app zera o carimbo de propósito) ou valor ilegível:
+    -- nos dois casos não há regressão comprovada, então não bloqueia.
     if velho_ts is not null and novo_ts is not null and novo_ts < velho_ts then
       raise exception
         'vc_modelos[%]: escrita recusada — % voltaria de % para %. Escrita nova com conteudo velho (aba desatualizada). Recarregue o painel (Ctrl+F5) nesse aparelho.',
