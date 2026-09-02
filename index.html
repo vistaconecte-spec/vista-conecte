@@ -282,7 +282,7 @@
         <div class="prod-bar">
           <div class="prod-bar-left" style="flex-direction:column;align-items:flex-start">
             <div style="display:flex;gap:12px;align-items:flex-end">
-              <div class="ctrl-g"><div class="ctrl-l">STATUS</div><select id="prod-status" onchange="marcarCfgEditado()"><option value="">— Sem status —</option><option>Comprando tecido</option><option>Em corte</option><option>Em costura</option></select></div>
+              <div class="ctrl-g"><div class="ctrl-l">STATUS</div><select id="prod-status" onchange="marcarStatusEditado()"><option value="">— Sem status —</option><option>Comprando tecido</option><option>Em corte</option><option>Em costura</option></select></div>
               <div class="ctrl-g"><div class="ctrl-l">PRAZO</div><input type="date" id="prod-prazo" onchange="marcarCfgEditado()"></div>
             </div>
             <div id="conjuntos-linkados" style="display:none;padding:5px 10px;background:#f5f0e8;border-radius:6px;font-size:11px;color:var(--text-sec);line-height:1.5"></div>
@@ -328,7 +328,7 @@
         <!-- Barra de status da 2ª leva: acima da linha, igual à barra de status principal -->
         <div class="prod-bar" id="leva2-bar" style="display:none;border-left:4px solid #7C3AED">
           <div class="prod-bar-left">
-            <div class="ctrl-g"><div class="ctrl-l" style="color:#7C3AED">STATUS · 2ª LEVA</div><select id="prod2-status" onchange="marcarCfgEditado()"><option value="">— Sem status —</option><option>Comprando tecido</option><option>Em corte</option><option>Em costura</option></select></div>
+            <div class="ctrl-g"><div class="ctrl-l" style="color:#7C3AED">STATUS · 2ª LEVA</div><select id="prod2-status" onchange="marcarStatusEditado()"><option value="">— Sem status —</option><option>Comprando tecido</option><option>Em corte</option><option>Em costura</option></select></div>
             <div class="ctrl-g"><div class="ctrl-l" style="color:#7C3AED">PRAZO · 2ª LEVA</div><input type="date" id="prod2-prazo" onchange="marcarCfgEditado()"></div>
           </div>
         </div>
@@ -990,7 +990,7 @@
   </div>
 </div>
 <script src="data.js?v=2026081912"></script>
-<script src="main.js?v=2026083101"></script>
+<script src="main.js?v=2026090101"></script>
 <script async src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js" onload="initSupabase()"></script>
 </body>
 </html>

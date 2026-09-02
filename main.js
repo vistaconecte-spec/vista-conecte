@@ -557,6 +557,18 @@ function marcarProdEditado() { prodEditado = true; salvarLocalImediato(); render
 function marcarProd2Editado(){ prod2Editado = true; salvarLocalImediato(); renderResumoProducao(); mostrarBtnSalvar(); }
 function marcarCfgEditado()  { cfgEditado  = true; mostrarBtnSalvar(); autoSave(); }
 
+// Status da leva (dropdown "Em corte"/"Em costura"): grava NA HORA, sem a espera de 800ms do
+// autoSave. Escolher etapa é um clique só — não há o que agrupar como acontece na digitação
+// dos campos de texto — e durante essa espera o valor existia apenas no DOM: qualquer
+// redesenho da tela o devolvia ao valor antigo e a leva "voltava para o corte". Salvando já,
+// o carimbo status_at/status2_at sai pelo caminho normal de salvarModelo (é ele que separa
+// uma rodada da outra no faturamento do corte e da costura).
+function marcarStatusEditado() {
+  cfgEditado = true;
+  clearTimeout(saveTimer);
+  salvarModelo();
+}
+
 function salvarModelo() {
   const est = {}, prod = {};
   const tu = MODELOS[modeloAtual] && MODELOS[modeloAtual].tamanhoUnico;
@@ -715,12 +727,14 @@ function buildSidebar() {
   dashItem.onclick = () => {
     document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
     dashItem.classList.add('active');
-    // Salva edições pendentes antes de ir ao dashboard
-    if (modeloAtual !== '__dashboard__' && (estEditado || prodEditado || prod2Editado || cfgEditado)) {
+    // Salva edições pendentes antes de ir ao dashboard. `MODELOS[modeloAtual]` é obrigatório
+    // (mesma guarda de abrirCorte/abrirCostura): sem ela, uma flag esquecida numa tela que não
+    // é modelo faria salvarModelo gravar dado de modelo em cima de vc:__corte__ / __financeiro__.
+    if (MODELOS[modeloAtual] && (estEditado || prodEditado || prod2Editado || cfgEditado)) {
       clearTimeout(saveTimer);
       salvarModelo();
     }
-    estEditado = false; prodEditado = false; prod2Editado = false;
+    estEditado = false; prodEditado = false; prod2Editado = false; cfgEditado = false;
     esconderBtnSalvar();
     modeloAtual = '__dashboard__';
     location.hash = ''; // limpa hash ao voltar ao início
@@ -10235,7 +10249,11 @@ async function _baixaImediataDeProcessados() {
   if (pecas.length) {
     _ultimaBaixaAuto = { quando: new Date().toISOString(), pedidos: numeros, pecas };
     if (modeloAtual === '__dashboard__') renderDashboard();
-    else if (MODELOS[modeloAtual]) renderModelo(modeloAtual);
+    // Esta baixa roda sozinha no ciclo de 1 minuto, então vale a MESMA guarda das
+    // sincronizações: redesenhar no meio da edição devolve o dropdown de status (e o que
+    // estiver digitado e ainda não salvo) ao valor antigo. A tabela de estoque atualiza no
+    // próximo redesenho, assim que ela terminar de mexer.
+    else if (!estEditado && !prodEditado && !prod2Editado && !cfgEditado && MODELOS[modeloAtual]) renderModelo(modeloAtual);
   }
 }
 
@@ -11340,7 +11358,12 @@ setInterval(() => {
     else if (modeloAtual === '__costura__') renderCostura(); // só leitura: nada digitado para perder
       else if (modeloAtual === '__dashboard__') renderDashboard();
     else if (modeloAtual === '__confeccao__' && confLiberada()) renderConfeccao(); // atualiza os selos de etapa do catálogo
-    else if (!estEditado && !prodEditado && MODELOS[modeloAtual]) renderModelo(modeloAtual); // só modelos reais; pula precos/financeiro
+    // MESMA proteção do ciclo de 15s (sincronizarNuvem): prod2Editado e cfgEditado também
+    // seguram o redesenho. Faltavam os dois aqui, e o ciclo de 1 minuto repintava a tela no
+    // meio da edição: o STATUS escolhido no dropdown voltava para o valor salvo, e o save
+    // seguinte gravava esse valor velho — era isto que mandava a leva da costura de volta
+    // para o corte (relatado em 01/09/2026).
+    else if (!estEditado && !prodEditado && !prod2Editado && !cfgEditado && MODELOS[modeloAtual]) renderModelo(modeloAtual); // só modelos reais; pula precos/financeiro
   }).catch(() => {});
 }, 1 * 60 * 1000);
 
