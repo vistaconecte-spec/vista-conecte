@@ -24,7 +24,7 @@ const PRODUCT_MAP = {
   'Conjunto Camiseta Oversized Verde Militar + Mini Saia Canelada Preta': 'conjunto-camiseta-mini-saia', 'Conjunto Oversized Verde Militar + Mini Saia Canelada': 'conjunto-camiseta-mini-saia',
   'Conjunto Canguru Longo': 'conjunto-canguru-longo', 'Canguru Longo': 'conjunto-canguru-longo',
   'Conjunto Saia Midi Fenda Frontal + Oversized': 'conjunto-saia-midi-oversized', 'Conjunto Calça Bolso Frontal Offwhite com Camiseta Oversized': 'conjunto-calca-bolso-camiseta',
-  'Conjunto Cozy': 'conjunto-cozy', 'Conjunto Mood': 'conjunto-mood',
+  'Conjunto Cozy': 'conjunto-cozy', 'Conjunto Mood': 'conjunto-mood', 'Conjunto Good': 'conjunto-good',
   'Calça Moletom Pantalona': 'calca-pantalona', 'Calça Pantalona Moletom': 'calca-pantalona', 'Calça Pantalona': 'calca-pantalona-viscolycra',
   'Calça Flare Canelada': 'calca-flare', 'Calça Peace': 'calca-peace', 'Calça Bolso Frontal': 'calca-bolso-frontal',
   'Casaco Sherpa com Capuz': 'casaco-sherpa-capuz', 'Casaco Sherpa': 'casaco-sherpa', 'Casaco Pele Persa Xadrez': 'casaco-pele-persa',
@@ -45,6 +45,8 @@ const PRODUCT_MAP = {
 const PESO_G = {
   'casaco-sherpa': 900, 'casaco-sherpa-capuz': 900, 'casaco-pele-persa': 900, 'sherpa-ziper-bolsos': 900, 'carneirinho-cropped': 600,
   'conjunto-cozy': 900, 'conjunto-mood': 900, 'conjunto-wide': 900, 'conjunto-calca-pantalona-moletom': 900, 'conjunto-calca-pantalona-cropped': 800, 'conjunto-calca-flare-moletom': 800, 'conjunto-canguru-longo': 900, 'conjunto-canelado': 700, 'conjunto-pantalona-blusa': 700, 'conjunto-moletom-saia-midi': 700, 'conjunto-peace': 600, 'conjunto-boho': 600,
+  // Short + Regata em moletom careca — mais leve que os conjuntos de moletom felpado
+  'conjunto-good': 500,
   'conjunto-regata-mini-saia': 450, 'conjunto-camiseta-mini-saia': 450, 'cropped-mini-saia': 400, 'conjunto-saia-midi-oversized': 450, 'conjunto-calca-bolso-camiseta': 600,
   'moletom-gola-alta': 500, 'moletom-ziper-bolsos': 500, 'canguru-amplo': 500,
   'calca-pantalona': 400, 'calca-basica-moletom': 400, 'calca-peace': 400, 'calca-bolso-frontal': 400, 'calca-flare': 350, 'calca-pantalona-viscolycra': 350,

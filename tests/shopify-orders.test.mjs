@@ -167,5 +167,30 @@ Object.entries(ITENS_MANUAIS).forEach(([, pecas]) => {
   });
 });
 
+console.log('');
+console.log('10) Conjunto Good (Short + Regata em moletom careca)');
+// #8991 (02/09/2026): o produto existia na loja mas não no cadastro do sistema — o item
+// caía em "produto não mapeado" e o pedido ficava fora da conta de produção. Cores e grade
+// são as da loja: Preto e Vermelho, PP–GG.
+ok('#8991: Conjunto Good + "Preto / G"', parse('Conjunto Good', 'Preto / G'),
+   { modelo: 'conjunto-good', cor: 'Preto', tam: 3 });
+ok('a cor vem da variante, não de regra fixa', parse('Conjunto Good', 'Vermelho / PP'),
+   { modelo: 'conjunto-good', cor: 'Vermelho', tam: 0 });
+ok('as três chaves existem no data.js',
+   ['conjunto-good', 'short-good', 'regata-good'].every(k => !!MODELOS[k]), true);
+// O conjunto só entra na produção se distribuir para as peças (senão vira peça fantasma que
+// ninguém corta): quem manda nisso é o CONJUNTO_PECAS do main.js.
+const SRC_MAIN = readFileSync(join(raiz, 'main.js'), 'utf8');
+const INI_CP = SRC_MAIN.indexOf('const CONJUNTO_PECAS = {');
+const CONJ_PECAS = new Function(SRC_MAIN.slice(INI_CP, SRC_MAIN.indexOf('};', INI_CP) + 2)
+  + '; return CONJUNTO_PECAS;')();
+ok('o conjunto distribui para as DUAS peças', CONJ_PECAS['conjunto-good'], ['short-good', 'regata-good']);
+['short-good', 'regata-good'].forEach(k => {
+  ok(`${k}: cores batem com as da loja`, MODELOS[k].cores, ['Preto', 'Vermelho']);
+  ok(`${k}: tecido é o moletom careca`, MODELOS[k].tecido, 'Moletom Careca');
+  ok(`${k}: toda cor da loja tem linha em aberto{}`,
+     ['Preto', 'Vermelho'].every(c => Array.isArray(MODELOS[k].aberto[c])), true);
+});
+
 console.log(`\n${falhas === 0 ? '✅ TODOS OS TESTES PASSARAM' : '❌ ' + falhas + ' FALHA(S)'} — ${total - falhas}/${total}\n`);
 process.exit(falhas === 0 ? 0 : 1);

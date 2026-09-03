@@ -52,6 +52,7 @@ const ALIASES = [
   [/conjunto.*canguru/, 'conjunto-canguru-longo'],
   [/conjunto.*cozy/, 'conjunto-cozy'],
   [/conjunto.*mood/, 'conjunto-mood'],
+  [/conjunto.*good/, 'conjunto-good'],
   [/conjunto.*peace/, 'conjunto-peace'],
   [/conjunto.*boho/, 'conjunto-boho'],
   [/conjunto.*regata.*mini.*saia/, 'conjunto-regata-mini-saia'],

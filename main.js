@@ -10106,6 +10106,8 @@ const CONJUNTO_PECAS = {
   'cropped-mini-saia':                ['cropped-canelado', 'mini-saia-canelada'],
   // Canguru Longo distribui para Canguru Amplo + Calça Básica Moletom
   'conjunto-canguru-longo':           ['canguru-amplo', 'calca-basica-moletom'],
+  // Short + Regata em moletom careca (separado em 03/09/2026)
+  'conjunto-good':                    ['short-good', 'regata-good'],
 };
 
 // Cores COMBINADAS: a variante do conjunto descreve as duas peças de uma vez

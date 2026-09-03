@@ -40,6 +40,11 @@ const MODELOS = {
   'conjunto-calca-pantalona-cropped':{nome:'Conjunto Calça Pantalona + Cropped Moletom',tecido:'Moletom',consumo:2.5,preco:27.5,componentes:'',obs:'',cores:['Cinza','Preto','Vermelho','Marrom'],tamanhos:['PP','P','M','G','GG','G1'],aberto:{'Cinza':[0,0,0,0,0],'Preto':[0,0,0,0,0],'Vermelho':[0,0,0,0,0],'Marrom':[0,0,0,0,0]}},
   'conjunto-cozy':{nome:'Conjunto Cozy',tecido:'Moletom',consumo:3.1,preco:27.5,componentes:'',obs:'Calça Pantalona Moletom + Moletom Zíper com Bolsos. Bordô (Marsala), Preto e Marrom.',cores:['Marsala','Preto','Marrom','Cinza'],aberto:{'Marsala':[0,0,0,0,0],'Preto':[0,0,0,0,0],'Marrom':[0,0,0,0,0],'Cinza':[0,0,0,0,0]}},
   'conjunto-mood':{nome:'Conjunto Mood',tecido:'Moletom',consumo:2.8,preco:27.5,componentes:'',obs:'Moletom Zíper com Bolsos + Calça Básica Moletom (reta). Marrom e Marsala.',cores:['Marrom','Marsala'],aberto:{'Marrom':[0,0,0,0,0],'Marsala':[0,0,0,0,0]}},
+  // Conjunto Good = Short Good + Regata Good, em moletom CARECA (não é o moletom comum).
+  // Separado em peças a pedido da Bárbara em 03/09/2026 — o pedido #8991 caía em
+  // "produto não mapeado" e ficava fora da conta de produção. Cores e grade vêm da loja
+  // (Preto e Vermelho, PP–GG). Consumo/preço são a SOMA das duas peças e estão estimados.
+  'conjunto-good':{nome:'Conjunto Good',tecido:'Moletom Careca',consumo:1.7,preco:27.5,componentes:'',obs:'Short Good + Regata Good, em moletom careca. Consumo/preço estimados — ajustar com o dado real.',cores:['Preto','Vermelho'],aberto:{'Preto':[0,0,0,0,0],'Vermelho':[0,0,0,0,0]}},
   'conjunto-moletom-saia-midi':{nome:'Conjunto Moletom Gola Alta + Saia Midi',tecido:'Moletom/Canelado',consumo:2.5,preco:44,componentes:'',obs:'',cores:['Preto','Marrom'],aberto:{'Preto':[0,0,0,0,0],'Marrom':[0,0,0,0,0]}},
   'conjunto-moletom-short-bolso':{nome:'Conjunto Moletom Gola Alta + Short Bolso Frontal',tecido:'Moletom',consumo:2.9,preco:27.5,componentes:'',obs:'Moletom Gola Alta + Calça/Short Bolso Frontal. Preto.',cores:['Preto'],aberto:{'Preto':[0,0,0,0,0]}},
 'conjunto-pantalona-blusa':{nome:'Conjunto Pantalona + Blusa Canelada',tecido:'Moletom/Canelado',consumo:2.5,preco:44,componentes:'',obs:'',cores:['Nude','Preto'],aberto:{'Nude':[0,0,0,0,0],'Preto':[0,0,0,0,0]}},
@@ -65,6 +70,10 @@ const MODELOS = {
   // ajustar quando tiver o dado real de cada peça. Grade vai até G1, igual à do conjunto.
   'calca-boho':{nome:'Calça Boho',tecido:'Viscose Est.',consumo:1.5,preco:18,componentes:'2 Frentes – 2 Costas – 1 Cós – 2 Bolsos Frontais',obs:'Corte reto, bolsos frontais amplos, cós liso na frente e ajustado atrás. Consumo/preço estimados (divididos do conjunto) — ajustar com o dado real.',cores:['Nude','Mescla','Marinho'],tamanhos:['PP','P','M','G','GG','G1'],aliasCores:{'Cinza':'Mescla'},aberto:{'Nude':[0,0,0,0,0,0],'Mescla':[0,0,0,0,0,0],'Marinho':[0,0,0,0,0,0]}},
 
+  // Peça de baixo do Conjunto Good (moletom CARECA). Consumo e preço de costura estimados
+  // pelo padrão das peças de moletom do cadastro — ajustar quando vier o dado real.
+  'short-good':{nome:'Short Good',tecido:'Moletom Careca',consumo:0.8,preco:27.5,componentes:'',obs:'Peça do Conjunto Good. Moletom careca. Consumo/preço estimados — ajustar com o dado real.',cores:['Preto','Vermelho'],aberto:{'Preto':[0,0,0,0,0],'Vermelho':[0,0,0,0,0]}},
+
   // ── CASACOS ───────────────────────────────────────────────────────────────
   'casaco-sherpa':{nome:'Casaco Sherpa',tecido:'Sherpa',consumo:1.8,preco:35,componentes:'',obs:'',cores:['Preto'],aberto:{'Preto':[0,0,0,0,0]}},
   'casaco-sherpa-capuz':{nome:'Casaco Sherpa com Capuz',tecido:'Sherpa',consumo:2.0,preco:40,componentes:'',obs:'Preto: pedido manual personalizado',cores:['Telha','Vermelho','Preto'],aberto:{'Telha':[0,0,0,0,0],'Vermelho':[0,0,0,0,0],'Preto':[0,0,0,0,0]}},
@@ -88,6 +97,9 @@ const MODELOS = {
   // Par da 'calca-boho' — as duas juntas formam o Conjunto Boho.
   'blusa-boho':{nome:'Blusa Boho',tecido:'Viscose Est.',consumo:1.0,preco:12,componentes:'2 Frentes – 1 Costas',obs:'Modelagem despojada, ombro levemente caído, recortes frontais. Consumo/preço estimados (divididos do conjunto) — ajustar com o dado real.',cores:['Nude','Mescla','Marinho'],tamanhos:['PP','P','M','G','GG','G1'],aliasCores:{'Cinza':'Mescla'},aberto:{'Nude':[0,0,0,0,0,0],'Mescla':[0,0,0,0,0,0],'Marinho':[0,0,0,0,0,0]}},
 
+  // Par do 'short-good' — as duas juntas formam o Conjunto Good.
+  'regata-good':{nome:'Regata Good',tecido:'Moletom Careca',consumo:0.9,preco:27.5,componentes:'',obs:'Peça do Conjunto Good. Moletom careca. Consumo/preço estimados — ajustar com o dado real.',cores:['Preto','Vermelho'],aberto:{'Preto':[0,0,0,0,0],'Vermelho':[0,0,0,0,0]}},
+
   // ── SAPATOS ───────────────────────────────────────────────────────────────
   'flat':{nome:'Flat',tecido:'',consumo:0,preco:0,componentes:'',obs:'',revenda:true,tamanhos:['34','35','36','37','38','39','40'],cores:['Preto','Off White'],aberto:{'Preto':[0,0,0,0,0,0,0],'Off White':[0,0,0,0,0,0,0]}},
   'sandalia-gladiadora':{nome:'Sandália Gladiadora',tecido:'',consumo:0,preco:0,componentes:'',obs:'Calçado / revenda (não produzido na confecção)',revenda:true,tamanhos:['34','35','36','37','38','39','40'],cores:['Preto','Nude/Marrom'],aliasCores:{'Bege':'Nude/Marrom'},aberto:{'Preto':[0,0,0,0,0,0,0],'Nude/Marrom':[0,0,0,0,0,0,0]}},
@@ -106,11 +118,11 @@ const SIDEBAR_ESTRUTURA = [
   {titulo:'MACACÕES',    modelos:['macacao-amplo','macacao-manga-longa']},
   {titulo:'MACAQUINHOS', modelos:['macaquinho-amplo','macaquinho-ruel']},
   {titulo:'VESTIDOS',    modelos:['vestido-frente-unica-longo','vestido-frente-unica-curto','vestido-amplo']},
-  {titulo:'CALÇAS',      modelos:['calca-pantalona','calca-basica-moletom','calca-pantalona-viscolycra','calca-flare','calca-peace','calca-bolso-frontal','calca-boho']},
+  {titulo:'CALÇAS',      modelos:['calca-pantalona','calca-basica-moletom','calca-pantalona-viscolycra','calca-flare','calca-peace','calca-bolso-frontal','calca-boho','short-good']},
   {titulo:'CASACOS',     modelos:['casaco-sherpa','casaco-sherpa-capuz','casaco-pele-persa','carneirinho-cropped','sherpa-ziper-bolsos']},
-  {titulo:'TOPS',        modelos:['camiseta-oversized','blusa-canelada-simples','blusa-canelada','regata-oversized','cropped-canelado','cropped-moletom','cropped-peace','cropped-frente-unica','blusa-boho']},
+  {titulo:'TOPS',        modelos:['camiseta-oversized','blusa-canelada-simples','blusa-canelada','regata-oversized','cropped-canelado','cropped-moletom','cropped-peace','cropped-frente-unica','blusa-boho','regata-good']},
   {titulo:'SAIAS',       modelos:['saia-midi','mini-saia-canelada']},
   {titulo:'SAPATOS',     modelos:['flat','sandalia-gladiadora']},
   {titulo:'OUTROS',      modelos:['moletom-gola-alta','moletom-ziper-bolsos','canguru-amplo']},
-  {titulo:'CONJUNTOS',   modelos:['conjunto-peace','conjunto-wide','conjunto-boho','conjunto-canelado','conjunto-calca-flare-moletom','conjunto-calca-flare-camiseta','conjunto-calca-pantalona-moletom','conjunto-calca-pantalona-cropped','conjunto-cozy','conjunto-mood','conjunto-moletom-saia-midi','conjunto-pantalona-blusa','conjunto-regata-mini-saia','conjunto-camiseta-mini-saia','cropped-mini-saia','conjunto-canguru-longo','conjunto-saia-midi-oversized','conjunto-calca-bolso-camiseta','conjunto-moletom-short-bolso']},
+  {titulo:'CONJUNTOS',   modelos:['conjunto-peace','conjunto-wide','conjunto-boho','conjunto-canelado','conjunto-calca-flare-moletom','conjunto-calca-flare-camiseta','conjunto-calca-pantalona-moletom','conjunto-calca-pantalona-cropped','conjunto-cozy','conjunto-mood','conjunto-moletom-saia-midi','conjunto-pantalona-blusa','conjunto-regata-mini-saia','conjunto-camiseta-mini-saia','cropped-mini-saia','conjunto-canguru-longo','conjunto-saia-midi-oversized','conjunto-calca-bolso-camiseta','conjunto-moletom-short-bolso','conjunto-good']},
 ];

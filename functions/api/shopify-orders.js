@@ -51,6 +51,7 @@ const PRODUCT_MAP = {
   'Conjunto Canguru Longo':                                 'conjunto-canguru-longo',
   'Conjunto Cozy':                                          'conjunto-cozy',
   'Conjunto Mood':                                          'conjunto-mood',
+  'Conjunto Good':                                          'conjunto-good',
   'Canguru Longo':                                          'conjunto-canguru-longo',
   'Conjunto Saia Midi Fenda Frontal + Oversized':           'conjunto-saia-midi-oversized',
   'Conjunto Calça Bolso Frontal Offwhite com Camiseta Oversized': 'conjunto-calca-bolso-camiseta',
