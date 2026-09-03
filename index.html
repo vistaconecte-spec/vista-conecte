@@ -163,7 +163,12 @@
         <div class="card" id="card-urgentes" style="border-left:3px solid #dc2626">
           <div class="card-header">
             <div class="card-title" style="color:#dc2626"><i class="ti ti-alert-triangle"></i> URGENTE — A PRODUZIR</div>
-            <span id="dash-urgentes-total" style="font-size:11px;font-weight:700;color:#dc2626"></span>
+            <div style="display:flex;align-items:center;gap:10px">
+              <span id="dash-urgentes-total" style="font-size:11px;font-weight:700;color:#dc2626"></span>
+              <!-- Comprar tecido de todos os urgentes de uma vez: cada modelo ganha uma leva
+                   com o que falta e vai para "Comprando tecido" (antes era modelo por modelo) -->
+              <button class="btn-outline" style="font-size:11px;padding:5px 12px" onclick="mandarUrgentesParaProducao()"><i class="ti ti-shopping-cart"></i> Mandar tudo p/ produção</button>
+            </div>
           </div>
           <div id="dash-urgentes"></div>
         </div>
@@ -990,7 +995,7 @@
   </div>
 </div>
 <script src="data.js?v=2026081912"></script>
-<script src="main.js?v=2026090102"></script>
+<script src="main.js?v=2026090301"></script>
 <script async src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js" onload="initSupabase()"></script>
 </body>
 </html>

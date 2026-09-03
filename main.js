@@ -5105,6 +5105,117 @@ async function mandarTudoParaCorte() {
   if (erros) alert(`${erros} modelo(s) não subiram para a nuvem agora — a mudança está neste aparelho e vai subir na próxima sincronização.`);
 }
 
+// ─── MANDAR OS URGENTES PARA PRODUÇÃO (comprar tecido de todos de uma vez) ───
+// O card URGENTE — A PRODUZIR mostra o que falta (Pedidos − Estoque − levas), mas colocar
+// isso em produção era abrir modelo por modelo, recalcular a leva e trocar o dropdown. Como
+// o tecido de todos é comprado numa ida só, a transferência também é uma só: cada modelo
+// urgente ganha uma leva com o que falta e o status "Comprando tecido".
+//
+// Qual leva recebe: a leva 1, se ela não estiver em produção; senão a 2ª leva, se estiver
+// livre. Modelo com AS DUAS levas já em produção fica de fora (não existe 3ª leva) e é
+// listado no aviso — ali a dona decide o que fazer com a leva que já está rodando.
+//
+// A quantidade gravada é a necessidade da leva escolhida (Pedidos − Estoque − OUTRA leva),
+// a mesma conta do botão "Recalcular" de dentro do modelo: o que a outra leva já cobre não
+// entra de novo, então o tecido não é comprado duas vezes.
+function urgentesParaProducao() {
+  const EM_PRODUCAO = ['Comprando tecido', 'Em corte', 'Em costura'];
+  const levas = [], bloqueados = [];
+  for (const [key, def] of Object.entries(MODELOS)) {
+    if (CONJUNTO_PECAS[key]) continue; // conjunto não produz: as peças dele já contam sozinhas
+    const saved = loadLocal('vc:' + key) || {};
+    const SZ    = tamanhosDe(def);
+    const tu    = !!def.tamanhoUnico;
+    const cores = coresDoModelo(def, saved);
+    const nrm   = o => ((o || []).map(v => v || 0)).concat(new Array(SZ.length).fill(0)).slice(0, SZ.length);
+    const nome  = saved.nome || def.nome;
+
+    // Falta líquida do modelo — exatamente o número que o card URGENTE mostra
+    let falta = 0;
+    cores.forEach(cor => {
+      falta += calcFaltaLiquido(nrm(def.aberto && def.aberto[cor]),
+                                nrm(saved.est && saved.est[cor]),
+                                prodTotalCor(saved, cor), tu);
+    });
+    if (falta === 0) continue;
+
+    const n = !EM_PRODUCAO.includes(saved.status)  ? 1
+            : !EM_PRODUCAO.includes(saved.status2) ? 2 : 0;
+    if (!n) { bloqueados.push(nome); continue; }
+
+    // Necessidade da leva que vai receber, descontando o que a outra leva já produz
+    const outraProd = n === 1 ? saved.prod2 : saved.prod;
+    const prod = {};
+    let total = 0;
+    cores.forEach(cor => {
+      const arr = necessidadeLeva(nrm(def.aberto && def.aberto[cor]),
+                                  nrm(saved.est && saved.est[cor]),
+                                  nrm(outraProd && outraProd[cor]), tu, SZ.length);
+      const t = arr.reduce((a, b) => a + b, 0);
+      if (t === 0) return;
+      prod[cor] = arr;
+      total += t;
+    });
+    if (total === 0) continue; // nada a gravar: leva já cobre tudo
+    levas.push({ key, nome, leva: n, prod, total, falta });
+  }
+  levas.sort((a, b) => b.falta - a.falta);
+  return { levas, bloqueados };
+}
+
+// Botão "Mandar tudo p/ produção" — card URGENTE — A PRODUZIR do painel. Grava modelo a
+// modelo (cada um é uma linha do Supabase) e só redesenha no fim.
+async function mandarUrgentesParaProducao() {
+  if (ehPerfilOficina()) return; // quem manda produzir é a dona; oficina só lê
+  const { levas, bloqueados } = urgentesParaProducao();
+  const fora = bloqueados.length
+    ? `\n\nFicam de fora (as duas levas já estão em produção): ${bloqueados.join(', ')}.`
+    : '';
+  if (!levas.length) {
+    alert(bloqueados.length
+      ? 'Nenhum modelo urgente pode receber leva nova — as duas levas já estão em produção em: '
+        + bloqueados.join(', ') + '.'
+      : 'Nenhuma peça urgente para mandar à produção.');
+    return;
+  }
+  const totalPecas = levas.reduce((s, l) => s + l.total, 0);
+  const lista = levas.map(l => `• ${l.nome}${l.leva === 2 ? ' (2ª leva)' : ''} — ${l.total} peças`).join('\n');
+  if (!confirm(`Mandar ${levas.length} modelo${levas.length > 1 ? 's' : ''} para produção — ${totalPecas} peças?\n\n${lista}\n\n`
+    + 'As quantidades entram na leva e o status vira "Comprando tecido" — os modelos passam a aparecer '
+    + 'no card COMPRANDO TECIDO e na Ficha de Compra.' + fora)) return;
+
+  const agora = new Date().toISOString();
+  let erros = 0;
+  for (const l of levas) {
+    const saved = loadLocal('vc:' + l.key) || {};
+    if (l.leva === 2) {
+      saved.leva2      = true; // sem isso a 2ª leva nem aparece na tela do modelo
+      saved.prod2      = { ...(saved.prod2 || {}), ...l.prod };
+      saved.prod2_at   = agora;
+      saved.status2    = 'Comprando tecido';
+      saved.status2_at = agora;
+    } else {
+      saved.prod      = { ...(saved.prod || {}), ...l.prod };
+      saved.prod_at   = agora;
+      saved.status    = 'Comprando tecido';
+      saved.status_at = agora;
+    }
+    if (modeloAtual === l.key) {
+      const sel = document.getElementById(l.leva === 2 ? 'prod2-status' : 'prod-status');
+      if (sel) sel.value = 'Comprando tecido';
+    }
+    saved.updated_at = new Date().toISOString();
+    saveLocal('vc:' + l.key, saved);
+    _ultimoSaveTs = Date.now(); // carência: o sync da nuvem não desfaz o que acabou de ser gravado
+    try { await salvarNuvem(l.key, saved); } catch (e) { erros++; }
+  }
+  buildSidebar();
+  verificarAvisosStatus();
+  if (modeloAtual === '__dashboard__')   renderDashboard();
+  else if (MODELOS[modeloAtual])         renderModelo(modeloAtual);
+  if (erros) alert(`${erros} modelo(s) não subiram para a nuvem agora — a mudança está neste aparelho e vai subir na próxima sincronização.`);
+}
+
 function abrirCorte(item) {
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   if (item) item.classList.add('active');
