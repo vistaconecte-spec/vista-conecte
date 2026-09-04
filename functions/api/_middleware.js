@@ -1,7 +1,12 @@
 // Cadeado único de /api/*. O Cloudflare Pages roda este middleware antes de
 // QUALQUER function em functions/api/, então os 85 endpoints ficam cobertos sem
 // editar nenhum deles — e um endpoint novo já nasce protegido.
-import { lerSessao } from '../_sessao.js';
+import { lerSessao, assinarSessao } from '../_sessao.js';
+
+// Sessão DESLIZANTE: o cookie vale 12h, mas quem está usando o app não pode ser posto para
+// fora no meio do dia. Quando falta menos que isto para vencer, a resposta já sai com um
+// cookie novo — 12h a partir de agora. Quem some por 12h continua tendo de digitar a senha.
+const RENOVA_QUANDO_FALTAR_MS = 6 * 3600e3;
 
 // Rotas que precisam responder sem sessão:
 //   login/logout/sessao  → são o próprio jeito de obter a sessão.
@@ -94,5 +99,19 @@ export async function onRequest(context) {
       if (MODELAGEM_NEGA_ACOES.has(acao)) return nega('Perfil sem acesso a esta ação', 403);
     }
   }
-  return next();
+  return renovarSeperto(await next(), sessao, env);
+}
+
+// Anexa o cookie renovado à resposta que a function já produziu. O `no-store` vai junto de
+// propósito: resposta com Set-Cookie não pode acabar num cache compartilhado.
+async function renovarSeperto(resp, sessao, env) {
+  if (!sessao || (sessao.exp - Date.now()) > RENOVA_QUANDO_FALTAR_MS) return resp;
+  try {
+    const token = await assinarSessao(sessao.perfil, env.SESSION_SECRET);
+    const nova = new Response(resp.body, resp);
+    nova.headers.append('Set-Cookie',
+      `vc_sessao=${token}; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=43200`);
+    nova.headers.set('Cache-Control', 'no-store');
+    return nova;
+  } catch (_) { return resp; }   // renovar é conforto, não pode derrubar a resposta
 }

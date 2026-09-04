@@ -9889,7 +9889,13 @@ async function carregarPedidosShopify() {
   if (ehPerfilDeUmaAba()) return;
   try {
     const res = await fetch('/api/shopify-orders');
-    if (!res.ok) return;
+    // Antes isto era `if (!res.ok) return;` — calado. Com a sessão de 12h vencida (aba
+    // deixada aberta no celular da noite para o dia) a chamada passava a dar 401 e os
+    // pedidos CONGELAVAM na última leitura boa: o estoque continuava sincronizando pelo
+    // Supabase (anon key, não precisa de sessão) e os pedidos ficavam de ontem. Resultado
+    // relatado em 04/09/2026: "no celular as informações estão todas diferentes".
+    if (res.status === 401 || res.status === 403) { sessaoExpirou(); return; }
+    if (!res.ok) { pedidosDesatualizados('o servidor respondeu ' + res.status); return; }
     const resp = await res.json();
     const data = resp.pedidos || resp; // API retorna { pedidos:{...}, ignorados:[...] }
     // Guarda ignorados para diagnóstico
@@ -9952,8 +9958,78 @@ async function carregarPedidosShopify() {
       }
     }
 
+    _pedidosLidosEm = Date.now();
+    pedidosEmDia();
     verificarLeituraPedidos();
-  } catch (_) {}
+  } catch (_) {
+    // Rede caiu no meio (4G do celular) — mesma regra: número velho na tela tem de avisar.
+    pedidosDesatualizados('sem conexão');
+  }
+}
+
+// ─── PEDIDOS PARADOS / SESSÃO VENCIDA ────────────────────────────────────────
+// Tudo que a tela mostra de pedido, produção a fazer e saldo vem de /api/shopify-orders.
+// Quando essa leitura falha, a tela NÃO fica em branco: ela continua exibindo a última
+// leitura que deu certo, que pode ser de horas atrás. Sem aviso, isso é indistinguível de
+// dado atual — e foi o que fez o celular e o computador mostrarem números diferentes.
+let _pedidosLidosEm = 0;      // horário da última leitura BOA
+let _sessaoAvisada  = false;  // não empilha faixa a cada ciclo de 1 minuto
+
+function pedidosDesatualizados(motivo) {
+  const desde = _pedidosLidosEm
+    ? 'Os números são da última leitura, às ' +
+      new Date(_pedidosLidosEm).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) + '.'
+    : 'Os pedidos ainda não foram lidos nenhuma vez neste aparelho.';
+  const el = document.getElementById('faixa-pedidos');
+  const html =
+    '<i class="ti ti-cloud-off"></i> <b>Pedidos não atualizaram</b> (' + motivo + '). ' + desde +
+    ' Pedidos em aberto, A Produzir e Saldo podem estar diferentes do computador.';
+  if (el) { el.innerHTML = html; return; }
+  const div = document.createElement('div');
+  div.id = 'faixa-pedidos';
+  div.style.cssText = 'position:sticky;top:0;z-index:900;background:#b45309;color:#fff;' +
+    'padding:10px 14px;margin:0 0 12px;border-radius:8px;font-size:13px;font-weight:600';
+  div.innerHTML = html;
+  const alvo = document.querySelector('.content') || document.body;
+  alvo.insertBefore(div, alvo.firstChild);
+}
+
+function pedidosEmDia() {
+  document.getElementById('faixa-pedidos')?.remove();
+}
+
+// Sessão vencida é diferente de rede ruim: não adianta esperar, tem de digitar a senha de
+// novo. A faixa é vermelha e fixa no topo, igual à de versão nova, e o botão recarrega —
+// o boot chama /api/sessao, toma 401 e cai no cadeado.
+function sessaoExpirou() {
+  if (_sessaoAvisada) return;
+  _sessaoAvisada = true;
+  if (document.getElementById('faixa-sessao')) return;
+  const el = document.createElement('div');
+  el.id = 'faixa-sessao';
+  el.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:9999;background:#dc2626;color:#fff;' +
+    'padding:12px 16px;display:flex;align-items:center;justify-content:center;gap:14px;flex-wrap:wrap;' +
+    'font-size:14px;font-weight:600;box-shadow:0 2px 12px rgba(0,0,0,.3)';
+  el.innerHTML =
+    '<span><i class="ti ti-lock-exclamation"></i> Sua sessão venceu — os pedidos pararam de atualizar nesta tela. ' +
+    'Os números aqui são antigos: entre de novo antes de mexer em produção ou estoque.</span>' +
+    '<button id="btn-sessao-reload" style="background:#fff;color:#dc2626;border:0;border-radius:6px;' +
+    'padding:7px 16px;font-weight:700;font-size:13px;cursor:pointer">Entrar de novo</button>';
+  document.body.appendChild(el);
+  document.body.style.paddingTop = el.offsetHeight + 'px';
+  document.getElementById('btn-sessao-reload').onclick = () => {
+    // Salva o que estiver digitado antes de recarregar — mesma proteção da faixa de versão.
+    try { if ((estEditado || prodEditado || cfgEditado) && modeloAtual !== '__dashboard__') salvarModelo(); } catch (_) {}
+    location.reload();
+  };
+}
+
+// A leitura de pedidos está confiável agora? Serve de trava para o que GRAVA produção.
+function leituraDePedidosFresca() {
+  if (ehPerfilDeUmaAba()) return true;             // esses perfis nem leem pedidos
+  if (!_pedidosLidosEm) return false;
+  if (document.getElementById('faixa-sessao')) return false;
+  return (Date.now() - _pedidosLidosEm) < 5 * 60 * 1000; // o ciclo é de 1 min; 5 dá folga
 }
 
 // Trava antes de gravar produção: se a leitura dos pedidos DESTE modelo tem aviso
@@ -9961,6 +10037,19 @@ async function carregarPedidosShopify() {
 // gravar calado. Recalcular grava por cima do que a costura já tem — o dado errado
 // aqui vira compra de tecido errada.
 function confirmarLeituraConfiavel(key) {
+  // Leitura parada é pior que leitura com aviso: grava produção em cima de pedidos de
+  // horas atrás e o erro viaja para o computador pela nuvem.
+  if (!leituraDePedidosFresca()) {
+    return confirm(
+      'ATENÇÃO — os pedidos não estão atualizando neste aparelho' +
+      (_pedidosLidosEm
+        ? ' (última leitura às ' + new Date(_pedidosLidosEm).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) + ')'
+        : ' (nenhuma leitura ainda)') +
+      '.\n\nRecalcular agora grava a produção em cima de números velhos, e isso vai para ' +
+      'o computador também.\n\nO certo é recarregar a página (e entrar de novo, se pedir senha).' +
+      '\n\nQuer recalcular mesmo assim?'
+    );
+  }
   const avisos = (window._avisosLeitura || []).filter(a => a.modelo === key);
   if (avisos.length === 0) return true;
   const txt = avisos.map(a => '• ' + a.texto.replace(/<[^>]+>/g, '')).join('\n');
@@ -11517,10 +11606,21 @@ setInterval(() => { sincronizarNuvem(); }, 15 * 1000);
 // 3c. Sincroniza IMEDIATAMENTE ao voltar para o app/aba (celular: ao desbloquear/voltar pra aba).
 // Navegadores móveis pausam os timers em segundo plano, então isto garante dados frescos na volta.
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible') { sincronizarNuvem(); checarVersaoNova(); }
+  if (document.visibilityState === 'visible') { sincronizarNuvem(); checarVersaoNova(); checarSessao(); }
 });
 window.addEventListener('focus', () => sincronizarNuvem());
 window.addEventListener('pageshow', () => sincronizarNuvem());
+
+// 3d. Confere se a sessão ainda vale ao voltar para o app. O cookie dura 12h; no celular a
+// aba fica aberta muito mais que isso, e o Supabase (estoque/produção) continua atualizando
+// sem sessão. Sem esta checagem a tela ficava metade nova, metade de ontem — sem avisar.
+async function checarSessao() {
+  if (_sessaoAvisada) return;
+  try {
+    const r = await fetch('/api/sessao', { cache: 'no-store' });
+    if (r.status === 401) sessaoExpirou();
+  } catch (_) {}          // sem rede não é sessão vencida: a faixa de pedidos já cobre isso
+}
 
 } // fim de iniciarApp()
 
