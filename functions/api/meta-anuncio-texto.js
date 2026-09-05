@@ -22,6 +22,7 @@ const G = `https://graph.facebook.com/${API_VERSION}`;
 const CRIATIVO_FIELDS = [
   'id', 'name', 'object_type', 'object_story_id', 'effective_object_story_id',
   'object_story_spec', 'asset_feed_spec', 'url_tags', 'body', 'title',
+  'degrees_of_freedom_spec',
 ].join(',');
 
 // Onde o texto principal mora dentro da object_story_spec, conforme o tipo de criativo.
@@ -79,6 +80,15 @@ export async function onRequest(context) {
     passo.caminho = post ? 'editar publicação' : 'criativo novo';
     passo.publicacao = post || creative.effective_object_story_id || null;
 
+    // Variações do Advantage+ ficam fora da object_story_spec.
+    const afs = creative.asset_feed_spec || null;
+    if (afs && (afs.bodies || []).length) {
+      passo.textos_advantage = (afs.bodies || []).map(b => b.text);
+      passo.titulos_advantage = (afs.titles || []).map(t => t.text);
+      passo.caminho = 'criativo novo (Advantage+)';
+    }
+    if (body.detalhe === true) passo.criativo_cru = creative;
+
     if (!aplicar) { resultados.push(passo); continue; }
 
     if (post) {
@@ -110,6 +120,21 @@ export async function onRequest(context) {
         trocou = true;
       }
     }
+    // Com asset_feed_spec, é ELE que manda no que aparece — trocar só a object_story_spec
+    // deixaria as variações antigas rodando. Um texto só substitui as seis variações.
+    let afsNovo = null;
+    if (afs && (afs.bodies || []).length) {
+      afsNovo = JSON.parse(JSON.stringify(afs));
+      afsNovo.bodies = [{ text: texto }];
+      if (typeof body.titulo === 'string' && body.titulo && (afsNovo.titles || []).length) {
+        afsNovo.titles = [{ text: body.titulo }];
+      }
+      if (typeof body.descricao === 'string' && body.descricao && (afsNovo.descriptions || []).length) {
+        afsNovo.descriptions = [{ text: body.descricao }];
+      }
+      trocou = true;
+    }
+
     if (!trocou || !oss.page_id) {
       passo.erro = 'Criativo sem object_story_spec utilizável — este precisa ser editado no Gerenciador.';
       resultados.push(passo); continue;
@@ -121,6 +146,8 @@ export async function onRequest(context) {
       body: JSON.stringify({
         name: `${creative.name || ad.name} — texto ${new Date().toISOString().slice(0, 10)}`,
         object_story_spec: oss,
+        ...(afsNovo ? { asset_feed_spec: afsNovo } : {}),
+        ...(creative.degrees_of_freedom_spec ? { degrees_of_freedom_spec: creative.degrees_of_freedom_spec } : {}),
         ...(creative.url_tags ? { url_tags: creative.url_tags } : {}),
         access_token: token,
       }),
