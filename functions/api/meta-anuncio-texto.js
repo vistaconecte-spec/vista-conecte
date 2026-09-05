@@ -94,6 +94,12 @@ export async function onRequest(context) {
     }
 
     const oss = JSON.parse(JSON.stringify(creative.object_story_spec || {}));
+    // A Meta DEVOLVE image_url e image_hash juntos na thumbnail, mas recusa receber os dois
+    // de volta (ObjectStorySpecRedundant). Fica o hash, que é o que ela resolve internamente.
+    for (const ramo of RAMOS) {
+      const d = oss[ramo];
+      if (d && d.image_hash && d.image_url) delete d.image_url;
+    }
     let trocou = false;
     for (const ramo of RAMOS) {
       if (oss[ramo]) {
