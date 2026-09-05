@@ -112,13 +112,18 @@ export async function onRequest(context) {
     }
     let trocou = false;
     for (const ramo of RAMOS) {
-      if (oss[ramo]) {
-        if ('caption' in oss[ramo] && !('message' in oss[ramo])) oss[ramo].caption = texto;
-        else oss[ramo].message = texto;
-        if (typeof body.titulo === 'string' && body.titulo && 'name' in oss[ramo]) oss[ramo].name = body.titulo;
-        if (typeof body.descricao === 'string' && body.descricao && 'description' in oss[ramo]) oss[ramo].description = body.descricao;
-        trocou = true;
+      const d = oss[ramo];
+      if (!d) continue;
+      if ('caption' in d && !('message' in d)) d.caption = texto;
+      else d.message = texto;
+      // video_data chama de title/link_description o que link_data chama de name/description.
+      if (typeof body.titulo === 'string' && body.titulo) {
+        if (ramo === 'video_data') d.title = body.titulo; else d.name = body.titulo;
       }
+      if (typeof body.descricao === 'string' && body.descricao) {
+        if (ramo === 'video_data') d.link_description = body.descricao; else d.description = body.descricao;
+      }
+      trocou = true;
     }
     // Com asset_feed_spec, é ELE que manda no que aparece — trocar só a object_story_spec
     // deixaria as variações antigas rodando. Um texto só substitui as seis variações.
@@ -140,18 +145,30 @@ export async function onRequest(context) {
       resultados.push(passo); continue;
     }
 
-    const novo = await api(`${G}/${conta}/adcreatives`, {
+    const nome = `${creative.name || ad.name} — texto ${new Date().toISOString().slice(0, 10)}`;
+    const criar = (extra) => api(`${G}/${conta}/adcreatives`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        name: `${creative.name || ad.name} — texto ${new Date().toISOString().slice(0, 10)}`,
+        name: nome,
         object_story_spec: oss,
-        ...(afsNovo ? { asset_feed_spec: afsNovo } : {}),
-        ...(creative.degrees_of_freedom_spec ? { degrees_of_freedom_spec: creative.degrees_of_freedom_spec } : {}),
         ...(creative.url_tags ? { url_tags: creative.url_tags } : {}),
+        ...extra,
         access_token: token,
       }),
     });
+
+    let novo = await criar({
+      ...(afsNovo ? { asset_feed_spec: afsNovo } : {}),
+      ...(creative.degrees_of_freedom_spec ? { degrees_of_freedom_spec: creative.degrees_of_freedom_spec } : {}),
+    });
+
+    // Com Advantage+ ligado a Meta exige que algum campo tenha mais de uma opção, e um texto
+    // só é justamente o que se quer aqui. Então o criativo sai sem a otimização de texto.
+    if (!novo.ok && (novo.erro || {}).error_subcode === 2446218) {
+      passo.advantage_desligado = true;
+      novo = await criar({});
+    }
     if (!novo.ok) { passo.erro = novo.erro; resultados.push(passo); continue; }
     passo.criativo_novo = novo.dado.id;
 
