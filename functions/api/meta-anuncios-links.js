@@ -1,7 +1,8 @@
 /**
  * Cloudflare Pages Function: /api/meta-anuncios-links (somente leitura)
- * Lista os anúncios da conta com a URL de DESTINO de cada criativo,
- * pra conferir se algum anúncio está mandando tráfego pra página quebrada.
+ * Lista os anúncios da conta com a URL de DESTINO e os TEXTOS de cada criativo,
+ * pra conferir se algum anúncio está mandando tráfego pra página quebrada
+ * ou anunciando com um texto que ninguém escreveu (Advantage+ gera texto sozinho).
  * Token: env.META_ACCESS_TOKEN (System User, permissão ads_read).
  * Conta:  env.META_AD_ACCOUNT_ID (fallback p/ a conta da Vista Conecte).
  *
@@ -39,6 +40,7 @@ export async function onRequest(context) {
   const creativeFields = [
     'id', 'name', 'object_type', 'url_tags', 'template_url',
     'object_story_spec', 'asset_feed_spec',
+    'body', 'title', 'effective_object_story_id',
   ].join(',');
   const fields = [
     'name', 'effective_status', 'created_time', 'updated_time', 'adset{name}', 'campaign{name}',
@@ -69,6 +71,29 @@ export async function onRequest(context) {
     }
     if (creative.template_url) links.add(creative.template_url);
     return [...links];
+  };
+
+  // Junta os textos que aparecem no criativo. O texto principal pode vir do criativo
+  // clássico (object_story_spec) ou das variações do Advantage+ (asset_feed_spec.bodies),
+  // que é a Meta gerando/rodando texto por conta própria.
+  const extrairTextos = (creative) => {
+    if (!creative) return { principal: [], titulo: [], descricao: [], gerado_pela_meta: false };
+    const oss = creative.object_story_spec || {};
+    const dado = oss.link_data || oss.video_data || oss.photo_data || oss.template_data || {};
+    const afs = creative.asset_feed_spec || {};
+    const uniq = (arr) => [...new Set(arr.filter(Boolean).map(t => String(t).trim()))];
+    const principal = uniq([
+      dado.message, dado.caption, creative.body,
+      ...((afs.bodies || []).map(b => b.text)),
+    ]);
+    const titulo = uniq([dado.name, creative.title, ...((afs.titles || []).map(t => t.text))]);
+    const descricao = uniq([dado.description, dado.link_description, ...((afs.descriptions || []).map(d => d.text))]);
+    return {
+      principal, titulo, descricao,
+      // Mais de um texto na esteira do Advantage+ = a Meta está variando o texto sozinha.
+      gerado_pela_meta: (afs.bodies || []).length > 1 || (afs.titles || []).length > 1,
+      publicacao_existente: creative.effective_object_story_id || null,
+    };
   };
 
   try {
@@ -105,6 +130,7 @@ export async function onRequest(context) {
           tipo_criativo: (ad.creative || {}).object_type || null,
           url_tags: (ad.creative || {}).url_tags || null,
           links: extrairLinks(ad.creative),
+          textos: leve ? undefined : extrairTextos(ad.creative),
         });
       }
       api = (data.paging || {}).next || null;
