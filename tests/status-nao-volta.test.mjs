@@ -77,11 +77,13 @@ function montar({ salvo, statusDOM = '', status2DOM = '', tocou = false, temLeva
     loadLocal: k => (store.has(k) ? JSON.parse(store.get(k)) : null),
     salvarNuvem: (k, d) => { nuvem[k] = d; },
     showSaved: () => {}, buildSidebar: () => {}, esconderBtnSalvar: () => {},
+    // só repinta o "Atualizado em" dos cards; aqui não há tela
+    renderCarimbosAtualizacao: () => {},
     tocou,
   };
   const api = new Function('ctx', `
     const { document, MODELOS, saveLocal, loadLocal, salvarNuvem,
-            showSaved, buildSidebar, esconderBtnSalvar } = ctx;
+            showSaved, buildSidebar, esconderBtnSalvar, renderCarimbosAtualizacao } = ctx;
     let modeloAtual = 'calca-flare';
     let estEditado = false, prodEditado = false, prod2Editado = false, cfgEditado = true;
     let statusTocado = ctx.tocou;

@@ -52,5 +52,18 @@ ok('o historico nunca acende o aviso',
 console.log('\n' + '4) O erro continua aparecendo, silencioso ou nao');
 ok('showCloudError segue avisando em qualquer gravacao', main.includes('  showCloudError();'), true);
 
+console.log('\n5) O "Atualizado em" acompanha o save');
+// POR QUE ISTO EXISTE: o carimbo era escrito só no desenho da tela, e salvar não pode
+// redesenhar a tabela (apagaria a digitação). Em 09/09/2026 a dona contou a arara do
+// Cropped Canelado, os números subiram para a nuvem e o cabeçalho continuou em 13:33.
+ok('existe uma função só para os carimbos',
+   main.includes('function renderCarimbosAtualizacao(d)'), true);
+ok('salvarModelo repinta o carimbo',
+   main.includes('renderCarimbosAtualizacao(data);'), true);
+ok('o carimbo não é mais escrito na mão dentro do render',
+   (main.match(/Atualizado em [$]/g) || []).length, 1);
+ok('os três cards passam pela mesma função',
+   ['est-updated', 'prod-updated', 'prod2-updated'].every(id => main.includes(`por('${id}'`)), true);
+
 console.log(falhas ? `\nX ${falhas} de ${total} falharam\n` : `\n${total}/${total} passaram\n`);
 process.exit(falhas ? 1 : 0);

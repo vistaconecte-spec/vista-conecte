@@ -526,6 +526,29 @@ async function reenviarPendentes() {
 
 // Salva estado atual no localStorage IMEDIATAMENTE (sem esperar o debounce)
 // Garante que refresh de página não perde edições em andamento
+// O "Atualizado em ..." dos cards de estoque e produção.
+//
+// Mora fora do desenho das tabelas de propósito: salvar NÃO pode redesenhar a tabela
+// (apagaria o que está sendo digitado), mas o carimbo precisa acompanhar mesmo assim.
+// Sem isso ele ficava parado na hora em que a tela foi aberta — a dona contou a arara do
+// Cropped Canelado em 09/09/2026, os números subiram para a nuvem e o cabeçalho continuou
+// dizendo 13:33, dando a entender que nada tinha sido gravado.
+function renderCarimbosAtualizacao(d) {
+  if (!d) return;
+  const por = (id, valor, vazio) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    if (!valor) { el.textContent = vazio; return; }
+    const dt = new Date(valor);
+    const data = dt.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit' });
+    const hora = dt.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+    el.textContent = `Atualizado em ${data} às ${hora}`;
+  };
+  por('est-updated',   d.est_at,                 'Edite direto');
+  por('prod-updated',  d.prod_at || d.updated_at, '');
+  por('prod2-updated', d.prod2_at,               '');
+}
+
 function salvarLocalImediato() {
   if (modeloAtual === '__dashboard__') return;
   const tu = MODELOS[modeloAtual] && MODELOS[modeloAtual].tamanhoUnico;
@@ -695,6 +718,7 @@ function salvarModelo() {
   esconderBtnSalvar();
   saveLocal('vc:' + modeloAtual, data);
   _ultimoSaveTs = Date.now();   // inicia carência: protege o modelo aberto até a nuvem confirmar
+  renderCarimbosAtualizacao(data); // o cabeçalho acompanha o save, sem redesenhar a tabela
   salvarNuvem(modeloAtual, data);
   showSaved();
   buildSidebar(); // atualiza badge de status no menu lateral
@@ -7925,33 +7949,8 @@ function renderModelo(key) {
     }
   }
 
-  // Data da última atualização do estoque
-  const estUpd = document.getElementById('est-updated');
-  if (estUpd) {
-    const estDate = d.est_at;
-    if (estDate) {
-      const dt = new Date(estDate);
-      const fmtDt = dt.toLocaleDateString('pt-BR', { day:'2-digit', month:'2-digit', year:'2-digit' });
-      const fmtHr = dt.toLocaleTimeString('pt-BR', { hour:'2-digit', minute:'2-digit' });
-      estUpd.textContent = `Atualizado em ${fmtDt} às ${fmtHr}`;
-    } else {
-      estUpd.textContent = 'Edite direto';
-    }
-  }
-
-  // Data da última atualização de produção
-  const prodUpd = document.getElementById('prod-updated');
-  if (prodUpd) {
-    const prodDate = d.prod_at || d.updated_at;
-    if (prodDate) {
-      const dt = new Date(prodDate);
-      const fmtDt = dt.toLocaleDateString('pt-BR', { day:'2-digit', month:'2-digit', year:'2-digit' });
-      const fmtHr = dt.toLocaleTimeString('pt-BR', { hour:'2-digit', minute:'2-digit' });
-      prodUpd.textContent = `Atualizado em ${fmtDt} às ${fmtHr}`;
-    } else {
-      prodUpd.textContent = '';
-    }
-  }
+  // Carimbos de "Atualizado em": ver renderCarimbosAtualizacao.
+  renderCarimbosAtualizacao(d);
 
   recalc();
   renderResumoProducao();
@@ -8384,17 +8383,7 @@ function renderLeva2(def, d, cores, SZ, tu) {
     }
   });
 
-  const updEl = document.getElementById('prod2-updated');
-  if (updEl) {
-    if (d.prod2_at) {
-      const dt = new Date(d.prod2_at);
-      const fmtDt = dt.toLocaleDateString('pt-BR', { day:'2-digit', month:'2-digit', year:'2-digit' });
-      const fmtHr = dt.toLocaleTimeString('pt-BR', { hour:'2-digit', minute:'2-digit' });
-      updEl.textContent = `Atualizado em ${fmtDt} às ${fmtHr}`;
-    } else {
-      updEl.textContent = '';
-    }
-  }
+  renderCarimbosAtualizacao(d);
 }
 
 function calcProd2(inp) {
