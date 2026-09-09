@@ -158,6 +158,28 @@ ok('produto realmente desconhecido continua sendo denunciado', (() => {
   parseLineItemMulti({ title: 'PRODUTO QUE NAO EXISTE XPTO', variant_title: 'Preto / M', fulfillable_quantity: 1 }, '#T', ig);
   return ig.length > 0;
 })(), true);
+// #9008 (04/09/2026): mesmo caso, mas o título não trazia NEM o tamanho — nada a inferir.
+// Confirmado com a Bárbara em 09/09/2026: Pantalona Viscolycra + Cropped Canelado, Marrom, M.
+const TITULO_9008 = 'Conjunto Pantalona + Cropped Canelado Marrom';
+const m9008 = (t = TITULO_9008) =>
+  parseLineItemMulti({ title: t, variant_title: null, fulfillable_quantity: 1 }, '#9008', [])
+    .map(r => ({ modelo: r.modelKey, cor: r.color, tam: r.sizeIdx }));
+
+ok('#9008 vira DUAS peças', m9008().length, 2);
+ok('a calça é a Pantalona VISCOLYCRA Marrom M (não a de moletom)',
+   m9008()[0], { modelo: 'calca-pantalona-viscolycra', cor: 'Marrom', tam: 2 });
+ok('o cropped é o CANELADO Marrom M (não o moletom)',
+   m9008()[1], { modelo: 'cropped-canelado', cor: 'Marrom', tam: 2 });
+ok('#9008 não é mais recusado como variante inválida', (() => {
+  const ig = [];
+  parseLineItemMulti({ title: TITULO_9008, variant_title: null, fulfillable_quantity: 1 }, '#9008', ig);
+  return ig.length;
+})(), 0);
+ok('Marrom foi cadastrado na Pantalona Viscolycra (pedido #9008)',
+   (MODELOS['calca-pantalona-viscolycra'].cores || []).includes('Marrom'), true);
+ok('e tem linha em aberto{}, senão a cor entra como provisória',
+   Array.isArray(MODELOS['calca-pantalona-viscolycra'].aberto['Marrom']), true);
+
 // Modelo e tamanho declarados no mapa precisam existir de verdade
 Object.entries(ITENS_MANUAIS).forEach(([, pecas]) => {
   pecas.forEach(p => {

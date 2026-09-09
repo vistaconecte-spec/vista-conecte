@@ -307,6 +307,14 @@ const ITENS_MANUAIS = {
     { modelKey: 'calca-flare',    color: 'Marrom', size: 'G' },
     { modelKey: 'blusa-canelada', color: 'Marrom', size: 'P' },
   ],
+  // #9008 — pedido de rascunho (#D2745, 04/09/2026) com o item digitado à mão: sem produto,
+  // sem variante e SEM TAMANHO no título, então não havia o que inferir. Confirmado com a
+  // Bárbara em 09/09/2026: Pantalona VISCOLYCRA (não a de moletom) com o Cropped CANELADO,
+  // as duas Marrom no M. Marrom foi cadastrado na viscolycra por causa deste pedido.
+  'CONJUNTO PANTALONA + CROPPED CANELADO MARROM': [
+    { modelKey: 'calca-pantalona-viscolycra', color: 'Marrom', size: 'M' },
+    { modelKey: 'cropped-canelado',           color: 'Marrom', size: 'M' },
+  ],
 };
 
 const normalizarTitulo = t => String(t || '').toUpperCase().replace(/\s+/g, ' ').trim();
