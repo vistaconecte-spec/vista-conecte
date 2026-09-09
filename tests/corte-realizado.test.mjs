@@ -178,7 +178,7 @@ ok('dois aparelhos arquivando a mesma leva não duplicam',
 ok('leitura da nuvem falhou → não grava por cima', /if \(nuvem === undefined\) return;/.test(arq), true);
 ok('histórico tem teto', /hist\.slice\(0, CORTE_HIST_MAX\)/.test(arq), true);
 ok('e mora na MESMA linha do Supabase (o cortador não alcança endpoint)',
-   /await salvarNuvem\(CORTE_KEY, novo\)/.test(arq), true);
+   /await salvarNuvem\(CORTE_KEY, novo[,)]/.test(arq), true);
 ok('o card JÁ CORTADO continua na aba, mostrando as levas antigas',
    /JÁ CORTADO/.test(main) && /crtHistoricoHTML\(\)/.test(corte), true);
 

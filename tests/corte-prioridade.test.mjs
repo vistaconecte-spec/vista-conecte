@@ -177,7 +177,7 @@ ok('e lista as colunas de projects uma a uma (select=* faria coluna nova vazar s
 ok('e recusa qualquer método que não seja GET',
    /if \(request\.method !== 'GET'\)/.test(molde), true);
 ok('a prioridade é gravada no Supabase, não servida por /api',
-   /await salvarNuvemREST\(CORTE_PRIO_KEY, novo\)/.test(main), true);
+   /await salvarNuvemREST\(CORTE_PRIO_KEY, novo[,)]/.test(main), true);
 ok('e os perfis de oficina nem calculam (só leem)',
    /async function crtSincronizarPrioridade\(\) \{\s*\r?\n\s*if \(ehPerfilOficina\(\)\) return;/.test(main), true);
 

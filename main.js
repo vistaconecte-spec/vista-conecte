@@ -170,12 +170,12 @@ async function registrarVersao(key, dados) {
     const novo = JSON.stringify(dados);
     if (v.length && JSON.stringify(v[0].d) === novo) return; // nada mudou
     v.unshift({ t: new Date().toISOString(), d: JSON.parse(novo) });
-    await salvarNuvemREST(hk, { v: v.slice(0, HIST_MAX) });
+    await salvarNuvemREST(hk, { v: v.slice(0, HIST_MAX) }, { silencioso: true }); // histórico nunca é aviso de tela
   } catch (_) {}
 }
 
-async function salvarNuvem(key, dados) {
-  await salvarNuvemREST(key, dados);
+async function salvarNuvem(key, dados, opts) {
+  await salvarNuvemREST(key, dados, opts);
   registrarVersao(key, dados); // sem await: histórico nunca segura a tela
 }
 
@@ -331,7 +331,7 @@ async function carregarTodosNuvem() {
   } catch(e) {}
 }
 
-async function salvarNuvemREST(key, dados) {
+async function salvarNuvemREST(key, dados, opts = {}) {
   // Upsert com retry (3 tentativas) e alerta visual em caso de falha
   const MAX_TRIES = 3;
   // Entra na fila ANTES da primeira tentativa: a partir daqui a chave está protegida de
@@ -354,7 +354,10 @@ async function salvarNuvemREST(key, dados) {
       });
       if (res.ok || res.status === 201 || res.status === 200) {
         if (souOAtual()) _gravacoesPendentes.delete(key);
-        showCloudOk();
+        // Gravação de fundo não acende o aviso. Em 09/09/2026 a dona digitou o estoque do
+        // Cropped Canelado, viu "Salvo" e trocou de tela achando que tinha gravado: aquele
+        // "Salvo" era do ciclo do corte, que grava sozinho de minuto em minuto.
+        if (!opts.silencioso) showCloudOk();
         return; // sucesso
       }
     } catch(e) {}
@@ -467,9 +470,9 @@ function showSaved() {
   }
 }
 
-function autoSave() {
+function autoSave(ms = 800) {
   clearTimeout(saveTimer);
-  saveTimer = setTimeout(salvarModelo, 800);
+  saveTimer = setTimeout(salvarModelo, ms);
 }
 
 let estEditado  = false;
@@ -569,9 +572,14 @@ function salvarManual() {
   esconderBtnSalvar();
 }
 
-function marcarEstEditado()  { estEditado  = true; recalc(); salvarLocalImediato(); mostrarBtnSalvar(); }
-function marcarProdEditado() { prodEditado = true; salvarLocalImediato(); renderResumoProducao(); mostrarBtnSalvar(); }
-function marcarProd2Editado(){ prod2Editado = true; salvarLocalImediato(); renderResumoProducao(); mostrarBtnSalvar(); }
+// Estoque e produção passam a subir sozinhos (09/09/2026). Antes só o botão Salvar
+// mandava para a nuvem: quem digitava e trocava de tela perdia a contagem, e o aviso
+// "Salvo" das gravações automáticas fazia parecer que tinha ido. São 2s em vez dos 800ms
+// das configurações porque contar arara é digitar vários campos seguidos — um save por
+// tecla encheria o histórico de versaões pela metade. O botão continua aí para gravar já.
+function marcarEstEditado()  { estEditado  = true; recalc(); salvarLocalImediato(); mostrarBtnSalvar(); autoSave(2000); }
+function marcarProdEditado() { prodEditado = true; salvarLocalImediato(); renderResumoProducao(); mostrarBtnSalvar(); autoSave(2000); }
+function marcarProd2Editado(){ prod2Editado = true; salvarLocalImediato(); renderResumoProducao(); mostrarBtnSalvar(); autoSave(2000); }
 function marcarCfgEditado()  { cfgEditado  = true; mostrarBtnSalvar(); autoSave(); }
 
 // Status da leva (dropdown "Em corte"/"Em costura"): grava NA HORA, sem a espera de 800ms do
@@ -5887,7 +5895,7 @@ async function cstFatSincronizar() {
   novo.pagas = novo.pagas.slice(0, CST_PAGAS_MAX);
   novo.updated_at = new Date().toISOString();
   saveLocal('vc:' + CST_FAT_KEY, novo);
-  await salvarNuvem(CST_FAT_KEY, novo);
+  await salvarNuvem(CST_FAT_KEY, novo, { silencioso: true });
   if (modeloAtual === '__costura__') renderCostura();
 }
 
@@ -6543,7 +6551,7 @@ async function crtFatSincronizar() {
   novo.pagas = novo.pagas.slice(0, CST_PAGAS_MAX);
   novo.updated_at = new Date().toISOString();
   saveLocal('vc:' + CRT_FAT_KEY, novo);
-  await salvarNuvem(CRT_FAT_KEY, novo);
+  await salvarNuvem(CRT_FAT_KEY, novo, { silencioso: true });
   if (modeloAtual === '__corte__') renderCorte();
 }
 
@@ -6823,7 +6831,7 @@ async function crtArquivarConcluidas() {
   novo.historico   = hist.slice(0, CORTE_HIST_MAX);
   novo.updated_at  = new Date().toISOString();
   saveLocal('vc:' + CORTE_KEY, novo);
-  await salvarNuvem(CORTE_KEY, novo);
+  await salvarNuvem(CORTE_KEY, novo, { silencioso: true });
   if (modeloAtual === '__corte__') renderCorte();
 }
 
@@ -7012,7 +7020,7 @@ async function crtSincronizarPrioridade() {
   saveLocal('vc:' + CORTE_PRIO_KEY, novo);
   // salvarNuvemREST e não salvarNuvem: esta linha é um retrato recalculado o tempo todo,
   // guardar 25 versões dela no histórico só empurraria para fora as versões que importam.
-  await salvarNuvemREST(CORTE_PRIO_KEY, novo);
+  await salvarNuvemREST(CORTE_PRIO_KEY, novo, { silencioso: true });
   if (modeloAtual === '__corte__') renderCorte();
 }
 
@@ -10470,7 +10478,7 @@ async function _baixaImediataDeProcessados() {
       ledger.envios[p.id] = { numero: p.numero, em: p.enviado_em, aplicado: null, pecas: 0, nota: 'anterior ao registro' };
     }
     saveLocal(LEDGER_LOCAL, ledger);
-    await salvarNuvem(LEDGER_BAIXAS, ledger);
+    await salvarNuvem(LEDGER_BAIXAS, ledger, { silencioso: true });
     return;
   }
 
@@ -10491,7 +10499,7 @@ async function _baixaImediataDeProcessados() {
   for (const [id, r] of Object.entries(ledger.envios)) if (r.em && !maisNovoQue(r.em, corte)) delete ledger.envios[id];
 
   saveLocal(LEDGER_LOCAL, ledger);
-  await salvarNuvem(LEDGER_BAIXAS, ledger);
+  await salvarNuvem(LEDGER_BAIXAS, ledger, { silencioso: true });
 
   if (pecas.length) {
     _ultimaBaixaAuto = { quando: new Date().toISOString(), pedidos: numeros, pecas };

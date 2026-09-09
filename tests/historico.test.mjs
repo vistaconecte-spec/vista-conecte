@@ -33,14 +33,14 @@ const trecho = (ini, fim) => main.slice(main.indexOf(ini), main.indexOf(fim, mai
 
 console.log('\n1) Toda gravação do sistema vira versão');
 ok('o histórico é gravado dentro de salvarNuvem (funil de tudo)',
-   /async function salvarNuvem\(key, dados\) \{[\s\S]{0,200}registrarVersao\(key, dados\)/.test(main), true);
+   /async function salvarNuvem\(key, dados, opts\) \{[\s\S]{0,200}registrarVersao\(key, dados\)/.test(main), true);
 ok('salvarNuvem continua sendo o único ponto de gravação',
    (main.match(/async function salvarNuvem\(/g) || []).length, 1);
 
 console.log('\n2) O histórico NUNCA atrapalha o salvamento de verdade');
 const reg = trecho('async function registrarVersao', '\nasync function salvarNuvem');
 ok('grava o dado primeiro, histórico depois',
-   /await salvarNuvemREST\(key, dados\);\s*\r?\n\s*registrarVersao/.test(main), true);
+   /await salvarNuvemREST\(key, dados, opts\);\s*\r?\n\s*registrarVersao/.test(main), true);
 ok('sem await: não segura a tela', /\n  registrarVersao\(key, dados\);/.test(main), true);
 ok('qualquer erro do histórico é engolido', /catch \(_\) \{\}/.test(reg), true);
 ok('não guarda histórico do próprio histórico', /if \(ehChaveHistorico\(key\)\) return;/.test(reg), true);

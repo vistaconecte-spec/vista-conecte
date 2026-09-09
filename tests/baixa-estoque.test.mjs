@@ -55,7 +55,7 @@ const corpo = main.slice(main.indexOf('async function _baixaImediataDeProcessado
 ok('pula remessa que já está no registro', /!ledger\.envios\[p\.id\]/.test(corpo), true);
 ok('grava a remessa no registro ao baixar', /ledger\.envios\[p\.id\] = \{/.test(corpo), true);
 ok('o registro é salvo na NUVEM (celular e computador compartilham)',
-   /await salvarNuvem\(LEDGER_BAIXAS, ledger\)/.test(corpo), true);
+   /await salvarNuvem\(LEDGER_BAIXAS, ledger[,)]/.test(corpo), true);
 ok('registro fica em vc_modelos, como a precificação', /const LEDGER_BAIXAS = 'baixas-estoque'/.test(main), true);
 
 console.log('\n4) A virada da regra NÃO reaplica o que já foi baixado');
