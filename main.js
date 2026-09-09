@@ -391,6 +391,7 @@ function iniciarRealtime() {
     .on('postgres_changes', { event: '*', schema: 'public', table: 'vc_modelos' }, payload => {
       const row = payload.new;
       if (!row || !row.id || !row.dados) return;
+      if (ehChaveHistorico(row.id)) return; // versão de histórico não é dado de tela
       // Nunca sobrescreve edição pendente, salvamento recente nem gravação que a nuvem
       // ainda não confirmou
       if (protegidoDeSobrescrita(row.id)) return;
@@ -405,25 +406,38 @@ function iniciarRealtime() {
 
 // Rede de segurança: re-puxa a nuvem periodicamente e re-renderiza se algo mudou.
 // Garante sincronização entre dispositivos mesmo se o realtime não estiver ativo.
+//
+// Em 08/09/2026 o Supabase bloqueou o projeto por estourar a cota de egress do plano
+// Free, e a Vi (WhatsApp) e este painel pararam juntos. O culpado era este ciclo: a cada
+// 15 s baixava a tabela INTEIRA (~5,8 MB, 95% linhas `hist:*`) por aba aberta.
+// Agora: nunca traz histórico, e depois da primeira leitura só pede o que mudou desde a
+// última linha vista (`updated_at`, carimbado por trigger no banco a cada gravação).
+let _syncDesde = null; // updated_at (do servidor) da linha mais nova já aplicada aqui
 async function sincronizarNuvem() {
   try {
     // Primeiro sobe o que ficou pendente; só depois vale a pena ler a nuvem.
     await reenviarPendentes();
+    const filtro = `&id=not.like.${encodeURIComponent(HIST_PREFIXO + '*')}`
+      + (_syncDesde ? `&updated_at=gt.${encodeURIComponent(_syncDesde)}` : '');
     const res = await fetch(
-      `${SUPABASE_URL}/rest/v1/vc_modelos?select=id,dados`,
+      `${SUPABASE_URL}/rest/v1/vc_modelos?select=id,dados,updated_at${filtro}`,
       { headers: { 'apikey': SUPABASE_KEY, 'Authorization': 'Bearer ' + SUPABASE_KEY }, cache: 'no-store' }
     );
     if (!res.ok) return;
     const rows = await res.json();
-    let mudou = false;
+    let mudou = false, pulou = false, maisNova = _syncDesde;
     rows.forEach(row => {
       if (!row.id || !row.dados) return;
       // Protege edição pendente, salvamento recente (carência) e o que ainda não subiu
-      if (protegidoDeSobrescrita(row.id)) return;
+      if (protegidoDeSobrescrita(row.id)) { pulou = true; return; }
+      if (row.updated_at && (!maisNova || row.updated_at > maisNova)) maisNova = row.updated_at;
       const atual = JSON.stringify(loadLocal('vc:' + row.id));
       const novo  = JSON.stringify(row.dados);
       if (atual !== novo) { saveLocal('vc:' + row.id, row.dados); mudou = true; }
     });
+    // Se alguma linha ficou de fora por proteção, a marca d'água não avança: ela volta no
+    // próximo ciclo (payload pequeno) e é aplicada quando a proteção acabar.
+    if (!pulou) _syncDesde = maisNova;
     if (mudou) {
       if (modeloAtual === '__dashboard__') renderDashboard();
       else renderModeloSeOcioso();
