@@ -1243,6 +1243,68 @@ function atdShowSub(sub) {
 }
 
 // ── SAC ──────────────────────────────────────────────────────────────────────
+// ─── LISTAS COMPARTILHADAS (SAC, TROCAS, DEVOLUÇÕES) ─────────────────────────
+//
+// POR QUE ISTO EXISTE: sac, retorno e estorno são listas que o SAC e a Expedição
+// preenchem AO MESMO TEMPO, cada uma no seu aparelho. Cada alteração gravava o array
+// INTEIRO na mesma chave: quem salvasse por último apagava o item que a outra tinha
+// acabado de incluir. A equipe relatou nos dias 08 e 09/09/2026 ("estou tentando por os
+// pedidos do sac e da wati na lista mas não está indo") e voltou a usar a lista de papel.
+//
+// Agora a gravação mescla por id: o que veio da nuvem, o que está neste aparelho e o
+// que a pessoa acabou de digitar viram uma lista só. Item excluído entra em `removidos`
+// para não ressuscitar pela nuvem, e edição do MESMO item é resolvida pelo carimbo
+// `atualizado_em` — a mais recente vence.
+const LISTA_REMOVIDO_DIAS = 90; // tempo que um id excluído fica barrado
+
+function carimbarItem(t) {
+  if (t) t.atualizado_em = new Date().toISOString();
+  return t;
+}
+
+function mesclarListas(campo, ...fontes) {
+  const quando = it => it.atualizado_em || it.criado_em || '';
+  const removidos = new Map();
+  const porId = new Map();
+  fontes.forEach(f => {
+    if (!f) return;
+    (f.removidos || []).forEach(r => {
+      if (!r || !r.id) return;
+      if (!removidos.has(r.id) || String(r.em) > String(removidos.get(r.id))) removidos.set(r.id, r.em);
+    });
+    (Array.isArray(f[campo]) ? f[campo] : []).forEach(it => {
+      if (!it || !it.id) return;
+      const atual = porId.get(it.id);
+      if (!atual || quando(it) >= quando(atual)) porId.set(it.id, it);
+    });
+  });
+  const corte = new Date(Date.now() - LISTA_REMOVIDO_DIAS * 86400000).toISOString();
+  const listaRemovidos = [...removidos]
+    .filter(([, em]) => String(em) > corte)   // poda: id velho não precisa mais ser barrado
+    .map(([id, em]) => ({ id, em }));
+  const barrado = new Set(listaRemovidos.map(r => r.id));
+  const base = fontes[fontes.length - 1] || {};
+  return {
+    ...base,
+    [campo]: [...porId.values()].filter(it => !barrado.has(it.id)),
+    removidos: listaRemovidos,
+    updated_at: new Date().toISOString(),
+  };
+}
+
+// Grava mesclando com a nuvem. Devolve a lista final, ou null se não deu para mesclar.
+async function salvarListaCompartilhada(chave, campo, cfgDigitado) {
+  const daNuvem = await carregarNuvem(chave);
+  const local = loadLocal('vc:' + chave);
+  // Leitura falhou (undefined): grava o que a pessoa digitou em vez de perder o trabalho.
+  // A fila de pendentes segura a chave até a nuvem confirmar.
+  if (daNuvem === undefined) { await salvarNuvem(chave, cfgDigitado); return null; }
+  const final = mesclarListas(campo, daNuvem, local, cfgDigitado);
+  saveLocal('vc:' + chave, final);
+  await salvarNuvem(chave, final);
+  return final;
+}
+
 function sacGetConfig() {
   return loadLocal('vc:sac') || { tickets: [], updated_at: null };
 }
@@ -1285,7 +1347,11 @@ function sacSalvar(cfg) {
   cfg.updated_at = new Date().toISOString();
   saveLocal('vc:sac', cfg);
   clearTimeout(window._sacSaveTimer);
-  window._sacSaveTimer = setTimeout(() => salvarNuvem('sac', cfg), 900);
+  window._sacSaveTimer = setTimeout(() => {
+    salvarListaCompartilhada('sac', 'tickets', cfg)
+      .then(final => { if (final) sacRender(); })
+      .catch(() => {});
+  }, 900);
 }
 function sacAdd() {
   const pedido = (document.getElementById('sac-pedido').value || '').trim();
@@ -1316,6 +1382,7 @@ async function sacCarregarItens(id, pedido) {
     const d = await res.json();
     const cfg = sacGetConfig();
     const t = cfg.tickets.find(x => x.id === id); if (!t) return;
+  carimbarItem(t);
     t.cliente = d.encontrado ? (d.cliente || null) : null;
     t.itens = d.encontrado ? (d.itens || []) : [];
     t.itens_busca_em = new Date().toISOString();
@@ -1379,6 +1446,7 @@ document.addEventListener('click', (e) => {
 function sacToggle(id) {
   const cfg = sacGetConfig();
   const t = cfg.tickets.find(x => x.id === id); if (!t) return;
+  carimbarItem(t);
   t.status = (t.status === 'resolvido') ? 'pendente' : 'resolvido';
   t.resolvido_em = (t.status === 'resolvido') ? new Date().toISOString() : null;
   sacSalvar(cfg);
@@ -1387,6 +1455,7 @@ function sacToggle(id) {
 function sacEdit(id, campo, val) {
   const cfg = sacGetConfig();
   const t = cfg.tickets.find(x => x.id === id); if (!t) return;
+  carimbarItem(t);
   t[campo] = val;
   sacSalvar(cfg);
 }
@@ -1394,6 +1463,8 @@ function sacDel(id) {
   if (!confirm('Excluir esse ticket de SAC?')) return;
   const cfg = sacGetConfig();
   cfg.tickets = cfg.tickets.filter(x => x.id !== id);
+  // sem isto a mesclagem traria o item de volta pela nuvem
+  cfg.removidos = [...(cfg.removidos || []), { id, em: new Date().toISOString() }];
   sacSalvar(cfg);
   atdSyncViews();
 }
@@ -1434,7 +1505,11 @@ function retSalvar(cfg) {
   cfg.updated_at = new Date().toISOString();
   saveLocal('vc:retorno', cfg);
   clearTimeout(window._retSaveTimer);
-  window._retSaveTimer = setTimeout(() => salvarNuvem('retorno', cfg), 900);
+  window._retSaveTimer = setTimeout(() => {
+    salvarListaCompartilhada('retorno', 'itens', cfg)
+      .then(final => { if (final) retRender(); })
+      .catch(() => {});
+  }, 900);
 }
 // Busca o pedido na Shopify (debounced) e mostra os itens com checkbox pra marcar o(s) que está(ão) na troca.
 function retBuscarPedido() {
@@ -1499,6 +1574,7 @@ function retAdd() {
 function retChegouReversaToggle(id) {
   const cfg = retGetConfig();
   const t = cfg.itens.find(x => x.id === id); if (!t) return;
+  carimbarItem(t);
   t.chegou_reversa = !t.chegou_reversa;
   retSalvar(cfg);
 }
@@ -1506,6 +1582,7 @@ function retChegouReversaToggle(id) {
 function retDataReversa(id, value) {
   const cfg = retGetConfig();
   const t = cfg.itens.find(x => x.id === id); if (!t) return;
+  carimbarItem(t);
   t.data_chegada_reversa = value || '';
   t.chegou_reversa = !!value;
   retSalvar(cfg);
@@ -1514,6 +1591,7 @@ function retDataReversa(id, value) {
 function retToggle(id) {
   const cfg = retGetConfig();
   const t = cfg.itens.find(x => x.id === id); if (!t) return;
+  carimbarItem(t);
   t.status = (t.status === 'resolvido') ? 'pendente' : 'resolvido';
   t.resolvido_em = (t.status === 'resolvido') ? new Date().toISOString() : null;
   retSalvar(cfg);
@@ -1522,6 +1600,7 @@ function retToggle(id) {
 function retEdit(id, campo, val) {
   const cfg = retGetConfig();
   const t = cfg.itens.find(x => x.id === id); if (!t) return;
+  carimbarItem(t);
   t[campo] = val;
   retSalvar(cfg);
 }
@@ -1529,6 +1608,8 @@ function retDel(id) {
   if (!confirm('Excluir esse registro de troca?')) return;
   const cfg = retGetConfig();
   cfg.itens = cfg.itens.filter(x => x.id !== id);
+  // sem isto a mesclagem traria o item de volta pela nuvem
+  cfg.removidos = [...(cfg.removidos || []), { id, em: new Date().toISOString() }];
   retSalvar(cfg);
   atdSyncViews();
 }
@@ -1659,7 +1740,11 @@ function estSalvar(cfg) {
   cfg.updated_at = new Date().toISOString();
   saveLocal('vc:estorno', cfg);
   clearTimeout(window._estSaveTimer);
-  window._estSaveTimer = setTimeout(() => salvarNuvem('estorno', cfg), 900);
+  window._estSaveTimer = setTimeout(() => {
+    salvarListaCompartilhada('estorno', 'itens', cfg)
+      .then(final => { if (final) estRender(); })
+      .catch(() => {});
+  }, 900);
 }
 function estAdd() {
   const cliente = (document.getElementById('atd-est-cliente').value || '').trim();
@@ -1679,6 +1764,7 @@ function estAdd() {
 function estEdit(id, campo, val) {
   const cfg = estGetConfig();
   const t = cfg.itens.find(x => x.id === id); if (!t) return;
+  carimbarItem(t);
   t[campo] = (campo === 'valor') ? (parseFloat(String(val).replace(',', '.')) || 0) : val;
   estSalvar(cfg);
   // Sem re-render a cada tecla (mataria o foco do input e, com ordenação ativa, a linha
@@ -1693,6 +1779,8 @@ function estDel(id) {
   if (!confirm('Excluir esse registro de devolução?')) return;
   const cfg = estGetConfig();
   cfg.itens = cfg.itens.filter(x => x.id !== id);
+  // sem isto a mesclagem traria o item de volta pela nuvem
+  cfg.removidos = [...(cfg.removidos || []), { id, em: new Date().toISOString() }];
   estSalvar(cfg);
   atdSyncViews();
 }
