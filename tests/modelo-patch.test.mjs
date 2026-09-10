@@ -97,6 +97,30 @@ console.log('\n4) Casos de borda');
   ok('marca "*" (chamada sem celula) sobe a grade toda', mesclarModelo(nuvem, { est: { Preto: [9, 9, 9, 9, 9] }, prod: {} }, t3).est.Preto, [9, 9, 9, 9, 9]);
 }
 
+console.log('\n4b) O botao Atualizar do card EM PRODUCAO (10/09/2026, a dona precisava comprar tecido)');
+{
+  // O botao preenche a grade inteira da leva com o que falta e liga prodEditado, sem passar
+  // pelo oninput. Sem a marca '*', a mesclagem achava que nada foi tocado e devolvia a
+  // producao antiga da nuvem: tudo permanecia em A PRODUZIR.
+  const nuvem = { est: { Cinza: [0, 0, 0, 0, 0, 0] }, prod: { Cinza: [0, 0, 0, 0, 0, 0], Preto: [0, 0, 0, 0, 0, 0] } };
+  const dom   = { est: { Cinza: [0, 0, 0, 0, 0, 0] }, prod: { Cinza: [2, 7, 7, 5, 0, 0], Preto: [0, 4, 1, 3, 1, 0] } };
+  const t = nada(); t.prod.add('*');
+  const r = mesclarModelo(nuvem, dom, t);
+  ok('a leva preenchida pelo botao sobe inteira', r.prod, { Cinza: [2, 7, 7, 5, 0, 0], Preto: [0, 4, 1, 3, 1, 0] });
+  ok('recalcularProducao marca a grade toda', /prodEditado = true;\n[\s\S]{0,400}_celulasTocadas\.prod\.add\('\*'\);/.test(main), true);
+  ok('recalcularProducao2 tambem', /prod2Editado = true;\n\s*_celulasTocadas\.prod2\.add\('\*'\);/.test(main), true);
+}
+{
+  // Trocar prazo (cfg) nao pode subir a grade inteira da tela: so a lista de cores mudando.
+  const nuvem = { est: { Preto: [5, 5, 5, 5, 5] }, prod: {}, cores: ['Preto'], prazo: '2026-09-01' };
+  const dom   = { est: { Preto: [1, 1, 1, 1, 1] }, prod: {}, cores: ['Preto'], prazo: '2026-09-30' };
+  const t = nada(); t.cfg = true;
+  const r = mesclarModelo(nuvem, dom, t);
+  ok('prazo editado sobe', r.prazo, '2026-09-30');
+  ok('mas a grade que a tela nao tocou vem da nuvem', r.est.Preto, [5, 5, 5, 5, 5]);
+  ok('trocar status nao liga cfgEditado', /function marcarStatusEditado\(\) \{\n(?:\s*\/\/.*\n)*\s*statusTocado = true;/.test(main), true);
+}
+
 console.log('\n5) Os tres caminhos de gravacao passam pelo patch');
 ok('salvarModelo sobe mesclado', /subirModeloMesclado\(modeloAtual, data, tocado\)/.test(main), true);
 ok('salvarModelo nao manda mais o objeto inteiro direto', /\n  salvarNuvem\(modeloAtual, data\);/.test(main), false);

@@ -628,7 +628,8 @@ function marcarCfgEditado()  { cfgEditado  = true; mostrarBtnSalvar(); autoSave(
 // o carimbo status_at/status2_at sai pelo caminho normal de salvarModelo (é ele que separa
 // uma rodada da outra no faturamento do corte e da costura).
 function marcarStatusEditado() {
-  cfgEditado = true;
+  // Só statusTocado: ligar cfgEditado aqui fazia a mesclagem subir a grade e a configuração
+  // inteiras da tela junto com o status, por cima do que outro aparelho tinha gravado.
   statusTocado = true;
   clearTimeout(saveTimer);
   salvarModelo();
@@ -653,8 +654,11 @@ function mesclarModelo(nuvem, dom, tocado) {
   const r = { ...nuvem };
   const grade = (campo, set) => {
     if (dom[campo] === undefined) return;
-    // Configuração editada pode ter mudado a lista de cores: a tela manda na grade inteira.
-    if (tocado.cfg || set.has('*')) { r[campo] = dom[campo]; return; }
+    // A tela manda na grade inteira só quando o botão preencheu tudo ('*') ou quando a lista
+    // de cores mudou (uma cor removida não pode voltar pela nuvem). Editar prazo ou nome não
+    // é motivo para subir a grade toda.
+    const coresMudaram = tocado.cfg && JSON.stringify(dom.cores || null) !== JSON.stringify(nuvem.cores || null);
+    if (coresMudaram || set.has('*')) { r[campo] = dom[campo]; return; }
     const out = {};
     Object.keys(nuvem[campo] || {}).forEach(cor => { out[cor] = [...nuvem[campo][cor]]; });
     Object.keys(dom[campo] || {}).forEach(cor => {
@@ -8453,6 +8457,10 @@ function recalcularProducao() {
   });
 
   prodEditado = true;
+  // O botao preencheu a grade INTEIRA: sem marcar, a mesclagem do save acharia que nenhuma
+  // celula foi tocada e devolveria a producao antiga da nuvem (10/09/2026: a dona clicava
+  // em Atualizar e tudo permanecia em A PRODUZIR).
+  _celulasTocadas.prod.add('*');
   salvarLocalImediato();   // persiste no localStorage imediatamente (antes de qualquer F5)
   autoSave();              // agenda envio para a nuvem
   renderModelo(modeloAtual); // atualiza card A Produzir e saldos
@@ -8595,6 +8603,7 @@ function recalcularProducao2() {
   });
 
   prod2Editado = true;
+  _celulasTocadas.prod2.add('*'); // grade inteira preenchida pelo botao (ver recalcularProducao)
   salvarLocalImediato();   // persiste no localStorage imediatamente (antes de qualquer F5)
   autoSave();              // agenda envio para a nuvem
   renderModelo(modeloAtual); // atualiza card A Produzir e saldos
