@@ -1,0 +1,8 @@
+# A pagina de entrada nunca pode vir do cache do navegador: em 10/09/2026 um navegador
+# ficou servindo o main.js do dia anterior mesmo depois de fechar e abrir, e a equipe
+# passou a manha com o estoque "voltando" enquanto a correcao ja estava no ar.
+# Os assets levam ?v= no nome, entao so o index precisa disto.
+/
+  Cache-Control: no-store
+/index.html
+  Cache-Control: no-store
