@@ -600,9 +600,25 @@ function salvarManual() {
 // "Salvo" das gravações automáticas fazia parecer que tinha ido. São 2s em vez dos 800ms
 // das configurações porque contar arara é digitar vários campos seguidos — um save por
 // tecla encheria o histórico de versaões pela metade. O botão continua aí para gravar já.
-function marcarEstEditado()  { estEditado  = true; recalc(); salvarLocalImediato(); mostrarBtnSalvar(); autoSave(2000); }
-function marcarProdEditado() { prodEditado = true; salvarLocalImediato(); renderResumoProducao(); mostrarBtnSalvar(); autoSave(2000); }
-function marcarProd2Editado(){ prod2Editado = true; salvarLocalImediato(); renderResumoProducao(); mostrarBtnSalvar(); autoSave(2000); }
+// ─── O QUE FOI TOCADO NESTE APARELHO ─────────────────────────────────────────
+// POR QUE ISTO EXISTE: o salvamento mandava o modelo INTEIRO a partir da tela. Com dois
+// aparelhos no mesmo modelo (a Manu no PC e no celular, a dona e o marido), a tela
+// desatualizada de um gravava por cima da contagem, do status e do prazo que o outro
+// tinha acabado de mudar. Em 09 e 10/09/2026 o Cropped Canelado voltou ao valor velho 10
+// segundos depois de cada contagem, e o status do Macacão Amplo voltou de "Comprando
+// tecido". Agora cada aparelho sobe só o que a pessoa tocou nele (ver mesclarModelo).
+const _celulasTocadas = { est: new Set(), prod: new Set(), prod2: new Set() };
+function marcarCelulaTocada(grupo, inp) {
+  const tr = (inp && inp.closest) ? inp.closest('tr') : null;
+  if (!tr || !tr.dataset.cor) { _celulasTocadas[grupo].add('*'); return; } // sem célula: a grade toda
+  const idx = Array.from(tr.querySelectorAll('input')).indexOf(inp);
+  _celulasTocadas[grupo].add(tr.dataset.cor + '|' + (idx < 0 ? '*' : idx));
+}
+function limparTocados() { _celulasTocadas.est.clear(); _celulasTocadas.prod.clear(); _celulasTocadas.prod2.clear(); }
+
+function marcarEstEditado(inp)  { estEditado  = true; marcarCelulaTocada('est', inp); recalc(); salvarLocalImediato(); mostrarBtnSalvar(); autoSave(2000); }
+function marcarProdEditado(inp) { prodEditado = true; marcarCelulaTocada('prod', inp); salvarLocalImediato(); renderResumoProducao(); mostrarBtnSalvar(); autoSave(2000); }
+function marcarProd2Editado(inp){ prod2Editado = true; marcarCelulaTocada('prod2', inp); salvarLocalImediato(); renderResumoProducao(); mostrarBtnSalvar(); autoSave(2000); }
 function marcarCfgEditado()  { cfgEditado  = true; mostrarBtnSalvar(); autoSave(); }
 
 // Status da leva (dropdown "Em corte"/"Em costura"): grava NA HORA, sem a espera de 800ms do
@@ -627,6 +643,55 @@ function renderModeloSeOcioso() {
   if (estEditado || prodEditado || prod2Editado || cfgEditado) return;
   if (!MODELOS[modeloAtual]) return;
   renderModelo(modeloAtual);
+}
+
+// Junta o que este aparelho tocou (`dom`, lido da tela) com o que a nuvem tem. Célula
+// não tocada, status não escolhido e configuração não editada vêm da nuvem: é assim que
+// a tela velha de um aparelho deixa de apagar o que o outro acabou de gravar.
+function mesclarModelo(nuvem, dom, tocado) {
+  if (!nuvem) return dom;
+  const r = { ...nuvem };
+  const grade = (campo, set) => {
+    if (dom[campo] === undefined) return;
+    // Configuração editada pode ter mudado a lista de cores: a tela manda na grade inteira.
+    if (tocado.cfg || set.has('*')) { r[campo] = dom[campo]; return; }
+    const out = {};
+    Object.keys(nuvem[campo] || {}).forEach(cor => { out[cor] = [...nuvem[campo][cor]]; });
+    Object.keys(dom[campo] || {}).forEach(cor => {
+      const d = dom[campo][cor] || [];
+      const tocouCor = [...set].some(k => k.startsWith(cor + '|'));
+      if (!out[cor]) { if (tocouCor) out[cor] = d; return; } // cor que só a tela tem: entra se tocada
+      const n = out[cor];
+      const len = Math.max(n.length, d.length);
+      out[cor] = Array.from({ length: len }, (_, i) =>
+        (set.has(cor + '|' + i) || set.has(cor + '|*')) ? (d[i] || 0) : (n[i] || 0));
+    });
+    r[campo] = out;
+  };
+  grade('est', tocado.est);
+  grade('prod', tocado.prod);
+  grade('prod2', tocado.prod2);
+  const cfgCampos = ['nome', 'tecido', 'consumo', 'componentes', 'obs', 'cores', 'preco', 'prazo', 'prazo2', 'leva2'];
+  const stCampos  = ['status', 'status_at', 'status2', 'status2_at'];
+  if (tocado.cfg) cfgCampos.forEach(c => { if (c in dom) r[c] = dom[c]; });
+  if (tocado.cfg || tocado.status) stCampos.forEach(c => { if (c in dom) r[c] = dom[c]; });
+  if (tocado.est.size)   r.est_at   = dom.est_at;
+  if (tocado.prod.size)  r.prod_at  = dom.prod_at;
+  if (tocado.prod2.size) r.prod2_at = dom.prod2_at;
+  r.updated_at = dom.updated_at || new Date().toISOString();
+  return r;
+}
+
+// Sobe o modelo mesclado com a nuvem. Sem nuvem (leitura falhou ou linha não existe),
+// sobe a tela inteira como sempre foi: melhor isso do que perder a digitação.
+async function subirModeloMesclado(key, dom, tocado) {
+  const nuvem = await carregarNuvem(key);
+  if (nuvem === undefined || !nuvem) { await salvarNuvem(key, dom); return dom; }
+  const final = mesclarModelo(nuvem, dom, tocado);
+  saveLocal('vc:' + key, final);
+  await salvarNuvem(key, final);
+  if (modeloAtual === key) renderModeloSeOcioso(); // a tela recebe o que veio da nuvem
+  return final;
 }
 
 function salvarModelo() {
@@ -710,6 +775,13 @@ function salvarModelo() {
       ? (existente.status === statusVal && existente.status_at ? existente.status_at : new Date().toISOString())
       : null,
   };
+  // Retrato do que foi tocado ANTES de zerar: é o que mesclarModelo usa para decidir o que
+  // vem da tela e o que vem da nuvem.
+  const tocado = {
+    est: new Set(_celulasTocadas.est), prod: new Set(_celulasTocadas.prod), prod2: new Set(_celulasTocadas.prod2),
+    cfg: cfgEditado, status: statusTocado,
+  };
+  limparTocados();
   estEditado  = false;
   prodEditado = false;
   prod2Editado = false;
@@ -719,7 +791,7 @@ function salvarModelo() {
   saveLocal('vc:' + modeloAtual, data);
   _ultimoSaveTs = Date.now();   // inicia carência: protege o modelo aberto até a nuvem confirmar
   renderCarimbosAtualizacao(data); // o cabeçalho acompanha o save, sem redesenhar a tabela
-  salvarNuvem(modeloAtual, data);
+  subirModeloMesclado(modeloAtual, data, tocado).catch(() => {});
   showSaved();
   buildSidebar(); // atualiza badge de status no menu lateral
 
@@ -3806,7 +3878,9 @@ function confirmarStatus(key, novoStatus, leva) {
   }
   saved.updated_at = new Date().toISOString();
   saveLocal('vc:' + key, saved);
-  salvarNuvem(key, saved);
+  // Só o status sobe; o resto do modelo vem da nuvem. `saved` é o local deste aparelho e
+  // pode estar velho: mandar ele inteiro era o que devolvia a contagem do outro aparelho.
+  subirModeloMesclado(key, saved, { est: new Set(), prod: new Set(), prod2: new Set(), cfg: false, status: true }).catch(() => {});
   buildSidebar();
   verificarAvisosStatus();
   // Tirar a leva de "Em costura" É a entrega: fecha o valor da rodada na hora, sem esperar
@@ -7995,17 +8069,17 @@ function renderModelo(key) {
       const etot = ev[0] || 0;
       const minTU = necessidadeLeva(ab, ev, p2Cor, true, SZ.length)[0];
       const pvTU  = d.prod && d.prod[cor] ? (d.prod[cor][0] || 0) : minTU;
-      est.innerHTML  += `<tr data-cor="${cor}"><td>${cor}</td><td><input class="ci${etot > 0 ? ' ci-val' : ''}" type="number" min="0" value="${etot || ''}" placeholder="—" oninput="marcarEstEditado()"></td></tr>`;
-      prod.innerHTML += `<tr data-cor="${cor}" data-min="${minTU}"><td>${cor}</td><td><input class="ci${pvTU > 0 ? (pvTU > minTU ? ' acima' : ' ci-val') : ''}" type="number" min="0" value="${pvTU || ''}" placeholder="—" oninput="marcarProdEditado();calcProdTU(this);autoSave()"></td></tr>`;
+      est.innerHTML  += `<tr data-cor="${cor}"><td>${cor}</td><td><input class="ci${etot > 0 ? ' ci-val' : ''}" type="number" min="0" value="${etot || ''}" placeholder="—" oninput="marcarEstEditado(this)"></td></tr>`;
+      prod.innerHTML += `<tr data-cor="${cor}" data-min="${minTU}"><td>${cor}</td><td><input class="ci${pvTU > 0 ? (pvTU > minTU ? ' acima' : ' ci-val') : ''}" type="number" min="0" value="${pvTU || ''}" placeholder="—" oninput="marcarProdEditado(this);calcProdTU(this);autoSave()"></td></tr>`;
     } else {
       const mins = necessidadeLeva(ab, ev, p2Cor, false, SZ.length);
       // normaliza pro nº de tamanhos do modelo (dados antigos podem ter menos posições — ex.: sapato migrado de PP-GG p/ 34-40)
       const pv   = ((d.prod && d.prod[cor]) || mins).map(v => v || 0).concat(new Array(SZ.length).fill(0)).slice(0, SZ.length);
       abt.innerHTML  += `<tr><td>${cor}</td>${ab.map(v => `<td class="${v > 0 ? 'val-areia' : ''}">${v || '—'}</td>`).join('')}<td class="${abTot > 0 ? 'val-areia' : ''}">${abTot || '0'}</td></tr>`;
       const etot = ev.reduce((a, b) => a + b, 0);
-      est.innerHTML  += `<tr data-cor="${cor}"><td>${cor}</td>${ev.map(v => `<td><input class="ci${v > 0 ? ' ci-val' : ''}" type="number" min="0" value="${v || ''}" placeholder="—" oninput="marcarEstEditado()"></td>`).join('')}<td class="re ${etot > 0 ? 'val-grafite' : ''}">${etot || '—'}</td></tr>`;
+      est.innerHTML  += `<tr data-cor="${cor}"><td>${cor}</td>${ev.map(v => `<td><input class="ci${v > 0 ? ' ci-val' : ''}" type="number" min="0" value="${v || ''}" placeholder="—" oninput="marcarEstEditado(this)"></td>`).join('')}<td class="re ${etot > 0 ? 'val-grafite' : ''}">${etot || '—'}</td></tr>`;
       const ptot = pv.reduce((a, b) => a + b, 0);
-      prod.innerHTML += `<tr data-cor="${cor}" data-min="${mins.join(',')}"><td>${cor}</td>${pv.map((v, i) => `<td><input class="ci${v > 0 ? (v > mins[i] ? ' acima' : ' ci-val') : ''}" type="number" min="0" value="${v || ''}" placeholder="—" oninput="marcarProdEditado();calcProd(this);autoSave()"></td>`).join('')}<td class="rp ${ptot > 0 ? 'val-escuro' : ''}">${ptot || '—'}</td></tr>`;
+      prod.innerHTML += `<tr data-cor="${cor}" data-min="${mins.join(',')}"><td>${cor}</td>${pv.map((v, i) => `<td><input class="ci${v > 0 ? (v > mins[i] ? ' acima' : ' ci-val') : ''}" type="number" min="0" value="${v || ''}" placeholder="—" oninput="marcarProdEditado(this);calcProd(this);autoSave()"></td>`).join('')}<td class="rp ${ptot > 0 ? 'val-escuro' : ''}">${ptot || '—'}</td></tr>`;
     }
   });
 
@@ -8464,10 +8538,10 @@ function renderLeva2(def, d, cores, SZ, tu) {
     const pv = ((d.prod2 && d.prod2[cor]) || []).map(v => v || 0).concat(new Array(SZ.length).fill(0)).slice(0, SZ.length);
     if (tu) {
       const v = pv[0] || 0;
-      tbody.innerHTML += `<tr data-cor="${cor}"><td>${cor}</td><td><input class="ci${v > 0 ? ' ci-val' : ''}" type="number" min="0" value="${v || ''}" placeholder="—" oninput="marcarProd2Editado();calcProd2(this);autoSave()"></td></tr>`;
+      tbody.innerHTML += `<tr data-cor="${cor}"><td>${cor}</td><td><input class="ci${v > 0 ? ' ci-val' : ''}" type="number" min="0" value="${v || ''}" placeholder="—" oninput="marcarProd2Editado(this);calcProd2(this);autoSave()"></td></tr>`;
     } else {
       const tot = pv.reduce((a, b) => a + b, 0);
-      tbody.innerHTML += `<tr data-cor="${cor}"><td>${cor}</td>${pv.map(v => `<td><input class="ci${v > 0 ? ' ci-val' : ''}" type="number" min="0" value="${v || ''}" placeholder="—" oninput="marcarProd2Editado();calcProd2(this);autoSave()"></td>`).join('')}<td class="rp2 ${tot > 0 ? 'val-escuro' : ''}">${tot || '—'}</td></tr>`;
+      tbody.innerHTML += `<tr data-cor="${cor}"><td>${cor}</td>${pv.map(v => `<td><input class="ci${v > 0 ? ' ci-val' : ''}" type="number" min="0" value="${v || ''}" placeholder="—" oninput="marcarProd2Editado(this);calcProd2(this);autoSave()"></td>`).join('')}<td class="rp2 ${tot > 0 ? 'val-escuro' : ''}">${tot || '—'}</td></tr>`;
     }
   });
 

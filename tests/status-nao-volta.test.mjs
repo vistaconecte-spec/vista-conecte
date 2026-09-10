@@ -79,11 +79,17 @@ function montar({ salvo, statusDOM = '', status2DOM = '', tocou = false, temLeva
     showSaved: () => {}, buildSidebar: () => {}, esconderBtnSalvar: () => {},
     // só repinta o "Atualizado em" dos cards; aqui não há tela
     renderCarimbosAtualizacao: () => {},
+    // A subida mesclada e testada em modelo-patch.test.mjs; aqui interessa o que salvarModelo
+    // monta a partir da tela, entao a gravacao e direta e sincrona.
+    subirModeloMesclado: (k, d) => { nuvem[k] = d; return Promise.resolve(d); },
+    _celulasTocadas: { est: new Set(), prod: new Set(), prod2: new Set() },
+    limparTocados: () => {},
     tocou,
   };
   const api = new Function('ctx', `
     const { document, MODELOS, saveLocal, loadLocal, salvarNuvem,
-            showSaved, buildSidebar, esconderBtnSalvar, renderCarimbosAtualizacao } = ctx;
+            showSaved, buildSidebar, esconderBtnSalvar, renderCarimbosAtualizacao,
+            subirModeloMesclado, _celulasTocadas, limparTocados } = ctx;
     let modeloAtual = 'calca-flare';
     let estEditado = false, prodEditado = false, prod2Editado = false, cfgEditado = true;
     let statusTocado = ctx.tocou;
