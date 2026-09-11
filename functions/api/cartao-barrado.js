@@ -15,7 +15,7 @@
  * mandar cookie de um curl, e eu não tenho o API_TOKEN); a sessão é conferida AQUI.
  */
 import { lerSessao } from '../_sessao.js';
-import { igual, json, config, shopify, listarDocs, templateWati, diagnosticar, processarPedido } from '../_cartao-barrado.js';
+import { igual, json, config, shopify, listarDocs, templateWati, diagnosticar, processarPedido, chaveSupabase } from '../_cartao-barrado.js';
 
 export async function onRequest(context) {
   const { request, env } = context;
@@ -44,7 +44,7 @@ export async function onRequest(context) {
         config: { ...cfg, base: cfg.base },
         env: {
           WEBHOOK_KEY: !!env.WEBHOOK_KEY, WATI_TOKEN: !!env.WATI_TOKEN, PAGARME_SECRET_KEY: !!env.PAGARME_SECRET_KEY,
-          MP_ACCESS_TOKEN: !!env.MP_ACCESS_TOKEN, SHOPIFY_CLIENT_SECRET: !!env.SHOPIFY_CLIENT_SECRET, SUPABASE_SERVICE_ROLE_KEY: !!env.SUPABASE_SERVICE_ROLE_KEY,
+          MP_ACCESS_TOKEN: !!env.MP_ACCESS_TOKEN, SHOPIFY_CLIENT_SECRET: !!env.SHOPIFY_CLIENT_SECRET, SUPABASE_ANON_KEY: !!env.SUPABASE_ANON_KEY,
         },
         shopify: { write_orders: escopos.includes('write_orders'), read_orders: escopos.includes('read_orders'), escopos: escopos.length },
         webhook: nosso.length ? nosso.map(w => ({ id: w.id, topic: w.topic, address: w.address.replace(/k=[^&]+/, 'k=***'), api_version: w.api_version })) : 'NÃO registrado',
@@ -54,7 +54,7 @@ export async function onRequest(context) {
 
     if (acao === 'supabase') {
       // Sonda: o que a chave de serviço consegue na vc_modelos (o resgate grava aqui).
-      const k = env.SUPABASE_SERVICE_ROLE_KEY || '';
+      const k = chaveSupabase(env);
       const H = { apikey: k, Authorization: 'Bearer ' + k };
       const sonda = async (path) => { const r = await fetch(`https://hckzsblwyabmhzbjdjgx.supabase.co/rest/v1/${path}`, { headers: H }); return { status: r.status, corpo: (await r.text()).slice(0, 200) }; };
       let papel = null; try { papel = JSON.parse(atob(k.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'))).role; } catch (e) { papel = 'não é JWT'; }

@@ -138,7 +138,7 @@ function redeFalsa({ travaConflito = false, pagarmeFalha = false } = {}) {
     throw new Error('fetch inesperado: ' + u);
   };
 }
-const env = { SHOPIFY_STORE_DOMAIN: 'loja.myshopify.com', SHOPIFY_ADMIN_TOKEN: 't', SUPABASE_SERVICE_ROLE_KEY: 's', WATI_TOKEN: 'w', PAGARME_SECRET_KEY: 'ak', MP_ACCESS_TOKEN: 'mp', WEBHOOK_KEY: 'chave' };
+const env = { SHOPIFY_STORE_DOMAIN: 'loja.myshopify.com', SHOPIFY_ADMIN_TOKEN: 't', SUPABASE_ANON_KEY: 's', WATI_TOKEN: 'w', PAGARME_SECRET_KEY: 'ak', MP_ACCESS_TOKEN: 'mp', WEBHOOK_KEY: 'chave' };
 
 {
   redeFalsa();

@@ -195,8 +195,16 @@ export function diagnosticar(pedido, transacoes, { janelaH = PADRAO.janelaPedido
 
 // ── Supabase: documento por pedido (trava + registro) ────────────────────────
 
+// A chave de SERVIÇO não alcança a vc_modelos (11/09/2026: "permission denied for table
+// vc_modelos", o service_role só tem privilégio no schema `modelagem`). A vc_modelos é lida e
+// gravada pela chave anon — a mesma que o main.js usa, pública por natureza —, guardada no
+// Pages como SUPABASE_ANON_KEY pra não duplicar o valor no código das functions.
+export function chaveSupabase(env) {
+  return env.SUPABASE_ANON_KEY || env.SUPABASE_SERVICE_ROLE_KEY || '';
+}
+
 function sbHeaders(env, extra) {
-  const k = env.SUPABASE_SERVICE_ROLE_KEY;
+  const k = chaveSupabase(env);
   return { apikey: k, Authorization: 'Bearer ' + k, 'Content-Type': 'application/json', ...(extra || {}) };
 }
 
