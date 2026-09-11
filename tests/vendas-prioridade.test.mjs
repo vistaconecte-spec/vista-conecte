@@ -77,7 +77,22 @@ ok('a nota explica as trocas de R$ 0 ocultas', /nao entra|não entra/.test(main)
 console.log('\n3b) Comissao da Marcelly: 5% do total, calculada no sistema');
 ok('a taxa e 5%', /const VND_COMISSAO = 0\.05;/.test(main), true);
 ok('a metrica existe na tela', /id="vnd-comissao"/.test(html), true);
-ok('e sai do total (que ja exclui as trocas de R$ 0)', /set\('vnd-comissao', fmtBRL\(\(d\.total \|\| 0\) \* VND_COMISSAO\)\);/.test(main), true);
+ok('e sai do total que conta (sem as trocas de R$ 0 e sem o que a dona tirou)', /set\('vnd-comissao', fmtBRL\(totalContam \* VND_COMISSAO\)\);/.test(main), true);
+
+console.log('\n3c) A dona marca o rascunho que nao e venda da Marcelly, e a comissao recalcula');
+{
+  // Em 11/09/2026 a Marcelly apontou 3 rascunhos de setembro que nao fez. A Shopify nao diz
+  // quem criou, entao a excecao e marcada a mao e fica na nuvem (chave vendas-comissao).
+  const ini = main.indexOf('const VND_EXCL_KEY'), fim = main.indexOf('function vndPeriodo');
+  const trecho = main.slice(ini, fim);
+  ok('a lista de excluidos mora na chave vendas-comissao', /const VND_EXCL_KEY = 'vendas-comissao';/.test(main), true);
+  ok('marcar grava pela mesclagem (varios aparelhos)', /salvarListaCompartilhada\(VND_EXCL_KEY, 'excluidos', cfg\)/.test(trecho), true);
+  ok('desmarcar registra o id em removidos (senao a mesclagem traz de volta)', /cfg\.removidos = \[\.\.\.\(cfg\.removidos \|\| \[\]\), \{ id: String\(id\)/.test(trecho), true);
+  ok('a comissao sai so do que conta', /set\('vnd-comissao', fmtBRL\(totalContam \* VND_COMISSAO\)\);/.test(main), true);
+  ok('as vendas e o total tambem', /set\('vnd-qtd', contam\.length\);[\s\S]{0,80}set\('vnd-total', fmtBRL\(totalContam\)\);/.test(main), true);
+  ok('a tela mostra quantas ficaram de fora', /id="vnd-fora"/.test(html) && /set\('vnd-fora'/.test(main), true);
+  ok('cada linha tem o botao', /onclick="vndToggleComissao\('\$\{r\.id\}'\)"/.test(main), true);
+}
 
 console.log('\n4) Prioridade no SAC');
 ok('o formulario tem o URGENTE', /id="sac-urgente"/.test(html), true);

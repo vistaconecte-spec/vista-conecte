@@ -1630,6 +1630,32 @@ const fmtBRL = v => 'R$ ' + (Number(v) || 0).toLocaleString('pt-BR', { minimumFr
 // Comissão da Marcelly sobre as vendas por WhatsApp: 5% do total do mês, sem as trocas de
 // R$ 0 (definido pela dona em 11/09/2026). Calculado aqui, não na planilha.
 const VND_COMISSAO = 0.05;
+// Rascunhos que NÃO são venda da Marcelly (a dona marca na aba). Em 11/09/2026 a Marcelly
+// apontou 3 de setembro que não fez (#D2737, #D2738, #D2745); a Shopify não diz quem criou o
+// rascunho, então a exceção é marcada à mão e fica guardada na nuvem (chave vendas-comissao).
+const VND_EXCL_KEY = 'vendas-comissao';
+function vndExcluidos() {
+  const cfg = loadLocal('vc:' + VND_EXCL_KEY) || { excluidos: [] };
+  return Array.isArray(cfg.excluidos) ? cfg.excluidos : [];
+}
+function vndEstaFora(id) { return vndExcluidos().some(e => String(e.id) === String(id)); }
+function vndToggleComissao(id) {
+  const cfg = loadLocal('vc:' + VND_EXCL_KEY) || { excluidos: [] };
+  if (!Array.isArray(cfg.excluidos)) cfg.excluidos = [];
+  const i = cfg.excluidos.findIndex(e => String(e.id) === String(id));
+  if (i >= 0) {
+    cfg.excluidos.splice(i, 1);
+    cfg.removidos = [...(cfg.removidos || []), { id: String(id), em: new Date().toISOString() }]; // senão a mesclagem traz de volta
+  } else {
+    const r = ((window._vndUltimo || {}).rascunhos || []).find(x => String(x.id) === String(id)) || {};
+    cfg.excluidos.push({ id: String(id), numero: r.numero || '', cliente: r.cliente || '', valor: r.valor || 0,
+                         criado_em: r.criado_em || '', atualizado_em: new Date().toISOString() });
+  }
+  cfg.updated_at = new Date().toISOString();
+  saveLocal('vc:' + VND_EXCL_KEY, cfg);
+  salvarListaCompartilhada(VND_EXCL_KEY, 'excluidos', cfg).then(() => { if (window._vndUltimo) vndRender(window._vndUltimo); }).catch(() => {});
+  if (window._vndUltimo) vndRender(window._vndUltimo);
+}
 function vndPeriodo() {
   const el = document.getElementById('vnd-mes');
   const hoje = new Date();
@@ -1654,15 +1680,21 @@ async function vndCarregar() {
   }
 }
 function vndRender(d) {
+  window._vndUltimo = d;
   const esc = v => String(v || '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   const lista = d.rascunhos || [];
-  const abertos = lista.filter(r => r.status === 'aberto').length;
+  const contam = lista.filter(r => !vndEstaFora(r.id));
+  const fora   = lista.filter(r =>  vndEstaFora(r.id));
+  const totalContam = contam.reduce((s, r) => s + (r.valor || 0), 0);
+  const totalFora   = fora.reduce((s, r) => s + (r.valor || 0), 0);
+  const abertos = contam.filter(r => r.status === 'aberto').length;
   const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
-  set('vnd-qtd', d.quantidade || 0);
-  set('vnd-total', fmtBRL(d.total));
-  set('vnd-medio', fmtBRL(d.quantidade ? d.total / d.quantidade : 0));
+  set('vnd-qtd', contam.length);
+  set('vnd-total', fmtBRL(totalContam));
+  set('vnd-medio', fmtBRL(contam.length ? totalContam / contam.length : 0));
   set('vnd-abertos', abertos);
-  set('vnd-comissao', fmtBRL((d.total || 0) * VND_COMISSAO));
+  set('vnd-comissao', fmtBRL(totalContam * VND_COMISSAO));
+  set('vnd-fora', fora.length ? `${fora.length} (${fmtBRL(totalFora)})` : '0');
   set('vnd-nota', d.ocultos_zero
     ? `${d.ocultos_zero} rascunho${d.ocultos_zero > 1 ? 's' : ''} de R$ 0 (troca${d.ocultos_zero > 1 ? 's' : ''}) não entra${d.ocultos_zero > 1 ? 'm' : ''} na conta.`
     : '');
@@ -1676,16 +1708,19 @@ function vndRender(d) {
     if (p.enviado) partes.push('<span style="color:#15803d">enviado</span>');
     return partes.join(' · ');
   };
-  const rows = lista.map(r => `<tr>
+  const rows = lista.map(r => { const ehFora = vndEstaFora(r.id); return `<tr style="${ehFora ? 'opacity:.45' : ''}">
       <td style="padding:5px 4px;white-space:nowrap">${new Date(r.criado_em).toLocaleDateString('pt-BR')}</td>
       <td style="padding:5px 4px;font-weight:700">${esc(r.numero)}</td>
       <td style="padding:5px 4px">${esc(r.cliente || '(sem nome)')}</td>
       <td style="padding:5px 4px;color:var(--text-sec)">${esc((r.itens || []).map(i => `${i.qtd}× ${i.titulo}${i.variante ? ' (' + i.variante + ')' : ''}`).join(', '))}</td>
       <td style="padding:5px 4px;text-align:right;white-space:nowrap;font-weight:700">${fmtBRL(r.valor)}</td>
       <td style="padding:5px 4px;white-space:nowrap">${situacao(r)}</td>
-    </tr>`).join('');
+      <td style="padding:5px 4px;text-align:center;white-space:nowrap">${ehFora
+        ? `<span style="font-size:11px;color:#b91c1c;font-weight:700">não é dela</span> <button class="btn-outline" style="font-size:10px;padding:2px 7px;margin-left:4px" onclick="vndToggleComissao('${r.id}')" title="voltar a contar na comissão">contar</button>`
+        : `<button class="btn-outline" style="font-size:10px;padding:2px 7px" onclick="vndToggleComissao('${r.id}')" title="tirar da comissão da Marcelly">não é da Marcelly</button>`}</td>
+    </tr>`; }).join('');
   const tb = document.getElementById('vnd-tbody');
-  if (tb) tb.innerHTML = rows || '<tr><td colspan="6" style="text-align:center;color:var(--text-ter);padding:14px">Nenhuma venda em rascunho neste mês.</td></tr>';
+  if (tb) tb.innerHTML = rows || '<tr><td colspan="7" style="text-align:center;color:var(--text-ter);padding:14px">Nenhuma venda em rascunho neste mês.</td></tr>';
 }
 
 // ── Retorno (Troca) ───────────────────────────────────────────────────────────
