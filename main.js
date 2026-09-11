@@ -1306,7 +1306,7 @@ function atdLock() {
 
 // Alterna entre as 4 sub-seções (pílulas) dentro do painel Atendimento
 function atdShowSub(sub) {
-  ['kanban', 'sac', 'retorno', 'estorno'].forEach(s => {
+  ['kanban', 'sac', 'retorno', 'estorno', 'vendas'].forEach(s => {
     const el = document.getElementById('atd-sub-' + s);
     if (el) el.style.display = (s === sub) ? '' : 'none';
     const pill = document.getElementById('atd-pill-' + s);
@@ -1316,6 +1316,7 @@ function atdShowSub(sub) {
   else if (sub === 'retorno') { retRender(); retSincronizarShopify(); }
   else if (sub === 'estorno') { estRender(); estSincronizarShopify(); }
   else if (sub === 'kanban') kbAbrir();
+  else if (sub === 'vendas') vndCarregar();
 }
 
 // ── SAC ──────────────────────────────────────────────────────────────────────
@@ -1435,17 +1436,58 @@ function sacAdd() {
   const rastreio = (document.getElementById('sac-rastreio').value || '').trim();
   if (!pedido || !caso) { alert('Preencha ao menos o nº do pedido e a informação do caso.'); return; }
   const cfg = sacGetConfig();
+  const urgente = !!document.getElementById('sac-urgente')?.checked;
   const novo = {
     id: 'sac' + Date.now(), pedido, caso, info_expedicao: '',
-    rastreio, status: 'pendente', criado_em: new Date().toISOString(),
+    rastreio, urgente, status: 'pendente', criado_em: new Date().toISOString(),
   };
   cfg.tickets.push(novo);
   sacSalvar(cfg);
   sacRender();
   sacCarregarItens(novo.id, pedido); // busca itens/cliente em segundo plano
   ['sac-pedido', 'sac-caso', 'sac-rastreio'].forEach(id => document.getElementById(id).value = '');
+  const chk = document.getElementById('sac-urgente'); if (chk) chk.checked = false;
   document.getElementById('sac-pedido-preview').style.display = 'none';
   document.getElementById('sac-pedido').focus();
+}
+
+// Prioridade de liberação (pedido da dona no grupo, 11/09/2026): o pedido com ocorrência
+// de cliente vai para o topo e para o card vermelho, para a Expedição liberar primeiro.
+// A planilha antiga fazia isso à mão, escrevendo "URGENTE//" no motivo.
+function sacUrgenteToggle(id) {
+  const cfg = sacGetConfig();
+  const t = cfg.tickets.find(x => x.id === id); if (!t) return;
+  carimbarItem(t);
+  t.urgente = !t.urgente;
+  sacSalvar(cfg);
+  sacRender();
+}
+function sacDiasEmAberto(t) {
+  const ms = Date.now() - Date.parse(t.criado_em || '');
+  return isNaN(ms) ? null : Math.floor(ms / 86400000);
+}
+function sacRenderPrioridade(cfg) {
+  const card = document.getElementById('sac-prioridade-card');
+  const lista = document.getElementById('sac-prioridade-lista');
+  const total = document.getElementById('sac-prioridade-total');
+  if (!card || !lista) return;
+  const urgentes = cfg.tickets
+    .filter(t => t.urgente && t.status !== 'resolvido')
+    .sort((a, b) => (a.criado_em || '').localeCompare(b.criado_em || '')); // o mais antigo primeiro
+  card.style.display = urgentes.length ? '' : 'none';
+  if (total) total.textContent = urgentes.length + (urgentes.length === 1 ? ' pedido' : ' pedidos');
+  const esc = v => String(v || '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  lista.innerHTML = urgentes.map(t => {
+    const dias = sacDiasEmAberto(t);
+    const idade = dias === null ? '' : (dias === 0 ? 'hoje' : dias === 1 ? '1 dia' : dias + ' dias');
+    return `<div style="display:flex;gap:12px;align-items:center;padding:7px 10px;border-bottom:1px solid #fee2e2;font-size:12px">
+      <strong style="min-width:70px">${esc(t.pedido)}</strong>
+      <span style="min-width:150px;color:var(--text-sec)">${esc(t.cliente || '')}</span>
+      <span style="flex:1">${esc(t.caso || t.motivo || '')}</span>
+      <span style="min-width:120px;color:var(--text-ter)">${t.rastreio ? 'rastreio ' + esc(t.rastreio) : 'sem rastreio'}</span>
+      <span style="min-width:60px;text-align:right;font-weight:700;color:${dias >= 3 ? '#b91c1c' : '#7c2d12'}">${idade}</span>
+    </div>`;
+  }).join('');
 }
 
 // Busca cliente/itens do pedido na Shopify e grava no ticket (uma vez só — fica salvo).
@@ -1549,15 +1591,22 @@ function sacRender() {
   const mostrarResolvidos = document.getElementById('sac-mostrar-resolvidos')?.checked;
   const lista = cfg.tickets
     .filter(t => mostrarResolvidos || t.status !== 'resolvido')
-    .sort((a, b) => (b.criado_em || '').localeCompare(a.criado_em || ''));
+    .sort((a, b) => {
+      // urgente pendente vem primeiro; dentro de cada grupo, o mais novo primeiro
+      const ua = (a.urgente && a.status !== 'resolvido') ? 1 : 0, ub = (b.urgente && b.status !== 'resolvido') ? 1 : 0;
+      if (ua !== ub) return ub - ua;
+      return (b.criado_em || '').localeCompare(a.criado_em || '');
+    });
+  sacRenderPrioridade(cfg);
   const itensPlano = t => {
     if (!t.itens || !t.itens.length) return '(sem itens carregados)';
     return t.itens.map(i => `${i.qtd}× ${i.titulo}${i.variante ? ' (' + i.variante + ')' : ''}`).join(', ');
   };
   const esc = v => (v || '').replace(/"/g, '&quot;');
   const rows = lista.map(t => `
-    <tr style="${t.status === 'resolvido' ? 'opacity:0.5' : ''}">
+    <tr style="${t.status === 'resolvido' ? 'opacity:0.5' : (t.urgente ? 'background:#fff5f5' : '')}">
       <td style="padding:4px;text-align:center;vertical-align:middle"><input type="checkbox" ${t.status === 'resolvido' ? 'checked' : ''} onchange="sacToggle('${t.id}')" title="marcar como resolvido"></td>
+      <td style="padding:4px;text-align:center;vertical-align:middle"><button onclick="sacUrgenteToggle('${t.id}')" title="${t.urgente ? 'tirar da prioridade' : 'marcar como urgente'}" style="background:none;border:none;cursor:pointer;font-size:15px;color:${t.urgente ? '#b91c1c' : '#d4d4d4'}"><i class="ti ti-flame"></i></button></td>
       <td style="padding:4px;width:100px;max-width:100px;font-weight:700;white-space:nowrap;text-align:left;vertical-align:middle" title="Itens do pedido: ${esc(itensPlano(t))}">${t.pedido}${t.cliente ? `<div style="font-weight:400;font-size:11px;color:var(--text-ter);overflow:hidden;text-overflow:ellipsis">${t.cliente}</div>` : ''}</td>
       <td style="padding:4px;vertical-align:middle"><input value="${esc(t.caso !== undefined ? t.caso : t.motivo)}" oninput="sacEdit('${t.id}','caso',this.value)" style="width:100%;min-width:180px;font-size:12px;padding:4px 6px;border:1px solid var(--border);border-radius:5px;${t.status === 'resolvido' ? 'text-decoration:line-through' : ''}"></td>
       <td style="padding:4px;vertical-align:middle"><input value="${esc(t.info_expedicao || t.itens_faltantes)}" data-sac-info-id="${t.id}" oninput="sacEdit('${t.id}','info_expedicao',this.value)" onfocus="sacMostrarItensLinha('${t.id}', this)" style="width:100%;min-width:220px;font-size:12px;padding:4px 6px;border:1px solid var(--border);border-radius:5px"></td>
@@ -1565,12 +1614,74 @@ function sacRender() {
       <td style="padding:4px;text-align:center;vertical-align:middle"><button onclick="sacDel('${t.id}')" title="excluir" style="background:none;border:none;cursor:pointer;color:var(--text-ter);font-size:15px">×</button></td>
     </tr>`).join('');
   document.getElementById('sac-tbody').innerHTML = rows ||
-    '<tr><td colspan="6" style="text-align:center;color:var(--text-ter);font-size:12px;padding:12px">Nenhum ticket ' + (mostrarResolvidos ? '' : 'pendente') + '.</td></tr>';
+    '<tr><td colspan="7" style="text-align:center;color:var(--text-ter);font-size:12px;padding:12px">Nenhum ticket ' + (mostrarResolvidos ? '' : 'pendente') + '.</td></tr>';
   const total = cfg.tickets.filter(t => t.status !== 'resolvido').length;
   const totalEl = document.getElementById('sac-total-pendentes');
   if (totalEl) totalEl.textContent = total + ' pendente' + (total === 1 ? '' : 's');
   // Busca itens em segundo plano pros tickets que ainda não têm (ex.: criados antes dessa função existir)
   lista.filter(t => t.itens === undefined).forEach(t => sacCarregarItens(t.id, t.pedido));
+}
+
+// ── Vendas pelo WhatsApp (rascunhos da Shopify) ───────────────────────────────
+// Pedido da dona no grupo Sac/Expedição (11/09/2026): "criar uma aba vendas da Marcelly,
+// puxar os pedidos criados em rascunho; não puxar os de R$ 0 (são trocas)". Só leitura:
+// nada aqui grava no Supabase, a fonte é /api/shopify-rascunhos.
+const fmtBRL = v => 'R$ ' + (Number(v) || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+function vndPeriodo() {
+  const el = document.getElementById('vnd-mes');
+  const hoje = new Date();
+  const mes = (el && /^\d{4}-\d{2}$/.test(el.value)) ? el.value : `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, '0')}`;
+  if (el && !el.value) el.value = mes;
+  const [y, m] = mes.split('-').map(Number);
+  const ultimo = new Date(y, m, 0).getDate();
+  return { desde: `${mes}-01`, ate: `${mes}-${String(ultimo).padStart(2, '0')}` };
+}
+async function vndCarregar() {
+  const st = document.getElementById('vnd-status');
+  const { desde, ate } = vndPeriodo();
+  if (st) st.textContent = 'buscando na Shopify...';
+  try {
+    const r = await fetch(`/api/shopify-rascunhos?desde=${desde}&ate=${ate}`, { cache: 'no-store' });
+    const d = await r.json();
+    if (!r.ok || d.erro) throw new Error(d.erro || ('HTTP ' + r.status));
+    vndRender(d);
+    if (st) st.textContent = 'atualizado ' + new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+  } catch (e) {
+    if (st) st.textContent = 'não deu para ler a Shopify agora (' + (e.message || 'erro') + ')';
+  }
+}
+function vndRender(d) {
+  const esc = v => String(v || '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const lista = d.rascunhos || [];
+  const abertos = lista.filter(r => r.status === 'aberto').length;
+  const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+  set('vnd-qtd', d.quantidade || 0);
+  set('vnd-total', fmtBRL(d.total));
+  set('vnd-medio', fmtBRL(d.quantidade ? d.total / d.quantidade : 0));
+  set('vnd-abertos', abertos);
+  set('vnd-nota', d.ocultos_zero
+    ? `${d.ocultos_zero} rascunho${d.ocultos_zero > 1 ? 's' : ''} de R$ 0 (troca${d.ocultos_zero > 1 ? 's' : ''}) não entra${d.ocultos_zero > 1 ? 'm' : ''} na conta.`
+    : '');
+  const situacao = r => {
+    if (r.status === 'aberto') return '<span style="color:#b45309;font-weight:700">Rascunho aberto</span>';
+    if (!r.pedido) return 'Concluído';
+    const p = r.pedido;
+    if (p.cancelado) return `<span style="color:#b91c1c">Pedido ${esc(p.numero || '')} cancelado</span>`;
+    const partes = [`Pedido <strong>${esc(p.numero || '')}</strong>`];
+    partes.push(p.pago ? '<span style="color:#15803d">pago</span>' : '<span style="color:#b45309">aguardando pagamento</span>');
+    if (p.enviado) partes.push('<span style="color:#15803d">enviado</span>');
+    return partes.join(' · ');
+  };
+  const rows = lista.map(r => `<tr>
+      <td style="padding:5px 4px;white-space:nowrap">${new Date(r.criado_em).toLocaleDateString('pt-BR')}</td>
+      <td style="padding:5px 4px;font-weight:700">${esc(r.numero)}</td>
+      <td style="padding:5px 4px">${esc(r.cliente || '(sem nome)')}</td>
+      <td style="padding:5px 4px;color:var(--text-sec)">${esc((r.itens || []).map(i => `${i.qtd}× ${i.titulo}${i.variante ? ' (' + i.variante + ')' : ''}`).join(', '))}</td>
+      <td style="padding:5px 4px;text-align:right;white-space:nowrap;font-weight:700">${fmtBRL(r.valor)}</td>
+      <td style="padding:5px 4px;white-space:nowrap">${situacao(r)}</td>
+    </tr>`).join('');
+  const tb = document.getElementById('vnd-tbody');
+  if (tb) tb.innerHTML = rows || '<tr><td colspan="6" style="text-align:center;color:var(--text-ter);padding:14px">Nenhuma venda em rascunho neste mês.</td></tr>';
 }
 
 // ── Retorno (Troca) ───────────────────────────────────────────────────────────
@@ -2112,6 +2223,7 @@ function kbRender() {
       <div class="kb-card" draggable="true" style="${cardStyle}"
            ondragstart="kbDragStart(event,'${c.tipo}','${c.t.id}')" ondragend="kbDragEnd(event)">
         <span class="kb-badge ${tp.badge}" style="cursor:pointer" title="abrir na lista de ${tp.rotulo}" onclick="atdShowSub('${tp.pill}')">${tp.rotulo}</span>
+        ${(c.tipo === 'sac' && c.t.urgente && !isConcl) ? '<span class="kb-badge" style="background:#b91c1c;color:#fff" title="prioridade de liberação">URGENTE</span>' : ''}
         ${agingBadge}
         <div class="kb-nome" title="${esc(c.nome)}">${esc(c.nome)}</div>
         ${c.corpo ? `<div class="kb-corpo">${esc(c.corpo)}</div>` : ''}

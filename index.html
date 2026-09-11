@@ -773,6 +773,7 @@
             <div id="atd-pill-sac" class="atd-pill" onclick="atdShowSub('sac')"><i class="ti ti-headset"></i> SAC</div>
             <div id="atd-pill-retorno" class="atd-pill" onclick="atdShowSub('retorno')"><i class="ti ti-replace"></i> Troca</div>
             <div id="atd-pill-estorno" class="atd-pill" onclick="atdShowSub('estorno')"><i class="ti ti-receipt-refund"></i> Devolução</div>
+            <div id="atd-pill-vendas" class="atd-pill" onclick="atdShowSub('vendas')"><i class="ti ti-cash"></i> Vendas</div>
           </div>
 
           <!-- CRM KANBAN — solicitações em andamento (SAC + Trocas + Devoluções), visual visionOS -->
@@ -832,9 +833,18 @@
                   <span style="font-size:9px;font-weight:800;letter-spacing:0.08em;color:#5a8a80;text-transform:uppercase;width:100%">Expedição</span>
                   <input id="sac-rastreio" placeholder="Rastreio (opcional)" style="width:150px;font-size:12px;padding:7px 10px;border:1px solid var(--border);border-radius:6px" onkeydown="if(event.key==='Enter')sacAdd()">
                 </div>
+                <label style="display:flex;align-items:center;gap:5px;font-size:11px;font-weight:700;color:#b91c1c;cursor:pointer;align-self:center;padding:6px 10px;border:1px solid #fecaca;border-radius:6px;background:#fff5f5" title="Cliente com ocorrência: entra na lista de prioridade de liberação"><input type="checkbox" id="sac-urgente"> URGENTE</label>
                 <button class="btn-primary" style="font-size:12px;padding:7px 14px;align-self:center" onclick="sacAdd()"><i class="ti ti-plus"></i> Adicionar</button>
               </div>
               <div id="sac-pedido-preview" style="display:none;margin-top:10px;padding:10px 12px;background:#f5f0e8;border-radius:8px;font-size:12px"></div>
+            </div>
+            <div class="card" id="sac-prioridade-card" style="display:none;border:1px solid #fecaca;background:#fffafa">
+              <div class="card-header">
+                <div class="card-title" style="color:#b91c1c"><i class="ti ti-flame"></i> PRIORIDADE DE LIBERAÇÃO</div>
+                <span id="sac-prioridade-total" style="font-size:11px;font-weight:700;color:#b91c1c"></span>
+              </div>
+              <div style="font-size:11px;color:var(--text-sec);margin:-4px 0 8px">Pedidos com ocorrência de cliente: a Expedição libera estes primeiro. Some daqui ao marcar o ticket como resolvido.</div>
+              <div id="sac-prioridade-lista"></div>
             </div>
             <div class="card">
               <div class="card-header">
@@ -846,15 +856,16 @@
               </div>
               <div style="overflow-x:auto">
               <table style="width:100%;font-size:12px;min-width:900px;table-layout:fixed">
-                <colgroup><col style="width:32px"><col style="width:110px"><col style="width:260px"><col style="width:340px"><col style="width:130px"><col style="width:28px"></colgroup>
+                <colgroup><col style="width:32px"><col style="width:34px"><col style="width:110px"><col style="width:260px"><col style="width:340px"><col style="width:130px"><col style="width:28px"></colgroup>
                 <thead>
                   <tr style="color:var(--text-ter);font-size:10px;text-transform:uppercase">
                     <th></th>
-                    <th colspan="2" style="text-align:left;padding:4px 4px 2px;color:#9a8870;border-bottom:2px solid #C4A882">SAC</th>
+                    <th colspan="3" style="text-align:left;padding:4px 4px 2px;color:#9a8870;border-bottom:2px solid #C4A882">SAC</th>
                     <th colspan="3" style="text-align:left;padding:4px 4px 2px;color:#5a8a80;border-bottom:2px solid #7fb0a3">Expedição</th>
                   </tr>
                   <tr style="color:var(--text-ter);font-size:11px;text-transform:uppercase">
                     <th style="padding:4px">ok</th>
+                    <th style="padding:4px" title="urgente">!</th>
                     <th style="text-align:left;padding:4px">Pedido</th>
                     <th style="text-align:left;padding:4px">Caso</th>
                     <th style="text-align:left;padding:4px">Info expedição</th>
@@ -921,6 +932,38 @@
           </div>
 
           <!-- DEVOLUÇÃO / ESTORNO -->
+          <div id="atd-sub-vendas" style="display:none">
+            <div class="card">
+              <div class="card-header">
+                <div class="card-title"><i class="ti ti-cash"></i> Vendas pelo WhatsApp (pedidos em rascunho)</div>
+                <div style="display:flex;align-items:center;gap:8px;font-size:11px;color:var(--text-sec)">
+                  <input type="month" id="vnd-mes" style="font-size:12px;padding:5px 8px;border:1px solid var(--border);border-radius:6px" onchange="vndCarregar()">
+                  <button class="btn-outline" style="font-size:10px;padding:3px 8px" onclick="vndCarregar()"><i class="ti ti-refresh"></i> Atualizar</button>
+                  <span id="vnd-status"></span>
+                </div>
+              </div>
+              <div style="display:flex;gap:18px;flex-wrap:wrap;margin:2px 0 12px">
+                <div class="metric"><div class="label">VENDAS</div><div class="val val-escuro" id="vnd-qtd">0</div></div>
+                <div class="metric"><div class="label">TOTAL</div><div class="val val-escuro" id="vnd-total">R$ 0,00</div></div>
+                <div class="metric"><div class="label">TICKET MÉDIO</div><div class="val" id="vnd-medio">R$ 0,00</div></div>
+                <div class="metric"><div class="label">EM ABERTO</div><div class="val" id="vnd-abertos">0</div></div>
+              </div>
+              <div id="vnd-nota" style="font-size:11px;color:var(--text-ter);margin-bottom:8px"></div>
+              <div style="overflow-x:auto">
+              <table style="width:100%;font-size:12px;min-width:820px">
+                <thead><tr style="color:var(--text-ter);font-size:11px;text-transform:uppercase">
+                  <th style="text-align:left;padding:4px">Data</th>
+                  <th style="text-align:left;padding:4px">Rascunho</th>
+                  <th style="text-align:left;padding:4px">Cliente</th>
+                  <th style="text-align:left;padding:4px">Itens</th>
+                  <th style="text-align:right;padding:4px">Valor</th>
+                  <th style="text-align:left;padding:4px">Situação</th>
+                </tr></thead>
+                <tbody id="vnd-tbody"></tbody>
+              </table>
+              </div>
+            </div>
+          </div>
           <div id="atd-sub-estorno" style="display:none">
             <div class="card" style="padding:14px 16px;margin-bottom:14px;border-left:4px solid var(--gold-dark)">
               <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
@@ -994,8 +1037,8 @@
     </div>
   </div>
 </div>
-<script src="data.js?v=2026091002"></script>
-<script src="main.js?v=2026091002"></script>
+<script src="data.js?v=2026091101"></script>
+<script src="main.js?v=2026091101"></script>
 <script async src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js" onload="initSupabase()"></script>
 </body>
 </html>
