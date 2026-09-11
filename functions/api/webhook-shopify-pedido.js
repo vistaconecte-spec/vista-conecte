@@ -18,7 +18,9 @@ export function descartarPeloCorpo(o) {
   if (!o || !o.id) return 'sem id';
   if (o.cancelled_at) return 'cancelado';
   if (['paid', 'refunded', 'partially_refunded', 'partially_paid', 'authorized'].includes(o.financial_status)) return 'pago';
-  if (!(o.payment_gateway_names || []).some(g => /Cart/i.test(g))) return 'sem cartão';
+  // Só descarta pelo gateway se o campo veio: versão nova da API pode omitir o
+  // payment_gateway_names, e aí quem decide é a releitura das transações.
+  if (Array.isArray(o.payment_gateway_names) && !o.payment_gateway_names.some(g => /Cart/i.test(g))) return 'sem cartão';
   if (String(o.tags || '').split(',').map(s => s.trim()).includes(TAG_AVISADO)) return 'já avisado';
   return null;
 }
