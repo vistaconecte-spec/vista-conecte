@@ -16,7 +16,14 @@ const RENOVA_QUANDO_FALTAR_MS = 6 * 3600e3;
 //                          401. Sem o `code` assinado pela Shopify o endpoint
 //                          não faz nada, e o token que ele devolve é o da loja
 //                          de quem autorizou — não vaza o nosso.
-const PUBLICO = new Set(['/api/login', '/api/logout', '/api/sessao', '/api/shopify-callback']);
+//   webhook-*            → quem chama é a Shopify, o Pagar.me e o Mercado Pago (resgate do
+//                          cartão barrado, 11/09/2026). Cada um confere a própria assinatura
+//                          ou a chave ?k=WEBHOOK_KEY e trata o corpo como aviso: relê o
+//                          pedido/pagamento na API antes de fazer qualquer coisa.
+//   cartao-barrado       → painel desse resgate; aceita a mesma chave `k` (pra rotina de
+//                          fora) OU sessão da dona, conferida dentro dele.
+const PUBLICO = new Set(['/api/login', '/api/logout', '/api/sessao', '/api/shopify-callback',
+  '/api/webhook-shopify-pedido', '/api/webhook-pagarme', '/api/webhook-mp', '/api/cartao-barrado']);
 
 // Os perfis de oficina ('corte' e 'costura') abrem UMA aba cada — CORTE e COSTURA —,
 // montadas com o que já veio do Supabase. O que eles alcançam é uma ALLOWLIST, e não uma
