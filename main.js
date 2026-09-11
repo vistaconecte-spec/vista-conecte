@@ -8023,52 +8023,6 @@ function togglePronto(i) {
   if (cev) cev.style.transform = aberto ? '' : 'rotate(90deg)';
 }
 
-// Marca um pedido como processado (cumprido) na Shopify
-async function marcarProcessado(orderId, numero, btn) {
-  if (!confirm(`Marcar o pedido ${numero} como processado na Shopify?\n\nIsto cria o cumprimento do pedido (sem enviar e-mail ao cliente).`)) return;
-
-  const original = btn.innerHTML;
-  btn.disabled = true;
-  btn.style.opacity = '0.7';
-  btn.style.cursor = 'wait';
-  btn.innerHTML = '<i class="ti ti-loader-2"></i> Processando…';
-
-  try {
-    const res = await fetch('/api/shopify-fulfill', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ orderId }),
-    });
-    const data = await res.json().catch(() => ({}));
-
-    if (!res.ok || data.erro) {
-      const msg = data.erro || `Erro ${res.status}`;
-      alert(`Não foi possível processar o pedido ${numero}.\n\n${msg}${data.detalhe ? '\n\n' + (typeof data.detalhe === 'string' ? data.detalhe.slice(0, 300) : '') : ''}`);
-      btn.disabled = false;
-      btn.style.opacity = '';
-      btn.style.cursor = 'pointer';
-      btn.innerHTML = original;
-      return;
-    }
-
-    // Sucesso — feedback visual e atualização da lista
-    btn.innerHTML = '<i class="ti ti-check"></i> Processado';
-    btn.style.background = '#0f7a37';
-    btn.style.borderColor = '#0f7a37';
-
-    // Recarrega pedidos da Shopify (o pedido cumprido sai do filtro "unshipped") e re-renderiza.
-    // A baixa do estoque sai JUNTO, aqui — este é o momento em que a peça deixou a arara.
-    await carregarPedidosShopify();
-    await baixaImediataDeProcessados().catch(() => {});
-    if (modeloAtual === '__dashboard__') renderDashboard();
-  } catch (err) {
-    alert(`Falha de conexão ao processar o pedido ${numero}.\n\n${err.message}`);
-    btn.disabled = false;
-    btn.style.opacity = '';
-    btn.style.cursor = 'pointer';
-    btn.innerHTML = original;
-  }
-}
 
 function expandirTabela() {
   const rows = window._tabelaRowsAll || [];
