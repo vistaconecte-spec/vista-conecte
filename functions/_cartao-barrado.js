@@ -16,7 +16,7 @@
 //   4. Gera um link de pagamento por OUTRO caminho: Pagar.me (outro adquirente, outro
 //      antifraude) e, se ele falhar, Checkout Pro do Mercado Pago (mesmo antifraude, mas a
 //      cliente pode entrar na conta dela, o que baixa o risco).
-//   5. Agenda o template no Wati pra +10 min. Quem ainda está tentando (1 dos 7 passou na
+//   5. Agenda o template no Wati pra +5 min. Quem ainda está tentando (1 dos 7 passou na
 //      5ª tentativa) não recebe mensagem no meio do caminho; o texto do template tem a
 //      linha "se já deu certo, desconsidere" pra quem pagou nesse intervalo.
 //   6. Marca a tag no pedido da Shopify.
@@ -50,7 +50,7 @@ export const PADRAO = {
   parcelasMax: 12,
   jurosPct: 2.99,          // ao mês, só nas parcelas acima do sem-juros
   linkValidoMin: 1440,     // 24h — depois disso a cliente fala com o time
-  atrasoMin: 10,           // espera antes do WhatsApp
+  atrasoMin: 5,            // espera antes do WhatsApp (a dona pediu 5, 11/09/2026)
   janelaPedidoH: 24,       // webhook só olha pedido criado nas últimas 24h
   template: 'cartao_resgate_v1',
 };
