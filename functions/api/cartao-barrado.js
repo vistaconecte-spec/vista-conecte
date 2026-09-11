@@ -52,6 +52,15 @@ export async function onRequest(context) {
       });
     }
 
+    if (acao === 'supabase') {
+      // Sonda: o que a chave de serviço consegue na vc_modelos (o resgate grava aqui).
+      const k = env.SUPABASE_SERVICE_ROLE_KEY || '';
+      const H = { apikey: k, Authorization: 'Bearer ' + k };
+      const sonda = async (path) => { const r = await fetch(`https://hckzsblwyabmhzbjdjgx.supabase.co/rest/v1/${path}`, { headers: H }); return { status: r.status, corpo: (await r.text()).slice(0, 200) }; };
+      let papel = null; try { papel = JSON.parse(atob(k.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'))).role; } catch (e) { papel = 'não é JWT'; }
+      return json({ chave: { tamanho: k.length, prefixo: k.slice(0, 8), papel }, vc_modelos: await sonda('vc_modelos?select=id&limit=1'), projects: await sonda('projects?select=id&limit=1') });
+    }
+
     if (acao === 'casos') {
       const rows = await listarDocs(env, parseInt(q.get('limite') || '50', 10));
       return json({ total: rows.length, casos: rows.map(r => ({ ...r.dados, updated_at: r.updated_at })) });
