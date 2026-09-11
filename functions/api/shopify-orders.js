@@ -178,21 +178,37 @@ function cleanTitle(title) {
  *   2. Color-in-middle: "Vestido Frente Única Offwhite Longo" →
  *      remove "Offwhite" → "Vestido Frente Única Longo" → key encontrado
  */
+// Nomes do PRODUCT_MAP já em minúsculas, do mais longo ao mais curto (o primeiro que casa
+// é o prefixo mais longo; a ordenação é estável, então o empate continua com quem vem antes
+// no mapa). Antes cada item de cada pedido refazia o toLowerCase() dos ~100 nomes: só isso
+// eram ~3,4 ms por leitura, num limite de 10 ms de CPU por chamada (plano gratuito da
+// Cloudflare). E os mesmos ~60 títulos se repetem em centenas de itens, então o resultado
+// fica guardado por título (o objeto devolvido é só lido, nunca alterado).
+const PRODUCT_ENTRIES = Object.entries(PRODUCT_MAP)
+  .map(([name, modelKey]) => ({ name, modelKey, nameL: name.toLowerCase() }))
+  .sort((a, b) => b.name.length - a.name.length);
+const PRODUCT_BY_LOWER = new Map();
+for (const e of PRODUCT_ENTRIES) if (!PRODUCT_BY_LOWER.has(e.nameL)) PRODUCT_BY_LOWER.set(e.nameL, e);
+const _modeloPorTitulo = new Map();
+
 function findModelAndColor(title) {
+  if (_modeloPorTitulo.has(title)) return _modeloPorTitulo.get(title);
+  const achado = _findModelAndColor(title);
+  if (_modeloPorTitulo.size >= 2000) _modeloPorTitulo.clear();
+  _modeloPorTitulo.set(title, achado);
+  return achado;
+}
+
+function _findModelAndColor(title) {
   const titleL = title.toLowerCase();
 
   // 1. Tentar prefixo mais longo (case-insensitive)
-  let best = null;
-  for (const [name, modelKey] of Object.entries(PRODUCT_MAP)) {
-    const nameL = name.toLowerCase();
+  for (const { name, modelKey, nameL } of PRODUCT_ENTRIES) {
     if (titleL === nameL || titleL.startsWith(nameL + ' ')) {
-      if (!best || name.length > best.name.length) {
-        // Extrai cor usando o comprimento original do nome (ambos têm mesmo número de chars)
-        best = { name, modelKey, color: title.slice(name.length).trim() };
-      }
+      // Extrai cor usando o comprimento original do nome (ambos têm mesmo número de chars)
+      return { name, modelKey, color: title.slice(name.length).trim() };
     }
   }
-  if (best) return best;
 
   // 2. Cor no meio do título: tentar remover 1 ou 2 palavras consecutivas (case-insensitive)
   const words = title.split(' ');
@@ -200,11 +216,8 @@ function findModelAndColor(title) {
     for (let i = 0; i <= words.length - len; i++) {
       const colorCandidate = words.slice(i, i + len).join(' ');
       const remaining = [...words.slice(0, i), ...words.slice(i + len)].join(' ').toLowerCase();
-      for (const [name, modelKey] of Object.entries(PRODUCT_MAP)) {
-        if (remaining === name.toLowerCase()) {
-          return { name, modelKey, color: colorCandidate };
-        }
-      }
+      const e = PRODUCT_BY_LOWER.get(remaining);
+      if (e) return { name: e.name, modelKey: e.modelKey, color: colorCandidate };
     }
   }
 
@@ -227,17 +240,30 @@ async function fetchAllOrders(store, token) {
   // (a Shopify não aceita lista "unshipped,partial" — ela tratava só como unshipped, perdendo os parciais)
   // status=open  → pedidos ativos | status=closed → pedidos ARQUIVADOS (que ainda têm itens pendentes,
   // ex.: pedido parcialmente processado e arquivado). Cancelados (status=cancelled) ficam de fora.
-  for (const st of ['open', 'closed']) {
-    let url = `https://${store}/admin/api/2024-04/orders.json?status=${st}&fulfillment_status=unfulfilled&limit=250&fields=${fields}`;
+  const paginar = async (url) => {
+    const lista = [];
     while (url) {
       const res = await fetch(url, { headers: { 'X-Shopify-Access-Token': token } });
       if (!res.ok) throw new Error(`Shopify API error: ${res.status}`);
       const data = await res.json();
-      orders.push(...(data.orders || []));
+      lista.push(...(data.orders || []));
       const link = res.headers.get('Link') || '';
       const next = link.match(/<([^>]+)>;\s*rel="next"/);
       url = next ? next[1] : null;
     }
+    return lista;
+  };
+  orders.push(...await paginar(`https://${store}/admin/api/2024-04/orders.json?status=open&fulfillment_status=unfulfilled&limit=250&fields=${fields}`));
+
+  // Arquivados sem envio: a Shopify devolve aqui também os CANCELADOS (53 de 71 em
+  // 11/09/2026). Eles não contam (fulfillable_quantity vem 0), mas custavam 120 KB de JSON
+  // interpretado a cada leitura, e é o JSON.parse que consome o limite de 10 ms de CPU do
+  // plano gratuito da Cloudflare (erro 1102, tela com "servidor respondeu 503"). Por isso
+  // primeiro só id + cancelled_at (4 KB) e depois o corpo inteiro só dos que estão vivos.
+  const arquivados = await paginar(`https://${store}/admin/api/2024-04/orders.json?status=closed&fulfillment_status=unfulfilled&limit=250&fields=id,cancelled_at`);
+  const vivos = arquivados.filter(o => !o.cancelled_at).map(o => o.id);
+  for (let i = 0; i < vivos.length; i += 250) {
+    orders.push(...await paginar(`https://${store}/admin/api/2024-04/orders.json?status=any&ids=${vivos.slice(i, i + 250).join(',')}&limit=250&fields=${fields}`));
   }
   return orders;
 }
@@ -252,7 +278,9 @@ async function fetchAllOrders(store, token) {
 async function fetchProcessados(store, token, desdeISO) {
   const orders = [];
   const vistos = new Set();
-  const fields = 'id,name,created_at,updated_at,cancelled_at,fulfillment_status,line_items,fulfillments';
+  // Sem `line_items` do pedido: as peças enviadas saem de `fulfillments[].line_items`, e o
+  // outro era uma cópia de 170 KB que só pesava no JSON.parse (ver fetchAllOrders).
+  const fields = 'id,name,created_at,updated_at,cancelled_at,fulfillment_status,fulfillments';
   // shipped = pedido 100% enviado | partial = parte já saiu e o resto está pendente.
   // A Shopify não aceita os dois numa lista só, então são duas buscas. SEM o partial, a
   // parte já enviada de um pedido misto nunca teria baixa — e ela já saiu de "pedidos em
@@ -538,8 +566,17 @@ export async function onRequest(context) {
     }
   }
 
+  // ── ?parte=abertos | processados ─────────────────────────────────────────────
+  // O ciclo de 1 minuto do main.js pede as duas partes em chamadas SEPARADAS. Cada chamada
+  // da função tem os seus próprios 10 ms de CPU (plano gratuito da Cloudflare), e o
+  // JSON.parse das respostas da Shopify (~450 KB de abertos + ~215 KB de processados) não
+  // cabia nos 10 ms de uma chamada só: em 11/09/2026 mais da metade das leituras voltava
+  // com o erro 1102 (tela: "servidor respondeu 503"). Sem `parte` devolve tudo, como antes,
+  // para um main.js antigo ainda em cache no celular.
+  const parte = new URL(request.url).searchParams.get('parte') || 'tudo';
+
   try {
-    const orders = await fetchAllOrders(store, token);
+    const orders = parte === 'processados' ? [] : await fetchAllOrders(store, token);
     const result = {};
     const ignorados = [];
     const pulados = []; // itens com qty=0 (debug)
@@ -584,7 +621,7 @@ export async function onRequest(context) {
     // fosse o pedido, a segunda remessa seria vista como "já baixado" e ficaria de fora.
     // As peças vêm do próprio fulfillment (o que REALMENTE saiu), não dos itens do pedido.
     let processados = [];
-    try {
+    if (parte !== 'abertos') try {
       const desde = new Date(Date.now() - 7 * 86400000).toISOString();
       for (const o of await fetchProcessados(store, token, desde)) {
         for (const f of o.fulfillments || []) {
@@ -608,6 +645,7 @@ export async function onRequest(context) {
       processados = [];
     }
 
+    if (parte === 'processados') return new Response(JSON.stringify({ processados }), { headers });
     // Inclui log de ignorados para diagnóstico
     return new Response(JSON.stringify({ pedidos: result, detalhados, processados, ignorados, pulados, total_pedidos: orders.length }), { headers });
 

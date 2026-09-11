@@ -10227,7 +10227,15 @@ async function carregarPedidosShopify() {
   // do que já veio do Supabase). Sem esta saída, o middleware devolveria 403 a cada minuto.
   if (ehPerfilDeUmaAba()) return;
   try {
-    const res = await fetch('/api/shopify-orders');
+    // Duas chamadas em vez de uma: pedidos em aberto e pedidos já enviados. Cada chamada
+    // da função na Cloudflare tem 10 ms de CPU (plano gratuito), e ler as duas coisas numa
+    // chamada só passou a estourar isso em 11/09/2026 (erro 1102, "servidor respondeu 503"
+    // em mais da metade dos ciclos). A dos enviados falhar não derruba a tela: ela só
+    // alimenta a baixa automática de estoque, que tem janela de 7 dias para se recuperar.
+    const [res, resProc] = await Promise.all([
+      fetch('/api/shopify-orders?parte=abertos'),
+      fetch('/api/shopify-orders?parte=processados').catch(() => null),
+    ]);
     // Antes isto era `if (!res.ok) return;` — calado. Com a sessão de 12h vencida (aba
     // deixada aberta no celular da noite para o dia) a chamada passava a dar 401 e os
     // pedidos CONGELAVAM na última leitura boa: o estoque continuava sincronizando pelo
@@ -10244,8 +10252,16 @@ async function carregarPedidosShopify() {
     window._shopifyTotalPedidos = resp.total_pedidos || 0;
     // Guarda detalhe por pedido (número, cliente, data, itens) p/ card "Prontos para envio"
     window._shopifyDetalhados = resp.detalhados || [];
-    // Pedidos que a Shopify já processou (envio criado) — fonte da baixa de estoque
-    window._shopifyProcessados = resp.processados || [];
+    // Pedidos que a Shopify já processou (envio criado) — fonte da baixa de estoque.
+    // Lista vazia quando a chamada falhou: é o mesmo que o servidor já fazia quando a
+    // busca dos enviados dava erro (a tela vive dos abertos, a baixa se recupera depois).
+    let processados = [];
+    if (resProc && resProc.ok) {
+      try { processados = (await resProc.json()).processados || []; } catch (_) {}
+    } else {
+      console.warn('[pedidos] enviados não lidos neste ciclo:', resProc ? 'HTTP ' + resProc.status : 'sem conexão');
+    }
+    window._shopifyProcessados = processados;
 
     // Zera aberto de todos os modelos antes de preencher
     for (const key of Object.keys(MODELOS)) {
