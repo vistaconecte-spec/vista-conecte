@@ -1639,6 +1639,15 @@ function vndExcluidos() {
   return Array.isArray(cfg.excluidos) ? cfg.excluidos : [];
 }
 function vndEstaFora(id) { return vndExcluidos().some(e => String(e.id) === String(id)); }
+function vndClicouRascunho(id) {
+  const r = ((window._vndUltimo || {}).rascunhos || []).find(x => String(x.id) === String(id));
+  if (!r) return;
+  const fora = vndEstaFora(id);
+  const msg = fora
+    ? `${r.numero} (${r.cliente}) está fora da comissão da Marcelly.\n\nVoltar a contar?`
+    : `Tirar ${r.numero} (${r.cliente}, ${fmtBRL(r.valor)}) da comissão da Marcelly?\n\nUse só quando a venda não foi dela.`;
+  if (confirm(msg)) vndToggleComissao(id);
+}
 function vndToggleComissao(id) {
   const cfg = loadLocal('vc:' + VND_EXCL_KEY) || { excluidos: [] };
   if (!Array.isArray(cfg.excluidos)) cfg.excluidos = [];
@@ -1694,10 +1703,10 @@ function vndRender(d) {
   set('vnd-medio', fmtBRL(contam.length ? totalContam / contam.length : 0));
   set('vnd-abertos', abertos);
   set('vnd-comissao', fmtBRL(totalContam * VND_COMISSAO));
-  set('vnd-fora', fora.length ? `${fora.length} (${fmtBRL(totalFora)})` : '0');
-  set('vnd-nota', d.ocultos_zero
-    ? `${d.ocultos_zero} rascunho${d.ocultos_zero > 1 ? 's' : ''} de R$ 0 (troca${d.ocultos_zero > 1 ? 's' : ''}) não entra${d.ocultos_zero > 1 ? 'm' : ''} na conta.`
-    : '');
+  const notas = [];
+  if (d.ocultos_zero) notas.push(`${d.ocultos_zero} rascunho${d.ocultos_zero > 1 ? 's' : ''} de R$ 0 (troca${d.ocultos_zero > 1 ? 's' : ''}) não entra${d.ocultos_zero > 1 ? 'm' : ''} na conta.`);
+  if (fora.length) notas.push(`${fora.length} não ${fora.length > 1 ? 'são' : 'é'} venda da Marcelly e ${fora.length > 1 ? 'ficam' : 'fica'} fora (${fmtBRL(totalFora)}): ${fora.map(r => r.numero).join(', ')}.`);
+  set('vnd-nota', notas.join(' '));
   const situacao = r => {
     if (r.status === 'aberto') return '<span style="color:#b45309;font-weight:700">Rascunho aberto</span>';
     if (!r.pedido) return 'Concluído';
@@ -1708,19 +1717,16 @@ function vndRender(d) {
     if (p.enviado) partes.push('<span style="color:#15803d">enviado</span>');
     return partes.join(' · ');
   };
-  const rows = lista.map(r => { const ehFora = vndEstaFora(r.id); return `<tr style="${ehFora ? 'opacity:.45' : ''}">
+  const rows = lista.map(r => { const ehFora = vndEstaFora(r.id); return `<tr style="${ehFora ? 'opacity:.5' : ''}">
       <td style="padding:5px 4px;white-space:nowrap">${new Date(r.criado_em).toLocaleDateString('pt-BR')}</td>
-      <td style="padding:5px 4px;font-weight:700">${esc(r.numero)}</td>
+      <td style="padding:5px 4px;font-weight:700;white-space:nowrap;cursor:pointer" onclick="vndClicouRascunho('${r.id}')" title="${ehFora ? 'fora da comissão da Marcelly (clique para voltar a contar)' : 'clique para tirar da comissão da Marcelly'}">${esc(r.numero)}${ehFora ? ' <span style="font-size:10px;font-weight:600;color:#b91c1c">não é dela</span>' : ''}</td>
       <td style="padding:5px 4px">${esc(r.cliente || '(sem nome)')}</td>
       <td style="padding:5px 4px;color:var(--text-sec)">${esc((r.itens || []).map(i => `${i.qtd}× ${i.titulo}${i.variante ? ' (' + i.variante + ')' : ''}`).join(', '))}</td>
       <td style="padding:5px 4px;text-align:right;white-space:nowrap;font-weight:700">${fmtBRL(r.valor)}</td>
       <td style="padding:5px 4px;white-space:nowrap">${situacao(r)}</td>
-      <td style="padding:5px 4px;text-align:center;white-space:nowrap">${ehFora
-        ? `<span style="font-size:11px;color:#b91c1c;font-weight:700">não é dela</span> <button class="btn-outline" style="font-size:10px;padding:2px 7px;margin-left:4px" onclick="vndToggleComissao('${r.id}')" title="voltar a contar na comissão">contar</button>`
-        : `<button class="btn-outline" style="font-size:10px;padding:2px 7px" onclick="vndToggleComissao('${r.id}')" title="tirar da comissão da Marcelly">não é da Marcelly</button>`}</td>
     </tr>`; }).join('');
   const tb = document.getElementById('vnd-tbody');
-  if (tb) tb.innerHTML = rows || '<tr><td colspan="7" style="text-align:center;color:var(--text-ter);padding:14px">Nenhuma venda em rascunho neste mês.</td></tr>';
+  if (tb) tb.innerHTML = rows || '<tr><td colspan="6" style="text-align:center;color:var(--text-ter);padding:14px">Nenhuma venda em rascunho neste mês.</td></tr>';
 }
 
 // ── Retorno (Troca) ───────────────────────────────────────────────────────────

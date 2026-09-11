@@ -90,8 +90,9 @@ console.log('\n3c) A dona marca o rascunho que nao e venda da Marcelly, e a comi
   ok('desmarcar registra o id em removidos (senao a mesclagem traz de volta)', /cfg\.removidos = \[\.\.\.\(cfg\.removidos \|\| \[\]\), \{ id: String\(id\)/.test(trecho), true);
   ok('a comissao sai so do que conta', /set\('vnd-comissao', fmtBRL\(totalContam \* VND_COMISSAO\)\);/.test(main), true);
   ok('as vendas e o total tambem', /set\('vnd-qtd', contam\.length\);[\s\S]{0,80}set\('vnd-total', fmtBRL\(totalContam\)\);/.test(main), true);
-  ok('a tela mostra quantas ficaram de fora', /id="vnd-fora"/.test(html) && /set\('vnd-fora'/.test(main), true);
-  ok('cada linha tem o botao', /onclick="vndToggleComissao\('\$\{r\.id\}'\)"/.test(main), true);
+  ok('a nota diz quais ficaram de fora (sem metrica a mais, a dona nao quis)', /não \$\{fora\.length > 1 \? 'são' : 'é'\} venda da Marcelly/.test(main) && !/id="vnd-fora"/.test(html), true);
+  ok('a marcacao e pelo numero do rascunho, com confirmacao (e dinheiro)', /onclick="vndClicouRascunho\('\$\{r\.id\}'\)"/.test(main) && /if \(confirm\(msg\)\) vndToggleComissao\(id\);/.test(main), true);
+  ok('sem botao em toda linha', /não é da Marcelly<\/button>/.test(main), false);
 }
 
 console.log('\n4) Prioridade no SAC');
