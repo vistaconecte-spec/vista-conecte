@@ -104,6 +104,10 @@ ok('MP merchant_order é ignorado pelo tipo', extrairPagamento(new URLSearchPara
 console.log('\nparâmetros do template (na ordem: nome, pedido, link)');
 ok('nomes vêm do template', lib.paramsWati({ custom_params: [{ name: 'first_name' }, { name: 'pedido' }, { name: 'link' }] }, ['Juliana', '#9057', 'https://x']),
   [{ name: 'first_name', value: 'Juliana' }, { name: 'pedido', value: '#9057' }, { name: 'link', value: 'https://x' }]);
+ok('ordem trocada no template não troca os valores', lib.paramsWati({ custom_params: [{ name: 'link_pagamento' }, { name: 'nome' }] }, ['Juliana', '#9057', 'https://x']),
+  [{ name: 'link_pagamento', value: 'https://x' }, { name: 'nome', value: 'Juliana' }]);
+ok('nome que não diz nada cai na posição', lib.paramsWati({ custom_params: [{ name: 'a' }, { name: 'b' }] }, ['Juliana', '#9057', 'https://x']),
+  [{ name: 'a', value: 'Juliana' }, { name: 'b', value: '#9057' }]);
 
 console.log('\nmiddleware');
 {

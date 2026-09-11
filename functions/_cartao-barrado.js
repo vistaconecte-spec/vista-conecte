@@ -326,11 +326,17 @@ export async function templateWati(env, nome) {
   return (j.templates || []).find(t => (t.elementName || t.name) === nome) || null;
 }
 
-// Os nomes dos parâmetros são os que a dona deu ao criar o template no painel; aqui eles
-// são lidos do próprio template e preenchidos NA ORDEM: nome, pedido, link.
+// Os nomes dos parâmetros são os que a dona deu ao criar o template no painel. Quem se chama
+// nome/name recebe o nome, pedido/order o número do pedido, link/url o link — em qualquer
+// ordem. Nome que não diz nada cai na ordem: nome, pedido, link.
 export function paramsWati(template, valores) {
   const nomes = (template.custom_params || template.customParams || []).map(p => p.name || p.paramName);
-  return nomes.map((name, i) => ({ name, value: valores[i] == null ? '' : String(valores[i]) }));
+  const porNome = [/nome|name/i, /pedido|order/i, /link|url/i];
+  const v = valores.map(x => (x == null ? '' : String(x)));
+  return nomes.map((name, i) => {
+    const idx = porNome.findIndex(re => re.test(name));
+    return { name, value: idx >= 0 ? v[idx] : (v[i] || '') };
+  });
 }
 
 export async function agendarWati(env, cfg, diag, link, template) {
