@@ -74,6 +74,11 @@ ok('a aba le /api/shopify-rascunhos', /fetch\(`\/api\/shopify-rascunhos\?desde=\
 }
 ok('a nota explica as trocas de R$ 0 ocultas', /nao entra|não entra/.test(main), true);
 
+console.log('\n3b) Comissao da Marcelly: 5% do total, calculada no sistema');
+ok('a taxa e 5%', /const VND_COMISSAO = 0\.05;/.test(main), true);
+ok('a metrica existe na tela', /id="vnd-comissao"/.test(html), true);
+ok('e sai do total (que ja exclui as trocas de R$ 0)', /set\('vnd-comissao', fmtBRL\(\(d\.total \|\| 0\) \* VND_COMISSAO\)\);/.test(main), true);
+
 console.log('\n4) Prioridade no SAC');
 ok('o formulario tem o URGENTE', /id="sac-urgente"/.test(html), true);
 ok('sacAdd grava urgente', /rastreio, urgente, status: 'pendente'/.test(main), true);

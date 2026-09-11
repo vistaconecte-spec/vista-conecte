@@ -1627,6 +1627,9 @@ function sacRender() {
 // puxar os pedidos criados em rascunho; não puxar os de R$ 0 (são trocas)". Só leitura:
 // nada aqui grava no Supabase, a fonte é /api/shopify-rascunhos.
 const fmtBRL = v => 'R$ ' + (Number(v) || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+// Comissão da Marcelly sobre as vendas por WhatsApp: 5% do total do mês, sem as trocas de
+// R$ 0 (definido pela dona em 11/09/2026). Calculado aqui, não na planilha.
+const VND_COMISSAO = 0.05;
 function vndPeriodo() {
   const el = document.getElementById('vnd-mes');
   const hoje = new Date();
@@ -1659,6 +1662,7 @@ function vndRender(d) {
   set('vnd-total', fmtBRL(d.total));
   set('vnd-medio', fmtBRL(d.quantidade ? d.total / d.quantidade : 0));
   set('vnd-abertos', abertos);
+  set('vnd-comissao', fmtBRL((d.total || 0) * VND_COMISSAO));
   set('vnd-nota', d.ocultos_zero
     ? `${d.ocultos_zero} rascunho${d.ocultos_zero > 1 ? 's' : ''} de R$ 0 (troca${d.ocultos_zero > 1 ? 's' : ''}) não entra${d.ocultos_zero > 1 ? 'm' : ''} na conta.`
     : '');
