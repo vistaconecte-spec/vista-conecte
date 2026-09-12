@@ -1335,6 +1335,20 @@ body.precos-mode .btn-hamburger:hover { background: rgba(255,255,255,0.9); }
 [id^="modal-"] { backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
 [id^="modal-"] button { border-radius: 999px !important; }
 
+/* Faixa "Pedidos não atualizaram" (main.js, pedidosDesatualizados): nasce com canto de 8px
+   e laranja chapado; aqui vira o mesmo vidro do resto, e o sticky desce para não
+   atropelar o topo (que também é sticky, a 12px). */
+#faixa-pedidos {
+  top: 84px !important;
+  border-radius: 18px !important;
+  background: rgba(180,83,9,0.88) !important;
+  backdrop-filter: var(--blur);
+  -webkit-backdrop-filter: var(--blur);
+  border: 1px solid rgba(255,255,255,0.35);
+  box-shadow: 0 8px 24px rgba(180,83,9,0.28), inset 0 1px 0 rgba(255,255,255,0.3);
+}
+@media (max-width: 768px) { #faixa-pedidos { top: 70px !important; } }
+
 /* Cabeçalho de tabela com canto redondo (a primeira e a última coluna) */
 thead tr th:first-child { border-top-left-radius: 10px; border-bottom-left-radius: 10px; }
 thead tr th:last-child { border-top-right-radius: 10px; border-bottom-right-radius: 10px; }
