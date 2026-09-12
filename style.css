@@ -1,44 +1,91 @@
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
+/* ── VISUAL "VISION" (vidro fosco) ──
+   O app inteiro segue a linguagem do quadro CRM da aba Atendimento (12/09/2026): fundo
+   claro em degradê com manchas de cor desfocadas, e por cima painéis de vidro fosco
+   (branco translúcido + backdrop-filter) com canto bem redondo. Cada painel deixa
+   entrever a cor do fundo, por isso o fundo NUNCA é branco chapado. As cores de estado
+   (verde/vermelho/roxo/azul das etapas) continuam as mesmas do app, o vidro é só a
+   moldura. Tokens de vidro: --glass (painel), --glass-strong (o que precisa ler bem, ex.
+   modal), --glass-border (fio branco na borda que dá o brilho), --blur. */
 :root {
-  --sidebar-bg: #0D0D0D;
-  --sidebar-hover: rgba(255,255,255,0.06);
-  --sidebar-active: rgba(196,168,130,0.15);
-  --sidebar-border: rgba(255,255,255,0.08);
+  --sidebar-bg: rgba(18, 16, 26, 0.72);
+  --sidebar-hover: rgba(255,255,255,0.08);
+  --sidebar-active: rgba(255,255,255,0.14);
+  --sidebar-border: rgba(255,255,255,0.10);
   --gold: #C4A882;
   --gold-dark: #9A7A56;
-  --bg: #F2F3F5;
-  --surface: #FFFFFF;
-  --border: #E5E7EB;
-  --border-strong: #D1D5DB;
-  --text: #111827;
-  --text-sec: #6B7280;
-  --text-ter: #9CA3AF;
+  --bg: rgba(255,255,255,0.38);      /* "fundo" de bloco interno: um vidro mais leve */
+  --surface: #FFFFFF;                 /* branco opaco: só onde precisa esconder o que rola por baixo (coluna fixa, célula) */
+  --glass: rgba(255,255,255,0.60);
+  --glass-strong: rgba(255,255,255,0.84);
+  --glass-border: rgba(255,255,255,0.82);
+  --blur: blur(20px) saturate(1.5);
+  --border: rgba(60,50,90,0.10);
+  --border-strong: rgba(60,50,90,0.18);
+  --text: #1E1B2B;
+  --text-sec: #5E5873;
+  --text-ter: #8D88A0;
   --green: #10B981;
   --amber: #F59E0B;
   --red: #EF4444;
-  --shadow-sm: 0 1px 2px rgba(0,0,0,0.05);
-  --shadow: 0 1px 4px rgba(0,0,0,0.08), 0 4px 12px rgba(0,0,0,0.04);
-  --radius: 8px;
-  --radius-sm: 6px;
+  --shadow-sm: 0 4px 14px rgba(50,40,80,0.08), inset 0 1px 0 rgba(255,255,255,0.75);
+  --shadow: 0 8px 28px rgba(60,50,90,0.12), inset 0 1px 0 rgba(255,255,255,0.8);
+  --radius: 22px;
+  --radius-sm: 14px;
+  --radius-pill: 999px;
 }
 
-body { font-family: 'Inter', system-ui, sans-serif; background: var(--bg); color: var(--text); line-height: 1.5; }
+html { background: #e7e6f3; }
+body {
+  font-family: 'Inter', system-ui, sans-serif;
+  background: linear-gradient(135deg, #e9e4f6 0%, #e3edf4 45%, #f2e9dd 100%);
+  color: var(--text);
+  line-height: 1.5;
+  min-height: 100vh;
+}
+/* As manchas de cor ficam num pseudo-elemento FIXO, e não em background-attachment:
+   fixed (o iOS ignora o fixed do background e o degradê estica pela página inteira).
+   Sem filter: blur, o radial-gradient já nasce difuso e o blur num fixo de tela cheia
+   engasga a rolagem no celular. */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(520px 520px at 8% 0%,   rgba(200,182,255,0.60) 0%, transparent 70%),
+    radial-gradient(620px 620px at 100% 100%, rgba(255,217,166,0.55) 0%, transparent 70%),
+    radial-gradient(460px 460px at 55% 45%, rgba(168,216,255,0.45) 0%, transparent 70%),
+    linear-gradient(135deg, #e9e4f6 0%, #e3edf4 45%, #f2e9dd 100%);
+}
 
-/* ── SIDEBAR ── */
-.app { display: flex; min-height: 100vh; align-items: stretch; }
+/* ── SIDEBAR ──
+   Painel escuro de vidro, solto da borda (é a "ornament" do visionOS): flutua com 12px
+   de folga e canto de 28px. Continua escuro com dourado, é a cara da marca. */
+.app { display: flex; min-height: 100vh; align-items: stretch; gap: 12px; padding: 12px; }
+/* No desktop o overlay da gaveta não existe; sem esta linha ele vira um item vazio do
+   flex e o gap empurra o menu 12px para dentro. */
+.sidebar-overlay { display: none; }
 
 .sidebar {
   width: fit-content;
-  min-width: 140px;
+  min-width: 150px;
   background: var(--sidebar-bg);
+  backdrop-filter: var(--blur);
+  -webkit-backdrop-filter: var(--blur);
+  border: 1px solid rgba(255,255,255,0.14);
+  border-radius: 28px;
+  box-shadow: 0 12px 40px rgba(30,20,60,0.22), inset 0 1px 0 rgba(255,255,255,0.12);
   display: flex;
   flex-direction: column;
   position: sticky;
-  top: 0;
-  height: 100vh;
+  top: 12px;
+  height: calc(100vh - 24px);
   overflow-y: auto;
   flex-shrink: 0;
+  padding: 6px;
 }
 
 .sidebar::-webkit-scrollbar { width: 3px; }
@@ -46,9 +93,10 @@ body { font-family: 'Inter', system-ui, sans-serif; background: var(--bg); color
 .sidebar::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 99px; }
 
 .brand {
-  padding: 16px 14px 12px;
+  padding: 16px 12px 12px;
   border-bottom: 1px solid var(--sidebar-border);
   flex-shrink: 0;
+  margin-bottom: 4px;
 }
 
 .brand-logo-text {
@@ -71,15 +119,15 @@ body { font-family: 'Inter', system-ui, sans-serif; background: var(--bg); color
 .sidebar-title {
   font-size: 9px;
   font-weight: 600;
-  color: rgba(255,255,255,0.25);
-  padding: 14px 14px 4px;
+  color: rgba(255,255,255,0.28);
+  padding: 14px 12px 4px;
   letter-spacing: 0.1em;
   text-transform: uppercase;
 }
 
 .sidebar-section {
   margin-top: 10px;
-  padding: 12px 14px 8px;
+  padding: 12px 12px 8px;
   border-top: 1px solid var(--sidebar-border);
   font-size: 11px;
   font-weight: 700;
@@ -91,50 +139,54 @@ body { font-family: 'Inter', system-ui, sans-serif; background: var(--bg); color
   gap: 7px;
 }
 
+/* Item do menu é uma pílula: no lugar do fio dourado na esquerda, o ativo ganha um
+   vidro claro por trás. */
 .nav-item {
-  padding: 6px 14px;
-  font-size: 12.5px;
+  padding: 7px 12px;
+  font-size: 12px;
   cursor: pointer;
-  color: rgba(255,255,255,0.55);
-  border-radius: 0;
-  transition: all 0.12s;
+  color: rgba(255,255,255,0.62);
+  border-radius: 12px;
+  margin: 1px 0;
+  transition: background 0.15s, color 0.15s;
   white-space: nowrap;
-  border-left: 2px solid transparent;
+  border-left: 0;
 }
 
-.nav-item:hover { background: var(--sidebar-hover); color: rgba(255,255,255,0.85); }
+.nav-item:hover { background: var(--sidebar-hover); color: rgba(255,255,255,0.9); }
 
 .nav-item.active {
   background: var(--sidebar-active);
   color: #FFFFFF;
-  border-left: 2px solid var(--gold);
-  font-weight: 500;
+  font-weight: 600;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.18), 0 2px 8px rgba(0,0,0,0.18);
 }
 
-.nav-item { font-size: 12px; }
-
 /* ── MAIN ── */
-.main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+.main { flex: 1; display: flex; flex-direction: column; min-width: 0; gap: 10px; }
 
-/* ── TOPBAR ── */
+/* ── TOPBAR ── (vidro claro, solto, gruda no topo ao rolar) */
 .topbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 14px 24px;
+  padding: 12px 20px;
   flex-wrap: wrap;
   gap: 10px;
-  border-bottom: 1px solid var(--border);
-  background: var(--surface);
-  box-shadow: var(--shadow-sm);
+  background: var(--glass);
+  backdrop-filter: var(--blur);
+  -webkit-backdrop-filter: var(--blur);
+  border: 1px solid var(--glass-border);
+  border-radius: 24px;
+  box-shadow: var(--shadow);
   position: sticky;
-  top: 0;
+  top: 12px;
   z-index: 10;
 }
 
 .model-title {
   font-size: 18px;
-  font-weight: 600;
+  font-weight: 700;
   color: var(--text);
   letter-spacing: -0.01em;
 }
@@ -159,40 +211,42 @@ body { font-family: 'Inter', system-ui, sans-serif; background: var(--bg); color
 }
 .save-indicator.show { opacity: 1; }
 
-/* ── BUTTONS ── */
+/* ── BUTTONS ── (todos em pílula) */
 .btn-outline {
   font-size: 12px;
   padding: 7px 14px;
   cursor: pointer;
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--border-strong);
-  background: var(--surface);
+  border-radius: var(--radius-pill);
+  border: 1px solid rgba(255,255,255,0.9);
+  background: rgba(255,255,255,0.55);
   color: var(--text-sec);
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  transition: all 0.12s;
+  transition: all 0.15s;
   font-family: inherit;
-  font-weight: 500;
+  font-weight: 600;
+  box-shadow: 0 2px 8px rgba(50,40,80,0.06);
 }
-.btn-outline:hover { background: var(--bg); color: var(--text); border-color: var(--text-sec); }
+.btn-outline:hover { background: rgba(255,255,255,0.9); color: var(--text); box-shadow: 0 4px 14px rgba(50,40,80,0.12); }
 
 .btn-primary {
   font-size: 12px;
   padding: 7px 16px;
   cursor: pointer;
-  border-radius: var(--radius-sm);
-  border: none;
-  background: var(--text);
+  border-radius: var(--radius-pill);
+  border: 1px solid rgba(255,255,255,0.14);
+  background: #1E1B2B;
   color: #FFFFFF;
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  transition: all 0.12s;
+  transition: all 0.15s;
   font-family: inherit;
-  font-weight: 500;
+  font-weight: 600;
+  box-shadow: 0 4px 14px rgba(30,27,43,0.28), inset 0 1px 0 rgba(255,255,255,0.14);
 }
-.btn-primary:hover { background: #2D2D2D; }
+.btn-primary:hover { background: #33304a; box-shadow: 0 6px 18px rgba(30,27,43,0.34); }
 
 .btn-salvar {
   font-size: 12px;
@@ -200,8 +254,8 @@ body { font-family: 'Inter', system-ui, sans-serif; background: var(--bg); color
   cursor: pointer;
   background: #16a34a;
   color: #fff;
-  border: 1.5px solid #16a34a;
-  border-radius: 8px;
+  border: 1.5px solid rgba(255,255,255,0.35);
+  border-radius: var(--radius-pill);
   font-family: inherit;
   font-weight: 600;
   display: inline-flex;
@@ -209,65 +263,76 @@ body { font-family: 'Inter', system-ui, sans-serif; background: var(--bg); color
   gap: 5px;
   animation: pulse-salvar 1.4s ease-in-out infinite;
 }
-.btn-salvar:hover { background: #15803d; border-color: #15803d; animation: none; }
+.btn-salvar:hover { background: #15803d; animation: none; }
 @keyframes pulse-salvar {
   0%, 100% { box-shadow: 0 0 0 0 rgba(22,163,74,0.45); }
   50%       { box-shadow: 0 0 0 6px rgba(22,163,74,0); }
 }
 
 .btn-del {
-  padding: 6px 8px;
+  padding: 6px 9px;
   font-size: 13px;
   cursor: pointer;
-  border-radius: var(--radius-sm);
-  border: 1px solid #FEE2E2;
-  background: #FFF5F5;
+  border-radius: var(--radius-pill);
+  border: 1px solid rgba(239,68,68,0.25);
+  background: rgba(255,245,245,0.8);
   color: var(--red);
   display: inline-flex;
   align-items: center;
-  transition: all 0.12s;
+  transition: all 0.15s;
 }
 .btn-del:hover { background: #FEE2E2; }
 
-/* ── TABS ── */
+/* ── TABS ── (controle segmentado: trilho de vidro, a aba ativa é a pílula branca) */
 .tabs {
-  display: flex;
-  padding: 0 24px;
-  background: var(--surface);
-  border-bottom: 1px solid var(--border);
+  display: inline-flex;
+  align-self: flex-start;
+  padding: 4px;
+  background: rgba(255,255,255,0.40);
+  backdrop-filter: var(--blur);
+  -webkit-backdrop-filter: var(--blur);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-pill);
+  box-shadow: var(--shadow-sm);
   gap: 2px;
+  max-width: 100%;
 }
 
 .tab {
-  padding: 11px 16px;
+  padding: 8px 16px;
   font-size: 12px;
-  font-weight: 500;
+  font-weight: 600;
   cursor: pointer;
-  color: var(--text-ter);
-  border-bottom: 2px solid transparent;
-  margin-bottom: -1px;
+  color: var(--text-sec);
+  border-radius: var(--radius-pill);
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  transition: all 0.12s;
+  transition: all 0.15s;
   letter-spacing: 0.01em;
+  white-space: nowrap;
 }
-.tab:hover { color: var(--text-sec); }
-.tab.active { color: var(--text); border-bottom-color: var(--text); }
+.tab:hover { color: var(--text); background: rgba(255,255,255,0.4); }
+.tab.active { color: var(--text); background: rgba(255,255,255,0.95); box-shadow: 0 2px 10px rgba(50,40,80,0.12); }
 
 /* ── CONTENT ── */
-.content { flex: 1; padding: 14px 20px; }
+.content { flex: 1; padding: 2px 0; }
 .tab-panel { display: none; }
 .tab-panel.active { display: block; }
 
 /* ── CADEADO DE ENTRADA ──
    Cobre a tela inteira até alguém entrar. Opaco de propósito: nada do app pode
-   aparecer atrás, nem por um instante no carregamento. */
+   aparecer atrás, nem por um instante no carregamento. O fundo é o mesmo degradê do
+   app, e a caixa de senha é um vidro escuro no meio. */
 #app-gate {
   position: fixed;
   inset: 0;
   z-index: 10000;
-  background: var(--sidebar-bg);
+  background:
+    radial-gradient(520px 520px at 8% 0%,   rgba(200,182,255,0.60) 0%, transparent 70%),
+    radial-gradient(620px 620px at 100% 100%, rgba(255,217,166,0.55) 0%, transparent 70%),
+    radial-gradient(460px 460px at 55% 45%, rgba(168,216,255,0.45) 0%, transparent 70%),
+    linear-gradient(135deg, #e9e4f6 0%, #e3edf4 45%, #f2e9dd 100%);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -276,8 +341,15 @@ body { font-family: 'Inter', system-ui, sans-serif; background: var(--bg); color
 
 #app-gate .app-gate-box {
   width: 100%;
-  max-width: 320px;
+  max-width: 340px;
   text-align: center;
+  background: var(--sidebar-bg);
+  backdrop-filter: var(--blur);
+  -webkit-backdrop-filter: var(--blur);
+  border: 1px solid rgba(255,255,255,0.16);
+  border-radius: 30px;
+  padding: 34px 28px 28px;
+  box-shadow: 0 24px 70px rgba(30,20,60,0.30), inset 0 1px 0 rgba(255,255,255,0.14);
 }
 
 #app-gate .app-gate-logo {
@@ -298,8 +370,8 @@ body { font-family: 'Inter', system-ui, sans-serif; background: var(--bg); color
   width: 100%;
   padding: 12px 14px;
   border: 1px solid rgba(255,255,255,0.18);
-  border-radius: 8px;
-  background: rgba(255,255,255,0.06);
+  border-radius: 14px;
+  background: rgba(255,255,255,0.08);
   color: #fff;
   font-size: 16px; /* 16px evita o zoom automático do iOS ao focar */
   text-align: center;
@@ -312,13 +384,14 @@ body { font-family: 'Inter', system-ui, sans-serif; background: var(--bg); color
   margin-top: 10px;
   padding: 12px;
   border: 0;
-  border-radius: 8px;
+  border-radius: var(--radius-pill);
   background: var(--gold);
   color: #1a1a1a;
   font-size: 14px;
   font-weight: 700;
   letter-spacing: 0.04em;
   cursor: pointer;
+  box-shadow: 0 6px 18px rgba(196,168,130,0.35);
 }
 
 #app-gate .app-gate-erro {
@@ -334,16 +407,17 @@ body { font-family: 'Inter', system-ui, sans-serif; background: var(--bg); color
 .mini-cards {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 8px;
+  gap: 10px;
   margin-bottom: 12px;
 }
 
 .mini-card {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-left: 3px solid var(--text);
-  border-radius: var(--radius);
-  padding: 10px 14px;
+  background: var(--glass);
+  backdrop-filter: var(--blur);
+  -webkit-backdrop-filter: var(--blur);
+  border: 1px solid var(--glass-border);
+  border-radius: 20px;
+  padding: 12px 16px;
   box-shadow: var(--shadow-sm);
 }
 
@@ -373,15 +447,17 @@ body { font-family: 'Inter', system-ui, sans-serif; background: var(--bg); color
 .metrics {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  gap: 8px;
+  gap: 10px;
   margin-bottom: 12px;
 }
 
 .metric {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 10px 14px;
+  background: var(--glass);
+  backdrop-filter: var(--blur);
+  -webkit-backdrop-filter: var(--blur);
+  border: 1px solid var(--glass-border);
+  border-radius: 20px;
+  padding: 12px 16px;
   box-shadow: var(--shadow-sm);
   display: flex;
   align-items: center;
@@ -409,14 +485,18 @@ body { font-family: 'Inter', system-ui, sans-serif; background: var(--bg); color
 .val-escuro { color: #7C3AED !important; }
 .val-grafite { color: var(--text) !important; }
 
-/* ── CARDS ── */
+/* ── CARDS ──
+   O painel de vidro padrão. Os cards do início trazem no HTML um border-left colorido
+   de 3px (cor da etapa): ele continua, contornando o canto redondo. */
 .card {
-  background: var(--surface);
-  border: 1px solid var(--border);
+  background: var(--glass);
+  backdrop-filter: var(--blur);
+  -webkit-backdrop-filter: var(--blur);
+  border: 1px solid var(--glass-border);
   border-radius: var(--radius);
-  padding: 12px 16px;
-  margin-bottom: 10px;
-  box-shadow: var(--shadow-sm);
+  padding: 14px 18px;
+  margin-bottom: 12px;
+  box-shadow: var(--shadow);
 }
 
 .card-header {
@@ -430,7 +510,7 @@ body { font-family: 'Inter', system-ui, sans-serif; background: var(--bg); color
 
 .card-title {
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 700;
   color: var(--text-sec);
   display: inline-flex;
   align-items: center;
@@ -466,7 +546,7 @@ td {
 }
 td:first-child { text-align: left; font-weight: 600; font-size: 12px; color: var(--text); }
 tr:last-child td { border-bottom: none; }
-tr:hover td { background: #FAFAFA; }
+tr:hover td { background: rgba(255,255,255,0.45); }
 
 .total-row td {
   font-weight: 700;
@@ -521,7 +601,7 @@ input[type=number].ci.ci-val {
 input[type=number].ci:hover,
 input[type=number].ci:focus {
   border-color: var(--border) !important;
-  background: #FAFAFA !important;
+  background: rgba(255,255,255,0.6) !important;
   outline: none !important;
 }
 input[type=number].ci:focus {
@@ -552,7 +632,11 @@ input[type=number].ci:focus {
    quem lê em pé, de longe, separa um card do outro pelo retângulo colorido. */
 .crt-card {
   border: 1.5px solid #7C3AED;
-  border-radius: 8px;
+  border-radius: var(--radius);
+  background: var(--glass);
+  backdrop-filter: var(--blur);
+  -webkit-backdrop-filter: var(--blur);
+  box-shadow: var(--shadow-sm);
   padding: 11px 13px;
   margin-bottom: 12px;
   min-width: 0; /* sem isso a tabela larga estica a coluna do grid em vez de rolar */
@@ -748,7 +832,7 @@ input[type=number].ci:focus {
   box-shadow: 1px 0 0 var(--border);
 }
 .crt-lista .crt-card table.crt-tab td.crt-cor { background: var(--surface); }
-.crt-lista .crt-card table.crt-tab th:first-child { background: var(--bg); }
+.crt-lista .crt-card table.crt-tab th:first-child { background: #F1EFF7; }
 .crt-lista table.crt-tab td.crt-cores { text-align: left; font-size: 12px; font-weight: 500; color: var(--text-sec); }
 .crt-lista table.crt-tab td.crt-zero { color: var(--text-ter); font-weight: 400; }
 .crt-lista table.crt-tab td.crt-tot { font-weight: 800; }
@@ -815,11 +899,13 @@ input[type=number].ci.acima {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  background: var(--surface);
-  border: 1px solid var(--border);
+  background: var(--glass);
+  backdrop-filter: var(--blur);
+  -webkit-backdrop-filter: var(--blur);
+  border: 1px solid var(--glass-border);
   border-radius: var(--radius);
-  padding: 10px 14px;
-  margin-bottom: 10px;
+  padding: 12px 16px;
+  margin-bottom: 12px;
   box-shadow: var(--shadow-sm);
   flex-wrap: wrap;
 }
@@ -846,9 +932,9 @@ input[type=number].preco-inp {
   width: 80px;
   font-size: 13px;
   padding: 5px 8px;
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--border-strong);
-  background: var(--surface);
+  border-radius: 10px;
+  border: 1px solid rgba(255,255,255,0.9);
+  background: rgba(255,255,255,0.7);
   color: var(--text);
   font-family: inherit;
 }
@@ -889,9 +975,9 @@ input[type=number].preco-inp:focus { outline: none; border-color: var(--gold); }
 .tc-total .tc-sub { color: rgba(255,255,255,0.4); }
 
 /* ── DASHBOARD ── */
-.nav-dashboard { display:flex; align-items:center; gap:8px; font-weight:600; letter-spacing:0.04em; border-bottom:1px solid var(--border); margin-bottom:6px; padding-bottom:10px !important; }
+.nav-dashboard { display:flex; align-items:center; gap:8px; font-weight:600; letter-spacing:0.04em; margin-bottom:2px; padding:8px 12px !important; }
 .nav-dashboard i { font-size:15px; }
-.dash-mv-card { background:var(--bg-card); border:1px solid var(--border); border-radius:8px; padding:12px 14px; cursor:pointer; transition:border-color .15s; }
+.dash-mv-card { background:rgba(255,255,255,0.5); border:1px solid var(--glass-border); border-radius:16px; padding:12px 14px; cursor:pointer; transition:border-color .15s; }
 .dash-mv-card:hover { border-color:var(--gold); }
 .dash-mv-rank { font-size:10px; font-weight:700; color:var(--gold); letter-spacing:0.06em; margin-bottom:4px; }
 .dash-mv-nome { font-size:12px; font-weight:600; color:var(--text-pri); margin-bottom:8px; line-height:1.3; min-height:32px; }
@@ -899,7 +985,7 @@ input[type=number].preco-inp:focus { outline: none; border-color: var(--gold); }
 .dash-mv-bar { background:var(--gold); border-radius:4px; height:4px; transition:width .4s; }
 .dash-mv-val { font-size:18px; font-weight:700; color:var(--gold-dark); }
 .dash-mv-val span { font-size:10px; font-weight:400; color:var(--text-ter); }
-.dash-row:hover td { background:var(--bg-hover) !important; }
+.dash-row:hover td { background:rgba(255,255,255,0.5) !important; }
 /* Nome de modelo que abre a ficha ao toque. A linha inteira já era clicável, mas nada na
    tela dizia isso: sem o sublinhado a Bárbara lia a lista como um aviso, não como atalho. */
 .dash-link {
@@ -935,9 +1021,10 @@ tr:hover .dash-link { text-decoration-style: solid; color: var(--gold-dark); }
 select, input[type=date], input[type=text], input[type=number]:not(.ci) {
   font-size: 12px;
   padding: 7px 10px;
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--border-strong);
-  background: var(--surface);
+  border-radius: 10px;
+  border: 1px solid rgba(255,255,255,0.9);
+  background: rgba(255,255,255,0.7);
+  box-shadow: 0 1px 3px rgba(50,40,80,0.06);
   color: var(--text);
   font-family: inherit;
   transition: border-color 0.12s;
@@ -955,7 +1042,7 @@ select:focus, input:not(.ci):focus { outline: none; border-color: var(--gold); b
   margin-bottom: 10px;
   background: var(--bg);
 }
-.upload-area:hover, .upload-area.over { border-color: var(--gold); background: #FFFBF5; }
+.upload-area:hover, .upload-area.over { border-color: var(--gold); background: rgba(255,251,245,0.8); }
 .upload-area i { font-size: 28px; color: var(--text-ter); margin-bottom: 10px; display: block; }
 .upload-label { font-size: 13px; font-weight: 600; color: var(--text-sec); }
 .upload-sub { font-size: 11px; color: var(--text-ter); margin-top: 5px; }
@@ -989,9 +1076,9 @@ select:focus, input:not(.ci):focus { outline: none; border-color: var(--gold); b
 .form-textarea {
   font-size: 12px;
   padding: 8px 10px;
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--border-strong);
-  background: var(--surface);
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,0.9);
+  background: rgba(255,255,255,0.7);
   color: var(--text);
   resize: vertical;
   min-height: 72px;
@@ -1004,21 +1091,22 @@ select:focus, input:not(.ci):focus { outline: none; border-color: var(--gold); b
 @media (max-width: 768px) {
 
   /* Sidebar vira drawer deslizante */
-  .app { display: block; position: relative; }
+  .app { display: block; position: relative; padding: 10px; }
 
+  /* A gaveta continua o painel solto do desktop: entra deslizando com a folga de 10px. */
   .sidebar {
     position: fixed;
-    top: 0;
-    left: -260px;
-    width: 220px;
-    height: 100vh;
+    top: 10px;
+    left: -280px;
+    width: 230px;
+    height: calc(100vh - 20px);
     z-index: 200;
     transition: left 0.25s ease;
     box-shadow: 4px 0 24px rgba(0,0,0,0.3);
     overflow-y: auto;
   }
 
-  .sidebar.open { left: 0; }
+  .sidebar.open { left: 10px; }
 
   /* Overlay escuro quando sidebar está aberta */
   .sidebar-overlay {
@@ -1037,21 +1125,23 @@ select:focus, input:not(.ci):focus { outline: none; border-color: var(--gold); b
     justify-content: center;
     width: 36px;
     height: 36px;
-    border: 1px solid var(--border-strong);
-    border-radius: var(--radius-sm);
-    background: var(--surface);
+    border: 1px solid rgba(255,255,255,0.9);
+    border-radius: 12px;
+    background: rgba(255,255,255,0.6);
     cursor: pointer;
     font-size: 18px;
     color: var(--text-sec);
     flex-shrink: 0;
     transition: all 0.12s;
   }
-  .btn-hamburger:hover { background: var(--bg); }
+  .btn-hamburger:hover { background: rgba(255,255,255,0.9); }
 
   /* Topbar mobile compacta */
   .topbar {
     padding: 10px 14px;
     gap: 8px;
+    top: 10px;
+    border-radius: 20px;
   }
   .topbar > div:first-child { flex: 1; min-width: 0; }
   .model-title { font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -1063,11 +1153,12 @@ select:focus, input:not(.ci):focus { outline: none; border-color: var(--gold); b
   .topbar-actions .btn-primary { padding: 7px 12px; }
 
   /* Tabs */
-  .tabs { padding: 0 10px; overflow-x: auto; white-space: nowrap; }
-  .tab { padding: 10px 12px; font-size: 11px; }
+  .tabs { display: flex; max-width: 100%; overflow-x: auto; white-space: nowrap; scrollbar-width: none; }
+  .tabs::-webkit-scrollbar { display: none; }
+  .tab { padding: 8px 12px; font-size: 11px; flex-shrink: 0; }
 
   /* Content */
-  .content { padding: 10px 10px; }
+  .content { padding: 0; }
 
   /* Mini cards — três colunas em 375px: o rótulo é o que aperta, então perde
      o espaçamento entre letras e a linha de baixo encolhe junto. */
@@ -1179,14 +1270,14 @@ body.precos-mode .btn-hamburger {
   justify-content: center;
   width: 36px;
   height: 36px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--surface);
+  border: 1px solid rgba(255,255,255,0.9);
+  border-radius: 12px;
+  background: rgba(255,255,255,0.6);
   cursor: pointer;
   font-size: 18px;
   color: var(--text-sec);
 }
-body.precos-mode .btn-hamburger:hover { background: var(--bg); }
+body.precos-mode .btn-hamburger:hover { background: rgba(255,255,255,0.9); }
 
 /* Tabela de precificação — organizada e sem espremer */
 #panel-precos .prc-scroll { overflow-x: auto; }
@@ -1211,7 +1302,7 @@ body.precos-mode .btn-hamburger:hover { background: var(--bg); }
   padding-right: 14px;
   box-shadow: 1px 0 0 var(--border);
 }
-#panel-precos table.prc-tbl tbody tr:nth-child(even) td:first-child { background: #faf9f6; }
+#panel-precos table.prc-tbl tbody tr:nth-child(even) td:first-child { background: #F7F5FB; }
 /* dá um respiro entre os grupos de colunas */
 #panel-precos table.prc-tbl th:nth-child(9),
 #panel-precos table.prc-tbl td:nth-child(9) { border-left: 1px solid var(--border); }
@@ -1228,3 +1319,38 @@ body.precos-mode .btn-hamburger:hover { background: var(--bg); }
 .pm-selo { font-size: 9px; font-weight: 700; border-radius: 3px; padding: 1px 5px; margin-left: 5px; vertical-align: middle; }
 .pm-parcial { background: rgba(124,58,237,0.12); color: #7C3AED; }
 .pm-naopago { background: rgba(220,38,38,0.12); color: #dc2626; }
+
+/* ── VIDRO NO QUE NASCE COM ESTILO INLINE ──
+   Modais (index.html) e blocos montados no main.js carregam style="" próprio, com
+   canto de 8-12px e branco chapado. Aqui eles entram na linguagem de vidro sem mexer
+   no JS: o !important só vence o inline; nada aqui muda medida, posição nem cor de estado. */
+[id^="modal-"] > div:first-child {
+  background: var(--glass-strong) !important;
+  backdrop-filter: blur(30px) saturate(1.6);
+  -webkit-backdrop-filter: blur(30px) saturate(1.6);
+  border: 1px solid rgba(255,255,255,0.9);
+  border-radius: 26px !important;
+  box-shadow: 0 30px 80px rgba(30,20,60,0.35), inset 0 1px 0 rgba(255,255,255,0.9) !important;
+}
+[id^="modal-"] { backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
+[id^="modal-"] button { border-radius: 999px !important; }
+
+/* Cabeçalho de tabela com canto redondo (a primeira e a última coluna) */
+thead tr th:first-child { border-top-left-radius: 10px; border-bottom-left-radius: 10px; }
+thead tr th:last-child { border-top-right-radius: 10px; border-bottom-right-radius: 10px; }
+
+/* Faixas de aviso, linha de preço e caixas menores: só o canto muda */
+.fat-aviso-cfg, .hint { border-radius: 14px; }
+.preco-row, .tc, .file-icon { border-radius: 14px; }
+.tc-total { border-radius: 16px; background: #1E1B2B; box-shadow: 0 8px 24px rgba(30,27,43,0.3); }
+
+/* Rolagem e seleção no tom do app */
+::selection { background: rgba(196,168,130,0.35); }
+.content ::-webkit-scrollbar { height: 8px; width: 8px; }
+.content ::-webkit-scrollbar-thumb { background: rgba(60,50,90,0.18); border-radius: 99px; }
+.content ::-webkit-scrollbar-track { background: transparent; }
+
+/* Quem pede menos transparência no aparelho não perde a leitura: painel mais opaco. */
+@media (prefers-reduced-transparency: reduce) {
+  :root { --glass: rgba(255,255,255,0.9); --glass-strong: rgba(255,255,255,0.97); --sidebar-bg: rgba(18,16,26,0.96); }
+}
