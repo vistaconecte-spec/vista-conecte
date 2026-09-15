@@ -131,7 +131,9 @@ console.log('\n5) A tela tem o card e o ciclo de 30 min');
      desenhar({ enviados: { d7: { n: 0 }, d30: { n: 0 } }, faixas: { ate2: 0, de3a5: 0, de6a10: 0, mais11: 0 }, fila: { n: 0 }, gerado_em: '2026-09-15T19:00:00Z' }).includes('nenhum envio nos últimos 30 dias'), true);
   ok('quatro colunas, uma por faixa', (htmlCard.match(/class="tl-col"/g) || []).length, 4);
   ok('a maior faixa é a coluna mais alta (36px) e a vazia fica no mínimo', htmlCard.includes('<b>50%</b><div class="tl-bar" style="height:36px') && htmlCard.includes('<b>0%</b><div class="tl-bar" style="height:3px'), true);
-  ok('rodapé curto (faixa e quantidade), nome inteiro no title', htmlCard.includes('<div class="tl-dia">11+</div><div class="tl-qtd">2</div>') && htmlCard.includes('title="11 ou mais dias úteis: 2 pedidos"'), true);
+  ok('rodapé com a faixa em destaque e a quantidade, nome inteiro no title', htmlCard.includes('<div class="tl-dia">11+ dias</div><div class="tl-qtd">2 pedidos</div>') && htmlCard.includes('title="11 ou mais dias úteis: 2 pedidos"'), true);
+  ok('a faixa de dias é a letra maior do gráfico (13px, negrito)', /\.tl-col \.tl-dia \{[^}]*font-size: 13px;[^}]*font-weight: 700/.test(css), true);
+  ok('os três números ficam estreitos e o gráfico leva a maior parte da linha', /\.mini-cards:has\(\.mini-card--tempo\) \{ grid-template-columns: repeat\(3, minmax\(0, 1fr\)\) 2\.4fr; \}/.test(css), true);
   ok('o gráfico de semanas saiu', /tl-semanas|tl-sem\b/.test(htmlCard), false);
 }
 

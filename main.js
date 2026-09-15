@@ -7824,8 +7824,8 @@ function tempoLiberacaoHTML(d) {
     // O card mora na linha dos mini-cards (Bárbara, 15/09/2026: "ficou muito grandão"),
     // então o rótulo da faixa é curto ("3 a 5") e o nome inteiro fica no title da coluna.
     const partes = [
-      ['até 2', 'até 2 dias úteis', f.ate2, '#16a34a'], ['3 a 5', '3 a 5 dias úteis', f.de3a5, '#84cc16'],
-      ['6 a 10', '6 a 10 dias úteis', f.de6a10, '#f59e0b'], ['11+', '11 ou mais dias úteis', f.mais11, '#dc2626'],
+      ['até 2 dias', 'até 2 dias úteis', f.ate2, '#16a34a'], ['3 a 5 dias', '3 a 5 dias úteis', f.de3a5, '#84cc16'],
+      ['6 a 10 dias', '6 a 10 dias úteis', f.de6a10, '#f59e0b'], ['11+ dias', '11 ou mais dias úteis', f.mais11, '#dc2626'],
     ];
     const pct = n => Math.round(100 * n / tot);
     const maxPct = Math.max(1, ...partes.map(([, , n]) => pct(n)));
@@ -7834,7 +7834,7 @@ function tempoLiberacaoHTML(d) {
           const alt = Math.max(3, Math.round(36 * pct(n) / maxPct));
           return `<div class="tl-col" title="${nome}: ${tlPlural(n, 'pedido', 'pedidos')}"><b>${pct(n)}%</b>`
             + `<div class="tl-bar" style="height:${alt}px;background:${cor}"></div>`
-            + `<div class="tl-dia">${curto}</div><div class="tl-qtd">${n}</div></div>`;
+            + `<div class="tl-dia">${curto}</div><div class="tl-qtd">${tlPlural(n, 'pedido', 'pedidos')}</div></div>`;
         }).join('')
       + '</div>';
   } else {

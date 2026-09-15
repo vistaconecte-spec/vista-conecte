@@ -1378,15 +1378,21 @@ thead tr th:last-child { border-top-right-radius: 10px; border-bottom-right-radi
 /* ── CARD TEMPO DE LIBERAÇÃO (painel) ──
    É o quarto mini-card da linha de cima (Bárbara, 15/09/2026): quatro colunas com as
    faixas de dias úteis dos envios de 30 dias, no tamanho de um mini-card. No celular
-   a linha continua com os três números e este card desce, ocupando a largura toda. */
-.mini-cards:has(.mini-card--tempo) { grid-template-columns: repeat(3, 1fr) 1.5fr; }
+   a linha continua com os três números e este card desce, ocupando a largura toda.
+   Os três números ficam estreitos de propósito (Bárbara, 15/09): o que importa ler é
+   a faixa de dias do gráfico, então ela leva a maior parte da linha. */
+.mini-cards:has(.mini-card--tempo) { grid-template-columns: repeat(3, minmax(0, 1fr)) 2.4fr; }
+.mini-cards:has(.mini-card--tempo) .mini-card:not(.mini-card--tempo) { padding: 10px 12px; }
+.mini-cards:has(.mini-card--tempo) .mini-card:not(.mini-card--tempo) .mini-val { font-size: 22px; }
+.mini-cards:has(.mini-card--tempo) .mini-card:not(.mini-card--tempo) .mini-label { font-size: 9px; letter-spacing: 0.03em; }
+.mini-cards:has(.mini-card--tempo) .mini-card:not(.mini-card--tempo) .mini-sub { font-size: 10px; }
 .tl-sub { font-size: 11px; color: var(--text-sec); line-height: 1.4; }
 .tl-colunas { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; align-items: end; margin: 4px 0 2px; }
 .tl-col { display: flex; flex-direction: column; align-items: center; justify-content: flex-end; text-align: center; font-size: 10px; color: var(--text-sec); line-height: 1.2; }
 .tl-col b { font-size: 12px; color: var(--text); margin-bottom: 2px; }
-.tl-col .tl-bar { width: 100%; max-width: 44px; border-radius: 5px 5px 2px 2px; min-height: 3px; }
-.tl-col .tl-dia { margin-top: 3px; font-weight: 600; white-space: nowrap; }
-.tl-col .tl-qtd { font-size: 9px; color: var(--text-ter); }
+.tl-col .tl-bar { width: 100%; max-width: 64px; border-radius: 5px 5px 2px 2px; min-height: 3px; }
+.tl-col .tl-dia { margin-top: 4px; font-size: 13px; font-weight: 700; color: var(--text); white-space: nowrap; }
+.tl-col .tl-qtd { font-size: 10px; color: var(--text-ter); }
 @media (max-width: 768px) {
   .mini-cards:has(.mini-card--tempo) { grid-template-columns: repeat(3, 1fr); }
   .mini-card--tempo { grid-column: 1 / -1; }
