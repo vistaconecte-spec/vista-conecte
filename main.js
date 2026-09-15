@@ -5910,7 +5910,7 @@ async function mandarTudoParaEstoque() {
   if (!levas.length) { alert('Nenhuma ficha em costura para mandar ao estoque.'); return; }
   const totalPecas = levas.reduce((s, l) => s + l.total, 0);
   const lista = levas.map(l => `• ${l.nome}${l.leva === 2 ? ' (2ª leva)' : ''} — ${l.total} peças`).join('\n');
-  if (!confirm(`Mandar ${levas.length} ficha${levas.length > 1 ? 's' : ''} da costura para o estoque — ${totalPecas} peças?\n\n${lista}\n\nAs peças entram no ESTOQUE, a leva é zerada e sai de "Em costura" (vira a pagar no faturamento da costura).`)) return;
+  if (!confirm(`Mandar ${levas.length} ficha${levas.length > 1 ? 's' : ''} da costura para o estoque — ${totalPecas} peças?\n\n${lista}\n\nAs peças entram no ESTOQUE, a leva é zerada e sai de "Em costura" (entra como paga no faturamento da costura, porque o acerto é na entrega).`)) return;
 
   const porModelo = {};
   levas.forEach(l => { (porModelo[l.key] = porModelo[l.key] || []).push(l); });
@@ -6217,6 +6217,25 @@ function cstFatEntregar(d, id, ant, agora) {
   };
 }
 
+// A COSTUREIRA É PAGA NA ENTREGA (Bárbara, 15/09/2026: "todas as vezes que sai da costura
+// para o estoque eu já paguei"). Então a leva que acabou de sair da etapa não fica esperando
+// um "pago": entra direto em `pagas`, com a data da entrega como data do pagamento. Só as
+// levas NOVAS deste ciclo (que não estavam em `aPagar` antes) fazem esse caminho: uma leva
+// que a dona mandou de volta para "a receber" pelo "desfazer" é exceção dela e fica lá.
+// O corte NÃO passa por aqui: o acerto do cortador continua sendo marcado pela dona.
+function cstFatPagarNaEntrega(antes, novo, agora) {
+  const jaTinha = (antes && antes.aPagar) || {};
+  const novas = Object.keys(novo.aPagar).filter(id => !jaTinha[id]);
+  for (const id of novas) {
+    const p = novo.aPagar[id];
+    delete novo.aPagar[id];
+    p.pago_em = p.entregue_em || agora;
+    p.pago_na_entrega = true;
+    novo.pagas.unshift(p);
+  }
+  return novas.length;
+}
+
 async function cstFatSincronizar() {
   if (ehPerfilOficina()) return; // o aparelho da costureira só lê
   // Recarrega os modelos da nuvem ANTES de olhar quem está em costura: um local desatualizado
@@ -6239,6 +6258,7 @@ async function cstFatSincronizar() {
                pagas: Array.isArray(base.pagas) ? base.pagas : [], sumico: base.sumico };
   const novo = cstFatAplicar(d0, atuais, agora2);
   if (!novo) return;
+  cstFatPagarNaEntrega(d0, novo, agora2);
   novo.pagas = novo.pagas.slice(0, CST_PAGAS_MAX);
   novo.updated_at = new Date().toISOString();
   saveLocal('vc:' + CST_FAT_KEY, novo);
@@ -6642,7 +6662,7 @@ function renderFaturamento() {
     qual: 'costura', titulo: 'FATURAMENTO DA COSTURA', cor: '#0f766e', campo: 'costura',
     d: cstFatTudo(),
     agora: { titulo: 'NA MÁQUINA AGORA', rotulo: 'Na máquina agora', icone: 'ti-needle-thread', cor: '#0891b2',
-             frase: 'É o que está em costura hoje, vira a receber quando a leva for entregue.',
+             frase: 'É o que está em costura hoje, é pago quando a leva for entregue.',
              vazio: 'Nada em costura no momento.', itens: agora },
     vindo: { titulo: 'VEM POR AÍ', icone: 'ti-scissors', cor: '#7C3AED',
              frase: 'O que está no corte e o tecido em compra, pelo valor de <b>costura</b> da peça: é a previsão do que ela vai receber, não o que se paga pelo corte.',

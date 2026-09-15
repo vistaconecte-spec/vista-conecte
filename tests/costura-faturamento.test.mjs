@@ -32,8 +32,8 @@ function extrair(nome) {
 const consts = (main.match(/^const CST_FAT_(CARENCIA_MS|SUMICO_MIN|CONFIRMA_MS).*$/gm) || []).join('\n');
 if (consts.split('\n').filter(Boolean).length !== 3) throw new Error('travas do faturamento não encontradas em main.js');
 const F = new Function(consts + '\n' + extrair('cstFatAplicar') + '\n' + extrair('cstFatEntregar')
-  + '\n' + extrair('flxCustoModelo')
-  + '; return { cstFatAplicar, cstFatEntregar, flxCustoModelo };')();
+  + '\n' + extrair('flxCustoModelo') + '\n' + extrair('cstFatPagarNaEntrega')
+  + '; return { cstFatAplicar, cstFatEntregar, flxCustoModelo, cstFatPagarNaEntrega };')();
 
 let falhas = 0, total = 0;
 function ok(nome, real, esperado) {
@@ -247,6 +247,22 @@ ok('os blocos entram no CORPO do card, não no <summary>',
    /avisoCardHTML\('ti-cash', cfg\.titulo, '',[\s\S]{0,120}Toque para ver\.',\s*\r?\n\s*seletor \+ blocoMes \+ blocoLevas \+ blocoHoje \+ blocoAgora \+ blocoVindo \+ aviso/.test(main), true);
 ok('e a frase que fica à mostra não tem número nenhum',
    /'Mês a mês: o que foi entregue, pago e a receber\. Toque para ver\.'/.test(main), true);
+
+console.log('\n14) A costureira é paga NA ENTREGA (15/09/2026)');
+// "Todas as vezes que sai da costura para o estoque eu já paguei": a leva não fica esperando
+// um "pago". Ela entra direto em pagas, com a data da entrega. Só o que é NOVO no ciclo.
+const antes14 = { abertas: naMaquina, aPagar: { 'velha|1|r0': { id: 'velha|1|r0', valor: 9, entregue_em: '2026-08-01T12:00:00.000Z' } }, pagas: [] };
+const novo14  = F.cstFatAplicar(antes14, {}, AGORA);
+ok('a entrega nasce em aPagar (núcleo intocado)', Object.keys(novo14.aPagar).sort(), ['saia-midi|1|r1', 'velha|1|r0']);
+const n14 = F.cstFatPagarNaEntrega(antes14, novo14, AGORA);
+ok('e a NOVA vai direto para pagas', [n14, novo14.pagas.map(p => p.id)], [1, ['saia-midi|1|r1']]);
+ok('com a data da entrega como data do pagamento', novo14.pagas[0].pago_em, AGORA);
+ok('e marcada como paga na entrega', novo14.pagas[0].pago_na_entrega, true);
+ok('a que a dona devolveu para "a receber" (desfazer) fica lá, não é repaga sozinha', Object.keys(novo14.aPagar), ['velha|1|r0']);
+ok('a sincronização chama isso logo depois de aplicar, antes de gravar',
+   /const novo = cstFatAplicar\(d0, atuais, agora2\);\s*\r?\n\s*if \(!novo\) return;\s*\r?\n\s*cstFatPagarNaEntrega\(d0, novo, agora2\);/.test(main), true);
+ok('e o corte NÃO (o cortador continua sendo marcado pela dona)',
+   /cstFatPagarNaEntrega\(/.test(/async function crtFatSincronizar\(\)[\s\S]*?\n\}/.exec(main)[0]), false);
 
 console.log(falhas ? `\n✗ ${total - falhas}/${total} passaram` : `\n✓ ${total}/${total} passaram`);
 process.exit(falhas ? 1 : 0);
