@@ -4709,6 +4709,7 @@ function renderDashboard() {
   window._tabelaRowsAll = sorted;
 
   renderMiniCards(totalPedidos);
+  renderTempoLiberacao();
   renderProntosParaEnvio();
   renderCorteCostura();
 }
@@ -7759,6 +7760,100 @@ function renderMiniCards(pecasEmAberto) {
   // números do painel nunca discordarem.
   set('mini-ab-ped', (window._shopifyDetalhados || []).length);
   set('mini-ab-sub', `${plural(pecasEmAberto || 0, 'peça', 'peças')} a enviar`);
+}
+
+// ─── CARD: TEMPO DE LIBERAÇÃO (dias úteis do pagamento ao envio) ─────────────
+// Pedido da Bárbara em 15/09/2026 ("é legal ir acompanhando esses dados"). A conta é
+// feita em /api/shopify-tempo-liberacao (GraphQL leve, ~800 pedidos de 90 dias); aqui só
+// se desenha. Lido na abertura e a cada 30 min, fora do ciclo de 1 minuto dos pedidos:
+// é histórico, muda devagar, e cada leitura são 4 páginas da Shopify.
+//
+// Regras da conta (as mesmas do endpoint): só pedido pago e não cancelado; "liberado" é
+// a primeira remessa da Shopify; retirada em loja fica fora; dia útil desconta fim de
+// semana e feriado nacional; as semanas são de ENVIO (quem saiu naquela semana, quanto
+// levou), porque por semana de pagamento a média parece cair enquanto a fila só cresce.
+const TL_INTERVALO = 30 * 60 * 1000;
+
+async function carregarTempoLiberacao() {
+  if (ehPerfilDeUmaAba()) return; // oficina e modelagem não alcançam /api/shopify-*
+  try {
+    const r = await fetch('/api/shopify-tempo-liberacao');
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const dados = await r.json();
+    if (dados.erro) throw new Error(dados.erro);
+    window._tempoLiberacao = dados;
+  } catch (e) {
+    window._tempoLiberacaoErro = e.message || 'falha';
+  }
+  renderTempoLiberacao();
+}
+
+// Número com vírgula e uma casa ("7,4"); "—" quando não há pedido na janela
+const tlNum = v => v == null ? '—' : v.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 1 });
+const tlPlural = (n, s, p) => `${n} ${n === 1 ? s : p}`;
+
+function tempoLiberacaoHTML(d) {
+  const e7 = d.enviados.d7, e30 = d.enviados.d30, fila = d.fila;
+  const tile = (label, val, unidade, sub) =>
+    `<div class="tl-tile"><div class="tl-label">${label}</div>` +
+    `<div class="tl-val">${val}<small>${unidade}</small></div><div class="tl-sub">${sub}</div></div>`;
+  const subEnv = e => e.n
+    ? `${tlPlural(e.n, 'pedido enviado', 'pedidos enviados')} · mediana ${tlNum(e.mediana)} · ${tlNum(e.corridos)} corridos`
+    : 'nenhum envio na janela';
+  const antigo = fila.mais_antigo
+    ? ` · mais antigo ${fila.mais_antigo.numero} (${tlPlural(fila.mais_antigo.uteis, 'dia útil', 'dias úteis')})`
+    : '';
+  let html = '<div class="tl-tiles">'
+    + tile('Últimos 7 dias', tlNum(e7.media), 'dias úteis', subEnv(e7))
+    + tile('Últimos 30 dias', tlNum(e30.media), 'dias úteis', subEnv(e30))
+    + tile('Na fila agora', fila.n, fila.n === 1 ? 'pedido pago' : 'pedidos pagos',
+        fila.n ? `esperando ${tlNum(fila.media)} dias úteis em média${antigo}` : 'nenhum pedido pago esperando')
+    + '</div>';
+
+  // Distribuição dos enviados em 30 dias
+  const f = d.faixas, tot = f.ate2 + f.de3a5 + f.de6a10 + f.mais11;
+  if (tot) {
+    const partes = [
+      ['até 2 dias úteis', f.ate2, '#16a34a'], ['3 a 5', f.de3a5, '#84cc16'],
+      ['6 a 10', f.de6a10, '#f59e0b'], ['11 ou mais', f.mais11, '#dc2626'],
+    ];
+    const pct = n => Math.round(100 * n / tot);
+    html += '<div class="tl-titulo">Como se distribuem os envios de 30 dias</div><div class="tl-faixa">'
+      + partes.map(([, n, cor]) => `<span style="width:${100 * n / tot}%;background:${cor}"></span>`).join('')
+      + '</div><div class="tl-legenda">'
+      + partes.map(([nome, n, cor]) => `<span><i style="background:${cor}"></i>${nome} <b>${pct(n)}%</b></span>`).join('')
+      + '</div>';
+  }
+
+  // 8 semanas de envio
+  const sem = d.semanas || [];
+  const maxMedia = Math.max(1, ...sem.map(s => s.media || 0));
+  const dia = iso => `${iso.slice(8, 10)}/${iso.slice(5, 7)}`;
+  html += '<div class="tl-titulo">Média por semana de envio (segunda a domingo)</div><div class="tl-semanas">'
+    + sem.map((s, i) => {
+        const alt = s.media == null ? 0 : Math.max(4, Math.round(60 * s.media / maxMedia));
+        const atual = i === sem.length - 1 ? ' tl-atual' : '';
+        return `<div class="tl-sem${atual}" title="semana de ${dia(s.inicio)}: ${tlPlural(s.n, 'pedido enviado', 'pedidos enviados')}">`
+          + `<b>${tlNum(s.media)}</b><div class="tl-bar" style="height:${alt}px"></div><div class="tl-dia">${dia(s.inicio)}</div></div>`;
+      }).join('')
+    + '</div>';
+  return html;
+}
+
+function renderTempoLiberacao() {
+  const el = document.getElementById('dash-tempo');
+  const sub = document.getElementById('dash-tempo-sub');
+  if (!el) return;
+  const d = window._tempoLiberacao;
+  if (!d) {
+    el.textContent = window._tempoLiberacaoErro
+      ? 'não deu para ler agora (' + window._tempoLiberacaoErro + '); tenta de novo em 30 min'
+      : 'carregando…';
+    return;
+  }
+  el.innerHTML = tempoLiberacaoHTML(d);
+  if (sub) sub.textContent = 'do pagamento ao envio, em dias úteis · atualizado '
+    + new Date(d.gerado_em).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 }
 
 function renderProntosParaEnvio() {
@@ -11816,6 +11911,10 @@ setInterval(() => {
     else renderModeloSeOcioso(); // só modelos reais e só com a tela ociosa
   }).catch(() => {});
 }, 1 * 60 * 1000);
+
+// 3a. Tempo de liberação (card do painel): na abertura e a cada 30 min
+carregarTempoLiberacao();
+setInterval(carregarTempoLiberacao, TL_INTERVALO);
 
 // 3b. Sincroniza estoque/produção entre dispositivos a cada 15 segundos (rede de segurança do realtime)
 setInterval(() => { sincronizarNuvem(); }, 15 * 1000);

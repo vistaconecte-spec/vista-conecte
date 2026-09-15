@@ -1374,3 +1374,28 @@ thead tr th:last-child { border-top-right-radius: 10px; border-bottom-right-radi
 @media (prefers-reduced-transparency: reduce) {
   :root { --glass: rgba(255,255,255,0.9); --glass-strong: rgba(255,255,255,0.97); --sidebar-bg: rgba(18,16,26,0.96); }
 }
+
+/* ── CARD TEMPO DE LIBERAÇÃO (painel) ──
+   Três números (7 dias, 30 dias, fila), uma barra de distribuição e 8 colunas de semanas.
+   No celular os três números empilham; a barra e as colunas cabem em qualquer largura. */
+.tl-tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 4px 0 12px; }
+.tl-tile { padding: 10px 12px; border-radius: 14px; background: rgba(79,70,229,0.06); border: 1px solid rgba(79,70,229,0.12); }
+.tl-tile .tl-label { font-size: 10px; font-weight: 600; color: var(--text-ter); letter-spacing: 0.06em; text-transform: uppercase; }
+.tl-tile .tl-val { font-size: 26px; font-weight: 700; line-height: 1.15; margin: 3px 0 1px; color: var(--text); }
+.tl-tile .tl-val small { font-size: 12px; font-weight: 600; color: var(--text-sec); margin-left: 4px; }
+.tl-tile .tl-sub { font-size: 11px; color: var(--text-sec); line-height: 1.4; }
+.tl-faixa { display: flex; height: 10px; border-radius: 6px; overflow: hidden; background: var(--border); margin: 4px 0 6px; }
+.tl-faixa span { display: block; height: 100%; }
+.tl-legenda { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 11px; color: var(--text-sec); margin-bottom: 12px; }
+.tl-legenda i { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 5px; vertical-align: 1px; }
+.tl-semanas { display: grid; grid-template-columns: repeat(8, 1fr); gap: 6px; align-items: end; height: 96px; }
+.tl-sem { display: flex; flex-direction: column; align-items: center; justify-content: flex-end; height: 100%; font-size: 10px; color: var(--text-ter); }
+.tl-sem b { font-size: 11px; color: var(--text); margin-bottom: 2px; }
+.tl-sem .tl-bar { width: 100%; max-width: 34px; border-radius: 6px 6px 3px 3px; background: linear-gradient(180deg, #6366f1, #4f46e5); min-height: 3px; }
+.tl-sem.tl-atual .tl-bar { opacity: 0.55; }
+.tl-sem .tl-dia { margin-top: 4px; white-space: nowrap; }
+.tl-titulo { font-size: 10px; font-weight: 600; color: var(--text-ter); letter-spacing: 0.06em; text-transform: uppercase; margin-bottom: 4px; }
+@media (max-width: 768px) {
+  .tl-tiles { grid-template-columns: 1fr; }
+  .tl-semanas { gap: 3px; }
+}
