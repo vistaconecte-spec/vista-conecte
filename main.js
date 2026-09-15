@@ -7821,18 +7821,20 @@ function tempoLiberacaoHTML(d) {
   // rodapé. Verde é o que saiu rápido, vermelho o que passou de duas semanas úteis.
   const f = d.faixas, tot = f.ate2 + f.de3a5 + f.de6a10 + f.mais11;
   if (tot) {
+    // O card mora na linha dos mini-cards (Bárbara, 15/09/2026: "ficou muito grandão"),
+    // então o rótulo da faixa é curto ("3 a 5") e o nome inteiro fica no title da coluna.
     const partes = [
-      ['até 2 dias úteis', f.ate2, '#16a34a'], ['3 a 5 dias úteis', f.de3a5, '#84cc16'],
-      ['6 a 10 dias úteis', f.de6a10, '#f59e0b'], ['11 ou mais', f.mais11, '#dc2626'],
+      ['até 2', 'até 2 dias úteis', f.ate2, '#16a34a'], ['3 a 5', '3 a 5 dias úteis', f.de3a5, '#84cc16'],
+      ['6 a 10', '6 a 10 dias úteis', f.de6a10, '#f59e0b'], ['11+', '11 ou mais dias úteis', f.mais11, '#dc2626'],
     ];
     const pct = n => Math.round(100 * n / tot);
-    const maxPct = Math.max(1, ...partes.map(([, n]) => pct(n)));
-    html += '<div class="tl-titulo">Quanto tempo levaram os envios dos últimos 30 dias</div><div class="tl-colunas">'
-      + partes.map(([nome, n, cor]) => {
-          const alt = Math.max(4, Math.round(80 * pct(n) / maxPct));
+    const maxPct = Math.max(1, ...partes.map(([, , n]) => pct(n)));
+    html += '<div class="tl-colunas">'
+      + partes.map(([curto, nome, n, cor]) => {
+          const alt = Math.max(3, Math.round(36 * pct(n) / maxPct));
           return `<div class="tl-col" title="${nome}: ${tlPlural(n, 'pedido', 'pedidos')}"><b>${pct(n)}%</b>`
             + `<div class="tl-bar" style="height:${alt}px;background:${cor}"></div>`
-            + `<div class="tl-dia">${nome}</div><div class="tl-qtd">${tlPlural(n, 'pedido', 'pedidos')}</div></div>`;
+            + `<div class="tl-dia">${curto}</div><div class="tl-qtd">${n}</div></div>`;
         }).join('')
       + '</div>';
   } else {
@@ -7853,7 +7855,7 @@ function renderTempoLiberacao() {
     return;
   }
   el.innerHTML = tempoLiberacaoHTML(d);
-  if (sub) sub.textContent = 'do pagamento ao envio, em dias úteis · atualizado '
+  if (sub) sub.textContent = 'dias úteis do pagamento ao envio · 30 dias · '
     + new Date(d.gerado_em).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 }
 

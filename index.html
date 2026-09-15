@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Bodoni+Moda:ital,opsz,wght@0,6..96,700;0,6..96,900&family=Bebas+Neue&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css">
-<link rel="stylesheet" href="style.css?v=2026091506">
+<link rel="stylesheet" href="style.css?v=2026091507">
 </head>
 <body>
 
@@ -135,16 +135,15 @@
             <div class="mini-val" id="mini-ab-ped">—</div>
             <div class="mini-sub" id="mini-ab-sub">—</div>
           </div>
-        </div>
-        <!-- Quanto tempo o pedido leva do pagamento ao envio, em dias úteis (pedido da
-             Bárbara, 15/09/2026, para acompanhar). Vem de /api/shopify-tempo-liberacao,
-             lido a cada 30 min (não no ciclo de 1 min: é histórico, muda devagar). -->
-        <div class="card" id="card-tempo-lib" style="border-left:3px solid #4f46e5">
-          <div class="card-header">
-            <div class="card-title" style="color:#4f46e5"><i class="ti ti-hourglass-high"></i> TEMPO DE LIBERAÇÃO</div>
-            <span id="dash-tempo-sub" style="font-size:11px;color:var(--text-ter)">do pagamento ao envio, em dias úteis</span>
+          <!-- Quanto tempo o pedido leva do pagamento ao envio, em dias úteis (pedido da
+               Bárbara, 15/09/2026, para acompanhar). Vem de /api/shopify-tempo-liberacao,
+               lido a cada 30 min (não no ciclo de 1 min: é histórico, muda devagar).
+               Mora na linha dos mini-cards, como quarto card, para não virar um cartão grandão. -->
+          <div class="mini-card mini-card--tempo" id="card-tempo-lib">
+            <div class="mini-label"><i class="ti ti-hourglass-high"></i> TEMPO DE LIBERAÇÃO</div>
+            <div id="dash-tempo" style="font-size:11px;color:var(--text-ter)">carregando…</div>
+            <div class="mini-sub" id="dash-tempo-sub">dias úteis do pagamento ao envio</div>
           </div>
-          <div id="dash-tempo" style="font-size:12px;color:var(--text-ter)">carregando…</div>
         </div>
         <div class="card" id="card-prontos" style="border-left:3px solid #16a34a">
           <div class="card-header">
@@ -1050,7 +1049,7 @@
   </div>
 </div>
 <script src="data.js?v=2026091105"></script>
-<script src="main.js?v=2026091506"></script>
+<script src="main.js?v=2026091507"></script>
 <script async src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js" onload="initSupabase()"></script>
 </body>
 </html>

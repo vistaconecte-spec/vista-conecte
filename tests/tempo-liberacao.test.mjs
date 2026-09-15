@@ -108,7 +108,8 @@ console.log('\n4) Leitura da Shopify: GraphQL paginado, 90 dias + abertos de qua
 console.log('\n5) A tela tem o card e o ciclo de 30 min');
 {
   ok('card no painel', /id="card-tempo-lib"/.test(html) && /id="dash-tempo"/.test(html), true);
-  ok('card vem logo depois dos mini-cards', html.indexOf('id="card-tempo-lib"') > html.indexOf('id="mini-ab-sub"') && html.indexOf('id="card-tempo-lib"') < html.indexOf('id="card-prontos"'), true);
+  ok('card é o quarto mini-card, depois de PEDIDOS EM ABERTO', html.indexOf('id="card-tempo-lib"') > html.indexOf('id="mini-ab-sub"') && html.indexOf('id="card-tempo-lib"') < html.indexOf('id="card-prontos"') && /class="mini-card mini-card--tempo" id="card-tempo-lib"/.test(html), true);
+  ok('no celular o card desce e ocupa a linha toda', /\.mini-card--tempo \{ grid-column: 1 \/ -1; \}/.test(css), true);
   ok('renderDashboard repinta o card', /renderMiniCards\(totalPedidos\);\s*renderTempoLiberacao\(\);/.test(main), true);
   ok('lê na abertura e a cada 30 min', /carregarTempoLiberacao\(\);\s*setInterval\(carregarTempoLiberacao, TL_INTERVALO\)/.test(main) && /TL_INTERVALO = 30 \* 60 \* 1000/.test(main), true);
   ok('oficina e modelagem não chamam a API', /async function carregarTempoLiberacao\(\) \{\s*if \(ehPerfilDeUmaAba\(\)\) return;/.test(main), true);
@@ -129,8 +130,8 @@ console.log('\n5) A tela tem o card e o ciclo de 30 min');
   ok('sem envio na janela avisa em vez de ficar vazio',
      desenhar({ enviados: { d7: { n: 0 }, d30: { n: 0 } }, faixas: { ate2: 0, de3a5: 0, de6a10: 0, mais11: 0 }, fila: { n: 0 }, gerado_em: '2026-09-15T19:00:00Z' }).includes('nenhum envio nos últimos 30 dias'), true);
   ok('quatro colunas, uma por faixa', (htmlCard.match(/class="tl-col"/g) || []).length, 4);
-  ok('a maior faixa é a coluna mais alta (80px) e a vazia fica no mínimo', htmlCard.includes('<b>50%</b><div class="tl-bar" style="height:80px') && htmlCard.includes('<b>0%</b><div class="tl-bar" style="height:4px'), true);
-  ok('rodapé com nome da faixa e quantidade', htmlCard.includes('<div class="tl-dia">11 ou mais</div><div class="tl-qtd">2 pedidos</div>'), true);
+  ok('a maior faixa é a coluna mais alta (36px) e a vazia fica no mínimo', htmlCard.includes('<b>50%</b><div class="tl-bar" style="height:36px') && htmlCard.includes('<b>0%</b><div class="tl-bar" style="height:3px'), true);
+  ok('rodapé curto (faixa e quantidade), nome inteiro no title', htmlCard.includes('<div class="tl-dia">11+</div><div class="tl-qtd">2</div>') && htmlCard.includes('title="11 ou mais dias úteis: 2 pedidos"'), true);
   ok('o gráfico de semanas saiu', /tl-semanas|tl-sem\b/.test(htmlCard), false);
 }
 
