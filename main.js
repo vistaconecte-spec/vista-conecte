@@ -3729,7 +3729,7 @@ function flxRecompute() {
 
 // ─── ABA PRECIFICAÇÃO ────────────────────────────────────────────────────────
 function precoGetConfig() {
-  return loadLocal('vc:precificacao') || { global: { custoMetro: 12, taxa: 2.6, plataforma: 1.05, imposto: 0, marketing: 26.73, fixos: 9.55, logistica: 2.09, margem: 25 }, modelos: {} };
+  return loadLocal('vc:precificacao') || { global: { custoMetro: 12, taxa: 2.6, taxaShopify: 0, comissao: 0, plataforma: 1.05, imposto: 0, marketing: 26.73, fixos: 9.55, logistica: 2.09, margem: 25 }, modelos: {} };
 }
 function precoChaves() {
   const ks = [];
@@ -3788,8 +3788,10 @@ async function renderPrecos() {
     <div style="display:flex;align-items:center;gap:4px"><input id="${id}" type="number" step="0.01" value="${val}" oninput="precoSalvar()" style="width:90px;text-align:right;padding:6px 8px;border:1px solid var(--border);border-radius:6px"><span style="font-size:12px;color:var(--text-ter)">${suf}</span></div>
   </div>`;
   document.getElementById('prc-globais').innerHTML = `<div style="display:flex;gap:16px;flex-wrap:wrap">
-    ${ginp('prc-g-taxa', 'Taxa pagamento', g.taxa, '%')}
-    ${ginp('prc-g-plataforma', 'Shopify / plataforma', g.plataforma != null ? g.plataforma : 1.05, '%')}
+    ${ginp('prc-g-taxa', 'Taxa Mercado Pago', g.taxa, '%')}
+    ${ginp('prc-g-taxa-shopify', 'Taxa Shopify (por venda)', g.taxaShopify != null ? g.taxaShopify : 0, '%')}
+    ${ginp('prc-g-comissao', 'Comissão de venda', g.comissao != null ? g.comissao : 0, '%')}
+    ${ginp('prc-g-plataforma', 'Plataforma (apps, Bling, Wati)', g.plataforma != null ? g.plataforma : 1.05, '%')}
     ${ginp('prc-g-imposto', 'Imposto', g.imposto, '%')}
     ${ginp('prc-g-marketing', 'Marketing / CAC', g.marketing != null ? g.marketing : 26.73, '%')}
     ${ginp('prc-g-fixos', 'Custos fixos', g.fixos != null ? g.fixos : 9.55, '%')}
@@ -3851,6 +3853,8 @@ function precoSalvar() {
   cfg.global = {
     custoMetro: (cfg.global && cfg.global.custoMetro) || 0,
     taxa: parseFloat(document.getElementById('prc-g-taxa').value) || 0,
+    taxaShopify: parseFloat(document.getElementById('prc-g-taxa-shopify').value) || 0,
+    comissao: parseFloat(document.getElementById('prc-g-comissao').value) || 0,
     plataforma: parseFloat(document.getElementById('prc-g-plataforma').value) || 0,
     imposto: parseFloat(document.getElementById('prc-g-imposto').value) || 0,
     marketing: parseFloat(document.getElementById('prc-g-marketing').value) || 0,
@@ -3872,20 +3876,22 @@ function precoSalvar() {
 
 function precoRecompute() {
   const custoMetro = 0; // fallback removido — cada modelo usa o R$/m do próprio cadastro
-  const taxa = parseFloat(document.getElementById('prc-g-taxa').value) || 0;
-  const platEl = document.getElementById('prc-g-plataforma');
-  const plataforma = platEl ? parseFloat(platEl.value) || 0 : 0;
-  const imposto = parseFloat(document.getElementById('prc-g-imposto').value) || 0;
-  const marketing = parseFloat(document.getElementById('prc-g-marketing').value) || 0;
-  const fixos = parseFloat(document.getElementById('prc-g-fixos').value) || 0;
-  const logEl = document.getElementById('prc-g-logistica');
-  const logistica = logEl ? parseFloat(logEl.value) || 0 : 0;
-  const margem = parseFloat(document.getElementById('prc-g-margem').value) || 0;
+  const gnum = id => { const el = document.getElementById(id); return el ? (parseFloat(el.value) || 0) : 0; };
+  const taxaMP = gnum('prc-g-taxa');
+  const taxaShopify = gnum('prc-g-taxa-shopify');
+  const comissao = gnum('prc-g-comissao');
+  const taxa = taxaMP + taxaShopify + comissao; // tudo que incide direto sobre o valor de cada venda
+  const plataforma = gnum('prc-g-plataforma');
+  const imposto = gnum('prc-g-imposto');
+  const marketing = gnum('prc-g-marketing');
+  const fixos = gnum('prc-g-fixos');
+  const logistica = gnum('prc-g-logistica');
+  const margem = gnum('prc-g-margem');
   const pctVar = (taxa + plataforma + imposto + marketing + fixos + logistica) / 100; // custos que incidem % sobre o preço
   const divisor = 1 - pctVar - margem / 100;
   const aviso = document.getElementById('prc-divisor-aviso');
-  if (divisor <= 0) { aviso.textContent = '⚠ Taxa + plataforma + imposto + marketing + fixos + logística + margem somam ≥ 100% — impossível precificar. Reduza algum %.'; aviso.style.color = '#dc2626'; }
-  else { aviso.textContent = `Preço = Custo de produção ÷ ${divisor.toFixed(3)}  (1 − ${taxa}% taxa − ${plataforma}% plataforma − ${imposto}% imposto − ${marketing}% marketing − ${fixos}% fixos − ${logistica}% logística − ${margem}% margem)`; aviso.style.color = 'var(--text-ter)'; }
+  if (divisor <= 0) { aviso.textContent = '⚠ Taxas + comissão + plataforma + imposto + marketing + fixos + logística + margem somam ≥ 100% — impossível precificar. Reduza algum %.'; aviso.style.color = '#dc2626'; }
+  else { aviso.textContent = `Preço = Custo de produção ÷ ${divisor.toFixed(3)}  (1 − ${taxaMP}% Mercado Pago − ${taxaShopify}% Shopify − ${comissao}% comissão − ${plataforma}% plataforma − ${imposto}% imposto − ${marketing}% marketing − ${fixos}% fixos − ${logistica}% logística − ${margem}% margem)`; aviso.style.color = 'var(--text-ter)'; }
 
   const alertas = [];
   const keys = precoChaves();
@@ -3953,7 +3959,7 @@ function precoRecompute() {
       ocell.textContent = (custo > 0 && baseOper > 0) ? finBRL(oper) : '—';
       ocell.style.color = venda > 0 ? 'var(--text-sec)' : 'var(--text-ter)';
       ocell.title = venda > 0
-        ? 'Imposto, taxa, plataforma, marketing, fixos e logistica sobre o preco de venda'
+        ? 'Imposto, taxas (Mercado Pago, Shopify, comissao), plataforma, marketing, fixos e logistica sobre o preco de venda'
         : 'Estimativa sobre o preco sugerido (este modelo nao tem preco de venda cadastrado)';
     }
 
