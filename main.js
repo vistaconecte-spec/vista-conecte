@@ -378,10 +378,11 @@ function showCloudOk() {
   setTimeout(() => ind.classList.remove('show'), 2000);
 }
 
-function showCloudError() {
+function showCloudError(msg) {
   const ind = document.getElementById('save-ind');
   if (!ind) return;
-  ind.innerHTML = '<i class="ti ti-cloud-off"></i> Erro ao salvar na nuvem — dados locais preservados';
+  const esc = x => String(x).replace(/[&<>"]/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c]));
+  ind.innerHTML = '<i class="ti ti-cloud-off"></i> ' + (msg ? esc(msg) : 'Erro ao salvar na nuvem — dados locais preservados');
   ind.style.color = '#dc2626';
   ind.classList.add('show');
   // Mantém visível até o usuário salvar com sucesso
@@ -502,6 +503,7 @@ function modeloAbertoProtegido(id) {
 // sincronização (realtime, ciclo de 15s ou carga da página) pode trazer a versão da nuvem
 // por cima dela.
 const _gravacoesPendentes = new Map(); // key -> { dados, emVoo }
+const _gravacoesDescartadas = []; // pacotes velhos que não subiram porque a nuvem já tinha coisa mais nova
 // Mesclagens que ficaram esperando a nuvem responder: a tela e o retrato do que foi tocado.
 // Enquanto a chave estiver aqui, nenhuma sincronização traz a nuvem por cima do local.
 const _mesclagensPendentes = new Map(); // key -> { dom, tocado }
@@ -529,6 +531,22 @@ async function reenviarPendentes() {
   try {
     for (const [key, item] of [..._gravacoesPendentes]) {
       if (item.emVoo) continue; // já tem uma tentativa correndo
+      // Gravação que ficou horas na fila não pode subir como está: o Vestido Amplo teve um
+      // "Mandar tudo p/ produção" das 22:27 de 14/09 reenviado às 10:37 do dia seguinte, com
+      // o modelo INTEIRO daquela hora, por cima de tudo que mudou de madrugada. Se a nuvem
+      // já tem algo mais novo que este pacote, o pacote é descartado (e avisado), nunca
+      // gravado por cima. Sem conseguir ler, fica para o próximo ciclo.
+      const nuvem = await carregarNuvem(key);
+      if (nuvem === undefined) continue;
+      const feitoEm = (item.dados && item.dados.updated_at) || '';
+      const nuvemEm = (nuvem && nuvem.updated_at) || '';
+      if (feitoEm && nuvemEm && nuvemEm > feitoEm) {
+        _gravacoesPendentes.delete(key);
+        _gravacoesDescartadas.push({ key, feitoEm, nuvemEm, dados: item.dados });
+        console.warn('[nuvem] gravação pendente descartada: outro aparelho gravou depois', key, feitoEm, '<', nuvemEm);
+        showCloudError('Uma alteração de ' + new Date(feitoEm).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) + ' não subiu: outro aparelho gravou depois. Confira o modelo.');
+        continue;
+      }
       await salvarNuvemREST(key, item.dados);
     }
     // Mesclagens que esperavam a nuvem responder: tenta de novo (some da fila se conseguir)
@@ -7810,33 +7828,27 @@ function tempoLiberacaoHTML(d) {
         fila.n ? `esperando ${tlNum(fila.media)} dias úteis em média${antigo}` : 'nenhum pedido pago esperando')
     + '</div>';
 
-  // Distribuição dos enviados em 30 dias
+  // Distribuição dos enviados de 30 dias em colunas (a Bárbara pediu em 15/09/2026 que a
+  // barra de faixas virasse gráfico e que o de semanas saísse). Cada coluna é uma faixa de
+  // dias úteis; a altura é a porcentagem, o número em cima também, e a quantidade fica no
+  // rodapé. Verde é o que saiu rápido, vermelho o que passou de duas semanas úteis.
   const f = d.faixas, tot = f.ate2 + f.de3a5 + f.de6a10 + f.mais11;
   if (tot) {
     const partes = [
-      ['até 2 dias úteis', f.ate2, '#16a34a'], ['3 a 5', f.de3a5, '#84cc16'],
-      ['6 a 10', f.de6a10, '#f59e0b'], ['11 ou mais', f.mais11, '#dc2626'],
+      ['até 2 dias úteis', f.ate2, '#16a34a'], ['3 a 5 dias úteis', f.de3a5, '#84cc16'],
+      ['6 a 10 dias úteis', f.de6a10, '#f59e0b'], ['11 ou mais', f.mais11, '#dc2626'],
     ];
     const pct = n => Math.round(100 * n / tot);
-    html += '<div class="tl-titulo">Como se distribuem os envios de 30 dias</div><div class="tl-faixa">'
-      + partes.map(([, n, cor]) => `<span style="width:${100 * n / tot}%;background:${cor}"></span>`).join('')
-      + '</div><div class="tl-legenda">'
-      + partes.map(([nome, n, cor]) => `<span><i style="background:${cor}"></i>${nome} <b>${pct(n)}%</b></span>`).join('')
+    const maxPct = Math.max(1, ...partes.map(([, n]) => pct(n)));
+    html += '<div class="tl-titulo">Quanto tempo levaram os envios dos últimos 30 dias</div><div class="tl-colunas">'
+      + partes.map(([nome, n, cor]) => {
+          const alt = Math.max(4, Math.round(80 * pct(n) / maxPct));
+          return `<div class="tl-col" title="${nome}: ${tlPlural(n, 'pedido', 'pedidos')}"><b>${pct(n)}%</b>`
+            + `<div class="tl-bar" style="height:${alt}px;background:${cor}"></div>`
+            + `<div class="tl-dia">${nome}</div><div class="tl-qtd">${tlPlural(n, 'pedido', 'pedidos')}</div></div>`;
+        }).join('')
       + '</div>';
   }
-
-  // 8 semanas de envio
-  const sem = d.semanas || [];
-  const maxMedia = Math.max(1, ...sem.map(s => s.media || 0));
-  const dia = iso => `${iso.slice(8, 10)}/${iso.slice(5, 7)}`;
-  html += '<div class="tl-titulo">Média por semana de envio (segunda a domingo)</div><div class="tl-semanas">'
-    + sem.map((s, i) => {
-        const alt = s.media == null ? 0 : Math.max(4, Math.round(60 * s.media / maxMedia));
-        const atual = i === sem.length - 1 ? ' tl-atual' : '';
-        return `<div class="tl-sem${atual}" title="semana de ${dia(s.inicio)}: ${tlPlural(s.n, 'pedido enviado', 'pedidos enviados')}">`
-          + `<b>${tlNum(s.media)}</b><div class="tl-bar" style="height:${alt}px"></div><div class="tl-dia">${dia(s.inicio)}</div></div>`;
-      }).join('')
-    + '</div>';
   return html;
 }
 

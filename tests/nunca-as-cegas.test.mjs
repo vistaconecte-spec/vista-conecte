@@ -25,7 +25,7 @@ const ctx = { SUPABASE_URL: 'https://x', SUPABASE_KEY: 'k', fetch: fetchFalso,
 const api = new Function('ctx', `const { SUPABASE_URL, SUPABASE_KEY, fetch, saveLocal, loadLocal, showCloudOk, showCloudError, renderModelo, renderDashboard, renderModeloSeOcioso, registrarVersao, MODELOS } = ctx; let modeloAtual = ctx.modeloAtual;
   async function salvarNuvem(key, dados, opts) { await salvarNuvemREST(key, dados, opts); }
   ${fonte}
-  return { subirModeloMesclado, reenviarPendentes, protegidoDeSobrescrita, gravarModeloNaNuvem, pend: _mesclagensPendentes };`)(ctx);
+  return { subirModeloMesclado, reenviarPendentes, protegidoDeSobrescrita, gravarModeloNaNuvem, pend: _mesclagensPendentes, fila: _gravacoesPendentes };`)(ctx);
 
 let falhas = 0; const ok = (n, a, b) => { const p = JSON.stringify(a) === JSON.stringify(b); if (!p) falhas++; console.log((p ? '  ✓ ' : '  ✗ ') + n, p ? '' : JSON.stringify(a)); };
 const KEY = 'calca';
@@ -58,5 +58,21 @@ ok('não grava', [r, posts.length - antes], [null, 0]);
 leituraFalha = false;
 const r2 = await api.gravarModeloNaNuvem(KEY, s => { s.status = 'Em costura'; }, { silencioso: true });
 ok('com leitura, grava só a mudança em cima da nuvem', [r2.status, r2.prod.Cinza, r2.cores.length], ['Em costura', [4, 9, 8], 3]);
+console.log('4) gravação que ficou na fila não sobe por cima de coisa mais nova');
+// Vestido Amplo, 15/09: um "Mandar tudo p/ produção" das 22:27 ficou na fila e foi reenviado
+// às 10:37 do dia seguinte com o modelo inteiro daquela hora. Agora o pacote velho é
+// descartado quando a nuvem já tem updated_at mais novo; o recente continua subindo.
+nuvem[KEY] = { est: { Preto: [7, 7, 7] }, prod: { Cinza: [4, 9, 8] }, updated_at: '2026-09-15T13:00:00.000Z' };
+const velho = { est: { Preto: [0, 0, 0] }, prod: { Cinza: [1, 1, 1] }, updated_at: '2026-09-15T01:27:00.000Z' };
+api.fila.set(KEY, { dados: velho, emVoo: false });
+const antes4 = posts.length;
+await api.reenviarPendentes();
+ok('o pacote velho não sobe', posts.length - antes4, 0);
+ok('e sai da fila', api.fila.has(KEY), false);
+ok('a nuvem continua com o dado novo', nuvem[KEY].prod.Cinza, [4, 9, 8]);
+const recente = { est: { Preto: [1, 2, 3] }, prod: { Cinza: [4, 9, 8] }, updated_at: '2026-09-15T13:05:00.000Z' };
+api.fila.set(KEY, { dados: recente, emVoo: false });
+await api.reenviarPendentes();
+ok('o pacote mais novo que a nuvem sobe normalmente', nuvem[KEY].est.Preto, [1, 2, 3]);
 console.log(falhas ? `✗ ${falhas} falha(s)` : '✓ tudo certo');
 process.exit(falhas ? 1 : 0);
