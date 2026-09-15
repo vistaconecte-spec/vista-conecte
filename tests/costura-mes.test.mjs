@@ -119,7 +119,7 @@ ok('e julho tem a paga em agosto (é entrega de julho) mais a que ficou aberta',
 console.log('\n7) Na tela: o card mês a mês');
 const r = main.slice(main.indexOf('function fatCardHTML('), main.indexOf('function renderFaturamento()'));
 ok('o seletor é a primeira coisa do corpo, seguido do bloco do mês, das levas do mês e do HOJE',
-   /seletor \+ blocoMes \+ blocoLevas \+ blocoHoje \+ blocoAgora \+ blocoVindo \+ aviso/.test(r), true);
+   /seletor \+ blocoMes \+ blocoLevas \+ \(semAberto \? '' : blocoHoje\) \+ blocoAgora \+ blocoVindo \+ aviso/.test(r), true);
 ok('com seta para trás, a lista dos meses e seta para a frente',
    /fatMudarMes\('\$\{cfg\.qual\}', -1\)/.test(r) && /fatEscolherMes\('\$\{cfg\.qual\}', this\.value\)/.test(r) && /fatMudarMes\('\$\{cfg\.qual\}', 1\)/.test(r), true);
 ok('a seta para a frente trava no mês corrente', /\$\{ehAtual \? 'disabled' : ''\} title="mês seguinte"/.test(r), true);
@@ -127,13 +127,24 @@ ok('o mês escolhido nunca é futuro',
    /function fatMesSelecionado\(qual\) \{[\s\S]*?return \(sel && sel <= hoje\) \? sel : hoje;/.test(main), true);
 ok('o mês vem do relógio local, como a função', /function fatMesChave\(d\) \{\s*\r?\n\s*return d\.getFullYear\(\) \+ '-' \+ String\(d\.getMonth\(\) \+ 1\)/.test(main), true);
 ok('o bloco do mês abre com pago e a receber DO MÊS',
-   /linMes\('Já pago', nLevas\(mes\.pago\.levas\), mes\.pago\.valor\)[\s\S]{0,40}linMes\('Entregue e ainda não pago'[\s\S]{0,120}mes\.aberto\.valor\)/.test(r), true);
+   /linMes\(semAberto \? 'Entregue e pago' : 'Já pago', nLevas\(mes\.pago\.levas\), mes\.pago\.valor\)[\s\S]{0,60}linMes\('Entregue e ainda não pago'[\s\S]{0,120}mes\.aberto\.valor\)/.test(r), true);
+// 15/09: na costura o acerto é na entrega, então "entregue e ainda não pago" nunca existe e a
+// dona pediu para tirar. Some a linha, a situação de cada leva, os botões e o bloco HOJE.
+ok('a costura liga o pagoNaEntrega; o corte não', /pagoNaEntrega: true/.test(main) && !/qual: 'corte'[\s\S]{0,600}pagoNaEntrega/.test(main), true);
+ok('com ele ligado e nada em aberto, a linha "entregue e ainda não pago" some',
+   /const semAberto = !!cfg\.pagoNaEntrega && !abertas\.length;/.test(r) && /\(semAberto \? '' : linMes\('Entregue e ainda não pago'/.test(r), true);
+ok('o bloco HOJE some junto', /\(semAberto \? '' : blocoHoje\)/.test(r), true);
+ok('e os botões pago/desfazer também', /\$\{podePagar && !semAberto \? \(p\.pago_em/.test(r), true);
+ok('mas se alguma leva estiver em aberto de verdade (desfazer), tudo volta a aparecer para ela ter saída',
+   /!abertas\.length/.test(r), true);
 ok('no mês corrente, segue com o que está na etapa, a previsão e o total (as quatro somadas)',
-   /ehAtual\s*\r?\n\s*\? linMes\(cfg\.agora\.rotulo, 'ainda não entregue', totalAgora\)\s*\r?\n\s*\+ linMes\(cfg\.previsao\.rotulo, 'previsão do que vai entrar', cfg\.previsao\.valor\)\s*\r?\n\s*\+ linMes\('TOTAL DO MÊS \(previsto\)', 'as quatro linhas acima somadas', totalMes, true\)/.test(r), true);
+   /ehAtual\s*\r?\n\s*\? linMes\(cfg\.agora\.rotulo, 'ainda não entregue', totalAgora\)\s*\r?\n\s*\+ linMes\(cfg\.previsao\.rotulo, 'previsão do que vai entrar', cfg\.previsao\.valor\)\s*\r?\n\s*\+ linMes\('TOTAL DO MÊS \(previsto\)', semAberto \? [^,]+, totalMes, true\)/.test(r), true);
+ok('o total previsto diz quantas linhas soma (três na costura, quatro no corte)',
+   /'TOTAL DO MÊS \(previsto\)', semAberto \? 'as três linhas acima somadas' : 'as quatro linhas acima somadas', totalMes, true/.test(r), true);
 ok('e o total do mês é a soma EXATA dessas quatro (o a receber de meses anteriores fica fora, senão entra duas vezes)',
    /const totalMes = Math\.round\(\(mes\.pago\.valor \+ mes\.aberto\.valor \+ totalAgora \+ cfg\.previsao\.valor\) \* 100\) \/ 100;/.test(r), true);
 ok('num mês passado, o total é o entregue (pago + a receber), sem previsão',
-   /: linMes\('TOTAL DO MÊS', 'pago \+ a receber', mes\.entregue\.valor, true\)/.test(r), true);
+   /: linMes\('TOTAL DO MÊS', semAberto \? 'entregue no mês' : 'pago \+ a receber', mes\.entregue\.valor, true\)/.test(r), true);
 ok('as levas do mês são UMA lista, cada uma dizendo se está paga ou a receber',
    /const levasMes = fatLevasDoMes\(d, sel\);/.test(r)
    && /p\.pago_em \? `<span class="fat-pago">pago em \$\{dia\(p\.pago_em\)\}<\/span>` : '<span class="fat-alerta">a receber<\/span>'/.test(r), true);

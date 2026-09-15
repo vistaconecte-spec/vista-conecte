@@ -130,7 +130,7 @@ ok('o bloco do mês tem "na máquina agora (ainda não entregue)" e a previsão 
    /linMes\(cfg\.agora\.rotulo, 'ainda não entregue', totalAgora\)[\s\S]{0,120}linMes\(cfg\.previsao\.rotulo, 'previsão do que vai entrar', cfg\.previsao\.valor\)/.test(main)
    && /rotulo: 'Na máquina agora'/.test(main), true);
 ok('e fecha no total do mês',
-   /linMes\('TOTAL DO MÊS \(previsto\)', 'as quatro linhas acima somadas', totalMes, true\)/.test(main), true);
+   /linMes\('TOTAL DO MÊS \(previsto\)', semAberto \? 'as três linhas acima somadas' : 'as quatro linhas acima somadas', totalMes, true\)/.test(main), true);
 ok('o total em aberto de qualquer mês vive no bloco HOJE',
    /bloco\('#dc2626', 'ti-cash', 'A RECEBER HOJE', mes\.aReceber\.valor,/.test(main), true);
 ok('o valor do corte é só do corte (o tecido em compra não entra nele)',
@@ -198,8 +198,10 @@ ok('e o "a pagar" fica realmente vazio depois', /d\.aPagar = \{\};/.test(tudo), 
 const cardFat = main.slice(main.indexOf('function fatCardHTML'), main.indexOf('\n}', main.indexOf('function fatCardHTML')));
 ok('o botao so aparece para quem pode pagar, onde existe o "pagar todas", e com 2+ levas esperando',
    /podePagar && cfg\.pagarTudo && abertas\.length > 1/.test(cardFat), true);
+ok('e na costura o bloco inteiro só existe se houver leva em aberto de verdade (acerto é na entrega)',
+   /\(semAberto \? '' : blocoHoje\)/.test(cardFat), true);
 ok('a costura liga o botao e o corte nao',
-   /pagar: 'cstFatPagar', pagarTudo: 'cstFatPagarTudo'/.test(main) && /pagar: 'crtFatPagar', pagarTudo: ''/.test(main), true);
+   /pagar: 'cstFatPagar', pagarTudo: 'cstFatPagarTudo', pagoNaEntrega: true/.test(main) && /pagar: 'crtFatPagar', pagarTudo: ''/.test(main), true);
 ok('e mostra o valor do acerto no proprio botao',
    /Pagar todas, \$\{finBRL\(mes\.aReceber\.valor\)\}/.test(cardFat), true);
 
@@ -244,9 +246,9 @@ ok('e a do corte chama, sobre a base que ela mesma grava',
 
 console.log('\n13) Fechado, o card não mostra valor nenhum (pedido da Bárbara, 21/08)');
 ok('os blocos entram no CORPO do card, não no <summary>',
-   /avisoCardHTML\('ti-cash', cfg\.titulo, '',[\s\S]{0,120}Toque para ver\.',\s*\r?\n\s*seletor \+ blocoMes \+ blocoLevas \+ blocoHoje \+ blocoAgora \+ blocoVindo \+ aviso/.test(main), true);
+   /avisoCardHTML\('ti-cash', cfg\.titulo, '',[\s\S]{0,200}Toque para ver\.',\s*\r?\n\s*seletor \+ blocoMes \+ blocoLevas \+ \(semAberto \? '' : blocoHoje\) \+ blocoAgora \+ blocoVindo \+ aviso/.test(main), true);
 ok('e a frase que fica à mostra não tem número nenhum',
-   /'Mês a mês: o que foi entregue, pago e a receber\. Toque para ver\.'/.test(main), true);
+   /'Mês a mês: o que foi entregue e pago\. Toque para ver\.' : 'Mês a mês: o que foi entregue, pago e a receber\. Toque para ver\.'/.test(main), true);
 
 console.log('\n14) A costureira é paga NA ENTREGA (15/09/2026)');
 // "Todas as vezes que sai da costura para o estoque eu já paguei": a leva não fica esperando

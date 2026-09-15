@@ -6086,7 +6086,6 @@ function renderCostura() {
   const corteEl = document.getElementById('costura-corte');
   if (corteEl) corteEl.innerHTML = blocoCorte + blocoCompra;
   renderFaturamento(); // card do dinheiro dela, logo abaixo do que vem por aí
-  renderAviamentos();  // lista manual de zíper/elástico/linha a comprar, logo abaixo dele
 
   el.innerHTML = levas.length ? '<div class="crt-grid">' + fichas + '</div>' : vazio;
 }
@@ -6498,6 +6497,10 @@ function fatLevasDoMes(dados, mes) {
 //   vindo       { titulo, icone, cor, frase, vazio, itens, extra }   o que ainda chega
 //   previsao    { rotulo, valor }  a parte do "vindo" que entra na previsão do mês corrente
 //   pagar       nome da função (id, desfazer) da dona; pagarTudo idem, ou '' se não há
+//   pagoNaEntrega  true na costura (pedido da Bárbara, 15/09): o acerto é na entrega, então
+//               "entregue e ainda não pago" nunca existe. A linha, a situação de cada leva,
+//               os botões e o bloco HOJE somem; o bloco HOJE só volta se alguma leva estiver
+//               de fato em aberto (devolvida pelo "desfazer"), para não ficar sem saída.
 function fatCardHTML(cfg) {
   const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c]));
   const dia = iso => iso ? new Date(iso).toLocaleDateString('pt-BR') : '—';
@@ -6514,6 +6517,7 @@ function fatCardHTML(cfg) {
   const semana   = cstFatSemana(d);
   const levasMes = fatLevasDoMes(d, sel);
   const abertas  = Object.values(d.aPagar || {});
+  const semAberto = !!cfg.pagoNaEntrega && !abertas.length; // costura em dia: nada de "a receber" na tela
   const totalAgora = cfg.agora.itens.reduce((s, l) => s + l.valor, 0);
   const totalVindo = cfg.vindo.itens.reduce((s, l) => s + l.valor, 0);
   // Fechamento do mês CORRENTE: o que já entrou (pago + a receber DESTE mês) mais o que
@@ -6571,27 +6575,27 @@ function fatCardHTML(cfg) {
     mes.entregue.levas
       ? `Entregue em ${cstFatMesLabel(sel).replace(/ de \d{4}$/, '')}: ${nLevas(mes.entregue.levas)} · ${nPecas(mes.entregue.pecas)}.`
       : (ehAtual ? 'Nenhuma leva entregue neste mês ainda.' : 'Nenhuma leva entregue neste mês.'),
-    linMes('Já pago', nLevas(mes.pago.levas), mes.pago.valor)
-    + linMes('Entregue e ainda não pago', mes.aberto.levas ? nLevas(mes.aberto.levas) + ' a receber' : 'nada pendente deste mês', mes.aberto.valor)
+    linMes(semAberto ? 'Entregue e pago' : 'Já pago', nLevas(mes.pago.levas), mes.pago.valor)
+    + (semAberto ? '' : linMes('Entregue e ainda não pago', mes.aberto.levas ? nLevas(mes.aberto.levas) + ' a receber' : 'nada pendente deste mês', mes.aberto.valor))
     + (ehAtual
       ? linMes(cfg.agora.rotulo, 'ainda não entregue', totalAgora)
         + linMes(cfg.previsao.rotulo, 'previsão do que vai entrar', cfg.previsao.valor)
-        + linMes('TOTAL DO MÊS (previsto)', 'as quatro linhas acima somadas', totalMes, true)
-      : linMes('TOTAL DO MÊS', 'pago + a receber', mes.entregue.valor, true)));
+        + linMes('TOTAL DO MÊS (previsto)', semAberto ? 'as três linhas acima somadas' : 'as quatro linhas acima somadas', totalMes, true)
+      : linMes('TOTAL DO MÊS', semAberto ? 'entregue no mês' : 'pago + a receber', mes.entregue.valor, true)));
 
   // 3. AS LEVAS DAQUELE MÊS, pagas e a receber na mesma lista
   const blocoLevas = bloco(cfg.cor, 'ti-list-check', 'LEVAS ENTREGUES EM ' + cstFatMesLabel(sel).replace(/ de \d{4}$/, '').toUpperCase(), null,
-    levasMes.length ? 'Cada leva com a data da entrega e a situação do pagamento.' : '',
+    levasMes.length ? (semAberto ? 'Cada leva com a data da entrega.' : 'Cada leva com a data da entrega e a situação do pagamento.') : '',
     levasMes.length ? levasMes.map(p => `
       <div class="fat-lin">
         <div>
           <div class="fat-nome">${esc(p.nome)}${p.leva === 2 ? ' <span class="crt-selo">2ª LEVA</span>' : ''}</div>
           <div class="fat-sub">${nPecas(p.pecas)} × ${finBRL(p.unit)}${p.unit ? '' : ' <span class="fat-alerta">sem valor na Precificação</span>'} · entregue em ${dia(p.entregue_em)}
-            · ${p.pago_em ? `<span class="fat-pago">pago em ${dia(p.pago_em)}</span>` : '<span class="fat-alerta">a receber</span>'}</div>
+            ${semAberto ? '' : `· ${p.pago_em ? `<span class="fat-pago">pago em ${dia(p.pago_em)}</span>` : '<span class="fat-alerta">a receber</span>'}`}</div>
         </div>
         <div class="fat-acao">
           <span class="fat-val">${finBRL(p.valor)}</span>
-          ${podePagar ? (p.pago_em
+          ${podePagar && !semAberto ? (p.pago_em
             ? `<button class="btn-outline" style="font-size:11px;padding:4px 9px" onclick="${cfg.pagar}('${esc(p.id)}', true)" title="Marquei pago sem querer">desfazer</button>`
             : `<button class="btn-outline" style="font-size:11px;padding:4px 9px" onclick="${cfg.pagar}('${esc(p.id)}')"><i class="ti ti-check"></i> pago</button>`) : ''}
         </div>
@@ -6631,8 +6635,8 @@ function fatCardHTML(cfg) {
   // Fechado, o card não mostra valor nenhum (pedido da Bárbara, 21/08): dinheiro só depois
   // do toque. O que fica à mostra é só a frase, sem número.
   return avisoCardHTML('ti-cash', cfg.titulo, '',
-    'Mês a mês: o que foi entregue, pago e a receber. Toque para ver.',
-    seletor + blocoMes + blocoLevas + blocoHoje + blocoAgora + blocoVindo + aviso, '', cfg.cor);
+    cfg.pagoNaEntrega ? 'Mês a mês: o que foi entregue e pago. Toque para ver.' : 'Mês a mês: o que foi entregue, pago e a receber. Toque para ver.',
+    seletor + blocoMes + blocoLevas + (semAberto ? '' : blocoHoje) + blocoAgora + blocoVindo + aviso, '', cfg.cor);
 }
 
 // Troca o HTML do card sem fechá-lo: quem acabou de marcar uma leva paga ou trocar o mês
@@ -6677,128 +6681,8 @@ function renderFaturamento() {
     // ATENÇÃO: o valor é o da COSTURA daquelas peças, previsão do que ela vai receber quando
     // chegarem à máquina, e NÃO o que se paga pelo corte.
     previsao: { rotulo: 'Em corte', valor: totalCorte },
-    pagar: 'cstFatPagar', pagarTudo: 'cstFatPagarTudo',
+    pagar: 'cstFatPagar', pagarTudo: 'cstFatPagarTudo', pagoNaEntrega: true,
   }));
-}
-
-// ─── AVIAMENTOS A COMPRAR ─────────────────────────────────────────────────────
-// Lista manual (zíper, elástico, linha, etiqueta…) que a dona cadastra e risca conforme
-// compra. Mora na aba COSTURA — é o aviso de "isso ainda falta chegar" pra quem monta a
-// peça — e é card fechado, no mesmo formato do faturamento, logo abaixo dele.
-//
-// Cadastrar, marcar comprado, editar a data de entrega e remover são só da DONA
-// (ehPerfilOficina() sai fora, igual ao resto da oficina); cortador e costureira só leem.
-const AVM_KEY = 'costura-aviamentos';
-
-function avmTudo() {
-  const d = loadLocal('vc:' + AVM_KEY);
-  return { itens: (d && Array.isArray(d.itens)) ? d.itens : [] };
-}
-
-// Lê a nuvem antes de gravar, igual ao faturamento — nunca escreve por cima às cegas.
-async function avmGravar(mutar) {
-  if (ehPerfilOficina()) return;
-  const nuvem = await carregarNuvem(AVM_KEY);
-  if (nuvem === undefined) { alert('Sem conexão com a nuvem — tente de novo em instantes.'); return; }
-  const d = { itens: (nuvem && Array.isArray(nuvem.itens)) ? nuvem.itens.slice() : [] };
-  mutar(d);
-  d.updated_at = new Date().toISOString();
-  saveLocal('vc:' + AVM_KEY, d);
-  await salvarNuvem(AVM_KEY, d);
-  renderAviamentos();
-}
-
-async function avmAdicionar() {
-  const input = document.getElementById('avm-novo-nome');
-  const nome = (input?.value || '').trim();
-  if (!nome) return;
-  if (input) input.value = '';
-  await avmGravar(d => {
-    d.itens.unshift({
-      id: Date.now() + '-' + Math.random().toString(36).slice(2, 7),
-      nome, comprado: false, data_entrega: '', criado_em: new Date().toISOString(),
-    });
-  });
-}
-
-async function avmComprado(id, valor) {
-  await avmGravar(d => {
-    const it = d.itens.find(i => i.id === id);
-    if (!it) return;
-    it.comprado = valor;
-    it.comprado_em = valor ? new Date().toISOString() : '';
-  });
-}
-
-async function avmData(id, valor) {
-  await avmGravar(d => {
-    const it = d.itens.find(i => i.id === id);
-    if (it) it.data_entrega = valor || '';
-  });
-}
-
-async function avmRemover(id) {
-  if (!confirm('Remover este aviamento da lista?')) return;
-  await avmGravar(d => { d.itens = d.itens.filter(i => i.id !== id); });
-}
-
-function renderAviamentos() {
-  const el = document.getElementById('aviamentos-lista');
-  if (!el) return;
-  const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c]));
-  const dia = iso => iso ? new Date(iso).toLocaleDateString('pt-BR') : '—';
-  const podeEditar = !ehPerfilOficina();
-
-  const d = avmTudo();
-  // Sem nada pra ver e sem como editar, o card só ocupava tela à toa pra quem só lê.
-  if (!podeEditar && d.itens.length === 0) { el.innerHTML = ''; return; }
-
-  const pendentes = d.itens.filter(i => !i.comprado)
-    .sort((a, b) => (a.data_entrega || '9999-99-99').localeCompare(b.data_entrega || '9999-99-99'));
-  const comprados = d.itens.filter(i => i.comprado)
-    .sort((a, b) => String(b.comprado_em).localeCompare(String(a.comprado_em)));
-
-  const linha = it => `
-    <div class="fat-lin">
-      <div>
-        <div class="fat-nome">${esc(it.nome)}</div>
-        <div class="fat-sub">
-          ${it.comprado
-            ? `comprado em ${dia(it.comprado_em)}`
-            : (podeEditar
-                ? `<label style="display:inline-flex;align-items:center;gap:5px;cursor:pointer">entrega
-                     <input type="date" value="${esc(it.data_entrega || '')}" style="font-size:12px;padding:2px 6px"
-                       onchange="avmData('${esc(it.id)}', this.value)"></label>`
-                : (it.data_entrega ? `entrega prevista ${dia(it.data_entrega + 'T12:00:00')}` : 'sem data de entrega ainda'))}
-        </div>
-      </div>
-      ${podeEditar ? `
-        <div class="fat-acao">
-          ${it.comprado
-            ? `<button class="btn-outline" style="font-size:11px;padding:4px 9px" onclick="avmComprado('${esc(it.id)}', false)" title="Marquei comprado sem querer">desfazer</button>`
-            : `<button class="btn-outline" style="font-size:11px;padding:4px 9px" onclick="avmComprado('${esc(it.id)}', true)"><i class="ti ti-check"></i> comprado</button>`}
-          <button class="btn-outline" style="font-size:11px;padding:4px 9px" onclick="avmRemover('${esc(it.id)}')" title="Remover"><i class="ti ti-trash"></i></button>
-        </div>` : ''}
-    </div>`;
-
-  const corpo =
-    (podeEditar ? `
-      <div style="display:flex;gap:8px;margin-bottom:10px">
-        <input id="avm-novo-nome" type="text" placeholder="nome do aviamento" style="flex:1"
-          onkeydown="if(event.key==='Enter') avmAdicionar()">
-        <button class="btn-primary" style="font-size:12px;padding:7px 13px" onclick="avmAdicionar()">adicionar</button>
-      </div>` : '')
-    + (pendentes.length ? pendentes.map(linha).join('') : '<div class="fat-vazio">Nada pendente de compra. 👍</div>')
-    + (comprados.length ? `
-      <div class="fat-bloco">
-        <div class="fat-hd"><span class="fat-tit" style="color:#16a34a"><i class="ti ti-checkbox"></i> JÁ COMPRADO</span></div>
-        ${comprados.map(linha).join('')}
-      </div>` : '');
-
-  el.innerHTML = avisoCardHTML('ti-shopping-bag', 'AVIAMENTOS A COMPRAR',
-    pendentes.length ? `${pendentes.length} pendente${pendentes.length > 1 ? 's' : ''}` : '',
-    'Zíper, elástico, linha e outros aviamentos que faltam chegar antes de montar a peça.',
-    corpo, '', '#B45309');
 }
 
 // ─── PEDIDOS DESTE MODELO (aba PRODUÇÃO do modelo) ───────────────────────────

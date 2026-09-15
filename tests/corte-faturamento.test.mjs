@@ -101,7 +101,7 @@ ok('renderCorte desenha o card', /renderFaturamentoCorte\(\); \/\//.test(main), 
 ok('mesmo card "ver mais" das outras faixas, desenhado pelo fatCardHTML da costura',
    /fatTrocarCard\(el, fatCardHTML\(\{\s*\r?\n\s*qual: 'corte', titulo: 'FATURAMENTO DO CORTE', cor: '#7C3AED', campo: 'corte'/.test(main), true);
 ok('e, como o da costura, só mostra valor depois do toque (blocos no corpo, não no summary)',
-   /return avisoCardHTML\('ti-cash', cfg\.titulo, '',[\s\S]{0,120}Toque para ver\.',\s*\r?\n\s*seletor \+ blocoMes/.test(main), true);
+   /return avisoCardHTML\('ti-cash', cfg\.titulo, '',[\s\S]{0,200}Toque para ver\.',\s*\r?\n\s*seletor \+ blocoMes/.test(main), true);
 ok('congela junto com o da costura, nos mesmos pontos',
    (main.match(/crtFatSincronizar\(\)\.catch/g) || []).length,
    (main.match(/cstFatSincronizar\(\)\.catch/g) || []).length);
