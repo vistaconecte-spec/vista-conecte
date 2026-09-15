@@ -22,9 +22,9 @@
  *   - Dia útil: segunda a sexta, fora os feriados nacionais da lista abaixo. Mesmo dia = 0;
  *     pago na sexta e enviado na segunda = 1. Dias contados no fuso de Brasília (UTC-3
  *     fixo, sem horário de verão desde 2019).
- *   - As médias são por SEMANA DE ENVIO (quem saiu naquela semana, quanto levou). Por
- *     semana de pagamento a conta engana: nas semanas recentes só saiu quem tinha peça
- *     pronta, e a média parece cair enquanto o resto ainda espera na fila.
+ *   - As janelas (7 e 30 dias) são pela data de ENVIO (quem saiu nesse período, quanto
+ *     levou). Pela data de pagamento a conta engana: nos dias recentes só saiu quem tinha
+ *     peça pronta, e a média parece cair enquanto o resto ainda espera na fila.
  */
 const API_VERSION = '2024-04';
 const DIA_MS = 86400000;
@@ -71,12 +71,6 @@ function acumulado(dia) {
   return ACUM[dia - BASE];
 }
 
-/** 'AAAA-MM-DD' de um número do dia. */
-export const ymdDoDia = dia => new Date(dia * DIA_MS).toISOString().slice(0, 10);
-
-/** Segunda-feira da semana do dia (número do dia). */
-export const segundaDe = dia => dia - ((diaDaSemana(dia) + 6) % 7);
-
 const ehRetirada = titulo => /loja|retir/i.test(titulo || '');
 
 /**
@@ -113,16 +107,13 @@ const arred = v => v == null ? null : Math.round(v * 10) / 10;
  *
  *   enviados: { d7: {n, media, mediana, corridos}, d30: {...} }  → dias úteis do pagamento ao envio
  *   faixas:   distribuição dos enviados em 30 dias (até 2 / 3 a 5 / 6 a 10 / 11+ dias úteis)
- *   semanas:  últimas 8 semanas de ENVIO (segunda a domingo), média em dias úteis
  *   fila:     pagos ainda sem envio: quantos, há quantos dias úteis esperam, o mais antigo
  */
 export function resumir(pedidos, agora = Date.now()) {
   // Uma passada só, com as datas convertidas uma vez por pedido. Com ~800 pedidos, filtrar
-  // a lista dez vezes (janelas, 8 semanas) com Date.parse dentro custava metade dos 10 ms
-  // de CPU da função no primeiro acesso.
-  const segAtual = segundaDe(diaLocal(agora));
-  const segIni = segAtual - 7 * 7; // primeira das 8 colunas
-  const d7 = [], d30 = [], semUteis = Array.from({ length: 8 }, () => []);
+  // a lista várias vezes com Date.parse dentro custava metade dos 10 ms de CPU da função
+  // no primeiro acesso.
+  const d7 = [], d30 = [];
   const faixas = { ate2: 0, de3a5: 0, de6a10: 0, mais11: 0 };
   let corr7 = 0, corr30 = 0;
   const filaUteis = [];
@@ -146,22 +137,16 @@ export function resumir(pedidos, agora = Date.now()) {
       else if (uteis <= 10) faixas.de6a10++;
       else faixas.mais11++;
     }
-    const col = Math.floor((diaLocal(envTs) - segIni) / 7);
-    if (col >= 0 && col < 8) semUteis[col].push(uteis);
   }
 
   const stats = (lista, corr) => ({
     n: lista.length, media: arred(media(lista)), mediana: mediana(lista),
     corridos: lista.length ? arred(corr / lista.length) : null,
   });
-  const semanas = semUteis.map((lista, i) => ({
-    inicio: ymdDoDia(segIni + 7 * i), n: lista.length, media: arred(media(lista)),
-  }));
 
   return {
     enviados: { d7: stats(d7, corr7), d30: stats(d30, corr30) },
     faixas,
-    semanas,
     fila: {
       n: filaUteis.length,
       media: arred(media(filaUteis)),
@@ -186,12 +171,11 @@ const QUERY = `query($cursor: String, $q: String) {
 /**
  * Lê da Shopify os pedidos criados nos últimos `dias` MAIS os ainda em aberto e sem envio
  * de qualquer data (o #8564, de julho, seguia na fila em setembro; sem isto ele sumiria da
- * conta e o "mais antigo" mentiria). 90 dias porque o gráfico mostra 8 semanas de ENVIO e
- * um pedido enviado há 7 semanas pode ter sido pago um mês antes disso; com 60 dias a
- * primeira coluna saía só com os pedidos rápidos (2,9 dias em vez de ~8). São 4 páginas
- * de 250 (~70 KB cada). `fetchFn` é injetável para os testes.
+ * conta e o "mais antigo" mentiria). 60 dias porque a janela é de 30 dias de ENVIO e o
+ * pedido mais lento levou 50 dias corridos: com menos, a janela perderia justamente os
+ * lentos. São 3 páginas de 250 (~70 KB cada). `fetchFn` é injetável para os testes.
  */
-export async function buscarPedidos(store, token, dias = 90, fetchFn = fetch, agora = Date.now()) {
+export async function buscarPedidos(store, token, dias = 60, fetchFn = fetch, agora = Date.now()) {
   const desde = new Date(agora - dias * DIA_MS).toISOString().slice(0, 10);
   const q = `created_at:>=${desde} OR (fulfillment_status:unfulfilled AND status:open)`;
   const nos = [];

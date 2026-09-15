@@ -42,8 +42,6 @@ console.log('\n1) Dias úteis: fim de semana, feriado e fuso de Brasília');
   ok('carimbo UTC da madrugada fica no dia anterior de Brasília', u('2026-09-10T01:00:00Z', '2026-09-10T15:00:00Z'), 1);
   ok('envio antes do pagamento não dá negativo', u('2026-09-15T12:00:00Z', '2026-09-10T12:00:00Z'), 0);
   ok('aceita timestamp numérico', u(Date.parse('2026-09-11T12:00:00Z'), Date.parse('2026-09-14T12:00:00Z')), 1);
-  ok('segunda da semana', api.ymdDoDia(api.segundaDe(api.diaLocal('2026-09-15T12:00:00Z'))), '2026-09-14');
-  ok('domingo pertence à semana da segunda anterior', api.ymdDoDia(api.segundaDe(api.diaLocal('2026-09-20T12:00:00Z'))), '2026-09-14');
 }
 
 console.log('\n2) Normalizar: quem entra e quem fica de fora');
@@ -64,14 +62,14 @@ console.log('\n2) Normalizar: quem entra e quem fica de fora');
   ok('sem processedAt cai em createdAt, e sem remessa fica na fila', [r[1].pago_em, r[1].enviado_em], ['2026-09-02T12:00:00Z', null]);
 }
 
-console.log('\n3) Resumo: janelas, faixas, semanas de ENVIO e fila');
+console.log('\n3) Resumo: janelas pela data de ENVIO, faixas e fila');
 {
   const agora = Date.parse('2026-09-15T18:00:00Z'); // terça
   const pedidos = [
-    { numero: '#A', pago_em: '2026-09-14T12:00:00Z', enviado_em: '2026-09-15T12:00:00Z' }, // 1 útil, semana atual
-    { numero: '#B', pago_em: '2026-09-04T12:00:00Z', enviado_em: '2026-09-11T12:00:00Z' }, // 4 úteis (07/09 feriado), semana 07/09
-    { numero: '#C', pago_em: '2026-08-10T12:00:00Z', enviado_em: '2026-08-28T12:00:00Z' }, // 14 úteis, semana 24/08
-    { numero: '#D', pago_em: '2026-07-01T12:00:00Z', enviado_em: '2026-07-10T12:00:00Z' }, // fora das 8 semanas e dos 30 dias
+    { numero: '#A', pago_em: '2026-09-14T12:00:00Z', enviado_em: '2026-09-15T12:00:00Z' }, // 1 útil, dentro dos 7 dias
+    { numero: '#B', pago_em: '2026-09-04T12:00:00Z', enviado_em: '2026-09-11T12:00:00Z' }, // 4 úteis (07/09 feriado), dentro dos 7 dias
+    { numero: '#C', pago_em: '2026-08-10T12:00:00Z', enviado_em: '2026-08-28T12:00:00Z' }, // 14 úteis, só nos 30 dias
+    { numero: '#D', pago_em: '2026-07-01T12:00:00Z', enviado_em: '2026-07-10T12:00:00Z' }, // fora dos 30 dias
     { numero: '#E', pago_em: '2026-09-15T12:00:00Z', enviado_em: null },                   // fila, 0 útil
     { numero: '#F', pago_em: '2026-09-01T12:00:00Z', enviado_em: null },                   // fila, 9 úteis (feriado)
   ];
@@ -79,16 +77,14 @@ console.log('\n3) Resumo: janelas, faixas, semanas de ENVIO e fila');
   ok('7 dias: só #A e #B', r.enviados.d7, { n: 2, media: 2.5, mediana: 4, corridos: 4 });
   ok('30 dias: #A, #B, #C', r.enviados.d30, { n: 3, media: 6.3, mediana: 4, corridos: 8.7 });
   ok('faixas dos 30 dias', r.faixas, { ate2: 1, de3a5: 1, de6a10: 0, mais11: 1 });
-  ok('8 semanas de envio, da segunda de 7 semanas atrás até a atual', r.semanas.map(s => s.inicio),
-    ['2026-07-27', '2026-08-03', '2026-08-10', '2026-08-17', '2026-08-24', '2026-08-31', '2026-09-07', '2026-09-14']);
-  ok('cada envio cai na semana em que SAIU, não em que foi pago', r.semanas.map(s => [s.n, s.media]),
-    [[0, null], [0, null], [0, null], [0, null], [1, 14], [0, null], [1, 4], [1, 1]]);
+  ok('a janela é pela data de ENVIO: #C foi pago há mais de 30 dias e entra mesmo assim', r.enviados.d30.n, 3);
+  ok('o resumo não carrega mais as semanas', 'semanas' in r, false);
   ok('fila: quantos, média e o mais antigo', r.fila, { n: 2, media: 4.5, mais_antigo: { numero: '#F', uteis: 9, corridos: 14 } });
   ok('sem pedido nenhum não quebra', api.resumir([], agora).enviados.d7, { n: 0, media: null, mediana: null, corridos: null });
   ok('fila vazia sem mais antigo', api.resumir([], agora).fila, { n: 0, media: null, mais_antigo: null });
 }
 
-console.log('\n4) Leitura da Shopify: GraphQL paginado, 90 dias + abertos de qualquer data');
+console.log('\n4) Leitura da Shopify: GraphQL paginado, 60 dias + abertos de qualquer data');
 {
   const chamadas = [];
   const fetchFalso = async (url, opts) => {
@@ -101,11 +97,11 @@ console.log('\n4) Leitura da Shopify: GraphQL paginado, 90 dias + abertos de qua
     } } }) };
   };
   const agora = Date.parse('2026-09-15T18:00:00Z');
-  const nos = await api.buscarPedidos('loja', 'tok', 90, fetchFalso, agora);
+  const nos = await api.buscarPedidos('loja', 'tok', 60, fetchFalso, agora);
   ok('segue o cursor até acabar', nos.map(n => n.name), ['#1', '#2']);
   ok('segunda página usa o cursor da primeira', chamadas.map(c => c.cursor), [null, 'c1']);
-  ok('filtro: 90 dias OU aberto sem envio', chamadas[0].q, 'created_at:>=2026-06-17 OR (fulfillment_status:unfulfilled AND status:open)');
-  const erro = await api.buscarPedidos('loja', 'tok', 90, async () => ({ ok: false, status: 429 })).catch(e => e.message);
+  ok('filtro: 60 dias OU aberto sem envio', chamadas[0].q, 'created_at:>=2026-07-17 OR (fulfillment_status:unfulfilled AND status:open)');
+  const erro = await api.buscarPedidos('loja', 'tok', 60, async () => ({ ok: false, status: 429 })).catch(e => e.message);
   ok('HTTP ruim vira erro, não lista vazia', erro, 'Shopify GraphQL: HTTP 429');
 }
 
@@ -116,7 +112,7 @@ console.log('\n5) A tela tem o card e o ciclo de 30 min');
   ok('renderDashboard repinta o card', /renderMiniCards\(totalPedidos\);\s*renderTempoLiberacao\(\);/.test(main), true);
   ok('lê na abertura e a cada 30 min', /carregarTempoLiberacao\(\);\s*setInterval\(carregarTempoLiberacao, TL_INTERVALO\)/.test(main) && /TL_INTERVALO = 30 \* 60 \* 1000/.test(main), true);
   ok('oficina e modelagem não chamam a API', /async function carregarTempoLiberacao\(\) \{\s*if \(ehPerfilDeUmaAba\(\)\) return;/.test(main), true);
-  ok('css do card existe', /\.tl-tiles/.test(css) && /\.tl-semanas/.test(css), true);
+  ok('css do card existe', /\.tl-tiles/.test(css) && /\.tl-colunas/.test(css), true);
 
   // O desenho: roda tempoLiberacaoHTML com um resumo de mentira
   const i = main.indexOf('const tlNum ='), f = main.indexOf('function renderTempoLiberacao()');
@@ -124,15 +120,16 @@ console.log('\n5) A tela tem o card e o ciclo de 30 min');
   const htmlCard = desenhar({
     enviados: { d7: { n: 1, media: 7.4, mediana: 7, corridos: 11.4 }, d30: { n: 0, media: null, mediana: null, corridos: null } },
     faixas: { ate2: 1, de3a5: 0, de6a10: 1, mais11: 2 },
-    semanas: [{ inicio: '2026-09-07', n: 3, media: 10.3 }, { inicio: '2026-09-14', n: 0, media: null }],
     fila: { n: 93, media: 7.1, mais_antigo: { numero: '#8564', uteis: 41, corridos: 60 } },
     gerado_em: '2026-09-15T19:00:00Z',
   });
   ok('média com vírgula', htmlCard.includes('7,4<small>dias úteis</small>'), true);
   ok('janela sem envio mostra traço, não NaN', htmlCard.includes('—<small>dias úteis</small>') && !/NaN|null|undefined/.test(htmlCard), true);
   ok('fila com o mais antigo', htmlCard.includes('mais antigo #8564 (41 dias úteis)'), true);
-  ok('faixas em porcentagem', htmlCard.includes('até 2 dias úteis <b>25%</b>') && htmlCard.includes('11 ou mais <b>50%</b>'), true);
-  ok('semanas com o dia da segunda', htmlCard.includes('>07/09<') && htmlCard.includes('>14/09<'), true);
+  ok('quatro colunas, uma por faixa', (htmlCard.match(/class="tl-col"/g) || []).length, 4);
+  ok('a maior faixa é a coluna mais alta (80px) e a vazia fica no mínimo', htmlCard.includes('<b>50%</b><div class="tl-bar" style="height:80px') && htmlCard.includes('<b>0%</b><div class="tl-bar" style="height:4px'), true);
+  ok('rodapé com nome da faixa e quantidade', htmlCard.includes('<div class="tl-dia">11 ou mais</div><div class="tl-qtd">2 pedidos</div>'), true);
+  ok('o gráfico de semanas saiu', /tl-semanas|tl-sem\b/.test(htmlCard), false);
 }
 
 console.log(`\n${total - falhas}/${total} passaram`);
