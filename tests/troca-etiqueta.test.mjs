@@ -217,11 +217,11 @@ ok('pede confirmação antes de mexer no estoque', /confirm\(/.test(aplica), tru
 ok('tira do tamanho antigo', /arr\[de\]\s*=\s*tem - mover/.test(transf), true);
 ok('põe no tamanho novo',    /arr\[para\] = \(arr\[para\] \|\| 0\) \+ mover/.test(transf), true);
 ok('é uma TRANSFERÊNCIA: não muda o total de peças',
-   /const mover = Math\.min\(tem, qtd\)/.test(transf), true);
+   /mover = Math\.min\(tem, qtd\)/.test(transf), true);
 ok('peça que sumiu entre a tela e o clique não é inventada',
-   /if \(mover <= 0\) return 0;/.test(transf), true);
+   /if \(mover <= 0\) return false;/.test(transf) && /return r \? mover : 0;/.test(transf), true);
 ok('avisa o que não deu para trocar', /faltaram\.length\) \{[\s\S]{0,120}alert\(/.test(aplica), true);
-ok('grava na nuvem', /await salvarNuvem\(key, saved\)/.test(transf), true);
+ok('grava na nuvem lendo ela antes (15/09)', /await gravarModeloNaNuvem\(key, saved => \{/.test(transf), true);
 ok('completa a grade curta antes de indexar', /while \(arr\.length < nSz\) arr\.push\(0\)/.test(transf), true);
 ok('índice fora da grade não é aceito', /if \(de < 0 \|\| de >= nSz \|\| para < 0 \|\| para >= nSz\) return 0;/.test(transf), true);
 ok('a lista fica acessível para o botão', /window\._trocasEtiqueta = liberaveis/.test(main), true);

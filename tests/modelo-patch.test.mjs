@@ -37,7 +37,7 @@ const { mesclarModelo } = new Function(`
   return { mesclarModelo };
 `)();
 
-const nada = () => ({ est: new Set(), prod: new Set(), prod2: new Set(), cfg: false, status: false });
+const nada = () => ({ est: new Set(), prod: new Set(), prod2: new Set(), cfg: false, status: false, cores: false });
 
 console.log('\n1) O caso do Cropped Canelado: celular com tela velha grava depois da contagem no PC');
 {
@@ -74,14 +74,32 @@ console.log('\n2) O caso do Macacao Amplo: status escolhido num aparelho, estoqu
   ok('o status "Comprando tecido" do outro aparelho NAO volta para "Em corte"', r.status, 'Comprando tecido');
 }
 
-console.log('\n3) Configuracao editada: a tela manda (a lista de cores pode ter mudado)');
+console.log('\n3) Configuracao editada: so o que foi editado sobe (15/09/2026)');
 {
   const nuvem = { est: { Preto: [1, 1, 1, 1, 1], Nude: [2, 2, 2, 2, 2] }, prod: {}, cores: ['Preto', 'Nude'], nome: 'A' };
   const dom   = { est: { Preto: [1, 1, 1, 1, 1] }, prod: {}, cores: ['Preto'], nome: 'B' };
-  const t = nada(); t.cfg = true;
+  const t = nada(); t.cfg = true; t.cores = true;
   const r = mesclarModelo(nuvem, dom, t);
-  ok('cor removida na tela some da grade', Object.keys(r.est), ['Preto']);
+  ok('cor removida nas ETIQUETAS some da grade', Object.keys(r.est), ['Preto']);
+  ok('e da lista de cores', r.cores, ['Preto']);
   ok('nome editado sobe', r.nome, 'B');
+}
+{
+  // O CASO DA PANTALONA VISCOLYCRA (15/09/2026): aparelho com a tela velha, sem a cor que o
+  // outro cadastrou, mexe num campo de configuracao. Antes, "lista de cores diferente" fazia
+  // a grade INTEIRA da tela subir e a leva voltava de 41 para 24 pecas com o cortador na mesa.
+  const nuvem = { est: { Preto: [1, 1, 1, 1, 1], Marrom: [0, 0, 1, 0, 0] }, prod: { Cinza: [4, 9, 8, 7, 0, 0], Marrom: [0, 0, 1, 0, 0, 0] },
+                  cores: ['Preto', 'Cinza', 'Marrom'], status: 'Em corte', status_at: 'hoje', prazo: '' , leva2: false };
+  const dom   = { est: { Preto: [1, 1, 1, 1, 1] }, prod: { Cinza: [2, 3, 6, 5, 0, 0] },
+                  cores: ['Preto', 'Cinza'], status: 'Em corte', status_at: 'ontem', prazo: '2026-09-20', leva2: true };
+  const t = nada(); t.cfg = true; // so o prazo foi editado
+  const r = mesclarModelo(nuvem, dom, t);
+  ok('a leva da nuvem fica inteira (a tela velha nao manda na grade)', r.prod, nuvem.prod);
+  ok('a cor que a tela velha nao conhecia continua la', r.est.Marrom, [0, 0, 1, 0, 0]);
+  ok('e a lista de cores tambem', r.cores, ['Preto', 'Cinza', 'Marrom']);
+  ok('o prazo editado sobe', r.prazo, '2026-09-20');
+  ok('o carimbo da etapa NAO volta ao de ontem (status so sobe quando escolhido)', r.status_at, 'hoje');
+  ok('a 2a leva nao e religada pela tela velha', r.leva2, false);
 }
 
 console.log('\n4) Casos de borda');
@@ -121,10 +139,27 @@ console.log('\n4b) O botao Atualizar do card EM PRODUCAO (10/09/2026, a dona pre
   ok('trocar status nao liga cfgEditado', /function marcarStatusEditado\(\) \{\n(?:\s*\/\/.*\n)*\s*statusTocado = true;/.test(main), true);
 }
 
+console.log('\n4c) Sem leitura da nuvem NAO ha gravacao (15/09/2026)');
+// A gravacao tinha 3 tentativas e fila; a leitura, nenhuma. Num aparelho com a rede ruim a
+// leitura falhava, a gravacao passava e a tela VELHA inteira ia por cima da nuvem.
+const subir = main.slice(main.indexOf('async function subirModeloMesclado'), main.indexOf('\n}', main.indexOf('async function subirModeloMesclado')));
+ok('a leitura tenta mais de uma vez', /const nuvem = await carregarNuvemComRetry\(key\);/.test(subir), true);
+ok('leitura falhou -> guarda a tela e o retrato para mesclar depois, sem gravar',
+   /if \(nuvem === undefined\) \{\s*\r?\n\s*const ant = _mesclagensPendentes\.get\(key\);[\s\S]*?return dom;\s*\r?\n\s*\}/.test(subir) && !/if \(nuvem === undefined \|\| !nuvem\)/.test(subir), true);
+ok('linha que nao existe ainda (modelo novo) continua subindo inteira', /if \(!nuvem\) \{ await salvarNuvem\(key, dom\); return dom; \}/.test(subir), true);
+ok('enquanto espera, a chave fica protegida da sincronizacao', /return temGravacaoPendente\(id\) \|\| modeloAbertoProtegido\(id\) \|\| _mesclagensPendentes\.has\(id\);/.test(main), true);
+ok('e a fila de pendentes tenta a mesclagem de novo', /for \(const \[key, m\] of \[\.\.\._mesclagensPendentes\]\) \{\s*\r?\n\s*await subirModeloMesclado\(key, m\.dom, m\.tocado\)/.test(main), true);
+ok('os botoes que mexem no modelo fora da tela leem a nuvem antes de gravar',
+   ['mandarTudoParaCorte', 'mandarUrgentesParaProducao', 'mandarTudoParaEstoque', 'transferirParaEstoque', 'transferirParaEstoque2', 'adicionarLeva2', 'removerLeva2', 'transferirTamanhoEstoque']
+     .every(f => { const i = main.indexOf('function ' + f + '('); const corpo = main.slice(i, main.indexOf('\n}', i)); return /gravarModeloNaNuvem\(/.test(corpo) && !/loadLocal\('vc:' \+ (key|l\.key|modeloAtual)\) \|\| \{\};\s*\r?\n[\s\S]*?await salvarNuvem\(/.test(corpo); }), true);
+ok('e o helper nao grava sem ler', /async function gravarModeloNaNuvem\(key, mutar, opts = \{\}\) \{\s*\r?\n\s*const nuvem = await carregarNuvemComRetry\(key\);\s*\r?\n\s*if \(nuvem === undefined\) \{[\s\S]*?return null;/.test(main), true);
+ok('mexer nas etiquetas de cor e o unico jeito de a lista da tela mandar',
+   ['function fixarCor', 'function addCor', 'function removerCor'].every(f => { const i = main.indexOf(f); return /coresTocadas = true; cfgEditado = true;/.test(main.slice(i, main.indexOf('\n}', i))); }), true);
+
 console.log('\n5) Os tres caminhos de gravacao passam pelo patch');
 ok('salvarModelo sobe mesclado', /subirModeloMesclado\(modeloAtual, data, tocado\)/.test(main), true);
 ok('salvarModelo nao manda mais o objeto inteiro direto', /\n  salvarNuvem\(modeloAtual, data\);/.test(main), false);
-ok('confirmarStatus sobe so o status', /subirModeloMesclado\(key, saved, \{ est: new Set\(\), prod: new Set\(\), prod2: new Set\(\), cfg: false, status: true \}\)/.test(main), true);
+ok('confirmarStatus sobe so o status', /subirModeloMesclado\(key, saved, \{ est: new Set\(\), prod: new Set\(\), prod2: new Set\(\), cfg: false, status: true, cores: false \}\)/.test(main), true);
 ok('os inputs dizem qual celula foi tocada',
    ['marcarEstEditado(this)', 'marcarProdEditado(this)', 'marcarProd2Editado(this)'].every(f => main.includes(`oninput="${f}`)), true);
 ok('o retrato do tocado e tirado ANTES de zerar as flags',

@@ -479,6 +479,7 @@ let estEditado  = false;
 let prodEditado = false;
 let prod2Editado = false; // 2ª leva de produção
 let cfgEditado  = false;
+let coresTocadas = false; // mexeu nas etiquetas de cor (só então a lista da tela manda na nuvem)
 // Ela mexeu no dropdown de status agora? É o que autoriza salvarModelo a tirar a etapa da
 // leva do <select> — sem isso, vale sempre o que está salvo (ver TRAVA DO STATUS).
 let statusTocado = false;
@@ -501,12 +502,21 @@ function modeloAbertoProtegido(id) {
 // sincronização (realtime, ciclo de 15s ou carga da página) pode trazer a versão da nuvem
 // por cima dela.
 const _gravacoesPendentes = new Map(); // key -> { dados, emVoo }
+// Mesclagens que ficaram esperando a nuvem responder: a tela e o retrato do que foi tocado.
+// Enquanto a chave estiver aqui, nenhuma sincronização traz a nuvem por cima do local.
+const _mesclagensPendentes = new Map(); // key -> { dom, tocado }
+function juntarTocados(a, b) {
+  return {
+    est: new Set([...a.est, ...b.est]), prod: new Set([...a.prod, ...b.prod]), prod2: new Set([...a.prod2, ...b.prod2]),
+    cfg: !!(a.cfg || b.cfg), status: !!(a.status || b.status), cores: !!(a.cores || b.cores),
+  };
+}
 const temGravacaoPendente = key => _gravacoesPendentes.has(key);
 
 // Vale para QUALQUER chave, não só o modelo aberto: a baixa de estoque, o corte e o
 // financeiro gravam chaves que não estão na tela, e elas voltavam do mesmo jeito.
 function protegidoDeSobrescrita(id) {
-  return temGravacaoPendente(id) || modeloAbertoProtegido(id);
+  return temGravacaoPendente(id) || modeloAbertoProtegido(id) || _mesclagensPendentes.has(id);
 }
 
 // Sobe de novo o que ficou para trás quando a rede voltar. Sem isto a chave ficaria
@@ -514,14 +524,40 @@ function protegidoDeSobrescrita(id) {
 // outros gravassem nela.
 let _reenviando = false;
 async function reenviarPendentes() {
-  if (_reenviando || !_gravacoesPendentes.size) return;
+  if (_reenviando || (!_gravacoesPendentes.size && !_mesclagensPendentes.size)) return;
   _reenviando = true;
   try {
     for (const [key, item] of [..._gravacoesPendentes]) {
       if (item.emVoo) continue; // já tem uma tentativa correndo
       await salvarNuvemREST(key, item.dados);
     }
+    // Mesclagens que esperavam a nuvem responder: tenta de novo (some da fila se conseguir)
+    for (const [key, m] of [..._mesclagensPendentes]) {
+      await subirModeloMesclado(key, m.dom, m.tocado).catch(() => {});
+    }
   } finally { _reenviando = false; }
+}
+
+// ─── GRAVAR UM MODELO A PARTIR DA NUVEM ──────────────────────────────────────
+// Os botões que mexem em um modelo sem passar pela tela (mandar para o corte, para a
+// produção, para o estoque, 2ª leva, transferir tamanho) liam o localStorage, mudavam um
+// campo e devolviam o objeto INTEIRO para a nuvem. Com o local desatualizado, isso gravava
+// a versão velha de tudo por cima do que os outros aparelhos tinham feito (o mesmo aviso
+// que já estava em baixarEstoqueDoPedido desde 11/08). Agora: lê a nuvem, aplica a
+// mudança, grava. Sem leitura, sem gravação: `mutar` devolvendo false também não grava.
+async function gravarModeloNaNuvem(key, mutar, opts = {}) {
+  const nuvem = await carregarNuvemComRetry(key);
+  if (nuvem === undefined) {
+    if (!opts.silencioso) alert('Não deu para ler a nuvem agora, então nada foi gravado (gravar às cegas era o que apagava o trabalho dos outros aparelhos). Tente de novo em instantes.');
+    return null;
+  }
+  const saved = nuvem || loadLocal('vc:' + key) || {};
+  if (mutar(saved) === false) return null;
+  saved.updated_at = new Date().toISOString();
+  saveLocal('vc:' + key, saved);
+  _ultimoSaveTs = Date.now();
+  await salvarNuvem(key, saved);
+  return saved;
 }
 
 // Salva estado atual no localStorage IMEDIATAMENTE (sem esperar o debounce)
@@ -652,19 +688,28 @@ function renderModeloSeOcioso() {
 function mesclarModelo(nuvem, dom, tocado) {
   if (!nuvem) return dom;
   const r = { ...nuvem };
+  // A lista de cores só manda quando a pessoa MEXEU nas etiquetas de cor neste aparelho
+  // (tocado.cores). Até 15/09/2026 bastava a lista da tela ser diferente da nuvem, com
+  // qualquer campo de configuração editado, para a grade INTEIRA da tela subir por cima:
+  // um aparelho com a tela velha, sem a cor que o outro tinha cadastrado, devolveu a leva
+  // da Pantalona Viscolycra de 41 para 24 peças com o cortador já na mesa. Agora cor
+  // removida some por linha e o resto da grade continua célula a célula.
+  const coresDom    = Array.isArray(dom.cores) ? dom.cores : null;
+  const coresMandam = !!tocado.cores && !!coresDom;
   const grade = (campo, set) => {
     if (dom[campo] === undefined) return;
-    // A tela manda na grade inteira só quando o botão preencheu tudo ('*') ou quando a lista
-    // de cores mudou (uma cor removida não pode voltar pela nuvem). Editar prazo ou nome não
-    // é motivo para subir a grade toda.
-    const coresMudaram = tocado.cfg && JSON.stringify(dom.cores || null) !== JSON.stringify(nuvem.cores || null);
-    if (coresMudaram || set.has('*')) { r[campo] = dom[campo]; return; }
+    // A tela manda na grade inteira só quando o botão preencheu tudo ('*').
+    if (set.has('*')) { r[campo] = dom[campo]; return; }
     const out = {};
-    Object.keys(nuvem[campo] || {}).forEach(cor => { out[cor] = [...nuvem[campo][cor]]; });
+    Object.keys(nuvem[campo] || {}).forEach(cor => {
+      if (coresMandam && !coresDom.includes(cor)) return; // cor removida nas etiquetas
+      out[cor] = [...nuvem[campo][cor]];
+    });
     Object.keys(dom[campo] || {}).forEach(cor => {
       const d = dom[campo][cor] || [];
       const tocouCor = [...set].some(k => k.startsWith(cor + '|'));
-      if (!out[cor]) { if (tocouCor) out[cor] = d; return; } // cor que só a tela tem: entra se tocada
+      // cor que só a tela tem: entra se foi tocada ou se acabou de ser cadastrada
+      if (!out[cor]) { if (tocouCor || (coresMandam && coresDom.includes(cor))) out[cor] = d; return; }
       const n = out[cor];
       const len = Math.max(n.length, d.length);
       out[cor] = Array.from({ length: len }, (_, i) =>
@@ -675,10 +720,15 @@ function mesclarModelo(nuvem, dom, tocado) {
   grade('est', tocado.est);
   grade('prod', tocado.prod);
   grade('prod2', tocado.prod2);
-  const cfgCampos = ['nome', 'tecido', 'consumo', 'componentes', 'obs', 'cores', 'preco', 'prazo', 'prazo2', 'leva2'];
+  // `cores` e `leva2` ficam de fora de propósito: a lista de cores tem a regra acima, e a
+  // 2ª leva é ligada/desligada por adicionarLeva2/removerLeva2, direto na nuvem.
+  const cfgCampos = ['nome', 'tecido', 'consumo', 'componentes', 'obs', 'preco', 'prazo', 'prazo2'];
   const stCampos  = ['status', 'status_at', 'status2', 'status2_at'];
   if (tocado.cfg) cfgCampos.forEach(c => { if (c in dom) r[c] = dom[c]; });
-  if (tocado.cfg || tocado.status) stCampos.forEach(c => { if (c in dom) r[c] = dom[c]; });
+  if (coresMandam) r.cores = coresDom;
+  // Etapa só sobe quando a pessoa ESCOLHEU no dropdown. Com qualquer edição de configuração
+  // subindo o status junto, a tela velha devolvia "Em corte" da véspera por cima do de hoje.
+  if (tocado.status) stCampos.forEach(c => { if (c in dom) r[c] = dom[c]; });
   if (tocado.est.size)   r.est_at   = dom.est_at;
   if (tocado.prod.size)  r.prod_at  = dom.prod_at;
   if (tocado.prod2.size) r.prod2_at = dom.prod2_at;
@@ -686,11 +736,33 @@ function mesclarModelo(nuvem, dom, tocado) {
   return r;
 }
 
-// Sobe o modelo mesclado com a nuvem. Sem nuvem (leitura falhou ou linha não existe),
-// sobe a tela inteira como sempre foi: melhor isso do que perder a digitação.
+// Leitura com nova tentativa: a leitura não tinha retry e a gravação tinha três (mais a
+// fila de pendentes). Num celular acordando, a leitura falhava e a gravação passava.
+async function carregarNuvemComRetry(key, tentativas = 3) {
+  for (let i = 0; i < tentativas; i++) {
+    const r = await carregarNuvem(key);
+    if (r !== undefined) return r;
+    await new Promise(res => setTimeout(res, 400 * (i + 1)));
+  }
+  return undefined;
+}
+
+// Sobe o modelo mesclado com a nuvem. SEM LEITURA NÃO HÁ GRAVAÇÃO (15/09/2026): até aqui,
+// quando a leitura falhava, a tela inteira subia "para não perder a digitação". Só que a
+// gravação tem retry e fila, e a leitura não tinha: num aparelho com a rede ruim a leitura
+// falhava, a gravação passava e a tela VELHA inteira apagava o que os outros tinham feito.
+// Foi assim que a Pantalona Viscolycra voltou de 41 para 24 peças com o cortador na mesa.
+// Agora a digitação fica guardada (local + fila de mesclagem) e sobe mesclada quando a
+// nuvem responder.
 async function subirModeloMesclado(key, dom, tocado) {
-  const nuvem = await carregarNuvem(key);
-  if (nuvem === undefined || !nuvem) { await salvarNuvem(key, dom); return dom; }
+  const nuvem = await carregarNuvemComRetry(key);
+  if (nuvem === undefined) {
+    const ant = _mesclagensPendentes.get(key);
+    _mesclagensPendentes.set(key, { dom, tocado: ant ? juntarTocados(ant.tocado, tocado) : tocado });
+    return dom;
+  }
+  _mesclagensPendentes.delete(key);
+  if (!nuvem) { await salvarNuvem(key, dom); return dom; } // linha não existe ainda: modelo novo
   const final = mesclarModelo(nuvem, dom, tocado);
   saveLocal('vc:' + key, final);
   await salvarNuvem(key, final);
@@ -783,10 +855,11 @@ function salvarModelo() {
   // vem da tela e o que vem da nuvem.
   const tocado = {
     est: new Set(_celulasTocadas.est), prod: new Set(_celulasTocadas.prod), prod2: new Set(_celulasTocadas.prod2),
-    cfg: cfgEditado, status: statusTocado,
+    cfg: cfgEditado, status: statusTocado, cores: coresTocadas,
   };
   limparTocados();
   estEditado  = false;
+  coresTocadas = false;
   prodEditado = false;
   prod2Editado = false;
   cfgEditado  = false;
@@ -4051,7 +4124,7 @@ function confirmarStatus(key, novoStatus, leva) {
   saveLocal('vc:' + key, saved);
   // Só o status sobe; o resto do modelo vem da nuvem. `saved` é o local deste aparelho e
   // pode estar velho: mandar ele inteiro era o que devolvia a contagem do outro aparelho.
-  subirModeloMesclado(key, saved, { est: new Set(), prod: new Set(), prod2: new Set(), cfg: false, status: true }).catch(() => {});
+  subirModeloMesclado(key, saved, { est: new Set(), prod: new Set(), prod2: new Set(), cfg: false, status: true, cores: false }).catch(() => {});
   buildSidebar();
   verificarAvisosStatus();
   // Tirar a leva de "Em costura" É a entrega: fecha o valor da rodada na hora, sem esperar
@@ -5053,23 +5126,21 @@ async function transferirTamanhoEstoque(key, cor, de, para, qtd) {
   const def = MODELOS[key];
   if (!def) return 0;
   const nSz   = (def.tamanhos || ['PP','P','M','G','GG']).length;
-  const saved = loadLocal('vc:' + key) || {};
-  if (!saved.est) saved.est = {};
-  const arr = (saved.est[cor] || []).map(v => v || 0);
-  while (arr.length < nSz) arr.push(0);
   if (de < 0 || de >= nSz || para < 0 || para >= nSz) return 0;
-
-  const tem = arr[de] || 0;
-  const mover = Math.min(tem, qtd);
-  if (mover <= 0) return 0;
-
-  arr[de]   = tem - mover;
-  arr[para] = (arr[para] || 0) + mover;
-  saved.est[cor] = arr;
-  saved.est_at = saved.updated_at = new Date().toISOString();
-  saveLocal('vc:' + key, saved);
-  await salvarNuvem(key, saved);
-  return mover;
+  let mover = 0;
+  const r = await gravarModeloNaNuvem(key, saved => {
+    if (!saved.est) saved.est = {};
+    const arr = (saved.est[cor] || []).map(v => v || 0);
+    while (arr.length < nSz) arr.push(0);
+    const tem = arr[de] || 0;
+    mover = Math.min(tem, qtd);
+    if (mover <= 0) return false;
+    arr[de]   = tem - mover;
+    arr[para] = (arr[para] || 0) + mover;
+    saved.est[cor] = arr;
+    saved.est_at = new Date().toISOString();
+  });
+  return r ? mover : 0;
 }
 
 async function aplicarTrocaEtiqueta(i, btn) {
@@ -5453,25 +5524,26 @@ async function mandarTudoParaCorte() {
   levas.forEach(l => { (porModelo[l.key] = porModelo[l.key] || []).push(l); });
   let erros = 0;
   for (const [key, ls] of Object.entries(porModelo)) {
-    const saved = loadLocal('vc:' + key) || {};
-    ls.forEach(l => {
-      // Carimbo de entrada no corte: MESMA regra de confirmarStatus e salvarModelo — é o
-      // `ref` que separa uma rodada da outra no faturamento do corte e da costura.
-      if (l.leva === 2) {
-        saved.status2 = 'Em corte'; saved.status2_at = agora;
-        if (l.congelar) saved.prod2 = { ...(saved.prod2 || {}), ...l.prod };
-      } else {
-        saved.status = 'Em corte'; saved.status_at = agora;
-        if (l.congelar) saved.prod = { ...(saved.prod || {}), ...l.prod };
-      }
-      if (modeloAtual === key) {
-        const sel = document.getElementById(l.leva === 2 ? 'prod2-status' : 'prod-status');
-        if (sel) sel.value = 'Em corte';
-      }
-    });
-    saved.updated_at = new Date().toISOString();
-    saveLocal('vc:' + key, saved);
-    try { await salvarNuvem(key, saved); } catch (e) { erros++; }
+    // Lê a nuvem e muda só a etapa (e a leva congelada): partir do local gravava a versão
+    // velha do modelo inteiro por cima do que outro aparelho tinha feito.
+    const ok = await gravarModeloNaNuvem(key, saved => {
+      ls.forEach(l => {
+        // Carimbo de entrada no corte: MESMA regra de confirmarStatus e salvarModelo — é o
+        // `ref` que separa uma rodada da outra no faturamento do corte e da costura.
+        if (l.leva === 2) {
+          saved.status2 = 'Em corte'; saved.status2_at = agora;
+          if (l.congelar) saved.prod2 = { ...(saved.prod2 || {}), ...l.prod };
+        } else {
+          saved.status = 'Em corte'; saved.status_at = agora;
+          if (l.congelar) saved.prod = { ...(saved.prod || {}), ...l.prod };
+        }
+        if (modeloAtual === key) {
+          const sel = document.getElementById(l.leva === 2 ? 'prod2-status' : 'prod-status');
+          if (sel) sel.value = 'Em corte';
+        }
+      });
+    }, { silencioso: true }).catch(() => null);
+    if (!ok) erros++;
   }
   buildSidebar();
   verificarAvisosStatus();
@@ -5481,7 +5553,7 @@ async function mandarTudoParaCorte() {
   if (modeloAtual === '__corte__')        renderCorte();
   else if (modeloAtual === '__costura__') renderCostura();
   else if (modeloAtual === '__dashboard__') renderDashboard();
-  if (erros) alert(`${erros} modelo(s) não subiram para a nuvem agora — a mudança está neste aparelho e vai subir na próxima sincronização.`);
+  if (erros) alert(`${erros} modelo(s) NÃO foram gravados: a nuvem não respondeu. Nada mudou neles, confira a lista e tente de novo em instantes.`);
 }
 
 // ─── MANDAR OS URGENTES PARA PRODUÇÃO (comprar tecido de todos de uma vez) ───
@@ -5566,33 +5638,32 @@ async function mandarUrgentesParaProducao() {
   const agora = new Date().toISOString();
   let erros = 0;
   for (const l of levas) {
-    const saved = loadLocal('vc:' + l.key) || {};
-    if (l.leva === 2) {
-      saved.leva2      = true; // sem isso a 2ª leva nem aparece na tela do modelo
-      saved.prod2      = { ...(saved.prod2 || {}), ...l.prod };
-      saved.prod2_at   = agora;
-      saved.status2    = 'Comprando tecido';
-      saved.status2_at = agora;
-    } else {
-      saved.prod      = { ...(saved.prod || {}), ...l.prod };
-      saved.prod_at   = agora;
-      saved.status    = 'Comprando tecido';
-      saved.status_at = agora;
-    }
-    if (modeloAtual === l.key) {
-      const sel = document.getElementById(l.leva === 2 ? 'prod2-status' : 'prod-status');
-      if (sel) sel.value = 'Comprando tecido';
-    }
-    saved.updated_at = new Date().toISOString();
-    saveLocal('vc:' + l.key, saved);
-    _ultimoSaveTs = Date.now(); // carência: o sync da nuvem não desfaz o que acabou de ser gravado
-    try { await salvarNuvem(l.key, saved); } catch (e) { erros++; }
+    // Lê a nuvem e muda só a leva e a etapa (ver gravarModeloNaNuvem)
+    const ok = await gravarModeloNaNuvem(l.key, saved => {
+      if (l.leva === 2) {
+        saved.leva2      = true; // sem isso a 2ª leva nem aparece na tela do modelo
+        saved.prod2      = { ...(saved.prod2 || {}), ...l.prod };
+        saved.prod2_at   = agora;
+        saved.status2    = 'Comprando tecido';
+        saved.status2_at = agora;
+      } else {
+        saved.prod      = { ...(saved.prod || {}), ...l.prod };
+        saved.prod_at   = agora;
+        saved.status    = 'Comprando tecido';
+        saved.status_at = agora;
+      }
+      if (modeloAtual === l.key) {
+        const sel = document.getElementById(l.leva === 2 ? 'prod2-status' : 'prod-status');
+        if (sel) sel.value = 'Comprando tecido';
+      }
+    }, { silencioso: true }).catch(() => null);
+    if (!ok) erros++;
   }
   buildSidebar();
   verificarAvisosStatus();
   if (modeloAtual === '__dashboard__')   renderDashboard();
   else if (MODELOS[modeloAtual])         renderModelo(modeloAtual);
-  if (erros) alert(`${erros} modelo(s) não subiram para a nuvem agora — a mudança está neste aparelho e vai subir na próxima sincronização.`);
+  if (erros) alert(`${erros} modelo(s) NÃO foram gravados: a nuvem não respondeu. Nada mudou neles, confira a lista e tente de novo em instantes.`);
 }
 
 function abrirCorte(item) {
@@ -5926,27 +5997,26 @@ async function mandarTudoParaEstoque() {
   levas.forEach(l => { (porModelo[l.key] = porModelo[l.key] || []).push(l); });
   let erros = 0;
   for (const [key, ls] of Object.entries(porModelo)) {
-    const saved = loadLocal('vc:' + key) || {};
     const def   = MODELOS[key];
-    const cores = coresDoModelo(def, saved);
     const nTam  = tamanhosDe(def).length;
     const agora = new Date().toISOString();
-    ls.forEach(l => {
-      levaParaEstoque(saved, cores, l.leva, nTam);
-      // Fim da rodada: sem status e sem carimbo, igual ao que salvarModelo grava quando a
-      // dona escolhe "— Sem status —" no dropdown.
-      if (l.leva === 2) { saved.status2 = ''; saved.status2_at = null; saved.prod2_at = agora; }
-      else              { saved.status  = ''; saved.status_at  = null; saved.prod_at  = agora; }
-      if (modeloAtual === key) {
-        const sel = document.getElementById(l.leva === 2 ? 'prod2-status' : 'prod-status');
-        if (sel) sel.value = '';
-      }
-    });
-    saved.est_at     = agora;
-    saved.updated_at = agora;
-    saveLocal('vc:' + key, saved);
-    _ultimoSaveTs = Date.now();
-    try { await salvarNuvem(key, saved); } catch (e) { erros++; }
+    // Lê a nuvem e soma a leva ao estoque de lá (ver gravarModeloNaNuvem)
+    const ok = await gravarModeloNaNuvem(key, saved => {
+      const cores = coresDoModelo(def, saved);
+      ls.forEach(l => {
+        levaParaEstoque(saved, cores, l.leva, nTam);
+        // Fim da rodada: sem status e sem carimbo, igual ao que salvarModelo grava quando a
+        // dona escolhe "— Sem status —" no dropdown.
+        if (l.leva === 2) { saved.status2 = ''; saved.status2_at = null; saved.prod2_at = agora; }
+        else              { saved.status  = ''; saved.status_at  = null; saved.prod_at  = agora; }
+        if (modeloAtual === key) {
+          const sel = document.getElementById(l.leva === 2 ? 'prod2-status' : 'prod-status');
+          if (sel) sel.value = '';
+        }
+      });
+      saved.est_at = agora;
+    }, { silencioso: true }).catch(() => null);
+    if (!ok) erros++;
   }
   buildSidebar();
   verificarAvisosStatus();
@@ -5958,7 +6028,7 @@ async function mandarTudoParaEstoque() {
   else if (modeloAtual === '__corte__')    renderCorte();
   else if (modeloAtual === '__dashboard__') renderDashboard();
   else if (MODELOS[modeloAtual])           renderModelo(modeloAtual);
-  if (erros) alert(`${erros} modelo(s) não subiram para a nuvem agora — a mudança está neste aparelho e vai subir na próxima sincronização.`);
+  if (erros) alert(`${erros} modelo(s) NÃO foram gravados: a nuvem não respondeu. Nada mudou neles, confira a lista e tente de novo em instantes.`);
 }
 
 function abrirCostura(item) {
@@ -8320,6 +8390,7 @@ function fixarCor(btn) {
   tag.className = 'cor-tag';
   tag.removeAttribute('title');
   tag.innerHTML = `<span>${cor}</span><button onclick="removerCor(this)" title="Remover">×</button>`;
+  coresTocadas = true; cfgEditado = true;
   autoSave();
 }
 
@@ -8334,11 +8405,13 @@ function addCor() {
   document.getElementById('cores-tags').appendChild(tag);
   inp.value = '';
   inp.focus();
+  coresTocadas = true; cfgEditado = true;
   autoSave();
 }
 
 function removerCor(btn) {
   btn.parentElement.remove();
+  coresTocadas = true; cfgEditado = true;
   autoSave();
 }
 
@@ -8433,41 +8506,33 @@ function recalcularProducao() {
   renderModelo(modeloAtual); // atualiza card A Produzir e saldos
 }
 
-function transferirParaEstoque() {
-  const saved = loadLocal('vc:' + modeloAtual) || {};
-  if (!saved.prod || Object.keys(saved.prod).length === 0) return;
-
-  const def  = MODELOS[modeloAtual];
-  const tu   = !!def.tamanhoUnico;
-  const cores = coresDoModelo(def, saved);
-
-  if (!saved.est) saved.est = {};
-
-  let temAlgo = false;
-  cores.forEach(cor => {
-    const pv = saved.prod[cor];
-    if (!pv) return;
-    const total = pv.reduce((a, b) => a + b, 0);
-    if (total === 0) return;
-    temAlgo = true;
-    if (!saved.est[cor]) saved.est[cor] = [0, 0, 0, 0, 0];
-    // Soma Em Produção ao estoque existente
-    saved.est[cor] = saved.est[cor].map((v, i) => v + (pv[i] || 0));
+async function transferirParaEstoque() {
+  const key = modeloAtual;
+  const def = MODELOS[key];
+  // Lê a nuvem e soma a leva ao estoque de lá (ver gravarModeloNaNuvem)
+  const r = await gravarModeloNaNuvem(key, saved => {
+    if (!saved.prod || Object.keys(saved.prod).length === 0) return false;
+    const cores = coresDoModelo(def, saved);
+    if (!saved.est) saved.est = {};
+    let temAlgo = false;
+    cores.forEach(cor => {
+      const pv = saved.prod[cor];
+      if (!pv) return;
+      const total = pv.reduce((a, b) => a + b, 0);
+      if (total === 0) return;
+      temAlgo = true;
+      if (!saved.est[cor]) saved.est[cor] = [0, 0, 0, 0, 0];
+      // Soma Em Produção ao estoque existente
+      saved.est[cor] = saved.est[cor].map((v, i) => v + (pv[i] || 0));
+    });
+    if (!temAlgo) return false;
+    // Zera produção explicitamente em todas as cores (evita fallback para mínimos na re-renderização)
+    cores.forEach(cor => { saved.prod[cor] = [0, 0, 0, 0, 0]; });
+    const agora = new Date().toISOString();
+    saved.est_at  = agora;
+    saved.prod_at = agora;
   });
-
-  if (!temAlgo) return;
-
-  // Zera produção explicitamente em todas as cores (evita fallback para mínimos na re-renderização)
-  cores.forEach(cor => { saved.prod[cor] = [0, 0, 0, 0, 0]; });
-
-  const agora = new Date().toISOString();
-  saved.est_at     = agora;
-  saved.prod_at    = agora;
-  saved.updated_at = agora;
-
-  saveLocal('vc:' + modeloAtual, saved);
-  salvarNuvem(modeloAtual, saved);
-  renderModelo(modeloAtual);
+  if (r && modeloAtual === key) renderModelo(key);
 }
 
 // ─── 2ª LEVA DE PRODUÇÃO ─────────────────────────────────────────────────────
@@ -8576,71 +8641,58 @@ function recalcularProducao2() {
   renderModelo(modeloAtual); // atualiza card A Produzir e saldos
 }
 
-function adicionarLeva2() {
+async function adicionarLeva2() {
   if (modeloAtual === '__dashboard__' || !MODELOS[modeloAtual]) return;
-  const saved = loadLocal('vc:' + modeloAtual) || {};
-  saved.leva2 = true;
-  saved.updated_at = new Date().toISOString();
-  saveLocal('vc:' + modeloAtual, saved);
-  _ultimoSaveTs = Date.now(); // carência: evita o sync da nuvem sobrescrever antes do upsert confirmar
-  salvarNuvem(modeloAtual, saved);
-  renderModelo(modeloAtual);
+  const key = modeloAtual;
+  const r = await gravarModeloNaNuvem(key, saved => { saved.leva2 = true; });
+  if (r && modeloAtual === key) renderModelo(key);
 }
 
-function removerLeva2() {
-  const saved = loadLocal('vc:' + modeloAtual) || {};
-  const temValores = saved.prod2 && Object.values(saved.prod2).some(v => (v || []).some(x => x > 0));
+async function removerLeva2() {
+  const key = modeloAtual;
+  const local = loadLocal('vc:' + key) || {};
+  const temValores = local.prod2 && Object.values(local.prod2).some(v => (v || []).some(x => x > 0));
   if (temValores && !confirm('Remover a 2ª leva? As quantidades digitadas nela serão apagadas (a produção principal não muda).')) return;
-  delete saved.prod2;
-  delete saved.status2;
-  delete saved.prazo2;
-  delete saved.status2_at;
-  delete saved.prod2_at;
-  saved.leva2 = false;
-  saved.updated_at = new Date().toISOString();
-  saveLocal('vc:' + modeloAtual, saved);
-  _ultimoSaveTs = Date.now();
-  salvarNuvem(modeloAtual, saved);
+  const r = await gravarModeloNaNuvem(key, saved => {
+    delete saved.prod2;
+    delete saved.status2;
+    delete saved.prazo2;
+    delete saved.status2_at;
+    delete saved.prod2_at;
+    saved.leva2 = false;
+  });
+  if (!r) return;
   buildSidebar();
   verificarAvisosStatus();
-  renderModelo(modeloAtual);
+  if (modeloAtual === key) renderModelo(key);
 }
 
 // Soma a 2ª leva ao Estoque e zera a leva (mesma lógica da leva 1)
-function transferirParaEstoque2() {
-  const saved = loadLocal('vc:' + modeloAtual) || {};
-  if (!saved.prod2 || Object.keys(saved.prod2).length === 0) return;
-
-  const def   = MODELOS[modeloAtual];
-  const cores = coresDoModelo(def, saved);
-
-  if (!saved.est) saved.est = {};
-
-  let temAlgo = false;
-  cores.forEach(cor => {
-    const pv = saved.prod2[cor];
-    if (!pv) return;
-    const total = pv.reduce((a, b) => a + (b || 0), 0);
-    if (total === 0) return;
-    temAlgo = true;
-    if (!saved.est[cor]) saved.est[cor] = [0, 0, 0, 0, 0];
-    saved.est[cor] = saved.est[cor].map((v, i) => v + (pv[i] || 0));
+async function transferirParaEstoque2() {
+  const key = modeloAtual;
+  const def = MODELOS[key];
+  const r = await gravarModeloNaNuvem(key, saved => {
+    if (!saved.prod2 || Object.keys(saved.prod2).length === 0) return false;
+    const cores = coresDoModelo(def, saved);
+    if (!saved.est) saved.est = {};
+    let temAlgo = false;
+    cores.forEach(cor => {
+      const pv = saved.prod2[cor];
+      if (!pv) return;
+      const total = pv.reduce((a, b) => a + (b || 0), 0);
+      if (total === 0) return;
+      temAlgo = true;
+      if (!saved.est[cor]) saved.est[cor] = [0, 0, 0, 0, 0];
+      saved.est[cor] = saved.est[cor].map((v, i) => v + (pv[i] || 0));
+    });
+    if (!temAlgo) return false;
+    // Zera a leva explicitamente em todas as cores
+    cores.forEach(cor => { saved.prod2[cor] = [0, 0, 0, 0, 0]; });
+    const agora = new Date().toISOString();
+    saved.est_at   = agora;
+    saved.prod2_at = agora;
   });
-
-  if (!temAlgo) return;
-
-  // Zera a leva explicitamente em todas as cores
-  cores.forEach(cor => { saved.prod2[cor] = [0, 0, 0, 0, 0]; });
-
-  const agora = new Date().toISOString();
-  saved.est_at     = agora;
-  saved.prod2_at   = agora;
-  saved.updated_at = agora;
-
-  saveLocal('vc:' + modeloAtual, saved);
-  _ultimoSaveTs = Date.now();
-  salvarNuvem(modeloAtual, saved);
-  renderModelo(modeloAtual);
+  if (r && modeloAtual === key) renderModelo(key);
 }
 // ─────────────────────────────────────────────────────────────────────────────
 

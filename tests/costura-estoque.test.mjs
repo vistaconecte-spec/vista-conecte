@@ -70,7 +70,7 @@ ok('sincroniza o faturamento ANTES (retrato) e DEPOIS (vira a pagar)',
    (f.match(/cstFatSincronizar\(\)/g) || []).length >= 2, true);
 ok('e o retrato é tirado antes de listar as levas',
    f.indexOf('cstFatSincronizar()') < f.indexOf("cstLevasDe('Em costura')"), true);
-ok('sobe modelo a modelo pelo caminho normal', /await salvarNuvem\(key, saved\)/.test(f), true);
+ok('sobe modelo a modelo lendo a nuvem antes (15/09)', /await gravarModeloNaNuvem\(key, saved => \{/.test(f) && !/loadLocal\('vc:' \+ key\)/.test(f), true);
 ok('pede confirmação — mexe em estoque, que é número de venda', /if \(!confirm\(/.test(f), true);
 ok('e diz o que vai acontecer com a leva', /entram no ESTOQUE/.test(f), true);
 

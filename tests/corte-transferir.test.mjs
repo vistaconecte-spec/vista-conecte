@@ -95,8 +95,8 @@ ok('só grava prod quando a quantidade foi congelada',
    /if \(l\.congelar\) saved\.prod = /.test(grava) && /if \(l\.congelar\) saved\.prod2 = /.test(grava), true);
 ok('e mantém as cores que já estavam lá (merge, não troca)',
    /\.\.\.\(saved\.prod \|\| \{\}\), \.\.\.l\.prod/.test(grava), true);
-ok('sobe modelo a modelo pelo caminho normal (fila de gravações pendentes)',
-   /await salvarNuvem\(key, saved\)/.test(grava), true);
+ok('sobe modelo a modelo lendo a nuvem antes (15/09: partir do local gravava a versão velha por cima)',
+   /await gravarModeloNaNuvem\(key, saved => \{/.test(grava) && !/const saved = loadLocal\('vc:' \+ key\) \|\| \{\};\s*\r?\n\s*ls\.forEach/.test(grava), true);
 ok('e fecha o valor da rodada como confirmarStatus faz',
    /crtFatSincronizar\(\)/.test(grava) && /cstFatSincronizar\(\)/.test(grava), true);
 ok('pede confirmação antes — é mudança de etapa de tudo de uma vez', /if \(!confirm\(/.test(grava), true);
