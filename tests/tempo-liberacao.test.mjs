@@ -84,7 +84,7 @@ console.log('\n3) Resumo: janelas pela data de ENVIO, faixas e fila');
   ok('fila vazia sem mais antigo', api.resumir([], agora).fila, { n: 0, media: null, mais_antigo: null });
 }
 
-console.log('\n4) Leitura da Shopify: GraphQL paginado, 60 dias + abertos de qualquer data');
+console.log('\n4) Leitura da Shopify: GraphQL paginado, 90 dias + abertos de qualquer data');
 {
   const chamadas = [];
   const fetchFalso = async (url, opts) => {
@@ -97,10 +97,10 @@ console.log('\n4) Leitura da Shopify: GraphQL paginado, 60 dias + abertos de qua
     } } }) };
   };
   const agora = Date.parse('2026-09-15T18:00:00Z');
-  const nos = await api.buscarPedidos('loja', 'tok', 60, fetchFalso, agora);
+  const nos = await api.buscarPedidos('loja', 'tok', 90, fetchFalso, agora);
   ok('segue o cursor até acabar', nos.map(n => n.name), ['#1', '#2']);
   ok('segunda página usa o cursor da primeira', chamadas.map(c => c.cursor), [null, 'c1']);
-  ok('filtro: 60 dias OU aberto sem envio', chamadas[0].q, 'created_at:>=2026-07-17 OR (fulfillment_status:unfulfilled AND status:open)');
+  ok('filtro: 90 dias OU aberto sem envio', chamadas[0].q, 'created_at:>=2026-06-17 OR (fulfillment_status:unfulfilled AND status:open)');
   const erro = await api.buscarPedidos('loja', 'tok', 60, async () => ({ ok: false, status: 429 })).catch(e => e.message);
   ok('HTTP ruim vira erro, não lista vazia', erro, 'Shopify GraphQL: HTTP 429');
 }

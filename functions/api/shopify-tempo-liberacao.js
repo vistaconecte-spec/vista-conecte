@@ -171,11 +171,13 @@ const QUERY = `query($cursor: String, $q: String) {
 /**
  * Lê da Shopify os pedidos criados nos últimos `dias` MAIS os ainda em aberto e sem envio
  * de qualquer data (o #8564, de julho, seguia na fila em setembro; sem isto ele sumiria da
- * conta e o "mais antigo" mentiria). 60 dias porque a janela é de 30 dias de ENVIO e o
- * pedido mais lento levou 50 dias corridos: com menos, a janela perderia justamente os
- * lentos. São 3 páginas de 250 (~70 KB cada). `fetchFn` é injetável para os testes.
+ * conta e o "mais antigo" mentiria). 90 dias porque a janela é de 30 dias de ENVIO e um
+ * pedido pode levar 60 dias para sair (o #8564 saiu em 15/09 pago em 17/07): com 60 dias
+ * de janela, 12 dos 259 envios de 30 dias sumiam da conta, justamente os mais lentos, e a
+ * média caía de 10,6 para 9,6. São 4 páginas de 250 (~70 KB cada). `fetchFn` é injetável
+ * para os testes.
  */
-export async function buscarPedidos(store, token, dias = 60, fetchFn = fetch, agora = Date.now()) {
+export async function buscarPedidos(store, token, dias = 90, fetchFn = fetch, agora = Date.now()) {
   const desde = new Date(agora - dias * DIA_MS).toISOString().slice(0, 10);
   const q = `created_at:>=${desde} OR (fulfillment_status:unfulfilled AND status:open)`;
   const nos = [];
