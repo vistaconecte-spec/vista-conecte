@@ -265,8 +265,15 @@ async function fetchAllOrders(store, token) {
   for (let i = 0; i < vivos.length; i += 250) {
     orders.push(...await paginar(`https://${store}/admin/api/2024-04/orders.json?status=any&ids=${vivos.slice(i, i + 250).join(',')}&limit=250&fields=${fields}`));
   }
-  return orders;
+  // Só pedido PAGO vira demanda de produção. Pedido com Pix vencido ou cartão barrado fica
+  // `pending` aberto na Shopify e, antes disto (15/09/2026), contava como peça a cortar até
+  // alguém cancelar à mão: em 90 dias foram 71 pendentes, 70 cancelados pela equipe só para
+  // tirá-los da lista. Agora o pendente pode ficar aberto (o resgate do cartão barrado precisa
+  // dele aberto para o link ser pago e o `orderMarkAsPaid` funcionar) sem entrar na produção;
+  // quando é pago, entra sozinho. Reembolsado (`refunded`) também fica de fora.
+  return orders.filter(o => STATUS_PAGO_PRODUCAO.has(o.financial_status));
 }
+const STATUS_PAGO_PRODUCAO = new Set(['paid', 'partially_refunded']);
 
 /**
  * Pedidos JÁ PROCESSADOS (enviados) desde uma data — alimenta a baixa automática de estoque.
@@ -303,15 +310,8 @@ async function fetchProcessados(store, token, desdeISO) {
     }
   }
   // Cancelado nunca dá baixa: a peça voltou (ou nem saiu) — subtrair aqui sumiria com estoque real.
-  // Só pedido PAGO entra na produção. Pedido com Pix vencido ou cartão barrado fica `pending`
-  // na Shopify e, antes disto (15/09/2026), contava como demanda até alguém cancelar à mão:
-  // em 90 dias foram 71 pendentes, 70 cancelados pela equipe só para tirá-los da lista.
-  // Agora o pedido pendente pode ficar aberto (o resgate do cartão barrado precisa dele
-  // aberto para o link ser pago e o `orderMarkAsPaid` funcionar) sem virar peça a cortar;
-  // quando é pago, entra sozinho. Reembolsado (`refunded`) também fica de fora.
-  return orders.filter(o => !o.cancelled_at && STATUS_PAGO_PRODUCAO.has(o.financial_status));
+  return orders.filter(o => !o.cancelled_at);
 }
-const STATUS_PAGO_PRODUCAO = new Set(['paid', 'partially_refunded']);
 
 /**
  * ITENS MONTADOS À MÃO NO PEDIDO.

@@ -218,8 +218,12 @@ ok('o conjunto distribui para as DUAS peças', CONJ_PECAS['conjunto-good'], ['sh
 // Pix vencido e cartão barrado deixam o pedido `pending` aberto na Shopify; antes ele contava
 // como peça a cortar até alguém cancelar à mão. Agora fica de fora até ser pago.
 console.log('\n📋 Produção só com pedido pago');
-ok('fetchAllOrders filtra cancelado E status financeiro',
-   /return orders\.filter\(o => !o\.cancelled_at && STATUS_PAGO_PRODUCAO\.has\(o\.financial_status\)\);/.test(src), true);
+ok('fetchAllOrders (abertos) devolve só pedido pago',
+   /ids=\$\{vivos[\s\S]{0,900}?return orders\.filter\(o => STATUS_PAGO_PRODUCAO\.has\(o\.financial_status\)\);/.test(src), true);
+// fetchProcessados (enviados → baixa de estoque) NÃO pede financial_status à Shopify: um filtro
+// por pagamento ali descartaria todo pedido enviado e a baixa automática pararia em silêncio.
+ok('fetchProcessados continua filtrando só cancelado (baixa de estoque intacta)',
+   /fulfillments[\s\S]*?return orders\.filter\(o => !o\.cancelled_at\);/.test(src), true);
 ok('pago e parcialmente reembolsado contam; pending/refunded/voided não',
    /STATUS_PAGO_PRODUCAO = new Set\(\['paid', 'partially_refunded'\]\)/.test(src), true);
 
