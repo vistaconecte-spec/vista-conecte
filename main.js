@@ -6396,74 +6396,128 @@ function cstFatSemana(dados, ref) {
   };
 }
 
-function renderFaturamento() {
-  const el = document.getElementById('faturamento-lista');
-  if (!el) return;
+// ─── CARD DO FATURAMENTO, MÊS A MÊS (costura e corte) ───────────────────────
+// Reescrito em 14/09/2026 (pedido da Bárbara: "está bem confuso"). Antes o card misturava num
+// bloco só o mês corrente, a semana, o que está a receber de qualquer mês, a previsão e o
+// mês anterior numa linha miúda; e as levas entregues viviam em duas listas ("a receber" e
+// "já pago") sem separação de mês. Agora:
+//   1. um SELETOR DE MÊS no topo (‹ mês ›, ou a lista), começando no mês corrente;
+//   2. o bloco do MÊS escolhido: entregue, pago, a receber, e no mês corrente a previsão
+//      (na máquina + em corte) fechando no total do mês, as quatro linhas somadas;
+//   3. as LEVAS entregues NAQUELE mês, uma lista só, cada uma com "pago em" ou "a receber"
+//      e o botão da dona ao lado;
+//   4. um bloco HOJE, que não depende do mês: tudo a receber (de qualquer mês), o acerto
+//      da semana e o botão "Pagar todas";
+//   5. o que está na máquina/mesa e o que vem por aí, como antes.
+// O corte e a costura desenham o MESMO card (fatCardHTML), cada um com seus rótulos e
+// seu valor por peça: conta corrigida aqui vale para os dois de uma vez.
+const fatMesSel = { costura: null, corte: null }; // mês escolhido no seletor; null = corrente
+
+function fatMesChave(d) {
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+}
+
+// Mês que o card mostra. Nunca no futuro: se alguém deixou o card num mês e o relógio
+// andou, continua valendo; mês adiante do corrente cai no corrente.
+function fatMesSelecionado(qual) {
+  const hoje = fatMesChave(new Date());
+  const sel  = fatMesSel[qual];
+  return (sel && sel <= hoje) ? sel : hoje;
+}
+
+function fatEscolherMes(qual, mes) {
+  fatMesSel[qual] = mes || null;
+  if (qual === 'corte') renderFaturamentoCorte(); else renderFaturamento();
+}
+
+function fatMudarMes(qual, delta) {
+  const [a, m] = fatMesSelecionado(qual).split('-').map(Number);
+  fatEscolherMes(qual, fatMesChave(new Date(a, m - 1 + delta, 1)));
+}
+
+// Meses do seletor: do mais antigo com entrega até o corrente, sem buraco (um mês sem
+// entrega também aparece, para a seta não pular e a lista não confundir). Mais recente
+// primeiro. Pura, para ser testada fora do navegador.
+function fatMesesDisponiveis(dados, hoje) {
+  const d = dados || {};
+  const chaves = Object.values(d.aPagar || {}).concat(d.pagas || [])
+    .map(p => cstFatMesDe(p.entregue_em)).filter(Boolean);
+  const atual = hoje || fatMesChave(new Date());
+  chaves.push(atual);
+  const min = chaves.reduce((a, b) => (a < b ? a : b));
+  const out = [];
+  let [a, m] = min.split('-').map(Number);
+  for (let guard = 0; guard < 240; guard++) {
+    const chave = a + '-' + String(m).padStart(2, '0');
+    if (chave > atual) break;
+    out.push(chave);
+    m++; if (m > 12) { m = 1; a++; }
+  }
+  return out.reverse();
+}
+
+// Entregas de um mês, pagas e a receber juntas, na ordem em que aconteceram.
+function fatLevasDoMes(dados, mes) {
+  const d = dados || {};
+  return Object.values(d.aPagar || {}).concat(d.pagas || [])
+    .filter(p => cstFatMesDe(p.entregue_em) === mes)
+    .sort((a, b) => String(a.entregue_em).localeCompare(String(b.entregue_em)));
+}
+
+// O card inteiro. `cfg`:
+//   qual        'costura' | 'corte' (seletor de mês e funções de pagar)
+//   titulo, cor, campo ('costura'/'corte', o campo da Precificação que dá o valor por peça)
+//   d           linha do faturamento ({ aPagar, pagas })
+//   agora       { titulo, icone, cor, frase, vazio, itens }   o que está na etapa hoje
+//   vindo       { titulo, icone, cor, frase, vazio, itens, extra }   o que ainda chega
+//   previsao    { rotulo, valor }  a parte do "vindo" que entra na previsão do mês corrente
+//   pagar       nome da função (id, desfazer) da dona; pagarTudo idem, ou '' se não há
+function fatCardHTML(cfg) {
   const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c]));
   const dia = iso => iso ? new Date(iso).toLocaleDateString('pt-BR') : '—';
   const podePagar = !ehPerfilOficina();
+  const d = cfg.d;
+  const nLevas = n => `${n} ${n === 1 ? 'leva' : 'levas'}`;
+  const nPecas = n => `${n} ${n === 1 ? 'peça' : 'peças'}`;
 
-  // 1. NA MÁQUINA AGORA — o que ela recebe quando entregar
-  const agora = cstLevasDe('Em costura').map(l => ({
-    nome: l.nome, leva: l.leva, pecas: l.total, unit: cstValorPeca(l.key),
-  }));
-  agora.forEach(l => { l.valor = Math.round(l.pecas * l.unit * 100) / 100; });
-  const totalAgora = agora.reduce((s, l) => s + l.valor, 0);
-
-  // 2. VEM POR AÍ — corte e tecido em compra, na ordem em que chegam até ela
-  const vindo = ['Em corte', 'Comprando tecido'].flatMap(st =>
-    cstLevasDe(st).map(l => ({
-      nome: l.nome, leva: l.leva, etapa: st, pecas: l.total, unit: cstValorPeca(l.key),
-    })));
-  vindo.forEach(l => { l.valor = Math.round(l.pecas * l.unit * 100) / 100; });
-  const totalVindo  = vindo.reduce((s, l) => s + l.valor, 0);
-  const totalCorte  = vindo.filter(l => l.etapa === 'Em corte').reduce((s, l) => s + l.valor, 0);
-
-  // 3. ENTREGUE E AINDA NÃO PAGO / 4. JÁ PAGO
-  const d = cstFatTudo();
-  const aPagar = Object.values(d.aPagar).sort((a, b) => String(a.entregue_em).localeCompare(String(b.entregue_em)));
-  const pagas  = d.pagas.slice(0, 40);
-  const totalAPagar = aPagar.reduce((s, p) => s + (p.valor || 0), 0);
-
-  const semValor = agora.concat(vindo).filter(l => !l.unit).length
-                 + aPagar.filter(p => !p.unit).length;
+  const mesAtual = fatMesChave(new Date());
+  const sel      = fatMesSelecionado(cfg.qual);
+  const ehAtual  = sel === mesAtual;
+  const meses    = fatMesesDisponiveis(d, mesAtual);
+  const mes      = cstFatMes(d, sel);
+  const semana   = cstFatSemana(d);
+  const levasMes = fatLevasDoMes(d, sel);
+  const abertas  = Object.values(d.aPagar || {});
+  const totalAgora = cfg.agora.itens.reduce((s, l) => s + l.valor, 0);
+  const totalVindo = cfg.vindo.itens.reduce((s, l) => s + l.valor, 0);
+  // Fechamento do mês CORRENTE: o que já entrou (pago + a receber DESTE mês) mais o que
+  // ainda vira entrega antes do mês virar (na etapa + a previsão). É EXATAMENTE a soma das
+  // quatro linhas do bloco. O que ficou a receber de meses anteriores é daqueles meses, e
+  // aparece no bloco HOJE, para não entrar duas vezes.
+  const totalMes = Math.round((mes.pago.valor + mes.aberto.valor + totalAgora + cfg.previsao.valor) * 100) / 100;
+  const semValor = cfg.agora.itens.concat(cfg.vindo.itens).filter(l => !l.unit).length
+                 + abertas.filter(p => !p.unit).length;
 
   const linhas = (arr, extra) => arr.map(l => `
     <div class="fat-lin">
       <div>
         <div class="fat-nome">${esc(l.nome)}${l.leva === 2 ? ' <span class="crt-selo">2ª LEVA</span>' : ''}</div>
-        <div class="fat-sub">${l.pecas} ${l.pecas === 1 ? 'peça' : 'peças'} × ${finBRL(l.unit)}${l.unit ? '' : ' <span class="fat-alerta">sem valor na Precificação</span>'}${extra ? extra(l) : ''}</div>
+        <div class="fat-sub">${nPecas(l.pecas)} × ${finBRL(l.unit)}${l.unit ? '' : ' <span class="fat-alerta">sem valor na Precificação</span>'}${extra ? extra(l) : ''}</div>
       </div>
       <div class="fat-val">${finBRL(l.valor)}</div>
     </div>`).join('');
 
+  // total === null não desenha o número ao lado do título
   const bloco = (cor, icone, titulo, total, frase, corpo) => `
     <div class="fat-bloco" style="border-color:${cor}">
       <div class="fat-hd">
         <span class="fat-tit" style="color:${cor}"><i class="ti ${icone}"></i> ${titulo}</span>
-        <span class="fat-tot" style="color:${cor}">${finBRL(total)}</span>
+        ${total === null ? '' : `<span class="fat-tot" style="color:${cor}">${finBRL(total)}</span>`}
       </div>
-      <div class="aviso-txt">${frase}</div>
+      ${frase ? `<div class="aviso-txt">${frase}</div>` : ''}
       ${corpo}
     </div>`;
 
-  // 0. O MÊS DELA — primeiro bloco do card: é a pergunta que ela faz, e as levas soltas dos
-  // blocos seguintes não fecham conta nenhuma. Mês anterior aparece na frase para a virada
-  // do mês não deixar a tela vazia justo quando ela vai conferir o que fechou.
-  const hoje    = new Date();
-  const mesAtual = hoje.getFullYear() + '-' + String(hoje.getMonth() + 1).padStart(2, '0');
-  const mesAnt   = new Date(hoje.getFullYear(), hoje.getMonth() - 1, 1);
-  const chaveAnt = mesAnt.getFullYear() + '-' + String(mesAnt.getMonth() + 1).padStart(2, '0');
-  const mes    = cstFatMes(d, mesAtual);
-  const antMes = cstFatMes(d, chaveAnt);
-  const semana = cstFatSemana(d);
-  // Tudo que ainda vira dinheiro para ela: entregue e não pago + na máquina + vem por aí
-  const totalPrevisto = Math.round((mes.aReceber.valor + totalAgora + totalVindo) * 100) / 100;
-  // Como o mês deve fechar — e é EXATAMENTE a soma das quatro linhas do resumo (pago no mês
-  // + tudo a receber + na máquina + em corte). O tecido em compra fica de fora: não vira
-  // entrega até o mês virar. Somar o "entregue no mês" inteiro aqui contaria o a receber
-  // duas vezes, porque ele já está dentro dele.
-  const totalMes = Math.round((mes.pago.valor + mes.aReceber.valor + totalAgora + totalCorte) * 100) / 100;
   const linMes = (nome, sub, valor, forte) => `
     <div class="fat-lin">
       <div>
@@ -6472,122 +6526,133 @@ function renderFaturamento() {
       </div>
       <div class="fat-val"${forte ? ' style="font-size:15px"' : ''}>${finBRL(valor)}</div>
     </div>`;
-  const nLevas = n => `${n} ${n === 1 ? 'leva' : 'levas'}`;
-  const blocoMes = bloco('#0f766e', 'ti-calendar-dollar',
-    'FATURAMENTO DE ' + cstFatMesLabel(mesAtual).toUpperCase(), mes.entregue.valor,
+
+  // 1. SELETOR DE MÊS (rótulo com inicial maiúscula: "Setembro de 2026")
+  const capMes = m => { const t = cstFatMesLabel(m); return t.charAt(0).toUpperCase() + t.slice(1); };
+  const seletor = `
+    <div class="fat-mes-sel">
+      <button type="button" class="btn-outline" onclick="fatMudarMes('${cfg.qual}', -1)"
+        ${meses.indexOf(sel) >= meses.length - 1 ? 'disabled' : ''} title="mês anterior"><i class="ti ti-chevron-left"></i></button>
+      <select onchange="fatEscolherMes('${cfg.qual}', this.value)" aria-label="mês do faturamento">
+        ${meses.map(m => `<option value="${m}"${m === sel ? ' selected' : ''}>${capMes(m)}${m === mesAtual ? ' (atual)' : ''}</option>`).join('')}
+      </select>
+      <button type="button" class="btn-outline" onclick="fatMudarMes('${cfg.qual}', 1)"
+        ${ehAtual ? 'disabled' : ''} title="mês seguinte"><i class="ti ti-chevron-right"></i></button>
+    </div>`;
+
+  // 2. O MÊS ESCOLHIDO
+  const blocoMes = bloco(cfg.cor, 'ti-calendar-dollar', cstFatMesLabel(sel).toUpperCase(), mes.entregue.valor,
     mes.entregue.levas
-      ? `Entregue neste mês: ${nLevas(mes.entregue.levas)} · ${mes.entregue.pecas} ${mes.entregue.pecas === 1 ? 'peça' : 'peças'}.`
-      : 'Nenhuma leva entregue neste mês ainda.',
-    (mes.entregue.levas
-      ? linMes('Já pago', nLevas(mes.pago.levas), mes.pago.valor)
-        + linMes('Entregue e ainda não pago', nLevas(mes.aberto.levas), mes.aberto.valor)
-      : '')
-    + linMes('Entregue essa semana', semana.aReceber.levas
-        ? nLevas(semana.aReceber.levas) + ' desde segunda, a receber no próximo acerto'
-        : 'nada entregue desde segunda', semana.aReceber.valor)
-    + (mes.atrasado.valor
-      ? linMes('De meses anteriores', nLevas(mes.atrasado.levas) + ' entregues antes deste mês, ainda sem pagamento', mes.atrasado.valor)
-      : '')
-    + linMes('TOTAL A RECEBER', mes.aReceber.levas ? nLevas(mes.aReceber.levas) + ' esperando pagamento' : 'tudo em dia 👍', mes.aReceber.valor, true)
-    // A conta que fecha a tela: o que ela já ganhou e ainda não recebeu MAIS o que está a
-    // caminho de virar dinheiro (na máquina + no corte + tecido em compra). É previsão — os
-    // dois últimos ainda dependem de a leva chegar e ser entregue —, e é por isso que a
-    // linha vem depois do "a receber", nunca no lugar dele.
-    + linMes('TOTAL QUE VAI ENTRAR', 'a receber + o que está na máquina + o que vem por aí', totalPrevisto, true)
-    // Fechamento previsto do mês: aqui o que já foi pago CONTA (é ganho do mês) e o tecido
-    // em compra não entra — dificilmente vira entrega ainda neste mês.
-    + linMes('TOTAL DO MÊS (previsto)', 'entregue no mês + na máquina + em corte', totalMes, true)
-    + (antMes.entregue.levas ? `<div class="fat-sub" style="margin-top:6px">
-         ${cstFatMesLabel(chaveAnt)}: entregue ${finBRL(antMes.entregue.valor)}${antMes.aberto.valor ? ` · falta receber ${finBRL(antMes.aberto.valor)}` : ' · tudo pago'}
-       </div>` : ''));
+      ? `Entregue em ${cstFatMesLabel(sel).replace(/ de \d{4}$/, '')}: ${nLevas(mes.entregue.levas)} · ${nPecas(mes.entregue.pecas)}.`
+      : (ehAtual ? 'Nenhuma leva entregue neste mês ainda.' : 'Nenhuma leva entregue neste mês.'),
+    linMes('Já pago', nLevas(mes.pago.levas), mes.pago.valor)
+    + linMes('Entregue e ainda não pago', mes.aberto.levas ? nLevas(mes.aberto.levas) + ' a receber' : 'nada pendente deste mês', mes.aberto.valor)
+    + (ehAtual
+      ? linMes(cfg.agora.rotulo, 'ainda não entregue', totalAgora)
+        + linMes(cfg.previsao.rotulo, 'previsão do que vai entrar', cfg.previsao.valor)
+        + linMes('TOTAL DO MÊS (previsto)', 'as quatro linhas acima somadas', totalMes, true)
+      : linMes('TOTAL DO MÊS', 'pago + a receber', mes.entregue.valor, true)));
 
-  const corpo = blocoMes +
-    bloco('#0891b2', 'ti-needle-thread', 'NA MÁQUINA AGORA', totalAgora,
-      'É o que está em costura hoje — vira a receber quando a leva for entregue.',
-      agora.length ? linhas(agora) : '<div class="fat-vazio">Nada em costura no momento.</div>')
-    + bloco('#dc2626', 'ti-cash', 'ENTREGUE — A RECEBER', totalAPagar,
-      'Levas que saíram da costura e ainda não foram pagas.',
-      (podePagar && aPagar.length > 1 ? `
-        <div class="fat-pagar-tudo">
-          <button class="btn-primary" onclick="cstFatPagarTudo()">
-            <i class="ti ti-checks"></i> Pagar todas — ${finBRL(totalAPagar)}
-          </button>
-          <span>acerto da semana inteiro de uma vez</span>
-        </div>` : '')
-      + (aPagar.length ? aPagar.map(p => `
-        <div class="fat-lin">
-          <div>
-            <div class="fat-nome">${esc(p.nome)}${p.leva === 2 ? ' <span class="crt-selo">2ª LEVA</span>' : ''}</div>
-            <div class="fat-sub">${p.pecas} ${p.pecas === 1 ? 'peça' : 'peças'} × ${finBRL(p.unit)} · entregue em ${dia(p.entregue_em)}</div>
-          </div>
-          <div class="fat-acao">
-            <span class="fat-val">${finBRL(p.valor)}</span>
-            ${podePagar ? `<button class="btn-outline" style="font-size:11px;padding:4px 9px" onclick="cstFatPagar('${esc(p.id)}')"><i class="ti ti-check"></i> pago</button>` : ''}
-          </div>
-        </div>`).join('') : '<div class="fat-vazio">Nada entregue esperando pagamento. 👍</div>'))
-    + bloco('#7C3AED', 'ti-scissors', 'VEM POR AÍ', totalVindo,
-      'O que está no corte e o tecido em compra, pelo valor de <b>costura</b> da peça — é a previsão do que ela vai receber, não o que se paga pelo corte.',
-      vindo.length ? linhas(vindo, l => ` · ${l.etapa === 'Em corte' ? 'no corte' : 'comprando tecido'}`)
-                   : '<div class="fat-vazio">Nada a caminho no momento.</div>')
-    + (pagas.length ? `
-      <div class="fat-bloco" style="border-color:#16a34a">
-        <div class="fat-hd">
-          <span class="fat-tit" style="color:#16a34a"><i class="ti ti-checkbox"></i> JÁ PAGO</span>
-          <span class="fat-tot" style="color:#16a34a">${finBRL(d.pagas.reduce((s, p) => s + (p.valor || 0), 0))}</span>
+  // 3. AS LEVAS DAQUELE MÊS, pagas e a receber na mesma lista
+  const blocoLevas = bloco(cfg.cor, 'ti-list-check', 'LEVAS ENTREGUES EM ' + cstFatMesLabel(sel).replace(/ de \d{4}$/, '').toUpperCase(), null,
+    levasMes.length ? 'Cada leva com a data da entrega e a situação do pagamento.' : '',
+    levasMes.length ? levasMes.map(p => `
+      <div class="fat-lin">
+        <div>
+          <div class="fat-nome">${esc(p.nome)}${p.leva === 2 ? ' <span class="crt-selo">2ª LEVA</span>' : ''}</div>
+          <div class="fat-sub">${nPecas(p.pecas)} × ${finBRL(p.unit)}${p.unit ? '' : ' <span class="fat-alerta">sem valor na Precificação</span>'} · entregue em ${dia(p.entregue_em)}
+            · ${p.pago_em ? `<span class="fat-pago">pago em ${dia(p.pago_em)}</span>` : '<span class="fat-alerta">a receber</span>'}</div>
         </div>
-        <div class="aviso-txt">Últimas levas quitadas.</div>
-        ${pagas.map(p => `
-          <div class="fat-lin">
-            <div>
-              <div class="fat-nome">${esc(p.nome)}${p.leva === 2 ? ' <span class="crt-selo">2ª LEVA</span>' : ''}</div>
-              <div class="fat-sub">${p.pecas} ${p.pecas === 1 ? 'peça' : 'peças'} · pago em ${dia(p.pago_em)}</div>
-            </div>
-            <div class="fat-acao">
-              <span class="fat-val">${finBRL(p.valor)}</span>
-              ${podePagar ? `<button class="btn-outline" style="font-size:11px;padding:4px 9px" onclick="cstFatPagar('${esc(p.id)}', true)" title="Marquei pago sem querer">desfazer</button>` : ''}
-            </div>
-          </div>`).join('')}
-      </div>` : '')
-    + (semValor ? `<div class="fat-aviso-cfg"><i class="ti ti-alert-triangle"></i>
-        ${semValor} ${semValor === 1 ? 'leva está' : 'levas estão'} com R$ 0 por peça — falta o valor de
-        <b>costura</b> desse modelo na Precificação. Enquanto isso, ${semValor === 1 ? 'ela não soma' : 'elas não somam'} nada aqui.</div>` : '');
+        <div class="fat-acao">
+          <span class="fat-val">${finBRL(p.valor)}</span>
+          ${podePagar ? (p.pago_em
+            ? `<button class="btn-outline" style="font-size:11px;padding:4px 9px" onclick="${cfg.pagar}('${esc(p.id)}', true)" title="Marquei pago sem querer">desfazer</button>`
+            : `<button class="btn-outline" style="font-size:11px;padding:4px 9px" onclick="${cfg.pagar}('${esc(p.id)}')"><i class="ti ti-check"></i> pago</button>`) : ''}
+        </div>
+      </div>`).join('') : '<div class="fat-vazio">Nenhuma leva entregue neste mês.</div>');
 
-  // Fechado, o card já responde tudo o que ela quer saber de relance, uma etapa por linha e
-  // o valor alinhado à direita — frase corrida obrigava a caçar o número no meio do texto.
-  // "Entregue e não pago" só aparece quando existe: zerado, era só um R$ 0,00 sobrando.
-  // ATENÇÃO ao rótulo "Em corte": o valor é o da COSTURA daquelas peças — previsão do que ela
-  // vai receber quando elas chegarem à máquina —, e NÃO o que se paga pelo corte. Sem o
-  // "previsão do que vai receber" escrito ali, a linha se lê como custo de corte.
-  // As cinco linhas são as que a costureira ditou (21/08): do que já é dela até o
-  // fechamento previsto do mês, na ordem em que ela pensa.
-  //
-  // ⚠️ POR QUE A PRIMEIRA LINHA MOSTRA SÓ O QUE JÁ FOI PAGO: ela soma as linhas de cima para
-  // conferir o total, e o "entregue no mês" contém o "entregue essa semana" — as duas juntas
-  // contavam o mesmo trabalho duas vezes (em 21/08: 4.881,70 já incluía os 2.622,00 a
-  // receber). Partindo o mês em PAGO + A RECEBER, as quatro primeiras linhas somam exatamente
-  // o total do mês, e nada some: o entregue do mês inteiro continua no bloco aberto.
-  const resumo = [
-    ['Já entregue e pago em ' + cstFatMesLabel(mesAtual).replace(/ de \d{4}$/, ''),
-     `${mes.entregue.pecas} ${mes.entregue.pecas === 1 ? 'peça' : 'peças'} entregues no mês`, mes.pago.valor],
-    ['Entregue essa semana',
-     'a receber' + (semana.antes.valor ? ` · sendo ${finBRL(semana.aReceber.valor)} desta semana` : ''),
-     mes.aReceber.valor],
-    ['Na máquina agora', 'ainda não entregue', totalAgora],
-    ['Em corte', 'previsão do que vai entrar', totalCorte],
-    ['Total do mês', 'a soma das quatro linhas acima', totalMes],
-  ];
-  const frase = `<div class="fat-resumo">${resumo.map(([rot, obs, v]) => `
-    <div class="fat-resumo-lin">
-      <span>${rot}${obs ? ` <i>(${obs})</i>` : ''}</span>
-      <b>${finBRL(v)}</b>
-    </div>`).join('')}</div>`;
-  // Sem valor ao lado do título (pedido da Bárbara, 15/08): os dois números que importam já
-  // estão na frase logo abaixo, e repetir um deles em cima só enchia o topo.
-  // 21/08: o resumo saiu do <summary> e virou a primeira coisa do CORPO — fechado o card não
-  // mostra valor nenhum (pedido dela: dinheiro só aparece para quem abre). Na aba, a
-  // costureira e quem estiver por perto veem a tela; o número agora depende de um toque.
-  el.innerHTML = avisoCardHTML('ti-cash', 'FATURAMENTO DA COSTURA', '',
-    'O mês, o acerto da semana e o que vem por aí — toque para ver.', frase + corpo, '', '#0f766e');
+  // 4. HOJE: não depende do mês escolhido
+  const blocoHoje = bloco('#dc2626', 'ti-cash', 'A RECEBER HOJE', mes.aReceber.valor,
+    'Tudo que já foi entregue e ainda não foi pago, de qualquer mês.',
+    (podePagar && cfg.pagarTudo && abertas.length > 1 ? `
+      <div class="fat-pagar-tudo">
+        <button class="btn-primary" onclick="${cfg.pagarTudo}()">
+          <i class="ti ti-checks"></i> Pagar todas, ${finBRL(mes.aReceber.valor)}
+        </button>
+        <span>acerto da semana inteiro de uma vez</span>
+      </div>` : '')
+    + linMes('Entregue essa semana', semana.aReceber.levas
+        ? nLevas(semana.aReceber.levas) + ' desde segunda, entra no próximo acerto'
+        : 'nada entregue desde segunda', semana.aReceber.valor)
+    + (semana.antes.valor
+      ? linMes('De semanas anteriores', nLevas(semana.antes.levas) + ' entregues antes desta semana, ainda sem pagamento', semana.antes.valor)
+      : '')
+    + (mes.atrasado.valor && ehAtual
+      ? linMes('Sendo de meses anteriores', nLevas(mes.atrasado.levas) + ', troque o mês acima para ver quais', mes.atrasado.valor)
+      : '')
+    + (!abertas.length ? '<div class="fat-vazio">Nada esperando pagamento, tudo em dia. 👍</div>' : ''));
+
+  // 5. O QUE ESTÁ NA ETAPA e 6. O QUE VEM POR AÍ
+  const blocoAgora = bloco(cfg.agora.cor, cfg.agora.icone, cfg.agora.titulo, totalAgora, cfg.agora.frase,
+    cfg.agora.itens.length ? linhas(cfg.agora.itens) : `<div class="fat-vazio">${cfg.agora.vazio}</div>`);
+  const blocoVindo = bloco(cfg.vindo.cor, cfg.vindo.icone, cfg.vindo.titulo, totalVindo, cfg.vindo.frase,
+    cfg.vindo.itens.length ? linhas(cfg.vindo.itens, cfg.vindo.extra) : `<div class="fat-vazio">${cfg.vindo.vazio}</div>`);
+
+  const aviso = semValor ? `<div class="fat-aviso-cfg"><i class="ti ti-alert-triangle"></i>
+    ${semValor} ${semValor === 1 ? 'leva está' : 'levas estão'} com R$ 0 por peça, falta o valor de
+    <b>${cfg.campo}</b> desse modelo na Precificação. Enquanto isso ${semValor === 1 ? 'ela não soma' : 'elas não somam'} nada aqui.</div>` : '';
+
+  // Fechado, o card não mostra valor nenhum (pedido da Bárbara, 21/08): dinheiro só depois
+  // do toque. O que fica à mostra é só a frase, sem número.
+  return avisoCardHTML('ti-cash', cfg.titulo, '',
+    'Mês a mês: o que foi entregue, pago e a receber. Toque para ver.',
+    seletor + blocoMes + blocoLevas + blocoHoje + blocoAgora + blocoVindo + aviso, '', cfg.cor);
+}
+
+// Troca o HTML do card sem fechá-lo: quem acabou de marcar uma leva paga ou trocar o mês
+// está com o card aberto, e o <details> novo nasce fechado.
+function fatTrocarCard(el, html) {
+  const aberto = !!(el.querySelector('details.aviso-card') || {}).open;
+  el.innerHTML = html;
+  const det = el.querySelector('details.aviso-card');
+  if (det && aberto) det.open = true;
+}
+
+function renderFaturamento() {
+  const el = document.getElementById('faturamento-lista');
+  if (!el) return;
+
+  // NA MÁQUINA AGORA: o que ela recebe quando entregar
+  const agora = cstLevasDe('Em costura').map(l => ({
+    nome: l.nome, leva: l.leva, pecas: l.total, unit: cstValorPeca(l.key),
+  }));
+  agora.forEach(l => { l.valor = Math.round(l.pecas * l.unit * 100) / 100; });
+
+  // VEM POR AÍ: corte e tecido em compra, na ordem em que chegam até ela
+  const vindo = ['Em corte', 'Comprando tecido'].flatMap(st =>
+    cstLevasDe(st).map(l => ({
+      nome: l.nome, leva: l.leva, etapa: st, pecas: l.total, unit: cstValorPeca(l.key),
+    })));
+  vindo.forEach(l => { l.valor = Math.round(l.pecas * l.unit * 100) / 100; });
+  // Só o que está no corte entra na previsão do mês: o tecido em compra dificilmente vira
+  // entrega antes de o mês virar.
+  const totalCorte = vindo.filter(l => l.etapa === 'Em corte').reduce((s, l) => s + l.valor, 0);
+
+  fatTrocarCard(el, fatCardHTML({
+    qual: 'costura', titulo: 'FATURAMENTO DA COSTURA', cor: '#0f766e', campo: 'costura',
+    d: cstFatTudo(),
+    agora: { titulo: 'NA MÁQUINA AGORA', rotulo: 'Na máquina agora', icone: 'ti-needle-thread', cor: '#0891b2',
+             frase: 'É o que está em costura hoje, vira a receber quando a leva for entregue.',
+             vazio: 'Nada em costura no momento.', itens: agora },
+    vindo: { titulo: 'VEM POR AÍ', icone: 'ti-scissors', cor: '#7C3AED',
+             frase: 'O que está no corte e o tecido em compra, pelo valor de <b>costura</b> da peça: é a previsão do que ela vai receber, não o que se paga pelo corte.',
+             vazio: 'Nada a caminho no momento.', itens: vindo,
+             extra: l => ` · ${l.etapa === 'Em corte' ? 'no corte' : 'comprando tecido'}` },
+    // ATENÇÃO: o valor é o da COSTURA daquelas peças, previsão do que ela vai receber quando
+    // chegarem à máquina, e NÃO o que se paga pelo corte.
+    previsao: { rotulo: 'Em corte', valor: totalCorte },
+    pagar: 'cstFatPagar', pagarTudo: 'cstFatPagarTudo',
+  }));
 }
 
 // ─── AVIAMENTOS A COMPRAR ─────────────────────────────────────────────────────
@@ -6934,17 +6999,13 @@ async function crtFatPagar(id, desfazer) {
 function renderFaturamentoCorte() {
   const el = document.getElementById('corte-faturamento');
   if (!el) return;
-  const esc = x => String(x).replace(/[&<>"]/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c]));
-  const dia = iso => iso ? new Date(iso).toLocaleDateString('pt-BR') : '—';
-  const podePagar = !ehPerfilOficina();
 
   const agora = cstLevasDe('Em corte').map(l => ({
     nome: l.nome, leva: l.leva, pecas: l.total, unit: crtValorPeca(l.key),
   }));
   agora.forEach(l => { l.valor = Math.round(l.pecas * l.unit * 100) / 100; });
-  const totalAgora = agora.reduce((a, l) => a + l.valor, 0);
 
-  // "Vem por aí", para o CORTE, é só o tecido em compra — o que está em costura já passou
+  // "Vem por aí", para o CORTE, é só o tecido em compra: o que está em costura já passou
   // pela mesa dele e não volta.
   const vindo = cstLevasDe('Comprando tecido').map(l => ({
     nome: l.nome, leva: l.leva, pecas: l.total, unit: crtValorPeca(l.key),
@@ -6952,139 +7013,20 @@ function renderFaturamentoCorte() {
   vindo.forEach(l => { l.valor = Math.round(l.pecas * l.unit * 100) / 100; });
   const totalVindo = vindo.reduce((a, l) => a + l.valor, 0);
 
-  const d = crtFatTudo();
-  const aPagar = Object.values(d.aPagar).sort((a, b) => String(a.entregue_em).localeCompare(String(b.entregue_em)));
-  const pagas = d.pagas.slice(0, 40);
-  const totalAPagar = aPagar.reduce((a, p) => a + (p.valor || 0), 0);
-  const semValor = agora.concat(vindo).filter(l => !l.unit).length + aPagar.filter(p => !p.unit).length;
-
-  const linhas = arr => arr.map(l => `
-    <div class="fat-lin">
-      <div>
-        <div class="fat-nome">${esc(l.nome)}${l.leva === 2 ? ' <span class="crt-selo">2ª LEVA</span>' : ''}</div>
-        <div class="fat-sub">${l.pecas} ${l.pecas === 1 ? 'peça' : 'peças'} × ${finBRL(l.unit)}${l.unit ? '' : ' <span class="fat-alerta">sem valor na Precificação</span>'}</div>
-      </div>
-      <div class="fat-val">${finBRL(l.valor)}</div>
-    </div>`).join('');
-
-  const bloco = (cor, icone, titulo, total, frase, corpoBloco) => `
-    <div class="fat-bloco" style="border-color:${cor}">
-      <div class="fat-hd">
-        <span class="fat-tit" style="color:${cor}"><i class="ti ${icone}"></i> ${titulo}</span>
-        <span class="fat-tot" style="color:${cor}">${finBRL(total)}</span>
-      </div>
-      <div class="aviso-txt">${frase}</div>
-      ${corpoBloco}
-    </div>`;
-
-  // 0. O MÊS DELE — mesmo bloco da aba COSTURA (21/08), com os rótulos do corte. As funções
-  // do mês e da semana são as mesmas (cstFatMes/cstFatSemana): a linha do corte tem o mesmo
-  // formato, então conta de dinheiro corrigida vale para os dois de uma vez.
-  const hoje     = new Date();
-  const mesAtual = hoje.getFullYear() + '-' + String(hoje.getMonth() + 1).padStart(2, '0');
-  const mesAnt   = new Date(hoje.getFullYear(), hoje.getMonth() - 1, 1);
-  const chaveAnt = mesAnt.getFullYear() + '-' + String(mesAnt.getMonth() + 1).padStart(2, '0');
-  const mes    = cstFatMes(d, mesAtual);
-  const antMes = cstFatMes(d, chaveAnt);
-  const semana = cstFatSemana(d);
-  const totalPrevisto = Math.round((mes.aReceber.valor + totalAgora + totalVindo) * 100) / 100;
-  // Igual ao da costura: é EXATAMENTE a soma das quatro linhas do resumo. Somar o "entregue
-  // no mês" inteiro contaria o a receber duas vezes — ele já está dentro dele.
-  const totalMes      = Math.round((mes.pago.valor + mes.aReceber.valor + totalAgora + totalVindo) * 100) / 100;
-  const linMes = (nome, sub, valor, forte) => `
-    <div class="fat-lin">
-      <div>
-        <div class="fat-nome"${forte ? ' style="font-weight:800"' : ''}>${nome}</div>
-        ${sub ? `<div class="fat-sub">${sub}</div>` : ''}
-      </div>
-      <div class="fat-val"${forte ? ' style="font-size:15px"' : ''}>${finBRL(valor)}</div>
-    </div>`;
-  const nLevas = n => `${n} ${n === 1 ? 'leva' : 'levas'}`;
-  const blocoMes = bloco('#0f766e', 'ti-calendar-dollar',
-    'FATURAMENTO DE ' + cstFatMesLabel(mesAtual).toUpperCase(), mes.entregue.valor,
-    mes.entregue.levas
-      ? `Entregue neste mês: ${nLevas(mes.entregue.levas)} · ${mes.entregue.pecas} ${mes.entregue.pecas === 1 ? 'peça' : 'peças'}.`
-      : 'Nenhuma leva entregue neste mês ainda.',
-    (mes.entregue.levas
-      ? linMes('Já pago', nLevas(mes.pago.levas), mes.pago.valor)
-        + linMes('Entregue e ainda não pago', nLevas(mes.aberto.levas), mes.aberto.valor)
-      : '')
-    + linMes('Entregue essa semana', semana.aReceber.levas
-        ? nLevas(semana.aReceber.levas) + ' desde segunda, a receber no próximo acerto'
-        : 'nada entregue desde segunda', semana.aReceber.valor)
-    + (mes.atrasado.valor
-      ? linMes('De meses anteriores', nLevas(mes.atrasado.levas) + ' entregues antes deste mês, ainda sem pagamento', mes.atrasado.valor)
-      : '')
-    + linMes('TOTAL A RECEBER', mes.aReceber.levas ? nLevas(mes.aReceber.levas) + ' esperando pagamento' : 'tudo em dia 👍', mes.aReceber.valor, true)
-    + linMes('TOTAL QUE VAI ENTRAR', 'a receber + o que está na mesa + o tecido em compra', totalPrevisto, true)
-    + linMes('TOTAL DO MÊS (previsto)', 'entregue no mês + na mesa + tecido em compra', totalMes, true)
-    + (antMes.entregue.levas ? `<div class="fat-sub" style="margin-top:6px">
-         ${cstFatMesLabel(chaveAnt)}: entregue ${finBRL(antMes.entregue.valor)}${antMes.aberto.valor ? ` · falta receber ${finBRL(antMes.aberto.valor)}` : ' · tudo pago'}
-       </div>` : ''));
-
-  const corpo = blocoMes +
-    bloco('#7C3AED', 'ti-scissors', 'NA MESA AGORA', totalAgora,
-      'É o que está em corte hoje — vira a receber quando a leva sair da mesa.',
-      agora.length ? linhas(agora) : '<div class="fat-vazio">Nada em corte no momento.</div>')
-    + bloco('#dc2626', 'ti-cash', 'ENTREGUE — A RECEBER', totalAPagar,
-      'Levas que saíram do corte e ainda não foram pagas.',
-      aPagar.length ? aPagar.map(p => `
-        <div class="fat-lin">
-          <div>
-            <div class="fat-nome">${esc(p.nome)}${p.leva === 2 ? ' <span class="crt-selo">2ª LEVA</span>' : ''}</div>
-            <div class="fat-sub">${p.pecas} ${p.pecas === 1 ? 'peça' : 'peças'} × ${finBRL(p.unit)} · entregue em ${dia(p.entregue_em)}</div>
-          </div>
-          <div class="fat-acao">
-            <span class="fat-val">${finBRL(p.valor)}</span>
-            ${podePagar ? `<button class="btn-outline" style="font-size:11px;padding:4px 9px" onclick="crtFatPagar('${esc(p.id)}')"><i class="ti ti-check"></i> pago</button>` : ''}
-          </div>
-        </div>`).join('') : '<div class="fat-vazio">Nada entregue esperando pagamento.</div>')
-    + bloco('#C4A882', 'ti-shopping-cart', 'VEM POR AÍ', totalVindo,
-      'Tecido em compra, pelo valor de <b>corte</b> da peça — previsão do que ele recebe quando chegar à mesa.',
-      vindo.length ? linhas(vindo) : '<div class="fat-vazio">Nada a caminho no momento.</div>')
-    + (pagas.length ? `
-      <div class="fat-bloco" style="border-color:#16a34a">
-        <div class="fat-hd">
-          <span class="fat-tit" style="color:#16a34a"><i class="ti ti-checkbox"></i> JÁ PAGO</span>
-          <span class="fat-tot" style="color:#16a34a">${finBRL(d.pagas.reduce((a, p) => a + (p.valor || 0), 0))}</span>
-        </div>
-        <div class="aviso-txt">Últimas levas quitadas.</div>
-        ${pagas.map(p => `
-          <div class="fat-lin">
-            <div>
-              <div class="fat-nome">${esc(p.nome)}${p.leva === 2 ? ' <span class="crt-selo">2ª LEVA</span>' : ''}</div>
-              <div class="fat-sub">${p.pecas} ${p.pecas === 1 ? 'peça' : 'peças'} · pago em ${dia(p.pago_em)}</div>
-            </div>
-            <div class="fat-acao">
-              <span class="fat-val">${finBRL(p.valor)}</span>
-              ${podePagar ? `<button class="btn-outline" style="font-size:11px;padding:4px 9px" onclick="crtFatPagar('${esc(p.id)}', true)" title="Marquei pago sem querer">desfazer</button>` : ''}
-            </div>
-          </div>`).join('')}
-      </div>` : '')
-    + (semValor ? `<div class="fat-aviso-cfg"><i class="ti ti-alert-triangle"></i>
-        ${semValor} ${semValor === 1 ? 'leva está' : 'levas estão'} com R$ 0 por peça — falta o valor de
-        <b>corte</b> desse modelo na Precificação.</div>` : '');
-
-  // As mesmas cinco linhas da aba COSTURA, com os rótulos do corte: o que vem por aí, aqui,
-  // é o tecido em compra — o que está em costura já passou pela mesa dele e não volta.
-  const resumo = [
-    ['Já entregue e pago em ' + cstFatMesLabel(mesAtual).replace(/ de \d{4}$/, ''),
-     `${mes.entregue.pecas} ${mes.entregue.pecas === 1 ? 'peça' : 'peças'} entregues no mês`, mes.pago.valor],
-    ['Entregue essa semana',
-     'a receber' + (semana.antes.valor ? ` · sendo ${finBRL(semana.aReceber.valor)} desta semana` : ''),
-     mes.aReceber.valor],
-    ['Na mesa agora', 'ainda não entregue', totalAgora],
-    ['Tecido em compra', 'previsão do que vai entrar', totalVindo],
-    ['Total do mês', 'a soma das quatro linhas acima', totalMes],
-  ];
-  const frase = `<div class="fat-resumo">${resumo.map(([rot, obs, v]) => `
-    <div class="fat-resumo-lin">
-      <span>${rot}${obs ? ` <i>(${obs})</i>` : ''}</span>
-      <b>${finBRL(v)}</b>
-    </div>`).join('')}</div>`;
-  // Mesmo desenho da costura (21/08): resumo só depois do toque, nada de valor no card fechado.
-  el.innerHTML = avisoCardHTML('ti-cash', 'FATURAMENTO DO CORTE', '',
-    'O mês, o acerto da semana e o que vem por aí — toque para ver.', frase + corpo, '', '#7C3AED');
+  // O mesmo card da aba COSTURA (fatCardHTML), com os rótulos do corte e o valor por peça do
+  // CORTE em todos os blocos. Sem "pagar todas": o acerto dele é leva a leva.
+  fatTrocarCard(el, fatCardHTML({
+    qual: 'corte', titulo: 'FATURAMENTO DO CORTE', cor: '#7C3AED', campo: 'corte',
+    d: crtFatTudo(),
+    agora: { titulo: 'NA MESA AGORA', rotulo: 'Na mesa agora', icone: 'ti-scissors', cor: '#7C3AED',
+             frase: 'É o que está em corte hoje, vira a receber quando a leva sair da mesa.',
+             vazio: 'Nada em corte no momento.', itens: agora },
+    vindo: { titulo: 'VEM POR AÍ', icone: 'ti-shopping-cart', cor: '#C4A882',
+             frase: 'Tecido em compra, pelo valor de <b>corte</b> da peça: previsão do que ele recebe quando chegar à mesa.',
+             vazio: 'Nada a caminho no momento.', itens: vindo },
+    previsao: { rotulo: 'Tecido em compra', valor: totalVindo },
+    pagar: 'crtFatPagar', pagarTudo: '',
+  }));
 }
 
 // ─── O QUE FOI REALMENTE CORTADO ─────────────────────────────────────────────

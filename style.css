@@ -685,6 +685,12 @@ input[type=number].ci:focus {
 .fat-pagar-tudo span { font-size: 11px; color: var(--text-ter); }
 .fat-vazio { font-size: 13px; color: var(--text-ter); padding: 8px 0 2px; }
 .fat-alerta { color: #dc2626; font-weight: 700; }
+.fat-pago { color: #16a34a; font-weight: 700; }
+/* Seletor de mês do card do faturamento: ‹ [mês] › */
+.fat-mes-sel { display: flex; align-items: center; gap: 8px; margin: 10px 0 4px; }
+.fat-mes-sel select { flex: 1; min-width: 0; font-size: 14px; font-weight: 700; padding: 8px 10px; }
+.fat-mes-sel .btn-outline { padding: 7px 10px; line-height: 1; }
+.fat-mes-sel .btn-outline:disabled { opacity: .35; cursor: default; box-shadow: none; }
 /* Modelo sem valor de costura na Precificação soma zero — o aviso existe para o total nunca
    parecer certo estando incompleto. */
 .fat-aviso-cfg {

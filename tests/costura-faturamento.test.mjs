@@ -87,9 +87,10 @@ const fnValor = /function cstValorPeca\(key\) \{[\s\S]*?\n\}/.exec(main)[0];
 ok('cstValorPeca lê o campo costura', fnValor.includes('c.costura'), true);
 ok('e nunca o campo corte (viraria o que se paga ao cortador)', /c\.corte/.test(fnValor), false);
 ok('a tela avisa que o valor do corte é previsão do que ela recebe',
-   /\['Em corte', 'previsão do que vai entrar', totalCorte\]/.test(main), true);
+   /previsao: \{ rotulo: 'Em corte', valor: totalCorte \}/.test(main)
+   && /linMes\(cfg\.previsao\.rotulo, 'previsão do que vai entrar', cfg\.previsao\.valor\)/.test(main), true);
 ok('e o bloco "vem por aí" diz de onde vem o número',
-   /pelo valor de <b>costura<\/b> da peça — é a previsão do que ela vai receber, não o que se paga pelo corte/.test(main), true);
+   /pelo valor de <b>costura<\/b> da peça: é a previsão do que ela vai receber, não o que se paga pelo corte/.test(main), true);
 const pc = { global: { custoMetro: 12 }, modelos: { 'saia-midi': { costura: 4.5, corte: 2, consumo: 1 }, 'blusa': { costura: 3 } } };
 ok('a peça em corte vale a COSTURA dela (4,50), não o corte (2,00)', F.flxCustoModelo(pc, 'saia-midi').costura, 4.5);
 ok('modelo sem valor cadastrado devolve 0 (a tela avisa)', F.flxCustoModelo(pc, 'nao-cadastrado').costura, 0);
@@ -112,25 +113,28 @@ ok('a linha do Supabase é própria, sem tabela nova', /const CST_FAT_KEY  = 'co
 console.log('\n8) Mora DENTRO da aba COSTURA, e não em aba própria');
 ok('renderCostura desenha o card do faturamento',
    /function renderCostura\(\)[\s\S]*?renderFaturamento\(\);/.test(main), true);
-ok('e o card é o mesmo "ver mais" das outras faixas',
-   /el\.innerHTML = avisoCardHTML\('ti-cash', 'FATURAMENTO DA COSTURA'/.test(main), true);
-ok('sem valor ao lado do título — os números vivem na frase de baixo',
-   /avisoCardHTML\('ti-cash', 'FATURAMENTO DA COSTURA', '',/.test(main), true);
+ok('e o card é o mesmo "ver mais" das outras faixas (fatCardHTML desenha um avisoCardHTML)',
+   /fatTrocarCard\(el, fatCardHTML\(\{\s*\r?\n\s*qual: 'costura', titulo: 'FATURAMENTO DA COSTURA'/.test(main)
+   && /return avisoCardHTML\('ti-cash', cfg\.titulo, '',/.test(main), true);
+ok('sem valor ao lado do título — os números vivem no corpo',
+   /return avisoCardHTML\('ti-cash', cfg\.titulo, '',/.test(main), true);
+ok('e a troca do HTML não fecha o card que a dona acabou de abrir',
+   /function fatTrocarCard\(el, html\) \{[\s\S]*?const aberto = !!\(el\.querySelector\('details\.aviso-card'\) \|\| \{\}\)\.open;[\s\S]*?if \(det && aberto\) det\.open = true;/.test(main), true);
 ok('e o selo do total nem é desenhado quando vem vazio',
    /\$\{tot \? `<span class="aviso-tot">\$\{tot\}<\/span>` : ''\}/.test(main), true);
 ok('não sobrou aba/rota própria de faturamento', /__faturamento__|abrirFaturamento/.test(main), false);
-// 21/08: o resumo saiu do card fechado — dinheiro só depois do toque (ver bloco 13).
-ok('o resumo tem "na máquina agora (ainda não entregue)" e "em corte"',
-   /\['Na máquina agora', 'ainda não entregue', totalAgora\][\s\S]{0,120}\['Em corte', 'previsão do que vai entrar', totalCorte\]/.test(main), true);
-// 21/08: o resumo passou a ser as cinco linhas que a costureira ditou — o "entregue e não
-// pago" saiu dele (o acerto que vem é a linha da semana; o total em aberto vive no bloco
-// TOTAL A RECEBER, aberto). Ver tests/costura-mes.test.mjs.
-ok('e abre pelo mês, fechando no total do mês',
-   /\['Já entregue e pago em ' \+ cstFatMesLabel[\s\S]{0,700}\['Total do mês', 'a soma das quatro linhas acima', totalMes\]/.test(main), true);
-ok('o total em aberto continua dito por extenso no bloco do mês',
-   /linMes\('TOTAL A RECEBER'/.test(main), true);
+// 14/09: o card ficou mês a mês (seletor no topo). O bloco do mês corrente tem "na máquina
+// agora (ainda não entregue)" e "em corte (previsão)" e fecha no total do mês. Ver
+// tests/costura-mes.test.mjs.
+ok('o bloco do mês tem "na máquina agora (ainda não entregue)" e a previsão do corte',
+   /linMes\(cfg\.agora\.rotulo, 'ainda não entregue', totalAgora\)[\s\S]{0,120}linMes\(cfg\.previsao\.rotulo, 'previsão do que vai entrar', cfg\.previsao\.valor\)/.test(main)
+   && /rotulo: 'Na máquina agora'/.test(main), true);
+ok('e fecha no total do mês',
+   /linMes\('TOTAL DO MÊS \(previsto\)', 'as quatro linhas acima somadas', totalMes, true\)/.test(main), true);
+ok('o total em aberto de qualquer mês vive no bloco HOJE',
+   /bloco\('#dc2626', 'ti-cash', 'A RECEBER HOJE', mes\.aReceber\.valor,/.test(main), true);
 ok('o valor do corte é só do corte (o tecido em compra não entra nele)',
-   /const totalCorte  = vindo\.filter\(l => l\.etapa === 'Em corte'\)/.test(main), true);
+   /const totalCorte = vindo\.filter\(l => l\.etapa === 'Em corte'\)/.test(main), true);
 const idx = readFileSync(join(raiz, 'index.html'), 'utf8');
 ok('o lugar dele no HTML fica logo abaixo do que vem por aí',
    idx.indexOf('id="costura-corte"') < idx.indexOf('id="faturamento-lista"')
@@ -191,11 +195,13 @@ ok('cada leva paga leva a data do pagamento', /itens\.forEach\(p => \{ p\.pago_e
 ok('a lista de pagas continua com teto', /slice\(0, CST_PAGAS_MAX\)/.test(tudo), true);
 ok('e o "a pagar" fica realmente vazio depois', /d\.aPagar = \{\};/.test(tudo), true);
 
-const cardFat = main.slice(main.indexOf('function renderFaturamento'), main.indexOf('\n}', main.indexOf('function renderFaturamento')));
-ok('o botao so aparece para quem pode pagar e com 2+ levas esperando',
-   /podePagar && aPagar\.length > 1/.test(cardFat), true);
+const cardFat = main.slice(main.indexOf('function fatCardHTML'), main.indexOf('\n}', main.indexOf('function fatCardHTML')));
+ok('o botao so aparece para quem pode pagar, onde existe o "pagar todas", e com 2+ levas esperando',
+   /podePagar && cfg\.pagarTudo && abertas\.length > 1/.test(cardFat), true);
+ok('a costura liga o botao e o corte nao',
+   /pagar: 'cstFatPagar', pagarTudo: 'cstFatPagarTudo'/.test(main) && /pagar: 'crtFatPagar', pagarTudo: ''/.test(main), true);
 ok('e mostra o valor do acerto no proprio botao',
-   /Pagar todas .{1,3} \$\{finBRL\(totalAPagar\)\}/.test(cardFat), true);
+   /Pagar todas, \$\{finBRL\(mes\.aReceber\.valor\)\}/.test(cardFat), true);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 21/08/2026 — ENTREGA FANTASMA. O retrato é montado do localStorage; quando ele fica
@@ -237,10 +243,10 @@ ok('e a do corte chama, sobre a base que ela mesma grava',
    /async function crtFatSincronizar\(\)[\s\S]*?const resgatou = crtFatResgatarCostura\(d0, agora2\);[\s\S]*?salvarNuvem\(CRT_FAT_KEY/.test(main), true);
 
 console.log('\n13) Fechado, o card não mostra valor nenhum (pedido da Bárbara, 21/08)');
-ok('o resumo entra no CORPO do card, não no <summary>',
-   /avisoCardHTML\('ti-cash', 'FATURAMENTO DA COSTURA', '',[\s\S]{0,90}toque para ver\.', frase \+ corpo/.test(main), true);
+ok('os blocos entram no CORPO do card, não no <summary>',
+   /avisoCardHTML\('ti-cash', cfg\.titulo, '',[\s\S]{0,120}Toque para ver\.',\s*\r?\n\s*seletor \+ blocoMes \+ blocoLevas \+ blocoHoje \+ blocoAgora \+ blocoVindo \+ aviso/.test(main), true);
 ok('e a frase que fica à mostra não tem número nenhum',
-   /'O mês, o acerto da semana e o que vem por aí — toque para ver\.'/.test(main), true);
+   /'Mês a mês: o que foi entregue, pago e a receber\. Toque para ver\.'/.test(main), true);
 
 console.log(falhas ? `\n✗ ${total - falhas}/${total} passaram` : `\n✓ ${total}/${total} passaram`);
 process.exit(falhas ? 1 : 0);

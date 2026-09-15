@@ -98,29 +98,24 @@ ok('o div existe no HTML', /id="corte-faturamento"/.test(idx), true);
 ok('acima do card das fichas',
    idx.indexOf('id="corte-faturamento"') < idx.indexOf('</i> FICHAS PARA CORTAR'), true);
 ok('renderCorte desenha o card', /renderFaturamentoCorte\(\); \/\//.test(main), true);
-ok('mesmo card "ver mais" das outras faixas',
-   /avisoCardHTML\('ti-cash', 'FATURAMENTO DO CORTE', '',/.test(main), true);
-ok('e, como o da costura, só mostra valor depois do toque (resumo no corpo, não no summary)',
-   /avisoCardHTML\('ti-cash', 'FATURAMENTO DO CORTE', '',[\s\S]{0,90}toque para ver\.', frase \+ corpo/.test(main), true);
+ok('mesmo card "ver mais" das outras faixas, desenhado pelo fatCardHTML da costura',
+   /fatTrocarCard\(el, fatCardHTML\(\{\s*\r?\n\s*qual: 'corte', titulo: 'FATURAMENTO DO CORTE', cor: '#7C3AED', campo: 'corte'/.test(main), true);
+ok('e, como o da costura, só mostra valor depois do toque (blocos no corpo, não no summary)',
+   /return avisoCardHTML\('ti-cash', cfg\.titulo, '',[\s\S]{0,120}Toque para ver\.',\s*\r?\n\s*seletor \+ blocoMes/.test(main), true);
 ok('congela junto com o da costura, nos mesmos pontos',
    (main.match(/crtFatSincronizar\(\)\.catch/g) || []).length,
    (main.match(/cstFatSincronizar\(\)\.catch/g) || []).length);
 
 console.log('\n7) O mês do cortador — mesmo formato da aba COSTURA (21/08/2026)');
 const rc = main.slice(main.indexOf('function renderFaturamentoCorte()'), main.indexOf('// ─── O QUE FOI REALMENTE CORTADO'));
-ok('usa as MESMAS funções de mês e semana da costura (conta corrigida vale para os dois)',
-   /cstFatMes\(d, mesAtual\)/.test(rc) && /cstFatSemana\(d\)/.test(rc), true);
-ok('o bloco do mês é o primeiro do card', /const corpo = blocoMes \+/.test(rc), true);
-ok('com total a receber, total que vai entrar e total do mês',
-   ["linMes('TOTAL A RECEBER'", "linMes('TOTAL QUE VAI ENTRAR'", "linMes('TOTAL DO MÊS (previsto)'"].every(t => rc.includes(t)), true);
-const resumoCorte = rc.slice(rc.indexOf('const resumo = ['), rc.indexOf('const frase ='));
-const rotCorte = ["['Já entregue e pago em '", "['Entregue essa semana'", "['Na mesa agora'", "['Tecido em compra'", "['Total do mês'"];
-ok('as cinco linhas do resumo, com os rótulos do corte', rotCorte.filter(t => resumoCorte.includes(t)).length, 5);
-ok('nesta ordem', rotCorte.map(t => resumoCorte.indexOf(t)).every((v, i, a) => i === 0 || v > a[i - 1]), true);
-ok('e nada mais no meio', (resumoCorte.match(/\['/g) || []).length, 5);
-ok('a primeira linha é só o já PAGO e o total do mês é a soma exata das quatro (igual à costura)',
-   /mes\.pago\.valor\]/.test(resumoCorte)
-   && /const totalMes      = Math\.round\(\(mes\.pago\.valor \+ mes\.aReceber\.valor \+ totalAgora \+ totalVindo\) \* 100\) \/ 100;/.test(rc), true);
+// 14/09: o card é o MESMO da costura (fatCardHTML), mês a mês. O corte só passa os rótulos
+// dele e o valor por peça do corte; a conta do mês, da semana e do seletor é uma só.
+ok('não tem conta própria de mês nem de semana (é tudo do fatCardHTML)',
+   /cstFatMes\(|cstFatSemana\(|const resumo = \[/.test(rc), false);
+ok('os rótulos do corte: na mesa agora e tecido em compra como previsão',
+   /rotulo: 'Na mesa agora'/.test(rc) && /previsao: \{ rotulo: 'Tecido em compra', valor: totalVindo \}/.test(rc), true);
+ok('e o card compartilhado fecha o mês corrente na soma exata das quatro linhas (pago + a receber do mês + na etapa + previsão)',
+   /const totalMes = Math\.round\(\(mes\.pago\.valor \+ mes\.aberto\.valor \+ totalAgora \+ cfg\.previsao\.valor\) \* 100\) \/ 100;/.test(main), true);
 ok('"vem por aí" do corte é o TECIDO EM COMPRA, não o que está em costura',
    /const vindo = cstLevasDe\('Comprando tecido'\)/.test(rc), true);
 ok('e o valor por peça continua sendo o do CORTE em todos eles',

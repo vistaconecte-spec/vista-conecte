@@ -28,8 +28,8 @@ function extrair(nome) {
   const fim = main.indexOf('\n}', i);
   return main.slice(i, fim + 2);
 }
-const nomes = ['cstFatMesDe', 'cstFatMes', 'cstFatMesLabel', 'cstFatInicioSemana', 'cstFatSemana'];
-const { cstFatMesDe, cstFatMes, cstFatMesLabel, cstFatInicioSemana, cstFatSemana } =
+const nomes = ['cstFatMesDe', 'cstFatMes', 'cstFatMesLabel', 'cstFatInicioSemana', 'cstFatSemana', 'fatMesesDisponiveis', 'fatLevasDoMes'];
+const { cstFatMesDe, cstFatMes, cstFatMesLabel, cstFatInicioSemana, cstFatSemana, fatMesesDisponiveis, fatLevasDoMes } =
   new Function(nomes.map(extrair).join('\n') + `; return { ${nomes.join(', ')} };`)();
 
 let falhas = 0, total = 0;
@@ -104,40 +104,48 @@ ok('em levas', sem.aReceber.levas, 2);
 ok('o que ficou de antes sem pagamento aparece separado', sem.antes.valor, 40);
 ok('e o entregue da semana conta também o que já foi pago', sem.entregue.valor, 100);
 
-console.log('\n6) Na tela');
-const r = main.slice(main.indexOf('function renderFaturamento()'), main.indexOf('// ─── AVIAMENTOS A COMPRAR'));
-ok('o card monta o mês corrente e o anterior', /const mes    = cstFatMes\(d, mesAtual\);/.test(r) && /cstFatMes\(d, chaveAnt\)/.test(r), true);
-ok('o bloco do mês é o PRIMEIRO do card', /const corpo = blocoMes \+/.test(r), true);
-ok('com o total a receber em destaque', /linMes\('TOTAL A RECEBER'/.test(r), true);
-ok('e a linha do que vai entrar no total: a receber + na máquina + vem por aí',
-   /const totalPrevisto = Math\.round\(\(mes\.aReceber\.valor \+ totalAgora \+ totalVindo\) \* 100\) \/ 100;/.test(r), true);
-ok('ela vem DEPOIS do "a receber" — é previsão, não pode ocupar o lugar do que já é dela',
-   r.indexOf("linMes('TOTAL A RECEBER'") < r.indexOf("linMes('TOTAL QUE VAI ENTRAR'"), true);
-ok('e o bloco fecha com a previsão do mês (o que já foi pago conta; tecido em compra não)',
-   /const totalMes = Math\.round\(\(mes\.pago\.valor \+ mes\.aReceber\.valor \+ totalAgora \+ totalCorte\) \* 100\) \/ 100;/.test(r), true);
+console.log('\n6) O seletor de mês (14/09/2026)');
+// A Bárbara achou o card confuso: mês corrente, semana, a receber de qualquer mês e o mês
+// anterior tudo num bloco só. Agora se escolhe o mês, e cada mês mostra o seu.
+ok('os meses vão do mais antigo com entrega até o corrente, sem buraco, mais recente primeiro',
+   fatMesesDisponiveis(dados, '2026-09'), ['2026-09', '2026-08', '2026-07']);
+ok('sem entrega nenhuma, só o mês corrente', fatMesesDisponiveis({ aPagar: {}, pagas: [] }, '2026-09'), ['2026-09']);
+ok('entrega no futuro não abre mês adiante do corrente', fatMesesDisponiveis(dados, '2026-07'), ['2026-07']);
+ok('as levas do mês juntam pagas e a receber, na ordem da entrega',
+   fatLevasDoMes(dados, '2026-08').map(p => p.id), ['p1', 'a1', 'a2']);
+ok('e julho tem a paga em agosto (é entrega de julho) mais a que ficou aberta',
+   fatLevasDoMes(dados, '2026-07').map(p => p.id), ['a3', 'p2']);
 
-console.log('\n7) As cinco linhas do resumo fechado, na ordem que ela pediu');
-const bloco5 = r.slice(r.indexOf('const resumo = ['), r.indexOf('const frase ='));
-const rotulos = ["['Já entregue e pago em '", "['Entregue essa semana'", "['Na máquina agora'", "['Em corte'", "['Total do mês'"];
-ok('as cinco estão lá', rotulos.filter(t => bloco5.includes(t)).length, 5);
-ok('nesta ordem', rotulos.map(t => bloco5.indexOf(t)).every((v, i, a) => i === 0 || v > a[i - 1]), true);
-ok('e nenhuma outra linha se meteu no meio', (bloco5.match(/\['/g) || []).length, 5);
-ok('a linha da semana mostra tudo o que está a receber e diz quanto é desta semana',
-   /semana\.antes\.valor \? ` · sendo \$\{finBRL\(semana\.aReceber\.valor\)\} desta semana` : ''/.test(r), true);
-ok('"em corte" continua dizendo que é previsão — sem isso a linha se lê como custo de corte',
-   /\['Em corte', 'previsão do que vai entrar', totalCorte\]/.test(r), true);
-ok('e o total do mês fecha a lista', /\['Total do mês', 'a soma das quatro linhas acima', totalMes\]/.test(r), true);
-// 21/08, pedido da Bárbara: ela soma as linhas para conferir. O "entregue no mês" CONTÉM o
-// "entregue essa semana" (4.881,70 já incluía os 2.622,00 a receber), então a primeira linha
-// mostra só a parte já paga e as quatro somam exatamente o total.
-ok('a primeira linha é só o já PAGO — senão o a receber entraria duas vezes na soma',
-   /\['Já entregue e pago em ' \+ cstFatMesLabel\(mesAtual\)[\s\S]{0,160}mes\.pago\.valor\]/.test(r), true);
-ok('a segunda é tudo o que está a receber', /mes\.aReceber\.valor\],/.test(r), true);
-ok('e o total do mês é a soma exata dessas quatro',
-   /const totalMes = Math\.round\(\(mes\.pago\.valor \+ mes\.aReceber\.valor \+ totalAgora \+ totalCorte\) \* 100\) \/ 100;/.test(r), true);
-ok('o mês vem do relógio local, como a função', /hoje\.getFullYear\(\) \+ '-' \+ String\(hoje\.getMonth\(\) \+ 1\)/.test(r), true);
+console.log('\n7) Na tela: o card mês a mês');
+const r = main.slice(main.indexOf('function fatCardHTML('), main.indexOf('function renderFaturamento()'));
+ok('o seletor é a primeira coisa do corpo, seguido do bloco do mês, das levas do mês e do HOJE',
+   /seletor \+ blocoMes \+ blocoLevas \+ blocoHoje \+ blocoAgora \+ blocoVindo \+ aviso/.test(r), true);
+ok('com seta para trás, a lista dos meses e seta para a frente',
+   /fatMudarMes\('\$\{cfg\.qual\}', -1\)/.test(r) && /fatEscolherMes\('\$\{cfg\.qual\}', this\.value\)/.test(r) && /fatMudarMes\('\$\{cfg\.qual\}', 1\)/.test(r), true);
+ok('a seta para a frente trava no mês corrente', /\$\{ehAtual \? 'disabled' : ''\} title="mês seguinte"/.test(r), true);
+ok('o mês escolhido nunca é futuro',
+   /function fatMesSelecionado\(qual\) \{[\s\S]*?return \(sel && sel <= hoje\) \? sel : hoje;/.test(main), true);
+ok('o mês vem do relógio local, como a função', /function fatMesChave\(d\) \{\s*\r?\n\s*return d\.getFullYear\(\) \+ '-' \+ String\(d\.getMonth\(\) \+ 1\)/.test(main), true);
+ok('o bloco do mês abre com pago e a receber DO MÊS',
+   /linMes\('Já pago', nLevas\(mes\.pago\.levas\), mes\.pago\.valor\)[\s\S]{0,40}linMes\('Entregue e ainda não pago'[\s\S]{0,120}mes\.aberto\.valor\)/.test(r), true);
+ok('no mês corrente, segue com o que está na etapa, a previsão e o total (as quatro somadas)',
+   /ehAtual\s*\r?\n\s*\? linMes\(cfg\.agora\.rotulo, 'ainda não entregue', totalAgora\)\s*\r?\n\s*\+ linMes\(cfg\.previsao\.rotulo, 'previsão do que vai entrar', cfg\.previsao\.valor\)\s*\r?\n\s*\+ linMes\('TOTAL DO MÊS \(previsto\)', 'as quatro linhas acima somadas', totalMes, true\)/.test(r), true);
+ok('e o total do mês é a soma EXATA dessas quatro (o a receber de meses anteriores fica fora, senão entra duas vezes)',
+   /const totalMes = Math\.round\(\(mes\.pago\.valor \+ mes\.aberto\.valor \+ totalAgora \+ cfg\.previsao\.valor\) \* 100\) \/ 100;/.test(r), true);
+ok('num mês passado, o total é o entregue (pago + a receber), sem previsão',
+   /: linMes\('TOTAL DO MÊS', 'pago \+ a receber', mes\.entregue\.valor, true\)/.test(r), true);
+ok('as levas do mês são UMA lista, cada uma dizendo se está paga ou a receber',
+   /const levasMes = fatLevasDoMes\(d, sel\);/.test(r)
+   && /p\.pago_em \? `<span class="fat-pago">pago em \$\{dia\(p\.pago_em\)\}<\/span>` : '<span class="fat-alerta">a receber<\/span>'/.test(r), true);
+ok('com o botão certo ao lado: desfazer na paga, pago na aberta',
+   /p\.pago_em\s*\r?\n\s*\? `<button[^`]*onclick="\$\{cfg\.pagar\}\('\$\{esc\(p\.id\)\}', true\)"[^`]*desfazer<\/button>`\s*\r?\n\s*: `<button[^`]*onclick="\$\{cfg\.pagar\}\('\$\{esc\(p\.id\)\}'\)"[^`]*pago<\/button>`/.test(r), true);
+ok('o bloco HOJE mostra tudo a receber, de qualquer mês, com a semana do acerto',
+   /'A RECEBER HOJE', mes\.aReceber\.valor,/.test(r) && /linMes\('Entregue essa semana', semana\.aReceber\.levas/.test(r), true);
+ok('e avisa quanto disso é de meses anteriores, apontando o seletor',
+   /mes\.atrasado\.valor && ehAtual[\s\S]{0,40}linMes\('Sendo de meses anteriores'/.test(r), true);
 ok('a costureira vê tudo isso — o card inteiro só esconde BOTÃO dela (podePagar)',
    /const podePagar = !ehPerfilOficina\(\);/.test(r) && !/ehPerfilOficina\(\) \? '' : blocoMes/.test(r), true);
+ok('trocar o mês redesenha o card certo', /if \(qual === 'corte'\) renderFaturamentoCorte\(\); else renderFaturamento\(\);/.test(main), true);
 
 console.log(falhas ? `\n✗ ${total - falhas}/${total} passaram` : `\n✓ ${total}/${total} passaram`);
 process.exit(falhas ? 1 : 0);

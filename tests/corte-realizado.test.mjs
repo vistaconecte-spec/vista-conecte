@@ -76,7 +76,7 @@ ok('e o aparelho da oficina NÃO ganha esse atalho (a tela do modelo tem pedido 
 // número da leva é conversa de produção e no card só somava ruído (pedido dela, 29/08/2026).
 ok('o card não carimba mais o selo 2ª LEVA ao lado do nome', /crt-selo/.test(corte), false);
 ok('mas o selo continua onde tem consequência — no faturamento, cada leva é uma cobrança',
-   /crt-selo/.test(extrair('renderFaturamentoCorte')), true);
+   /crt-selo/.test(extrair('fatCardHTML')), true); // 14/09: o card do corte é desenhado pelo fatCardHTML
 
 console.log('\n1b) PILOTO ao lado do nome, e o botão de aprovar (29/08/2026)');
 // O selo de leva saiu daqui porque não muda o que ele faz; o de piloto fica porque muda
