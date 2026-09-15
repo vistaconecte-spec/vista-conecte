@@ -92,7 +92,7 @@ function montar({ salvo, statusDOM = '', status2DOM = '', tocou = false, temLeva
             subirModeloMesclado, _celulasTocadas, limparTocados } = ctx;
     let modeloAtual = 'calca-flare';
     let estEditado = false, prodEditado = false, prod2Editado = false, cfgEditado = true;
-    let statusTocado = ctx.tocou;
+    let statusTocado = ctx.tocou, coresTocadas = false;
     let saveTimer = null, _ultimoSaveTs = 0;
     ${fonte}
     return { salvarModelo, tocouDepois: () => statusTocado };
