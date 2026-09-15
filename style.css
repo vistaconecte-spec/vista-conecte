@@ -1376,14 +1376,9 @@ thead tr th:last-child { border-top-right-radius: 10px; border-bottom-right-radi
 }
 
 /* ── CARD TEMPO DE LIBERAÇÃO (painel) ──
-   Três números (7 dias, 30 dias, fila) e quatro colunas com as faixas de dias úteis dos
-   envios de 30 dias. No celular os três números empilham; as colunas cabem em qualquer largura. */
-.tl-tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 4px 0 12px; }
-.tl-tile { padding: 10px 12px; border-radius: 14px; background: rgba(79,70,229,0.06); border: 1px solid rgba(79,70,229,0.12); }
-.tl-tile .tl-label { font-size: 10px; font-weight: 600; color: var(--text-ter); letter-spacing: 0.06em; text-transform: uppercase; }
-.tl-tile .tl-val { font-size: 26px; font-weight: 700; line-height: 1.15; margin: 3px 0 1px; color: var(--text); }
-.tl-tile .tl-val small { font-size: 12px; font-weight: 600; color: var(--text-sec); margin-left: 4px; }
-.tl-tile .tl-sub { font-size: 11px; color: var(--text-sec); line-height: 1.4; }
+   Quatro colunas com as faixas de dias úteis dos envios de 30 dias; cabem em qualquer
+   largura. (Os três números do topo saíram em 15/09/2026.) */
+.tl-sub { font-size: 11px; color: var(--text-sec); line-height: 1.4; }
 .tl-titulo { font-size: 10px; font-weight: 600; color: var(--text-ter); letter-spacing: 0.06em; text-transform: uppercase; margin-bottom: 6px; }
 .tl-colunas { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; align-items: end; }
 .tl-col { display: flex; flex-direction: column; align-items: center; justify-content: flex-end; text-align: center; font-size: 11px; color: var(--text-sec); }
@@ -1392,7 +1387,6 @@ thead tr th:last-child { border-top-right-radius: 10px; border-bottom-right-radi
 .tl-col .tl-dia { margin-top: 6px; font-weight: 600; }
 .tl-col .tl-qtd { font-size: 10px; color: var(--text-ter); }
 @media (max-width: 768px) {
-  .tl-tiles { grid-template-columns: 1fr; }
   .tl-colunas { gap: 6px; }
   .tl-col .tl-dia { font-size: 10px; }
 }

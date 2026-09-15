@@ -112,7 +112,7 @@ console.log('\n5) A tela tem o card e o ciclo de 30 min');
   ok('renderDashboard repinta o card', /renderMiniCards\(totalPedidos\);\s*renderTempoLiberacao\(\);/.test(main), true);
   ok('lê na abertura e a cada 30 min', /carregarTempoLiberacao\(\);\s*setInterval\(carregarTempoLiberacao, TL_INTERVALO\)/.test(main) && /TL_INTERVALO = 30 \* 60 \* 1000/.test(main), true);
   ok('oficina e modelagem não chamam a API', /async function carregarTempoLiberacao\(\) \{\s*if \(ehPerfilDeUmaAba\(\)\) return;/.test(main), true);
-  ok('css do card existe', /\.tl-tiles/.test(css) && /\.tl-colunas/.test(css), true);
+  ok('css do card existe (colunas), e o dos tiles saiu', /\.tl-colunas/.test(css) && !/\.tl-tiles?/.test(css), true);
 
   // O desenho: roda tempoLiberacaoHTML com um resumo de mentira
   const i = main.indexOf('const tlNum ='), f = main.indexOf('function renderTempoLiberacao()');
@@ -123,9 +123,11 @@ console.log('\n5) A tela tem o card e o ciclo de 30 min');
     fila: { n: 93, media: 7.1, mais_antigo: { numero: '#8564', uteis: 41, corridos: 60 } },
     gerado_em: '2026-09-15T19:00:00Z',
   });
-  ok('média com vírgula', htmlCard.includes('7,4<small>dias úteis</small>'), true);
-  ok('janela sem envio mostra traço, não NaN', htmlCard.includes('—<small>dias úteis</small>') && !/NaN|null|undefined/.test(htmlCard), true);
-  ok('fila com o mais antigo', htmlCard.includes('mais antigo #8564 (41 dias úteis)'), true);
+  // Os três números do topo (7 dias, 30 dias, fila) saíram a pedido da Bárbara em 15/09/2026
+  ok('sem os tiles de 7 dias / 30 dias / fila', /tl-tile|Na fila agora|Últimos 7 dias|mais antigo #8564/.test(htmlCard), false);
+  ok('sem NaN/null/undefined no desenho', /NaN|null|undefined/.test(htmlCard), false);
+  ok('sem envio na janela avisa em vez de ficar vazio',
+     desenhar({ enviados: { d7: { n: 0 }, d30: { n: 0 } }, faixas: { ate2: 0, de3a5: 0, de6a10: 0, mais11: 0 }, fila: { n: 0 }, gerado_em: '2026-09-15T19:00:00Z' }).includes('nenhum envio nos últimos 30 dias'), true);
   ok('quatro colunas, uma por faixa', (htmlCard.match(/class="tl-col"/g) || []).length, 4);
   ok('a maior faixa é a coluna mais alta (80px) e a vazia fica no mínimo', htmlCard.includes('<b>50%</b><div class="tl-bar" style="height:80px') && htmlCard.includes('<b>0%</b><div class="tl-bar" style="height:4px'), true);
   ok('rodapé com nome da faixa e quantidade', htmlCard.includes('<div class="tl-dia">11 ou mais</div><div class="tl-qtd">2 pedidos</div>'), true);

@@ -7811,22 +7811,9 @@ const tlNum = v => v == null ? '—' : v.toLocaleString('pt-BR', { minimumFracti
 const tlPlural = (n, s, p) => `${n} ${n === 1 ? s : p}`;
 
 function tempoLiberacaoHTML(d) {
-  const e7 = d.enviados.d7, e30 = d.enviados.d30, fila = d.fila;
-  const tile = (label, val, unidade, sub) =>
-    `<div class="tl-tile"><div class="tl-label">${label}</div>` +
-    `<div class="tl-val">${val}<small>${unidade}</small></div><div class="tl-sub">${sub}</div></div>`;
-  const subEnv = e => e.n
-    ? `${tlPlural(e.n, 'pedido enviado', 'pedidos enviados')} · mediana ${tlNum(e.mediana)} · ${tlNum(e.corridos)} corridos`
-    : 'nenhum envio na janela';
-  const antigo = fila.mais_antigo
-    ? ` · mais antigo ${fila.mais_antigo.numero} (${tlPlural(fila.mais_antigo.uteis, 'dia útil', 'dias úteis')})`
-    : '';
-  let html = '<div class="tl-tiles">'
-    + tile('Últimos 7 dias', tlNum(e7.media), 'dias úteis', subEnv(e7))
-    + tile('Últimos 30 dias', tlNum(e30.media), 'dias úteis', subEnv(e30))
-    + tile('Na fila agora', fila.n, fila.n === 1 ? 'pedido pago' : 'pedidos pagos',
-        fila.n ? `esperando ${tlNum(fila.media)} dias úteis em média${antigo}` : 'nenhum pedido pago esperando')
-    + '</div>';
+  // Os três números do topo (7 dias, 30 dias, fila) saíram a pedido da Bárbara em
+  // 15/09/2026: o card é só o gráfico de colunas. O endpoint continua devolvendo tudo.
+  let html = '';
 
   // Distribuição dos enviados de 30 dias em colunas (a Bárbara pediu em 15/09/2026 que a
   // barra de faixas virasse gráfico e que o de semanas saísse). Cada coluna é uma faixa de
@@ -7848,6 +7835,8 @@ function tempoLiberacaoHTML(d) {
             + `<div class="tl-dia">${nome}</div><div class="tl-qtd">${tlPlural(n, 'pedido', 'pedidos')}</div></div>`;
         }).join('')
       + '</div>';
+  } else {
+    html += '<div class="tl-sub">nenhum envio nos últimos 30 dias</div>';
   }
   return html;
 }
