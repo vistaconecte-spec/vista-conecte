@@ -126,7 +126,8 @@ function redeFalsa({ travaConflito = false, pagarmeFalha = false } = {}) {
     const u = String(url); const m = opts.method || 'GET';
     chamadas.push(`${m} ${u.replace(/\?.*$/, '')}`);
     const R = (obj, status = 200) => new Response(JSON.stringify(obj), { status, headers: { 'Content-Type': 'application/json' } });
-    if (u.includes('/orders/7732224786541.json')) return R({ order: pedido() });
+    // criado há 3 h, senão o pipeline (que usa o relógio de verdade) recusa por "mais de 24h"
+    if (u.includes('/orders/7732224786541.json')) return R({ order: pedido({ created_at: new Date(Date.now() - 3 * 3600e3).toISOString() }) });
     if (u.includes('/orders/7732224786541/transactions.json')) return R({ transactions: [recusaMP, recusaMP] });
     if (u.includes('supabase.co/rest/v1/vc_modelos') && m === 'POST') return travaConflito ? new Response('dup', { status: 409 }) : new Response(null, { status: 201 });
     if (u.includes('supabase.co/rest/v1/vc_modelos') && m === 'PATCH') { chamadas.push('doc:' + JSON.parse(opts.body).dados.status); return new Response(null, { status: 204 }); }
@@ -176,7 +177,8 @@ const env = { SHOPIFY_STORE_DOMAIN: 'loja.myshopify.com', SHOPIFY_ADMIN_TOKEN: '
     const u = String(url); const m = opts.method || 'GET';
     chamadas.push(`${m} ${u.replace(/\?.*$/, '')}`);
     const R = (obj, status = 200) => new Response(JSON.stringify(obj), { status });
-    if (u.includes('/orders/7732224786541.json')) return R({ order: pedido() });
+    // criado há 3 h, senão o pipeline (que usa o relógio de verdade) recusa por "mais de 24h"
+    if (u.includes('/orders/7732224786541.json')) return R({ order: pedido({ created_at: new Date(Date.now() - 3 * 3600e3).toISOString() }) });
     if (u.includes('supabase.co') && m === 'GET') return R([{ dados: { pedido: '#9057', order_id: 7732224786541, erros: [] } }]);
     if (u.includes('supabase.co') && m === 'PATCH') { chamadas.push('doc:' + JSON.parse(opts.body).dados.status); return new Response(null, { status: 204 }); }
     if (u.includes('graphql.json')) { const b = JSON.parse(opts.body); if (b.query.includes('orderMarkAsPaid')) { chamadas.push('gql:markPaid'); return R({ data: { orderMarkAsPaid: { order: { id: 'x', displayFinancialStatus: 'PAID' }, userErrors: [] } } }); } chamadas.push('gql:tagsAdd ' + b.variables.tags.join(',')); return R({ data: { tagsAdd: { userErrors: [] } } }); }

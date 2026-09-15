@@ -303,8 +303,15 @@ async function fetchProcessados(store, token, desdeISO) {
     }
   }
   // Cancelado nunca dá baixa: a peça voltou (ou nem saiu) — subtrair aqui sumiria com estoque real.
-  return orders.filter(o => !o.cancelled_at);
+  // Só pedido PAGO entra na produção. Pedido com Pix vencido ou cartão barrado fica `pending`
+  // na Shopify e, antes disto (15/09/2026), contava como demanda até alguém cancelar à mão:
+  // em 90 dias foram 71 pendentes, 70 cancelados pela equipe só para tirá-los da lista.
+  // Agora o pedido pendente pode ficar aberto (o resgate do cartão barrado precisa dele
+  // aberto para o link ser pago e o `orderMarkAsPaid` funcionar) sem virar peça a cortar;
+  // quando é pago, entra sozinho. Reembolsado (`refunded`) também fica de fora.
+  return orders.filter(o => !o.cancelled_at && STATUS_PAGO_PRODUCAO.has(o.financial_status));
 }
+const STATUS_PAGO_PRODUCAO = new Set(['paid', 'partially_refunded']);
 
 /**
  * ITENS MONTADOS À MÃO NO PEDIDO.

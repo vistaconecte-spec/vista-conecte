@@ -214,5 +214,14 @@ ok('o conjunto distribui para as DUAS peças', CONJ_PECAS['conjunto-good'], ['sh
      ['Preto', 'Vermelho'].every(c => Array.isArray(MODELOS[k].aberto[c])), true);
 });
 
+// ── só pedido PAGO vira demanda de produção (15/09/2026) ─────────────────────
+// Pix vencido e cartão barrado deixam o pedido `pending` aberto na Shopify; antes ele contava
+// como peça a cortar até alguém cancelar à mão. Agora fica de fora até ser pago.
+console.log('\n📋 Produção só com pedido pago');
+ok('fetchAllOrders filtra cancelado E status financeiro',
+   /return orders\.filter\(o => !o\.cancelled_at && STATUS_PAGO_PRODUCAO\.has\(o\.financial_status\)\);/.test(src), true);
+ok('pago e parcialmente reembolsado contam; pending/refunded/voided não',
+   /STATUS_PAGO_PRODUCAO = new Set\(\['paid', 'partially_refunded'\]\)/.test(src), true);
+
 console.log(`\n${falhas === 0 ? '✅ TODOS OS TESTES PASSARAM' : '❌ ' + falhas + ' FALHA(S)'} — ${total - falhas}/${total}\n`);
 process.exit(falhas === 0 ? 0 : 1);
