@@ -4419,23 +4419,36 @@ function renderDashboard() {
       const det   = [];
       const l1ok  = ETAPAS_DUP.includes(saved.status), l2ok = ETAPAS_DUP.includes(saved.status2);
       if (!l1ok && !l2ok) continue;
-      let sobra = 0;
+      // A sobra é atribuída a uma leva: primeiro à que ainda compra tecido (é a que o botão
+      // consegue tirar), o resto à que já está em corte/costura. Sem isso a coluna "Leva"
+      // listava as duas etapas e parecia que a sobra estava na compra quando estava no corte
+      // (Bárbara, 16/09/2026: "por que consta item que está em comprando tecido?").
+      const c1 = saved.status === 'Comprando tecido', c2 = saved.status2 === 'Comprando tecido';
+      let sobra = 0, sobra1 = 0, sobra2 = 0;
       cores.forEach(cor => {
         const nrm = o => ((o || []).map(v => v || 0)).concat(new Array(szLen).fill(0)).slice(0, szLen);
         const ab = nrm(def.aberto[cor]), ev = nrm(saved.est && saved.est[cor]);
         const p1 = nrm(l1ok && saved.prod && saved.prod[cor]), p2 = nrm(l2ok && saved.prod2 && saved.prod2[cor]);
         const som = a => a.reduce((x,y) => x+y, 0);
         let s = 0;
-        if (tuD) {
-          s = Math.max(0, som(p1) + som(p2) - Math.max(0, som(ab) - (ev[0]||0)));
-        } else {
-          s = ab.reduce((acc,_,i) => acc + Math.max(0, (p1[i]+p2[i]) - Math.max(0, ab[i] - ev[i])), 0);
-        }
+        (tuD ? [0] : ab.map((_, i) => i)).forEach(i => {
+          const need = tuD ? Math.max(0, som(ab) - (ev[0]||0)) : Math.max(0, ab[i] - ev[i]);
+          const tem1 = tuD ? som(p1) : p1[i], tem2 = tuD ? som(p2) : p2[i];
+          let si = Math.max(0, tem1 + tem2 - need);
+          s += si;
+          // ordem: leva em compra primeiro (2ª, depois 1ª), depois as demais
+          for (const [ehCompra, n] of [[c2, 2], [c1, 1], [!c2, 2], [!c1, 1]]) {
+            if (!ehCompra || si <= 0) continue;
+            const cabe = Math.min(si, n === 1 ? tem1 : tem2);
+            if (n === 1) sobra1 += cabe; else sobra2 += cabe;
+            si -= cabe;
+          }
+        });
         if (s > 0) { sobra += s; det.push(`${cor} ${s}`); }
       });
       if (sobra > 0) {
-        const levas = [l1ok ? `${saved.status}${saved.status_at ? ' desde ' + dataCurta(saved.status_at) : ''}` : null,
-                       l2ok ? `2ª leva ${saved.status2}${saved.status2_at ? ' desde ' + dataCurta(saved.status2_at) : ''}` : null]
+        const levas = [sobra1 ? `${saved.status}${saved.status_at ? ' desde ' + dataCurta(saved.status_at) : ''} (${sobra1})` : null,
+                       sobra2 ? `2ª leva ${saved.status2}${saved.status2_at ? ' desde ' + dataCurta(saved.status2_at) : ''} (${sobra2})` : null]
           .filter(Boolean).join(' · ');
         dupList.push({ key, nome: def.nome, sobra, det: det.join(' · '), levas });
       }
@@ -4460,7 +4473,8 @@ function renderDashboard() {
       <div style="font-size:11px;color:var(--text-sec);margin-bottom:6px">
         Estas levas estão com mais peças do que os pedidos em aberto pedem (já descontado o estoque).
         A leva é a grade de quando foi mandada; o pedido que saiu, foi cancelado ou entrou no estoque
-        depois disso não tira a peça dela. Quanto mais velha a etapa, mais provável que seja isso.
+        depois disso não tira a peça dela. A coluna Leva diz em qual etapa a sobra está: o que está
+        em compra o botão tira; o que já está em corte ou costura é tecido cortado, vira estoque.
       </div>
       <table>
         <thead><tr>
