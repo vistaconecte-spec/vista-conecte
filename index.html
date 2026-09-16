@@ -244,7 +244,11 @@
         <div class="card" id="card-duplicado" style="border-left:3px solid #d97706;display:none">
           <div class="card-header">
             <div class="card-title" style="color:#d97706"><i class="ti ti-copy-off"></i> PRODUÇÃO ACIMA DO NECESSÁRIO</div>
-            <span id="dash-duplicado-total" style="font-size:11px;font-weight:700;color:#d97706"></span>
+            <div style="display:flex;align-items:center;gap:10px">
+              <span id="dash-duplicado-total" style="font-size:11px;font-weight:700;color:#d97706"></span>
+              <!-- Leva em compra ainda é papel: o que não tem pedido sai daqui sem custo -->
+              <button id="dash-duplicado-btn" class="btn-outline" style="font-size:11px;padding:5px 12px;display:none" onclick="tirarSobraDaCompra()"><i class="ti ti-eraser"></i> Tirar da compra o que não tem pedido</button>
+            </div>
           </div>
           <div id="dash-duplicado"></div>
         </div>
@@ -1051,7 +1055,7 @@
   </div>
 </div>
 <script src="data.js?v=2026091105"></script>
-<script src="main.js?v=2026091510"></script>
+<script src="main.js?v=2026091511"></script>
 <script async src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js" onload="initSupabase()"></script>
 </body>
 </html>

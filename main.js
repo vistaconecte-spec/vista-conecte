@@ -4444,6 +4444,18 @@ function renderDashboard() {
     const totalSobra = dupList.reduce((s,x) => s + x.sobra, 0);
     if (dupCard) dupCard.style.display = dupList.length ? '' : 'none';
     if (dupTotEl) dupTotEl.textContent = totalSobra > 0 ? totalSobra + ' peças a mais' : '';
+    // Quanto disso ainda está só no papel (leva em compra) e pode sair sem custo
+    const dupBtn = document.getElementById('dash-duplicado-btn');
+    if (dupBtn) {
+      let naCompra = 0;
+      for (const [key, def] of Object.entries(MODELOS)) {
+        if (CONJUNTO_PECAS[key]) continue;
+        const s = sobrasNaCompra(loadLocal('vc:' + key) || {}, def);
+        if (s) naCompra += s.total;
+      }
+      dupBtn.style.display = naCompra ? '' : 'none';
+      dupBtn.innerHTML = `<i class="ti ti-eraser"></i> Tirar da compra o que não tem pedido (${naCompra})`;
+    }
     dupEl.innerHTML = dupList.length === 0 ? '' : `
       <div style="font-size:11px;color:var(--text-sec);margin-bottom:6px">
         Estas levas estão com mais peças do que os pedidos em aberto pedem (já descontado o estoque).
@@ -5598,6 +5610,100 @@ async function mandarTudoParaCorte() {
   if (modeloAtual === '__corte__')        renderCorte();
   else if (modeloAtual === '__costura__') renderCostura();
   else if (modeloAtual === '__dashboard__') renderDashboard();
+  if (erros) alert(`${erros} modelo(s) NÃO foram gravados: a nuvem não respondeu. Nada mudou neles, confira a lista e tente de novo em instantes.`);
+}
+
+// ─── TIRAR DA COMPRA O QUE NÃO TEM PEDIDO ────────────────────────────────────
+// Leva em "Comprando tecido" ainda é grade no papel: se o pedido saiu, foi cancelado ou o
+// estoque cobriu, a peça não precisa nascer (Bárbara, 15/09/2026: "o que está em comprando
+// tecido, se não tem pedido não precisamos produzir"). Corte e costura ficam como estão,
+// o tecido já foi cortado. Sobra por tamanho = (leva 1 + leva 2 em etapa) − max(0, pedidos
+// − estoque); sai primeiro da leva 2 em compra, depois da leva 1 em compra, nunca mais do
+// que cada uma tem. Devolve null quando não há o que tirar.
+function sobrasNaCompra(saved, def) {
+  const ETAPAS = ['Comprando tecido', 'Em corte', 'Em costura'];
+  const l1ok = ETAPAS.includes(saved.status), l2ok = ETAPAS.includes(saved.status2);
+  const c1 = saved.status === 'Comprando tecido', c2 = saved.status2 === 'Comprando tecido';
+  if (!c1 && !c2) return null;
+  const tu  = !!def.tamanhoUnico;
+  const n   = def.tamanhos?.length || 5;
+  const nrm = o => ((o || []).map(v => v || 0)).concat(new Array(n).fill(0)).slice(0, n);
+  const som = a => a.reduce((x, y) => x + y, 0);
+  const tira1 = {}, tira2 = {};
+  let total = 0;
+  coresDoModelo(def, saved).forEach(cor => {
+    const ab = nrm(def.aberto && def.aberto[cor]), ev = nrm(saved.est && saved.est[cor]);
+    const p1 = nrm(l1ok && saved.prod && saved.prod[cor]), p2 = nrm(l2ok && saved.prod2 && saved.prod2[cor]);
+    const t1 = new Array(n).fill(0), t2 = new Array(n).fill(0);
+    (tu ? [0] : ab.map((_, i) => i)).forEach(i => {
+      const need = tu ? Math.max(0, som(ab) - ev[0]) : Math.max(0, ab[i] - ev[i]);
+      const tem1 = tu ? som(p1) : p1[i], tem2 = tu ? som(p2) : p2[i];
+      let s = Math.max(0, tem1 + tem2 - need);
+      if (c2) { t2[i] = Math.min(s, tem2); s -= t2[i]; }
+      if (c1) { t1[i] = Math.min(s, tem1); s -= t1[i]; }
+    });
+    if (som(t1)) { tira1[cor] = t1; total += som(t1); }
+    if (som(t2)) { tira2[cor] = t2; total += som(t2); }
+  });
+  return total ? { tira1, tira2, total } : null;
+}
+
+// Botão do card PRODUÇÃO ACIMA DO NECESSÁRIO. Lê a nuvem modelo a modelo e reconta lá
+// (outro aparelho pode ter mexido na grade desde que o card foi desenhado). Leva que
+// fica vazia sai da compra: volta para "— Sem status —".
+async function tirarSobraDaCompra() {
+  if (ehPerfilOficina()) return; // quem decide o que produzir é a dona; oficina só lê
+  const itens = [];
+  for (const [key, def] of Object.entries(MODELOS)) {
+    if (CONJUNTO_PECAS[key]) continue;
+    const s = sobrasNaCompra(loadLocal('vc:' + key) || {}, def);
+    if (s) itens.push({ key, nome: (loadLocal('vc:' + key) || {}).nome || def.nome, ...s });
+  }
+  if (!itens.length) { alert('Nenhuma peça sem pedido nas levas em compra.'); return; }
+  const descr = (def, tira) => {
+    const SZ = tamanhosDe(def);
+    return Object.entries(tira).map(([cor, arr]) =>
+      `${cor} ${arr.map((v, i) => v ? (def.tamanhoUnico ? `${v}` : `${SZ[i]} ${v}`) : '').filter(Boolean).join(', ')}`).join(' · ');
+  };
+  const lista = itens.map(it => {
+    const def = MODELOS[it.key], p = [];
+    if (Object.keys(it.tira1).length) p.push(`leva 1: ${descr(def, it.tira1)}`);
+    if (Object.keys(it.tira2).length) p.push(`2ª leva: ${descr(def, it.tira2)}`);
+    return `• ${it.nome} — ${it.total} ${it.total === 1 ? 'peça' : 'peças'} (${p.join(' · ')})`;
+  }).join('\n');
+  const total = itens.reduce((s, it) => s + it.total, 0);
+  if (!confirm(`Tirar ${total} ${total === 1 ? 'peça' : 'peças'} sem pedido das levas em compra?\n\n${lista}\n\n`
+    + 'Só mexe em leva "Comprando tecido"; corte e costura ficam como estão. '
+    + 'A leva que ficar vazia sai da compra (volta para "— Sem status —").')) return;
+
+  let erros = 0;
+  for (const it of itens) {
+    const def = MODELOS[it.key];
+    const ok = await gravarModeloNaNuvem(it.key, saved => {
+      const s = sobrasNaCompra(saved, def); // reconta com a grade da nuvem
+      if (!s) return false;
+      const aplicar = (campo, tira) => {
+        const grade = { ...(saved[campo] || {}) };
+        for (const [cor, arr] of Object.entries(tira)) {
+          grade[cor] = arr.map((v, i) => Math.max(0, ((grade[cor] && grade[cor][i]) || 0) - v));
+        }
+        saved[campo] = grade;
+        return Object.values(grade).every(a => !(a || []).some(v => v > 0)); // ficou vazia?
+      };
+      if (Object.keys(s.tira1).length && aplicar('prod',  s.tira1)) { saved.status  = ''; saved.status_at  = null; }
+      if (Object.keys(s.tira2).length && aplicar('prod2', s.tira2)) { saved.status2 = ''; saved.status2_at = null; }
+      if (modeloAtual === it.key) {
+        const s1 = document.getElementById('prod-status'),  s2 = document.getElementById('prod2-status');
+        if (s1) s1.value = saved.status  || '';
+        if (s2) s2.value = saved.status2 || '';
+      }
+    }, { silencioso: true }).catch(() => null);
+    if (!ok) erros++;
+  }
+  buildSidebar();
+  verificarAvisosStatus();
+  if (modeloAtual === '__dashboard__')   renderDashboard();
+  else if (MODELOS[modeloAtual])         renderModelo(modeloAtual);
   if (erros) alert(`${erros} modelo(s) NÃO foram gravados: a nuvem não respondeu. Nada mudou neles, confira a lista e tente de novo em instantes.`);
 }
 
