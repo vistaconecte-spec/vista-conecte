@@ -5635,25 +5635,39 @@ function urgentesParaProducao() {
     });
     if (falta === 0) continue;
 
-    const n = !EM_PRODUCAO.includes(saved.status)  ? 1
-            : !EM_PRODUCAO.includes(saved.status2) ? 2 : 0;
+    let n = !EM_PRODUCAO.includes(saved.status)  ? 1
+          : !EM_PRODUCAO.includes(saved.status2) ? 2 : 0;
+    // As duas levas ocupadas, mas uma ainda comprando tecido: o tecido não foi cortado,
+    // então essa leva pode crescer (15/09/2026 — a dona clicava e só recebia o aviso de
+    // bloqueio, com Macacão, Macaquinho e Vestido FU Curto faltando 1 ou 2 peças cada).
+    // Só bloqueia quando as duas já passaram para corte/costura.
+    let soma = false;
+    if (!n) {
+      if      (saved.status2 === 'Comprando tecido') { n = 2; soma = true; }
+      else if (saved.status  === 'Comprando tecido') { n = 1; soma = true; }
+    }
     if (!n) { bloqueados.push(nome); continue; }
 
     // Necessidade da leva que vai receber, descontando o que a outra leva já produz
+    // (e, quando é soma, o que esta própria leva já tem — só o que falta entra).
     const outraProd = n === 1 ? saved.prod2 : saved.prod;
-    const prod = {};
+    const estaProd  = n === 1 ? saved.prod  : saved.prod2;
+    const prod = {}, add = {};
     let total = 0;
     cores.forEach(cor => {
+      const outra = nrm(outraProd && outraProd[cor]);
+      const esta  = soma ? nrm(estaProd && estaProd[cor]) : nrm([]);
       const arr = necessidadeLeva(nrm(def.aberto && def.aberto[cor]),
                                   nrm(saved.est && saved.est[cor]),
-                                  nrm(outraProd && outraProd[cor]), tu, SZ.length);
+                                  outra.map((v, i) => v + esta[i]), tu, SZ.length);
       const t = arr.reduce((a, b) => a + b, 0);
       if (t === 0) return;
-      prod[cor] = arr;
+      add[cor]  = arr;
+      prod[cor] = soma ? esta.map((v, i) => v + arr[i]) : arr;
       total += t;
     });
     if (total === 0) continue; // nada a gravar: leva já cobre tudo
-    levas.push({ key, nome, leva: n, prod, total, falta });
+    levas.push({ key, nome, leva: n, prod, add, soma, total, falta });
   }
   levas.sort((a, b) => b.falta - a.falta);
   return { levas, bloqueados };
@@ -5675,7 +5689,7 @@ async function mandarUrgentesParaProducao() {
     return;
   }
   const totalPecas = levas.reduce((s, l) => s + l.total, 0);
-  const lista = levas.map(l => `• ${l.nome}${l.leva === 2 ? ' (2ª leva)' : ''} — ${l.total} peças`).join('\n');
+  const lista = levas.map(l => `• ${l.nome}${l.soma ? ` (soma na ${l.leva === 2 ? '2ª' : '1ª'} leva, que ainda compra tecido)` : l.leva === 2 ? ' (2ª leva)' : ''} — ${l.total} peças`).join('\n');
   if (!confirm(`Mandar ${levas.length} modelo${levas.length > 1 ? 's' : ''} para produção — ${totalPecas} peças?\n\n${lista}\n\n`
     + 'As quantidades entram na leva e o status vira "Comprando tecido" — os modelos passam a aparecer '
     + 'no card COMPRANDO TECIDO e na Ficha de Compra.' + fora)) return;
@@ -5685,17 +5699,26 @@ async function mandarUrgentesParaProducao() {
   for (const l of levas) {
     // Lê a nuvem e muda só a leva e a etapa (ver gravarModeloNaNuvem)
     const ok = await gravarModeloNaNuvem(l.key, saved => {
+      // Soma em cima do que a NUVEM tem na leva (não do que a tela tinha): outro aparelho
+      // pode ter mexido na grade desde que o card foi desenhado.
+      const campo = l.leva === 2 ? 'prod2' : 'prod';
+      const grade = { ...(saved[campo] || {}) };
+      for (const cor of Object.keys(l.prod)) {
+        grade[cor] = l.soma
+          ? l.add[cor].map((v, i) => v + ((grade[cor] && grade[cor][i]) || 0))
+          : l.prod[cor];
+      }
       if (l.leva === 2) {
         saved.leva2      = true; // sem isso a 2ª leva nem aparece na tela do modelo
-        saved.prod2      = { ...(saved.prod2 || {}), ...l.prod };
+        saved.prod2      = grade;
         saved.prod2_at   = agora;
         saved.status2    = 'Comprando tecido';
-        saved.status2_at = agora;
+        if (!l.soma) saved.status2_at = agora; // somando, a leva continua da data em que começou
       } else {
-        saved.prod      = { ...(saved.prod || {}), ...l.prod };
+        saved.prod      = grade;
         saved.prod_at   = agora;
         saved.status    = 'Comprando tecido';
-        saved.status_at = agora;
+        if (!l.soma) saved.status_at = agora;
       }
       if (modeloAtual === l.key) {
         const sel = document.getElementById(l.leva === 2 ? 'prod2-status' : 'prod-status');

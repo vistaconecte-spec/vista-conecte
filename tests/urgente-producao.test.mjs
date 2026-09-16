@@ -71,14 +71,35 @@ console.log('\n3) Leva 1 já em produção → a nova vai para a 2ª leva, desco
   ok('2ª leva pede só o que a leva 1 não cobre', saia.prod, { Preto: [0,0,2,1,0] });
 }
 
-console.log('\n4) As duas levas em produção → modelo fica de fora, e é avisado');
+console.log('\n4) As duas levas ocupadas, uma ainda comprando tecido → o que falta SOMA nessa leva');
 {
+  // pedidos 0,1,3,1,0 · leva 1 (corte) 0,1,1,0,0 · leva 2 (comprando) 0,0,1,0,0 → falta M1, G1
   const r = rodar(MOD, {
     saia:  { status: 'Em corte', prod: { Preto: [0,1,1,0,0] }, status2: 'Comprando tecido', prod2: { Preto: [0,0,1,0,0] } },
     calca: {},
   });
+  const saia = r.levas.find(l => l.nome.includes('Saia'));
+  ok('a saia entra, na 2ª leva, marcada como soma', [saia.leva, saia.soma, saia.total], [2, true, 2]);
+  ok('só o que falta é acrescentado', saia.add, { Preto: [0,0,1,1,0] });
+  ok('a grade final da leva = o que ela tinha + o que faltava', saia.prod, { Preto: [0,0,2,1,0] });
+  ok('ninguém bloqueado', r.bloqueados, []);
+}
+
+console.log('\n4b) As duas levas já em corte/costura → aí sim fica de fora, e é avisado');
+{
+  const r = rodar(MOD, {
+    saia:  { status: 'Em corte', prod: { Preto: [0,1,1,0,0] }, status2: 'Em costura', prod2: { Preto: [0,0,1,0,0] } },
+    calca: {},
+  });
   ok('só a calça entra', r.levas.map(l => l.nome), ['Calça Pantalona Moletom']);
   ok('a saia é listada como bloqueada', r.bloqueados, ['Mini Saia Canelada']);
+}
+
+console.log('\n4c) Gravação da soma parte da grade da NUVEM, não da tela');
+{
+  ok('mandarUrgentesParaProducao soma l.add em cima de saved[campo]',
+     /grade\[cor\] = l\.soma\s*\? l\.add\[cor\]\.map\(\(v, i\) => v \+ \(\(grade\[cor\] && grade\[cor\]\[i\]\) \|\| 0\)\)/.test(main), true);
+  ok('somando, a data da etapa não é reiniciada', /if \(!l\.soma\) saved\.status2_at = agora;/.test(main) && /if \(!l\.soma\) saved\.status_at = agora;/.test(main), true);
 }
 
 console.log('\n5) Nada urgente → nada a gravar (e conjunto nunca entra)');
