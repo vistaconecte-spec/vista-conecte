@@ -16,6 +16,17 @@ export async function onRequestGet({ request, env }) {
   const ate = u0.searchParams.get('ate') || hoje;
   const filtro = u0.searchParams.get('status') || '';
   const H = { Authorization: `Bearer ${tk}` };
+  // ?parcelas=241.40&bin=503143 → parcelas que o MP oferece pra ESTA conta (diagnóstico de 1x só)
+  const valorParc = u0.searchParams.get('parcelas');
+  if (valorParc) {
+    const bin = u0.searchParams.get('bin') || '503143';
+    const r = await fetch(`https://api.mercadopago.com/v1/payment_methods/installments?amount=${valorParc}&bin=${bin}&site_id=MLB`, { headers: H });
+    const d = await r.json().catch(() => null);
+    const me = await fetch('https://api.mercadopago.com/users/me', { headers: H }).then(x => x.json()).catch(() => null);
+    return J({ http: r.status, valor: valorParc, bin, conta: me && { id: me.id, status: me.status, site_status: me.site_status, tags: me.tags, user_type: me.user_type },
+      parcelas: Array.isArray(d) ? d.map(x => ({ meio: x.payment_method_id, emissor: x.issuer && x.issuer.name,
+        opcoes: (x.payer_costs || []).map(c => `${c.installments}x ${c.installment_amount} (taxa ${c.installment_rate}%) ${c.recommended_message || ''}`) })) : d });
+  }
   const itens = [];
   const porStatus = {};
   let offset = 0;
