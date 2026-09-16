@@ -87,6 +87,10 @@ console.log('\n7) Tela e gravação');
   ok('grava lendo a nuvem e recontando lá', /gravarModeloNaNuvem\(it\.key, saved => \{\s*const s = sobrasNaCompra\(saved, def\);/.test(main), true);
   ok('leva vazia volta para sem status', /aplicar\('prod2', s\.tira2\)\) \{ saved\.status2 = ''; saved\.status2_at = null; \}/.test(main), true);
   ok('oficina não aciona', /async function tirarSobraDaCompra\(\) \{\s*if \(ehPerfilOficina\(\)\) return;/.test(main), true);
+  const iT = main.indexOf('async function tirarSobraDaCompra()'), iU = main.indexOf('async function mandarUrgentesParaProducao()');
+  const trecho = (i) => main.slice(i, main.indexOf('const itens = [];', i) > 0 && main.indexOf('const itens = [];', i) < i + 1500 ? main.indexOf('const itens = [];', i) : i + 1200);
+  ok('pedidos parados → não grava (tirar da compra)', /if \(!leituraDePedidosFresca\(\)\) \{[\s\S]*?nada foi feito[\s\S]*?return;\s*\}/.test(trecho(iT)), true);
+  ok('pedidos parados → não grava (mandar tudo p/ produção)', /if \(!leituraDePedidosFresca\(\)\) \{[\s\S]*?nada foi feito[\s\S]*?return;\s*\}/.test(trecho(iU)), true);
 }
 
 console.log(falhas ? `\n✗ ${falhas} de ${total} falharam` : `\n✓ ${total}/${total} passaram`);

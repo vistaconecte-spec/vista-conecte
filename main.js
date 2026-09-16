@@ -5653,6 +5653,14 @@ function sobrasNaCompra(saved, def) {
 // fica vazia sai da compra: volta para "— Sem status —".
 async function tirarSobraDaCompra() {
   if (ehPerfilOficina()) return; // quem decide o que produzir é a dona; oficina só lê
+  // Pedidos parados neste aparelho (sessão vencida, aba velha) = conta feita em cima de
+  // pedidos de horas atrás. Em 15/09/2026 o botão tirou 7 peças em vez de 27 por isso.
+  if (!leituraDePedidosFresca()) {
+    alert('Os pedidos não estão atualizando neste aparelho'
+      + (_pedidosLidosEm ? ' (última leitura às ' + new Date(_pedidosLidosEm).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) + ')' : '')
+      + '. A conta sairia errada, então nada foi feito.\n\nRecarregue a página (e entre de novo, se pedir senha) e tente outra vez.');
+    return;
+  }
   const itens = [];
   for (const [key, def] of Object.entries(MODELOS)) {
     if (CONJUNTO_PECAS[key]) continue;
@@ -5783,6 +5791,14 @@ function urgentesParaProducao() {
 // modelo (cada um é uma linha do Supabase) e só redesenha no fim.
 async function mandarUrgentesParaProducao() {
   if (ehPerfilOficina()) return; // quem manda produzir é a dona; oficina só lê
+  // Pedidos parados neste aparelho (sessão vencida, aba velha) = conta feita em cima de
+  // pedidos de horas atrás. Em 15/09/2026 o botão tirou 7 peças em vez de 27 por isso.
+  if (!leituraDePedidosFresca()) {
+    alert('Os pedidos não estão atualizando neste aparelho'
+      + (_pedidosLidosEm ? ' (última leitura às ' + new Date(_pedidosLidosEm).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) + ')' : '')
+      + '. A conta sairia errada, então nada foi feito.\n\nRecarregue a página (e entre de novo, se pedir senha) e tente outra vez.');
+    return;
+  }
   const { levas, bloqueados } = urgentesParaProducao();
   const fora = bloqueados.length
     ? `\n\nFicam de fora (as duas levas já estão em produção): ${bloqueados.join(', ')}.`
