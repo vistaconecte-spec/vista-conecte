@@ -188,6 +188,7 @@
           <div class="card-header">
             <div class="card-title" style="color:var(--gold-dark)"><i class="ti ti-shopping-cart"></i> COMPRANDO TECIDO</div>
             <div style="display:flex;align-items:center;gap:10px">
+              <span id="dash-compra-pecas" style="font-size:11px;font-weight:700;color:var(--gold-dark)"></span>
               <span id="dash-compra-total" style="font-size:12px;font-weight:700;color:var(--gold-dark)"></span>
               <button class="btn-primary" style="font-size:11px;padding:5px 12px" onclick="gerarFichaCompraGlobal()"><i class="ti ti-file-invoice"></i> Ficha de Compra</button>
               <!-- Tecido chegou: todas as levas em compra viram "Em corte" de uma vez (mesmo
@@ -196,13 +197,6 @@
             </div>
           </div>
           <div id="dash-compra"></div>
-        </div>
-        <div class="card" id="card-duplicado" style="border-left:3px solid #d97706;display:none">
-          <div class="card-header">
-            <div class="card-title" style="color:#d97706"><i class="ti ti-copy-off"></i> PRODUÇÃO ACIMA DO NECESSÁRIO</div>
-            <span id="dash-duplicado-total" style="font-size:11px;font-weight:700;color:#d97706"></span>
-          </div>
-          <div id="dash-duplicado"></div>
         </div>
         <div class="card" style="border-left:3px solid #0891b2">
           <div class="card-header">
@@ -245,6 +239,14 @@
           <div class="card-header"><div class="card-title"><i class="ti ti-stack-2"></i> SALDO DE ESTOQUE</div></div>
           <table><thead><tr><th style="text-align:left">Modelo</th><th style="text-align:left">Cor</th><th>PP</th><th>P</th><th>M</th><th>G</th><th>GG</th><th>Total</th></tr></thead>
           <tbody id="dash-saldo"></tbody></table>
+        </div>
+        <!-- Último card do painel (Bárbara, 15/09/2026): é conferência, não trabalho do dia -->
+        <div class="card" id="card-duplicado" style="border-left:3px solid #d97706;display:none">
+          <div class="card-header">
+            <div class="card-title" style="color:#d97706"><i class="ti ti-copy-off"></i> PRODUÇÃO ACIMA DO NECESSÁRIO</div>
+            <span id="dash-duplicado-total" style="font-size:11px;font-weight:700;color:#d97706"></span>
+          </div>
+          <div id="dash-duplicado"></div>
         </div>
       </div>
       <div id="panel-corte" class="tab-panel">
@@ -1049,7 +1051,7 @@
   </div>
 </div>
 <script src="data.js?v=2026091105"></script>
-<script src="main.js?v=2026091508"></script>
+<script src="main.js?v=2026091509"></script>
 <script async src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js" onload="initSupabase()"></script>
 </body>
 </html>

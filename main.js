@@ -4396,11 +4396,20 @@ function renderDashboard() {
   // Alerta anti-duplicação: leva 1 + leva 2 produzindo MAIS do que Pedidos − Estoque.
   // Normalmente é leva antiga que ficou congelada depois que entrou estoque ou que a
   // outra leva assumiu o pedido — o tecido dessas peças seria comprado à toa.
+  //
+  // Só conta leva que está numa etapa (Comprando tecido / Em corte / Em costura), igual
+  // aos cards EM PRODUÇÃO e URGENTE: grade digitada com "— Sem status —" não é produção
+  // (15/09/2026; antes somava 6 peças de levas paradas). E mostra desde quando a leva
+  // está na etapa, porque a sobra costuma ser leva velha: o pedido dela já saiu (a peça
+  // foi direto para o envio sem passar por "mandar para o estoque") e a grade nunca
+  // encolheu.
   const dupEl    = document.getElementById('dash-duplicado');
   const dupTotEl = document.getElementById('dash-duplicado-total');
   const dupCard  = document.getElementById('card-duplicado');
   if (dupEl) {
     const dupList = [];
+    const ETAPAS_DUP = ['Comprando tecido', 'Em corte', 'Em costura'];
+    const dataCurta = iso => iso ? new Date(iso).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }) : '';
     for (const [key, def] of Object.entries(MODELOS)) {
       if (CONJUNTO_PECAS[key]) continue;
       const saved = loadLocal('vc:' + key) || {};
@@ -4408,11 +4417,13 @@ function renderDashboard() {
       const tuD   = !!def.tamanhoUnico;
       const szLen = def.tamanhos?.length || 5;
       const det   = [];
+      const l1ok  = ETAPAS_DUP.includes(saved.status), l2ok = ETAPAS_DUP.includes(saved.status2);
+      if (!l1ok && !l2ok) continue;
       let sobra = 0;
       cores.forEach(cor => {
         const nrm = o => ((o || []).map(v => v || 0)).concat(new Array(szLen).fill(0)).slice(0, szLen);
         const ab = nrm(def.aberto[cor]), ev = nrm(saved.est && saved.est[cor]);
-        const p1 = nrm(saved.prod && saved.prod[cor]), p2 = nrm(saved.prod2 && saved.prod2[cor]);
+        const p1 = nrm(l1ok && saved.prod && saved.prod[cor]), p2 = nrm(l2ok && saved.prod2 && saved.prod2[cor]);
         const som = a => a.reduce((x,y) => x+y, 0);
         let s = 0;
         if (tuD) {
@@ -4422,7 +4433,12 @@ function renderDashboard() {
         }
         if (s > 0) { sobra += s; det.push(`${cor} ${s}`); }
       });
-      if (sobra > 0) dupList.push({ key, nome: def.nome, sobra, det: det.join(' · ') });
+      if (sobra > 0) {
+        const levas = [l1ok ? `${saved.status}${saved.status_at ? ' desde ' + dataCurta(saved.status_at) : ''}` : null,
+                       l2ok ? `2ª leva ${saved.status2}${saved.status2_at ? ' desde ' + dataCurta(saved.status2_at) : ''}` : null]
+          .filter(Boolean).join(' · ');
+        dupList.push({ key, nome: def.nome, sobra, det: det.join(' · '), levas });
+      }
     }
     dupList.sort((a,b) => b.sobra - a.sobra);
     const totalSobra = dupList.reduce((s,x) => s + x.sobra, 0);
@@ -4431,12 +4447,14 @@ function renderDashboard() {
     dupEl.innerHTML = dupList.length === 0 ? '' : `
       <div style="font-size:11px;color:var(--text-sec);margin-bottom:6px">
         Estas levas estão com mais peças do que os pedidos em aberto pedem (já descontado o estoque).
-        Confira antes de comprar tecido — pode ser produção repetida.
+        A leva é a grade de quando foi mandada; o pedido que saiu, foi cancelado ou entrou no estoque
+        depois disso não tira a peça dela. Quanto mais velha a etapa, mais provável que seja isso.
       </div>
       <table>
         <thead><tr>
           <th style="text-align:left">Modelo</th>
           <th style="text-align:left">Cores</th>
+          <th style="text-align:left">Leva</th>
           <th>A mais</th>
         </tr></thead>
         <tbody>
@@ -4444,10 +4462,11 @@ function renderDashboard() {
             <tr style="cursor:pointer" onclick="selectModel(null,'${x.key}')">
               <td style="font-weight:600">${x.nome}</td>
               <td style="font-size:11px;color:var(--text-sec)">${x.det}</td>
+              <td style="font-size:11px;color:var(--text-ter)">${x.levas}</td>
               <td style="text-align:center;font-weight:700;color:#d97706">${x.sobra}</td>
             </tr>`).join('')}
         </tbody>
-        <tfoot><tr class="total-row"><td>Total</td><td></td><td style="text-align:center">${totalSobra}</td></tr></tfoot>
+        <tfoot><tr class="total-row"><td>Total</td><td></td><td></td><td style="text-align:center">${totalSobra}</td></tr></tfoot>
       </table>`;
   }
   // ─────────────────────────────────────────────────────────────────────────────
@@ -4511,6 +4530,7 @@ function renderDashboard() {
   // ── Card Comprando Tecido ────────────────────────────────────────────────────
   const compraEl    = document.getElementById('dash-compra');
   const compraTotEl = document.getElementById('dash-compra-total');
+  const compraPecEl = document.getElementById('dash-compra-pecas');
   if (compraEl) {
     const compraList = [];
     for (const [key, def] of Object.entries(MODELOS)) {
@@ -4542,12 +4562,15 @@ function renderDashboard() {
         });
         const metros = totalPecas * consumo;
         const custo  = metros * preco;
-        if (metros > 0) compraList.push({ key, nome: def.nome, tecido, metros, custo, preco, leva2: l.leva2 });
+        if (metros > 0) compraList.push({ key, nome: def.nome, tecido, pecas: totalPecas, metros, custo, preco, leva2: l.leva2 });
       });
     }
 
     const totalCusto = compraList.reduce((s,c) => s + c.custo, 0);
+    const totalPecasCompra = compraList.reduce((s,c) => s + c.pecas, 0);
     if (compraTotEl) compraTotEl.textContent = compraList.length > 0 ? 'R$ ' + fmt(totalCusto) : '';
+    // Quantas peças esperam tecido (Bárbara, 15/09/2026): mesmo contador dos cards EM CORTE / EM COSTURA
+    if (compraPecEl) compraPecEl.textContent = compraList.length > 0 ? totalPecasCompra + ' peças ·' : '';
 
     if (compraList.length === 0) {
       compraEl.innerHTML = '<div style="font-size:12px;color:var(--text-ter);padding:8px 0">Nenhum modelo comprando tecido no momento.</div>';
@@ -4557,6 +4580,7 @@ function renderDashboard() {
           <thead><tr>
             <th style="text-align:left">Modelo</th>
             <th style="text-align:left">Tecido</th>
+            <th>Peças</th>
             <th>Metros</th>
             <th>Valor/m</th>
             <th>Total</th>
@@ -4566,6 +4590,7 @@ function renderDashboard() {
               <tr style="cursor:pointer" onclick="selectModel(null,'${c.key}')">
                 <td style="font-weight:600">${c.nome}${c.leva2 ? ' <span style="font-size:9px;background:rgba(124,58,237,0.12);color:#7C3AED;border-radius:3px;padding:1px 5px;vertical-align:middle">2ª LEVA</span>' : ''}</td>
                 <td style="color:var(--text-sec)">${c.tecido}</td>
+                <td style="text-align:center;font-weight:700">${c.pecas}</td>
                 <td style="text-align:center;font-weight:600">${c.metros.toFixed(2)}m</td>
                 <td style="text-align:center;color:var(--text-ter);font-size:11px">R$ ${fmt(c.preco)}</td>
                 <td style="text-align:right;font-weight:700;color:var(--gold-dark)">R$ ${fmt(c.custo)}</td>
@@ -4574,6 +4599,7 @@ function renderDashboard() {
           <tfoot>
             <tr class="total-row">
               <td colspan="2">Total</td>
+              <td style="text-align:center">${totalPecasCompra}</td>
               <td style="text-align:center">${compraList.reduce((s,c)=>s+c.metros,0).toFixed(2)}m</td>
               <td style="color:#aaa;font-style:italic">Valor variável</td>
               <td style="text-align:right;color:var(--gold-dark)">R$ ${fmt(totalCusto)}</td>
