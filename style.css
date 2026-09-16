@@ -1382,10 +1382,14 @@ thead tr th:last-child { border-top-right-radius: 10px; border-bottom-right-radi
    Os três números ficam estreitos de propósito (Bárbara, 15/09): o que importa ler é
    a faixa de dias do gráfico, então ela leva a maior parte da linha. */
 .mini-cards:has(.mini-card--tempo) { grid-template-columns: repeat(3, minmax(0, 1fr)) 2.4fr; }
-.mini-cards:has(.mini-card--tempo) .mini-card:not(.mini-card--tempo) { padding: 10px 12px; }
-.mini-cards:has(.mini-card--tempo) .mini-card:not(.mini-card--tempo) .mini-val { font-size: 22px; }
-.mini-cards:has(.mini-card--tempo) .mini-card:not(.mini-card--tempo) .mini-label { font-size: 9px; letter-spacing: 0.03em; }
-.mini-cards:has(.mini-card--tempo) .mini-card:not(.mini-card--tempo) .mini-sub { font-size: 10px; }
+/* O gráfico deixa a linha mais alta, então os três números crescem junto para não
+   sobrar cartão vazio (Bárbara, 15/09: "aumentar as letras pra ficar coerente"). */
+@media (min-width: 769px) {
+  .mini-cards:has(.mini-card--tempo) .mini-card:not(.mini-card--tempo) { display: flex; flex-direction: column; justify-content: center; }
+  .mini-cards:has(.mini-card--tempo) .mini-card:not(.mini-card--tempo) .mini-val { font-size: 34px; margin: 6px 0 2px; }
+  .mini-cards:has(.mini-card--tempo) .mini-card:not(.mini-card--tempo) .mini-label { font-size: 11px; }
+  .mini-cards:has(.mini-card--tempo) .mini-card:not(.mini-card--tempo) .mini-sub { font-size: 12px; }
+}
 .tl-sub { font-size: 11px; color: var(--text-sec); line-height: 1.4; }
 .tl-colunas { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; align-items: end; margin: 4px 0 2px; }
 .tl-col { display: flex; flex-direction: column; align-items: center; justify-content: flex-end; text-align: center; font-size: 10px; color: var(--text-sec); line-height: 1.2; }
