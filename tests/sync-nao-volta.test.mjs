@@ -39,6 +39,8 @@ const fonte = [
   pedaco("const HIST_PREFIXO = 'hist:';", 'const HIST_MAX'), // o ciclo de sync exclui hist:* na URL
   pedaco('let estEditado', '// Salva estado atual no localStorage'),
   pedaco('async function salvarNuvemREST', 'function showCloudOk'),
+  // Desde 17/09/2026 a leitura mora em lerModelosNuvem (Supabase direto + reserva /api/modelos)
+  pedaco('async function lerModelosNuvem', 'async function carregarTodosNuvem'),
   pedaco('let _syncDesde', '// ─────────────────────────────────────────────────────────────────────────────\n\nconst fmt'),
 ].join('\n');
 
@@ -164,7 +166,7 @@ console.log('\n6) A proteção vale para chave que não está na tela');
 
 console.log('\n7) As três sincronizações usam a mesma proteção');
 ok('realtime',            (main.match(/if \(protegidoDeSobrescrita\(row\.id\)\) (return;|\{ pulou = true; return; \})/g) || []).length, 3);
-ok('sincronizarNuvem sobe o pendente antes de ler', /async function sincronizarNuvem\(\) \{\s*\r?\n\s*try \{\s*\r?\n[\s\S]{0,120}await reenviarPendentes\(\);/.test(main), true);
+ok('sincronizarNuvem sobe o pendente antes de ler', /async function sincronizarNuvem\(\) \{\s*\r?\n\s*try \{\s*\r?\n[\s\S]{0,120}await reenviarPendentes\(\)(\.catch\(\(\) => \{\}\))?;/.test(main), true);
 ok('a fila é o único critério novo', /const temGravacaoPendente = key => _gravacoesPendentes\.has\(key\);/.test(main), true);
 
 console.log(falhas ? `\n✗ ${falhas} de ${total} falharam\n` : `\n✓ ${total}/${total} passaram\n`);

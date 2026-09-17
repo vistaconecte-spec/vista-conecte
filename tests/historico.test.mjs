@@ -46,7 +46,8 @@ ok('qualquer erro do histórico é engolido', /catch \(_\) \{\}/.test(reg), true
 ok('não guarda histórico do próprio histórico', /if \(ehChaveHistorico\(key\)\) return;/.test(reg), true);
 
 console.log('\n3) O histórico não é baixado no carregamento da página');
-const carga = trecho('async function carregarTodosNuvem', '\nasync function salvarNuvemREST');
+// Desde 17/09/2026 a consulta mora em lerModelosNuvem (leitura com reserva), logo acima.
+const carga = trecho('async function lerModelosNuvem', '\nasync function salvarNuvemREST');
 ok('a consulta exclui as linhas hist:', /id=not\.like\.\$\{encodeURIComponent\(HIST_PREFIXO \+ '\*'\)\}/.test(carga), true);
 ok('e ainda ignora se alguma escapar', /if \(ehChaveHistorico\(row\.id\)\) return;/.test(carga), true);
 

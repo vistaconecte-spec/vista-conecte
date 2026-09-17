@@ -160,10 +160,15 @@ ok('página desatualizada não mexe mais em estoque', /if \(_versaoAvisada\) ret
 
 // carregarNuvem passou a distinguir "não existe" (null) de "não deu para ler" (undefined),
 // e a não aceitar resposta de cache — era o que truncava o histórico de versões.
-const carregar = main.slice(main.indexOf('async function carregarNuvem'),
-                            main.indexOf('\n}', main.indexOf('async function carregarNuvem')));
+// Desde 17/09/2026 a leitura mora em lerModelosNuvem (Supabase direto + reserva /api/modelos);
+// carregarNuvem só repassa. As garantias são as mesmas, conferidas na função nova.
+const carregar = main.slice(main.indexOf('async function lerModelosNuvem'),
+                            main.indexOf('\n}', main.indexOf('async function lerModelosNuvem')));
 ok('leitura da nuvem não aceita resposta de cache', /cache: 'no-store'/.test(carregar), true);
-ok('erro de rede devolve undefined, não null', /catch\(e\) \{ return undefined; \}/.test(carregar), true);
+ok('erro de rede devolve undefined, não null', /return undefined;/.test(carregar) && !/return null/.test(carregar), true);
+ok('carregarNuvem repassa o undefined da leitura', /if \(rows === undefined\) return undefined;/.test(
+  main.slice(main.indexOf('async function carregarNuvem'), main.indexOf('\n}', main.indexOf('async function carregarNuvem')))), true);
+ok('leitura direta que falha cai na reserva /api/modelos', /'\/api\/modelos'/.test(carregar), true);
 ok('histórico não é gravado se a leitura falhou', /if \(atual === undefined\) return;/.test(main), true);
 
 console.log(`\n${falhas === 0 ? '✓ TODOS OS TESTES PASSARAM' : '✗ ' + falhas + ' FALHA(S)'} — ${total - falhas}/${total}\n`);

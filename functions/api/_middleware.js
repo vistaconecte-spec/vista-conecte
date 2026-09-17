@@ -38,6 +38,9 @@ const PUBLICO = new Set(['/api/login', '/api/logout', '/api/sessao', '/api/shopi
 // Pedido, cliente e preço continuam fora do alcance dos dois perfis.
 const OFICINA_LIBERA = new Map([
   ['/api/molde', new Set(['GET'])],
+  // Leitura reserva de estoque/levas quando o aparelho não alcança o Supabase (17/09/2026).
+  // Só GET, e é o mesmo dado que o navegador já lê direto com a chave pública.
+  ['/api/modelos', new Set(['GET'])],
   ['/api/modelagem-storage', new Set(['GET', 'HEAD'])],
 ]);
 

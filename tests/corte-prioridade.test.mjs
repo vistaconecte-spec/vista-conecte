@@ -157,7 +157,9 @@ const blocoOficina = /const OFICINA_LIBERA = new Map\(\[([\s\S]*?)\]\);/.exec(mi
 const liberadas = [...blocoOficina.matchAll(/\['(\/api\/[a-z-]+)', new Set\(\[([^\]]*)\]\)\]/g)]
   .map(m => [m[1], m[2].replace(/['\s]/g, '').split(',').filter(Boolean)]);
 ok('a oficina só alcança o molde — nada de pedido, cliente ou preço',
-   liberadas.map(([r]) => r).sort(), ['/api/modelagem-storage', '/api/molde']);
+   // /api/modelos (17/09/2026): leitura reserva de estoque/levas, o mesmo dado que a oficina
+   // ja le direto do Supabase para desenhar a ficha; nada de pedido, cliente ou preco.
+   liberadas.map(([r]) => r).sort(), ['/api/modelagem-storage', '/api/modelos', '/api/molde']);
 ok('e só para LEITURA (sem isso, abrir a rota abriria o POST que ela atende)',
    liberadas.every(([, ms]) => ms.every(m => m === 'GET' || m === 'HEAD')), true);
 ok('o detalhe cheio da modelagem continua fora (é ele que carrega o valor da modelista)',

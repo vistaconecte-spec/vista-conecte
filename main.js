@@ -292,18 +292,98 @@ async function restaurarVersao(i, btn) {
 // A diferença importa: quem grava por cima precisa saber que leu de verdade. Sem isso,
 // uma leitura que falhou vira "não existe" e o gravador escreve em cima do que está lá.
 async function carregarNuvem(key) {
-  // Usa REST direto — não depende do CDN do Supabase
-  try {
-    const res = await fetch(
-      `${SUPABASE_URL}/rest/v1/vc_modelos?id=eq.${encodeURIComponent(key)}&select=dados`,
-      // no-store: sem isso o navegador pode servir uma resposta de minutos atrás. Era o
-      // que truncava o histórico de versões (a lista velha voltava e as novas sumiam).
-      { headers: { 'apikey': SUPABASE_KEY, 'Authorization': 'Bearer ' + SUPABASE_KEY }, cache: 'no-store' }
-    );
-    if (!res.ok) return undefined;
+  const rows = await lerModelosNuvem({ id: key });
+  if (rows === undefined) return undefined;
+  return rows[0]?.dados || null;
+}
+
+// ─── LEITURA DA NUVEM COM CAMINHO RESERVA ────────────────────────────────────
+// Toda leitura de vc_modelos passa por aqui. Primeiro tenta o Supabase direto (como sempre
+// foi); se a chamada falha ou vem sem 2xx, tenta /api/modelos, que é o próprio sistema
+// repassando a mesma consulta. Por que existe: em 17/09/2026 o celular da dona passou o
+// dia com levas e estoque velhos enquanto os pedidos (que já vêm por /api) atualizavam.
+// A chamada a supabase.co não chegava naquele aparelho e tudo aqui engolia o erro em
+// silêncio: carregarTodosNuvem, sincronizarNuvem e carregarNuvem devolviam "nada mudou".
+// Agora, além da reserva, a falha vira faixa na tela (verificarLeituraNuvem).
+//
+// Devolve as linhas [{ id, dados, updated_at }] ou `undefined` quando NENHUM dos dois
+// caminhos respondeu — e só nesse caso; quem grava depende dessa diferença.
+let _nuvemLidaEm = 0;        // último instante em que a leitura deu certo (por qualquer caminho)
+let _nuvemFalhaDesde = 0;    // primeiro instante da sequência de falhas em curso (0 = sem falha)
+let _nuvemUltimoErro = '';   // texto curto do último erro, pro diagnóstico
+let _nuvemPelaReserva = false; // a última leitura boa veio por /api/modelos, não direto
+async function lerModelosNuvem({ id, desde } = {}) {
+  // no-store: sem isso o navegador pode servir uma resposta de minutos atrás. Era o
+  // que truncava o histórico de versões (a lista velha voltava e as novas sumiam).
+  const opts = { headers: { 'apikey': SUPABASE_KEY, 'Authorization': 'Bearer ' + SUPABASE_KEY }, cache: 'no-store' };
+  const direto = id
+    ? `${SUPABASE_URL}/rest/v1/vc_modelos?id=eq.${encodeURIComponent(id)}&select=id,dados,updated_at`
+    : `${SUPABASE_URL}/rest/v1/vc_modelos?select=id,dados,updated_at&id=not.like.${encodeURIComponent(HIST_PREFIXO + '*')}`
+      + (desde ? `&updated_at=gt.${encodeURIComponent(desde)}` : '');
+  const reserva = '/api/modelos' + (id ? `?id=${encodeURIComponent(id)}` : (desde ? `?desde=${encodeURIComponent(desde)}` : ''));
+  const tentar = async (url, o) => {
+    const res = await fetch(url, o);
+    if (!res.ok) throw new Error('HTTP ' + res.status);
     const rows = await res.json();
-    return rows[0]?.dados || null;
-  } catch(e) { return undefined; }
+    if (!Array.isArray(rows)) throw new Error('resposta sem lista');
+    return rows;
+  };
+  let erroDireto = '';
+  try {
+    const rows = await tentar(direto, opts);
+    _nuvemLidaEm = Date.now(); _nuvemFalhaDesde = 0; _nuvemPelaReserva = false;
+    return rows;
+  } catch (e) { erroDireto = (e && e.message) || String(e); }
+  try {
+    const rows = await tentar(reserva, { cache: 'no-store' });
+    _nuvemLidaEm = Date.now(); _nuvemFalhaDesde = 0; _nuvemPelaReserva = true;
+    console.warn('[nuvem] Supabase direto falhou (' + erroDireto + '); lido por /api/modelos');
+    return rows;
+  } catch (e) {
+    _nuvemUltimoErro = 'direto: ' + erroDireto + ' · reserva: ' + ((e && e.message) || String(e));
+    if (!_nuvemFalhaDesde) _nuvemFalhaDesde = Date.now();
+    console.warn('[nuvem] leitura falhou nos dois caminhos — ' + _nuvemUltimoErro);
+    return undefined;
+  }
+}
+
+// Faixa "produção sem atualizar": aparece quando a leitura da nuvem está falhando há mais
+// de um ciclo e meio (ou nunca deu certo neste aparelho) e some sozinha na próxima leitura
+// boa. Dado velho calado é pior que dado velho avisado: foi assim que o celular mostrou
+// "NÃO ESTÁ NA PRODUÇÃO" em peça que estava em costura desde a véspera.
+const NUVEM_AVISO_MS = 40 * 1000;
+function verificarLeituraNuvem() {
+  if (typeof document === 'undefined') return; // laboratório dos testes roda sem DOM
+  const falhando = _nuvemFalhaDesde && (Date.now() - _nuvemFalhaDesde) >= NUVEM_AVISO_MS;
+  const el = document.getElementById('faixa-nuvem');
+  if (!falhando) { el?.remove(); return; }
+  const hora = t => new Date(t).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+  const desde = _nuvemLidaEm
+    ? 'Estoque e levas são da última leitura boa, às ' + hora(_nuvemLidaEm) + '.'
+    : 'Estoque e levas ainda não foram lidos nenhuma vez neste aparelho.';
+  const esc = x => String(x).replace(/[&<>"]/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c]));
+  const html =
+    '<span><i class="ti ti-cloud-off"></i> <b>Produção e estoque não estão atualizando neste aparelho</b> desde ' +
+    hora(_nuvemFalhaDesde) + '. ' + desde + ' O que aparece em levas, A Produzir e pedidos parados pode estar ' +
+    'diferente do computador. <small style="opacity:.85">(' + esc(_nuvemUltimoErro) + ')</small></span>' +
+    '<button id="btn-nuvem-retry" style="background:#fff;color:#dc2626;border:0;border-radius:6px;' +
+    'padding:7px 16px;font-weight:700;font-size:13px;cursor:pointer">Tentar agora</button>';
+  if (el) { el.innerHTML = html; }
+  else {
+    const div = document.createElement('div');
+    div.id = 'faixa-nuvem';
+    div.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:9998;background:#dc2626;color:#fff;' +
+      'padding:12px 16px;display:flex;align-items:center;justify-content:center;gap:14px;flex-wrap:wrap;' +
+      'font-size:14px;font-weight:600;box-shadow:0 2px 12px rgba(0,0,0,.3)';
+    div.innerHTML = html;
+    document.body.appendChild(div);
+  }
+  document.getElementById('btn-nuvem-retry').onclick = async () => {
+    const b = document.getElementById('btn-nuvem-retry'); if (b) b.textContent = 'Lendo…';
+    await carregarTodosNuvem();
+    verificarLeituraNuvem();
+    if (!_nuvemFalhaDesde) { if (modeloAtual === '__dashboard__') renderDashboard(); else renderModeloSeOcioso(); }
+  };
 }
 
 // Carrega TODOS os modelos da nuvem — só atualiza se local estiver vazio ou nuvem for ESTRITAMENTE mais recente
@@ -311,12 +391,8 @@ async function carregarTodosNuvem() {
   try {
     // not.like hist:* — o histórico mora na mesma tabela e é pesado; só é buscado
     // quando a dona abre a tela de versões, nunca no carregamento da página.
-    const res = await fetch(
-      `${SUPABASE_URL}/rest/v1/vc_modelos?select=id,dados&id=not.like.${encodeURIComponent(HIST_PREFIXO + '*')}`,
-      { headers: { 'apikey': SUPABASE_KEY, 'Authorization': 'Bearer ' + SUPABASE_KEY }, cache: 'no-store' }
-    );
-    if (!res.ok) return;
-    const rows = await res.json();
+    const rows = await lerModelosNuvem();
+    if (rows === undefined) return; // nenhum caminho respondeu: a faixa avisa (verificarLeituraNuvem)
     rows.forEach(row => {
       if (!row.id || !row.dados) return;
       if (ehChaveHistorico(row.id)) return;
@@ -420,15 +496,10 @@ let _syncDesde = null; // updated_at (do servidor) da linha mais nova já aplica
 async function sincronizarNuvem() {
   try {
     // Primeiro sobe o que ficou pendente; só depois vale a pena ler a nuvem.
-    await reenviarPendentes();
-    const filtro = `&id=not.like.${encodeURIComponent(HIST_PREFIXO + '*')}`
-      + (_syncDesde ? `&updated_at=gt.${encodeURIComponent(_syncDesde)}` : '');
-    const res = await fetch(
-      `${SUPABASE_URL}/rest/v1/vc_modelos?select=id,dados,updated_at${filtro}`,
-      { headers: { 'apikey': SUPABASE_KEY, 'Authorization': 'Bearer ' + SUPABASE_KEY }, cache: 'no-store' }
-    );
-    if (!res.ok) return;
-    const rows = await res.json();
+    await reenviarPendentes().catch(() => {}); // pendência que não sobe não pode calar a leitura
+    const rows = await lerModelosNuvem({ desde: _syncDesde });
+    verificarLeituraNuvem();
+    if (rows === undefined) return;
     let mudou = false, pulou = false, maisNova = _syncDesde;
     rows.forEach(row => {
       if (!row.id || !row.dados) return;

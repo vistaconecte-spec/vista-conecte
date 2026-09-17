@@ -36,6 +36,8 @@ const fonte = [
   pedaco('function ehChaveHistorico', 'async function registrarVersao'),
   pedaco('let estEditado', '// Salva estado atual no localStorage'),
   pedaco('async function salvarNuvemREST', 'function showCloudOk'),
+  // Desde 17/09/2026 a leitura mora em lerModelosNuvem (Supabase direto + reserva /api/modelos)
+  pedaco('async function lerModelosNuvem', 'async function carregarTodosNuvem'),
   pedaco('let _syncDesde', '// ─────────────────────────────────────────────────────────────────────────────\n\nconst fmt'),
 ].join('\n');
 

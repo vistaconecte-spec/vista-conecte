@@ -1,0 +1,49 @@
+/**
+ * Cloudflare Pages Function: /api/modelos
+ * Caminho RESERVA de leitura da tabela vc_modelos (estoque, levas, listas do painel).
+ *
+ * O navegador lê essa tabela direto no Supabase (main.js, carregarTodosNuvem/sincronizarNuvem).
+ * Em 17/09/2026 o celular da dona ficou horas mostrando levas velhas enquanto os pedidos
+ * (que passam por /api, mesmo domínio) atualizavam normalmente: a chamada a supabase.co não
+ * chegava naquele aparelho e o app engolia o erro. Este endpoint serve a mesma leitura pelo
+ * domínio do próprio sistema, e o main.js cai nele quando a leitura direta falha.
+ *
+ * GET /api/modelos                 → todos os modelos (sem hist:*), [{ id, dados, updated_at }]
+ * GET /api/modelos?desde=<ISO>     → só o que mudou depois dessa marca (updated_at > desde)
+ * GET /api/modelos?id=<chave>      → uma linha só
+ *
+ * O corpo do Supabase é repassado como stream, sem parse: plano grátis, 10 ms de CPU.
+ * Só leitura. Gravação continua indo direto ao Supabase pelo navegador.
+ */
+const SB_URL = 'https://hckzsblwyabmhzbjdjgx.supabase.co';
+
+export async function onRequestGet(context) {
+  const { env, request } = context;
+  const key = env.SUPABASE_SERVICE_ROLE_KEY;
+  const headers = { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' };
+  if (!key) return new Response(JSON.stringify({ erro: 'SUPABASE_SERVICE_ROLE_KEY não configurada' }), { status: 500, headers });
+
+  const url = new URL(request.url);
+  const id = url.searchParams.get('id');
+  const desde = url.searchParams.get('desde');
+  const q = new URLSearchParams({ select: 'id,dados,updated_at' });
+  if (id) {
+    q.set('id', 'eq.' + id);
+  } else {
+    q.set('id', 'not.like.hist:*');
+    if (desde) q.set('updated_at', 'gt.' + desde);
+    q.set('order', 'updated_at.asc');
+  }
+  let res;
+  try {
+    res = await fetch(`${SB_URL}/rest/v1/vc_modelos?${q}`, {
+      headers: { apikey: key, Authorization: `Bearer ${key}`, Accept: 'application/json' },
+    });
+  } catch (e) {
+    return new Response(JSON.stringify({ erro: 'Supabase inacessível: ' + (e && e.message) }), { status: 502, headers });
+  }
+  if (!res.ok) {
+    return new Response(JSON.stringify({ erro: 'Supabase HTTP ' + res.status, corpo: (await res.text()).slice(0, 300) }), { status: 502, headers });
+  }
+  return new Response(res.body, { status: 200, headers });
+}
