@@ -16,12 +16,15 @@
  * Só leitura. Gravação continua indo direto ao Supabase pelo navegador.
  */
 const SB_URL = 'https://hckzsblwyabmhzbjdjgx.supabase.co';
+// A MESMA chave pública (anon) que o main.js usa no navegador: é ela que tem SELECT em
+// vc_modelos. A service key do projeto Cloudflare é da modelagem e toma 403 nessa tabela
+// (visto em 17/09/2026). Nada novo fica exposto: a chave já está no código do site.
+const SB_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imhja3pzYmx3eWFibWh6Ympkamd4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkxNTEyOTIsImV4cCI6MjA5NDcyNzI5Mn0.guif8jtidWmfqykhgDgPJiaRbWLoEEDMp1usTlAs1dQ';
 
 export async function onRequestGet(context) {
   const { env, request } = context;
-  const key = env.SUPABASE_SERVICE_ROLE_KEY;
+  const key = env.SUPABASE_ANON_KEY || SB_ANON;
   const headers = { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' };
-  if (!key) return new Response(JSON.stringify({ erro: 'SUPABASE_SERVICE_ROLE_KEY não configurada' }), { status: 500, headers });
 
   const url = new URL(request.url);
   const id = url.searchParams.get('id');
