@@ -8197,7 +8197,7 @@ function frtCalcularMes(pedidos, cfg) {
   // Custo médio por etiqueta faturada, para estimar o que ainda não veio na fatura.
   const custos = Object.values(ets).map(frtCustoEtiqueta).filter(v => v > 0);
   const mediaEtiqueta = custos.length ? custos.reduce((a, b) => a + b, 0) / custos.length : 0;
-  const porMetodo = {}; let retiradas = 0, naoEnviados = 0;
+  const porMetodo = {}; let retiradas = 0, naoEnviados = 0, livres = 0;
   const tot = { envios: 0, cobrado: 0, custo: 0, pendentes: 0, estimado: 0 };
   for (const p of pedidos) {
     if (p.retirada) { retiradas++; continue; }
@@ -8205,10 +8205,16 @@ function frtCalcularMes(pedidos, cfg) {
     const m = porMetodo[p.metodo || '(sem método)'] || (porMetodo[p.metodo || '(sem método)'] = { envios: 0, cobrado: 0, custo: 0, pendentes: 0, estimado: 0 });
     const achadas = (p.etiquetas || []).filter(e => ets[e]);
     const custo = achadas.reduce((s, e) => s + frtCustoEtiqueta(ets[e]), 0);
+    // Só a Loggi vem na fatura (etiqueta BLI_ do Bling). PAC/Sedex são frete livre: a
+    // cliente paga o que custa, então o custo é o cobrado e não há o que estimar.
+    const ehLoggi = /loggi/i.test(p.metodo || '') || (p.etiquetas || []).some(e => /^BLI_/i.test(e));
     for (const alvo of [m, tot]) {
       alvo.envios++; alvo.cobrado += p.cobrado || 0;
-      if (achadas.length) alvo.custo += custo; else { alvo.pendentes++; alvo.estimado += mediaEtiqueta; }
+      if (achadas.length) alvo.custo += custo;
+      else if (ehLoggi) { alvo.pendentes++; alvo.estimado += mediaEtiqueta; }
+      else alvo.custo += p.cobrado || 0;
     }
+    if (!achadas.length && !ehLoggi) livres++;
   }
   const arr = o => { for (const k of Object.keys(o)) if (typeof o[k] === 'number') o[k] = Math.round(o[k] * 100) / 100; return o; };
   arr(tot); Object.values(porMetodo).forEach(arr);
@@ -8217,7 +8223,7 @@ function frtCalcularMes(pedidos, cfg) {
     ...tot, saldo: Math.round((tot.cobrado - custoTotal) * 100) / 100,
     por_envio: tot.envios ? Math.round((tot.cobrado - custoTotal) / tot.envios * 100) / 100 : 0,
     media_etiqueta: Math.round(mediaEtiqueta * 100) / 100,
-    retiradas, nao_enviados: naoEnviados, por_metodo: porMetodo,
+    retiradas, nao_enviados: naoEnviados, livres, por_metodo: porMetodo,
   };
 }
 
@@ -8233,6 +8239,7 @@ function frtRenderMes(d, cfg) {
   const notas = [];
   if (!Object.keys(cfg.faturas || {}).length) notas.push('Nenhuma fatura da Loggi importada ainda: o custo real fica em zero até importar (botão acima).');
   else if (c.pendentes) notas.push(`${c.pendentes} envio${c.pendentes > 1 ? 's' : ''} ainda sem fatura: custo estimado pela média das faturas (${fmtBRL(c.media_etiqueta)} por envio), ${fmtBRL(c.estimado)} no total.`);
+  if (c.livres) notas.push(`${c.livres} envio${c.livres > 1 ? 's' : ''} por PAC/Sedex (frete livre): custo considerado igual ao cobrado, não passa pela fatura da Loggi.`);
   if (c.nao_enviados) notas.push(`${c.nao_enviados} pedido${c.nao_enviados > 1 ? 's' : ''} pago${c.nao_enviados > 1 ? 's' : ''} ainda não enviado${c.nao_enviados > 1 ? 's' : ''} (fora da conta).`);
   if (c.retiradas) notas.push(`${c.retiradas} retirada${c.retiradas > 1 ? 's' : ''} na loja (fora da conta).`);
   set('frt-mes-nota', notas.join(' '));

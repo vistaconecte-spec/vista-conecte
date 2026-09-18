@@ -88,20 +88,20 @@ console.log('\n3) Conta do mês na tela (frtCalcularMes): fatura por etiqueta, e
     { numero: '#1', metodo: 'Loggi Express', cobrado: 19, enviado: true, retirada: false, etiquetas: ['BLI_A'] },
     { numero: '#2', metodo: 'Loggi Express', cobrado: 19, enviado: true, retirada: false, etiquetas: ['BLI_B'] },
     { numero: '#3', metodo: 'Loggi Express', cobrado: 19, enviado: true, retirada: false, etiquetas: ['BLI_C'] }, // ainda sem fatura
-    { numero: '#4', metodo: 'PAC', cobrado: 30, enviado: true, retirada: false, etiquetas: ['BLI_B'] },
+    { numero: '#4', metodo: 'PAC', cobrado: 30, enviado: true, retirada: false, etiquetas: ['AP1BR'] }, // frete livre, fora da fatura
     { numero: '#5', metodo: 'Loja Conecte', cobrado: 0, enviado: true, retirada: true, etiquetas: [] },
     { numero: '#6', metodo: 'Loggi Express', cobrado: 19, enviado: false, retirada: false, etiquetas: [] },
   ];
   const c = calcular(pedidos, cfg);
-  ok('etiqueta em duas faturas soma as duas (30) e o custo real do mês bate', c.custo, 110);
+  ok('etiqueta em duas faturas soma as duas (30); PAC entra pelo cobrado (30+40+30)', c.custo, 100);
   ok('só envios contam: retirada e não enviado ficam fora', [c.envios, c.retiradas, c.nao_enviados], [4, 1, 1]);
   ok('quem ainda não tem fatura entra pela média das etiquetas faturadas (35)', [c.pendentes, c.estimado, c.media_etiqueta], [1, 35, 35]);
-  ok('saldo desconta o real E o estimado (87 - 110 - 35)', c.saldo, -58);
-  ok('por envio', c.por_envio, -14.5);
+  ok('saldo desconta o real E o estimado (87 - 100 - 35)', c.saldo, -48);
+  ok('por envio', c.por_envio, -12);
   ok('tabela por método separa Loggi e PAC', Object.keys(c.por_metodo).sort(), ['Loggi Express', 'PAC']);
-  ok('PAC: cobrado 30, custo 40', [c.por_metodo.PAC.cobrado, c.por_metodo.PAC.custo], [30, 40]);
+  ok('PAC (livre): custo igual ao cobrado e não entra nos pendentes', [c.por_metodo.PAC.cobrado, c.por_metodo.PAC.custo, c.por_metodo.PAC.pendentes, c.livres], [30, 30, 0, 1]);
   const vazio = calcular(pedidos, { faturas: {}, etiquetas: {} });
-  ok('sem fatura nenhuma, nada é estimado (média 0) e tudo fica pendente', [vazio.custo, vazio.estimado, vazio.pendentes], [0, 0, 4]);
+  ok('sem fatura nenhuma, nada é estimado (média 0) e só a Loggi fica pendente', [vazio.custo, vazio.estimado, vazio.pendentes], [30, 0, 3]);
 }
 
 console.log('\n4) Tela e ligações');
@@ -114,6 +114,7 @@ console.log('\n4) Tela e ligações');
   ok('reimportar a mesma fatura apaga antes o que ela tinha em cada etiqueta', /if \(et\.f && et\.f\[id\] != null\) delete et\.f\[id\];/.test(main), true);
   ok('o leitor de planilha só carrega na importação', /xlsx\.full\.min\.js/.test(main) && !/xlsx\.full\.min\.js/.test(html), true);
   ok('o card diz que a estimativa vem da média das faturas', /custo estimado pela média das faturas/.test(main), true);
+  ok('o card avisa que PAC/Sedex entram pelo cobrado', /frete livre\): custo considerado igual ao cobrado/.test(main), true);
 }
 
 console.log(`\n${total - falhas}/${total} ok${falhas ? `, ${falhas} falha(s)` : ''}`);
