@@ -8339,6 +8339,84 @@ function renderTempoLiberacao() {
     + new Date(d.gerado_em).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 }
 
+// ─── CARD: HOJE (gasto com tráfego, ROAS do dia, faturamento da Shopify) ─────
+// Pedido da Bárbara em 18/09/2026. A conta é do /api/painel-diario (gasto da Meta por dia
+// × pedidos pagos da Shopify criados no dia, ambos no fuso de Brasília); aqui só se pede
+// dias=2 (hoje e ontem, pra ter com o que comparar) e se desenha. Lido na abertura e a
+// cada 5 minutos, fora do ciclo de 1 minuto dos pedidos: o gasto da Meta demora a
+// atualizar de qualquer jeito, e cada leitura são duas chamadas de API.
+//
+// O ROAS grande é o REAL: receita paga da Shopify ÷ gasto na Meta. O que a Meta atribui
+// pelo pixel (roas_meta) fica na linha de baixo, só de referência, porque costuma vir
+// maior do que a venda de verdade.
+const DIA_INTERVALO = 5 * 60 * 1000;
+
+async function carregarDiaHoje() {
+  if (ehPerfilDeUmaAba()) return; // oficina e modelagem não alcançam /api
+  try {
+    const r = await fetch('/api/painel-diario?dias=2&t=' + Date.now());
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const dados = await r.json();
+    if (dados.erro) throw new Error(dados.erro);
+    window._diaHoje = dados;
+    window._diaHojeErro = null;
+  } catch (e) {
+    window._diaHojeErro = e.message || 'falha';
+  }
+  renderDiaHoje();
+}
+
+// ROAS com vírgula e duas casas ("2,34"); "—" sem gasto no dia
+const diaRoasFmt = v => v ? v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—';
+
+function renderDiaHoje() {
+  const sub = document.getElementById('dash-dia-sub');
+  if (!sub) return;
+  const set = (id, txt, cls) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.textContent = txt;
+    if (cls !== undefined) el.className = 'mini-val' + (cls ? ' ' + cls : '');
+  };
+  const d = window._diaHoje;
+  if (!d) {
+    sub.textContent = window._diaHojeErro
+      ? 'não deu para ler agora (' + window._diaHojeErro + '); tenta de novo em 5 min'
+      : 'carregando…';
+    return;
+  }
+  const vazio = { gasto_meta: 0, roas_real: 0, roas_meta: 0, receita: 0, pedidos: 0, ticket: 0 };
+  const hojeStr = d.periodo.ate;
+  const hoje = (d.linhas || []).find(l => l.dia === hojeStr) || vazio;
+  const ontem = (d.linhas || []).find(l => l.dia !== hojeStr) || vazio;
+  const brDia = s => s.slice(8, 10) + '/' + s.slice(5, 7);
+
+  // Gasto: sem token da Meta o número fica "—" e o motivo vai na linha de baixo
+  if (d.meta_ok) {
+    set('dia-gasto', fmtBRL(hoje.gasto_meta), '');
+    set('dia-gasto-sub', 'ontem ' + fmtBRL(ontem.gasto_meta));
+  } else {
+    set('dia-gasto', '—', '');
+    set('dia-gasto-sub', 'Meta não respondeu: ' + (d.meta_erro || 'sem dado'));
+  }
+
+  // ROAS real: verde de 2,5 pra cima, vermelho abaixo de 1,5 (com a margem de hoje,
+  // abaixo disso o anúncio não se paga), neutro no meio
+  const roas = hoje.roas_real;
+  const cls = !roas ? '' : roas >= 2.5 ? 'dia-ok' : roas < 1.5 ? 'dia-ruim' : '';
+  set('dia-roas', diaRoasFmt(roas), cls);
+  set('dia-roas-sub', (d.meta_ok ? 'Meta atribui ' + diaRoasFmt(hoje.roas_meta) + ' · ' : '') + 'ontem ' + diaRoasFmt(ontem.roas_real));
+
+  // Faturamento: só pedidos pagos (mesma regra do Financeiro), criados hoje
+  set('dia-fat', fmtBRL(hoje.receita), '');
+  set('dia-fat-sub', hoje.pedidos + (hoje.pedidos === 1 ? ' pedido pago' : ' pedidos pagos')
+    + (hoje.pedidos ? ' · ticket ' + fmtBRL(hoje.ticket) : '')
+    + ' · ontem ' + fmtBRL(ontem.receita));
+
+  sub.textContent = 'dia ' + brDia(hojeStr) + ' · atualizado '
+    + new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+}
+
 function renderProntosParaEnvio() {
   const el    = document.getElementById('dash-prontos');
   const totEl = document.getElementById('dash-prontos-total');
@@ -12398,6 +12476,10 @@ setInterval(() => {
 // 3a. Tempo de liberação (card do painel): na abertura e a cada 30 min
 carregarTempoLiberacao();
 setInterval(carregarTempoLiberacao, TL_INTERVALO);
+
+// 3a'. Card HOJE (tráfego, ROAS, faturamento): na abertura e a cada 5 min
+carregarDiaHoje();
+setInterval(carregarDiaHoje, DIA_INTERVALO);
 
 // 3b. Sincroniza estoque/produção entre dispositivos a cada 15 segundos (rede de segurança do realtime)
 setInterval(() => { sincronizarNuvem(); }, 15 * 1000);

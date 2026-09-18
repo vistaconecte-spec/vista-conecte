@@ -18,7 +18,10 @@ export async function onRequest(context) {
 
   const url = new URL(request.url);
   const dias = Math.min(60, Math.max(2, parseInt(url.searchParams.get('dias') || '14', 10)));
-  const hoje = new Date();
+  // "Hoje" no fuso de Brasília, não em UTC: a função roda na Cloudflare (relógio UTC) e
+  // depois das 21h o dia já tinha virado, então o card do painel pedia "hoje" e recebia
+  // um dia vazio do amanhã. Sem horário de verão no Brasil, -3h fixo resolve.
+  const hoje = new Date(Date.now() - 3 * 3600 * 1000);
   const ymd = d => d.toISOString().slice(0, 10);
   const ate = ymd(hoje);
   const desde = ymd(new Date(hoje.getTime() - (dias - 1) * 86400000));

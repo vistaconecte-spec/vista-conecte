@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Bodoni+Moda:ital,opsz,wght@0,6..96,700;0,6..96,900&family=Bebas+Neue&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css">
-<link rel="stylesheet" href="style.css?v=2026091509">
+<link rel="stylesheet" href="style.css?v=2026091801">
 </head>
 <body>
 
@@ -143,6 +143,22 @@
             <div class="mini-label"><i class="ti ti-hourglass-high"></i> TEMPO DE LIBERAÇÃO</div>
             <div id="dash-tempo" style="font-size:11px;color:var(--text-ter)">carregando…</div>
             <div class="mini-sub" id="dash-tempo-sub">dias úteis do pagamento ao envio</div>
+          </div>
+        </div>
+        <!-- O DIA DE HOJE (pedido da Bárbara, 18/09/2026): quanto foi pra tráfego hoje, o ROAS
+             do dia e o faturamento da Shopify de hoje, lado a lado. Vem de /api/painel-diario?dias=2
+             (gasto da Meta × pedidos pagos da Shopify, no fuso de Brasília), lido a cada 5 min.
+             O ROAS grande é o REAL (receita da Shopify ÷ gasto); o que a Meta atribui pelo pixel
+             fica em letra pequena, porque costuma inflar. -->
+        <div class="card card--dia" id="card-dia" style="border-left:3px solid #7c3aed">
+          <div class="card-header">
+            <div class="card-title" style="color:#7c3aed"><i class="ti ti-sun"></i> HOJE: TRÁFEGO, ROAS E FATURAMENTO</div>
+            <span id="dash-dia-sub" style="font-size:11px;color:var(--text-ter)">carregando…</span>
+          </div>
+          <div class="dia-grid" id="dash-dia">
+            <div class="dia-item"><div class="mini-label"><i class="ti ti-ad-2"></i> GASTO COM TRÁFEGO</div><div class="mini-val" id="dia-gasto">—</div><div class="mini-sub" id="dia-gasto-sub">—</div></div>
+            <div class="dia-item"><div class="mini-label"><i class="ti ti-chart-arrows-vertical"></i> ROAS DO DIA</div><div class="mini-val" id="dia-roas">—</div><div class="mini-sub" id="dia-roas-sub">—</div></div>
+            <div class="dia-item"><div class="mini-label"><i class="ti ti-shopping-bag"></i> FATURAMENTO SHOPIFY</div><div class="mini-val" id="dia-fat">—</div><div class="mini-sub" id="dia-fat-sub">—</div></div>
           </div>
         </div>
         <div class="card" id="card-prontos" style="border-left:3px solid #16a34a">
@@ -1121,7 +1137,7 @@
   </div>
 </div>
 <script src="data.js?v=2026091105"></script>
-<script src="main.js?v=2026091802"></script>
+<script src="main.js?v=2026091803"></script>
 <script async src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js" onload="initSupabase()"></script>
 </body>
 </html>
