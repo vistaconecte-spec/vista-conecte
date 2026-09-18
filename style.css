@@ -1391,16 +1391,21 @@ thead tr th:last-child { border-top-right-radius: 10px; border-bottom-right-radi
   .mini-cards:has(.mini-card--tempo) .mini-card:not(.mini-card--tempo) .mini-sub { font-size: 12px; }
 }
 /* ── CARD HOJE: TRÁFEGO, ROAS E FATURAMENTO (painel) ──
-   Um card só, com três números lado a lado no mesmo desenho dos mini-cards (Bárbara,
-   18/09/2026). No celular os três ficam empilhados em coluna. */
-.dia-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
-.dia-item { padding: 6px 10px; border-radius: 14px; background: rgba(124,58,237,0.05); }
-.dia-item .mini-val { font-size: 30px; }
+   Um card só, com três números lado a lado (Bárbara, 18/09/2026). Primeira versão
+   ficou "gigante" (Bárbara, mesmo dia): agora é uma faixa fina, com o título e os
+   três números na mesma altura dos mini-cards de cima. No celular empilha em coluna. */
+.card--dia { padding: 8px 14px 10px; }
+.card--dia .card-header { margin-bottom: 4px; }
+.card--dia .card-title { font-size: 11px; }
+.dia-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.dia-item { padding: 2px 8px; border-left: 2px solid rgba(124,58,237,0.25); }
+.dia-item .mini-label { font-size: 9.5px; }
+.dia-item .mini-val { font-size: 20px; margin: 1px 0 0; }
 .dia-item .mini-val.dia-ok { color: #16a34a; }
 .dia-item .mini-val.dia-ruim { color: #dc2626; }
+.dia-item .mini-sub { font-size: 10.5px; }
 @media (max-width: 768px) {
   .dia-grid { grid-template-columns: 1fr; gap: 6px; }
-  .dia-item .mini-val { font-size: 24px; }
 }
 .tl-sub { font-size: 11px; color: var(--text-sec); line-height: 1.4; }
 .tl-colunas { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; align-items: end; margin: 4px 0 2px; }
