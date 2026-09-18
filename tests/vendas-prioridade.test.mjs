@@ -65,7 +65,7 @@ console.log('\n2) A leitura da Shopify segue a paginacao e usa updated_at_min');
 
 console.log('\n3) A tela VENDAS existe e e so leitura');
 ok('pill Vendas ao lado das outras', /atd-pill-vendas[\s\S]{0,80}atdShowSub\('vendas'\)/.test(html), true);
-ok('atdShowSub conhece vendas', /\['kanban', 'sac', 'retorno', 'estorno', 'vendas'\]/.test(main), true);
+ok('atdShowSub conhece vendas', /\['kanban', 'sac', 'retorno', 'estorno', 'vendas', 'frete'\]/.test(main), true);
 ok('abrir a aba busca na Shopify', /else if \(sub === 'vendas'\) vndCarregar\(\);/.test(main), true);
 ok('a aba le /api/shopify-rascunhos', /fetch\(`\/api\/shopify-rascunhos\?desde=\$\{desde\}&ate=\$\{ate\}`/.test(main), true);
 {

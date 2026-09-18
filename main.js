@@ -1468,7 +1468,7 @@ function atdLock() {
 
 // Alterna entre as 4 sub-seções (pílulas) dentro do painel Atendimento
 function atdShowSub(sub) {
-  ['kanban', 'sac', 'retorno', 'estorno', 'vendas'].forEach(s => {
+  ['kanban', 'sac', 'retorno', 'estorno', 'vendas', 'frete'].forEach(s => {
     const el = document.getElementById('atd-sub-' + s);
     if (el) el.style.display = (s === sub) ? '' : 'none';
     const pill = document.getElementById('atd-pill-' + s);
@@ -1479,6 +1479,7 @@ function atdShowSub(sub) {
   else if (sub === 'estorno') { estRender(); estSincronizarShopify(); }
   else if (sub === 'kanban') kbAbrir();
   else if (sub === 'vendas') vndCarregar();
+  else if (sub === 'frete') frtCarregarMes();
 }
 
 // ── SAC ──────────────────────────────────────────────────────────────────────
@@ -8034,6 +8035,222 @@ function renderMiniCards(pecasEmAberto) {
   // números do painel nunca discordarem.
   set('mini-ab-ped', (window._shopifyDetalhados || []).length);
   set('mini-ab-sub', `${plural(pecasEmAberto || 0, 'peça', 'peças')} a enviar`);
+}
+
+// ── Frete (consulta + custo do mês) ──────────────────────────────────────────
+// Pedido da Bárbara em 18/09/2026, depois de cruzar as faturas da Loggi com a Shopify: a
+// cliente pagava R$19 e a Loggi cobrava R$34 por envio (R$4.500/mês bancados pela loja).
+// A consulta cota na Frenet como o checkout. O custo do mês NÃO usa cotação: usa a fatura
+// da Loggi importada aqui, porque um terço do custo é "diferença de volumetria" que a Loggi
+// só cobra depois de pesar o pacote, e cotação nenhuma enxerga isso.
+//
+// vc:frete-faturas = { faturas: { '2026-09-01': {arquivo, importado_em, linhas, envios, total,
+//   entrega, volumetria, devolucao} }, etiquetas: { 'BLI_x': { f: {fatura: valor}, kg, d } } }
+// Uma etiqueta pode aparecer em duas faturas (entrega numa, volumetria na seguinte), por
+// isso o valor fica guardado POR fatura e o custo da etiqueta é a soma.
+
+function frtGetConfig() {
+  const c = loadLocal('vc:frete-faturas') || {};
+  return { faturas: c.faturas || {}, etiquetas: c.etiquetas || {}, updated_at: c.updated_at || null };
+}
+function frtSalvar(cfg) {
+  cfg.updated_at = new Date().toISOString();
+  saveLocal('vc:frete-faturas', cfg);
+  // Sem histórico (registrarVersao): a fatura reimportada sobrescreve a mesma chave e o
+  // arquivo original continua na Loggi; guardar versões de 70 KB não ajudaria ninguém.
+  return salvarNuvemREST('frete-faturas', cfg);
+}
+const frtCustoEtiqueta = et => et ? Object.values(et.f || {}).reduce((s, v) => s + (Number(v) || 0), 0) : 0;
+
+async function frtCotar() {
+  const st = document.getElementById('frt-status'), out = document.getElementById('frt-resultado');
+  const cep = (document.getElementById('frt-cep').value || '').replace(/\D/g, '');
+  const valor = parseFloat(document.getElementById('frt-valor').value) || 149;
+  const peso = parseFloat(document.getElementById('frt-peso').value) || 0.35;
+  if (cep.length !== 8) { st.textContent = 'CEP precisa de 8 dígitos'; return; }
+  st.textContent = 'cotando na Frenet...'; out.innerHTML = '';
+  try {
+    const r = await fetch(`/api/frenet-cotacao?cep=${cep}&valor=${valor}&peso=${peso}`, { cache: 'no-store' });
+    const d = await r.json();
+    if (!r.ok || d.erro) throw new Error(d.erro || ('HTTP ' + r.status));
+    if (!d.opcoes.length) { out.innerHTML = '<span style="color:var(--text-ter)">Nenhuma transportadora atende esse CEP.</span>'; st.textContent = ''; return; }
+    out.innerHTML = `<table style="font-size:12px;min-width:420px"><thead><tr style="color:var(--text-ter);font-size:11px;text-transform:uppercase">
+        <th style="text-align:left;padding:4px">Opção</th><th style="text-align:right;padding:4px">Prazo</th>
+        <th style="text-align:right;padding:4px">Cliente paga</th><th style="text-align:right;padding:4px">Tabela</th><th style="text-align:right;padding:4px">Loja banca</th></tr></thead><tbody>`
+      + d.opcoes.map(o => {
+          if (o.erro) return `<tr><td style="padding:4px">${o.servico}</td><td colspan="4" style="padding:4px;color:var(--text-ter)">${o.erro}</td></tr>`;
+          const banca = Math.round((o.tabela - o.cliente_paga) * 100) / 100;
+          return `<tr><td style="padding:4px;font-weight:700">${o.servico}</td><td style="padding:4px;text-align:right">${o.prazo_dias} dias úteis</td>
+            <td style="padding:4px;text-align:right;font-weight:700">${fmtBRL(o.cliente_paga)}</td><td style="padding:4px;text-align:right;color:var(--text-sec)">${fmtBRL(o.tabela)}</td>
+            <td style="padding:4px;text-align:right;color:${banca > 0 ? '#b91c1c' : 'var(--text-ter)'}">${banca > 0 ? fmtBRL(banca) : '—'}</td></tr>`;
+        }).join('') + '</tbody></table>'
+      + `<div style="font-size:11px;color:var(--text-ter);margin-top:6px">"Tabela" é o preço da transportadora antes da regra da Frenet; não inclui a volumetria que a Loggi cobra depois de pesar o pacote.</div>`;
+    st.textContent = '';
+  } catch (e) {
+    st.textContent = 'não deu para cotar agora (' + (e.message || 'erro') + ')';
+  }
+}
+
+// SheetJS só quando alguém importa fatura: não vale carregar 800 KB em toda abertura do app.
+function frtCarregarXlsx() {
+  if (window.XLSX) return Promise.resolve();
+  return new Promise((res, rej) => {
+    const s = document.createElement('script');
+    s.src = 'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js';
+    s.onload = res; s.onerror = () => rej(new Error('não carregou o leitor de planilha'));
+    document.head.appendChild(s);
+  });
+}
+
+// Lê UMA planilha billing_invoice_report da Loggi (aba "Relatório analítico") e devolve
+// { id, resumo, etiquetas: { BLI: { valor, kg, data } } }. `id` é a data no nome do arquivo
+// (início da quinzena) ou, sem ela, o número da fatura na capa.
+function frtLerFatura(nome, wb) {
+  const abaNome = wb.SheetNames.find(n => /relat/i.test(n)) || wb.SheetNames[1] || wb.SheetNames[0];
+  const linhas = XLSX.utils.sheet_to_json(wb.Sheets[abaNome], { header: 1, raw: true, defval: '' });
+  if (!linhas.length) throw new Error(nome + ': planilha vazia');
+  const cab = linhas[0].map(c => String(c).trim().toLowerCase());
+  const col = rx => cab.findIndex(c => rx.test(c));
+  const iTipo = col(/^tipo de frete/), iPed = col(/pedido/), iVal = col(/valor total do frete/), iKg = col(/faixa de peso/), iData = col(/data de cobran/);
+  if (iPed < 0 || iVal < 0) throw new Error(nome + ': não parece a fatura da Loggi (faltam "Número do Pedido" / "Valor Total do Frete")');
+  const num = v => Math.round((parseFloat(String(v).replace(',', '.')) || 0) * 100) / 100;
+  const etiquetas = {}; const resumo = { linhas: 0, envios: 0, total: 0, entrega: 0, volumetria: 0, devolucao: 0 };
+  for (const l of linhas.slice(1)) {
+    const etq = String(l[iPed] || '').trim(); if (!etq) continue;
+    const tipo = String(l[iTipo] || ''), valor = num(l[iVal]);
+    resumo.linhas++; resumo.total += valor;
+    if (/entrega/i.test(tipo)) { resumo.envios++; resumo.entrega += valor; }
+    else if (/volum/i.test(tipo)) resumo.volumetria += valor;
+    else if (/devolu/i.test(tipo)) resumo.devolucao += valor;
+    const e = etiquetas[etq] || (etiquetas[etq] = { valor: 0, kg: 0, data: '' });
+    e.valor = Math.round((e.valor + valor) * 100) / 100;
+    if (iKg >= 0) e.kg = Math.max(e.kg, num(l[iKg]));
+    if (iData >= 0 && !e.data) e.data = String(l[iData] || '').slice(0, 10);
+  }
+  for (const k of Object.keys(resumo)) if (k !== 'linhas' && k !== 'envios') resumo[k] = Math.round(resumo[k] * 100) / 100;
+  let id = (/(\d{4}-\d{2}-\d{2})/.exec(nome) || [])[1];
+  if (!id) {
+    const capa = wb.Sheets[wb.SheetNames[0]];
+    const txt = capa ? JSON.stringify(XLSX.utils.sheet_to_json(capa, { header: 1 })).slice(0, 2000) : '';
+    id = 'fatura-' + ((/FATURA\s+(\d+)/i.exec(txt) || [])[1] || nome.replace(/\.xlsx$/i, ''));
+  }
+  return { id, resumo, etiquetas };
+}
+
+async function frtImportarFaturas(input) {
+  const st = document.getElementById('frt-mes-status');
+  const arquivos = Array.from(input.files || []); input.value = '';
+  if (!arquivos.length) return;
+  st.textContent = 'lendo planilha...';
+  try {
+    await frtCarregarXlsx();
+    const cfg = frtGetConfig(); const feitos = [];
+    for (const f of arquivos) {
+      const wb = XLSX.read(await f.arrayBuffer(), { type: 'array' });
+      const { id, resumo, etiquetas } = frtLerFatura(f.name, wb);
+      // Reimportar a mesma fatura substitui só o que ela tinha (a etiqueta pode ter valor de
+      // outra fatura também, e esse fica).
+      for (const et of Object.values(cfg.etiquetas)) if (et.f && et.f[id] != null) delete et.f[id];
+      for (const [etq, e] of Object.entries(etiquetas)) {
+        const et = cfg.etiquetas[etq] || (cfg.etiquetas[etq] = { f: {}, kg: 0, d: '' });
+        et.f[id] = e.valor; et.kg = Math.max(et.kg || 0, e.kg); if (!et.d) et.d = e.data;
+      }
+      cfg.faturas[id] = { arquivo: f.name, importado_em: new Date().toISOString(), ...resumo };
+      feitos.push(`${id} (${resumo.envios} envios, ${fmtBRL(resumo.total)})`);
+    }
+    await frtSalvar(cfg);
+    st.textContent = 'importada: ' + feitos.join(' · ');
+    frtCarregarMes();
+  } catch (e) {
+    st.textContent = 'não deu para importar (' + (e.message || 'erro') + ')';
+  }
+}
+
+function frtMes() {
+  const el = document.getElementById('frt-mes');
+  const hoje = new Date();
+  const mes = (el && /^\d{4}-\d{2}$/.test(el.value)) ? el.value : `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, '0')}`;
+  if (el && !el.value) el.value = mes;
+  return mes;
+}
+
+async function frtCarregarMes() {
+  const st = document.getElementById('frt-mes-status');
+  if (!st) return;
+  const mes = frtMes();
+  st.textContent = 'buscando na Shopify...';
+  try {
+    const r = await fetch(`/api/frete-mes?mes=${mes}`, { cache: 'no-store' });
+    const d = await r.json();
+    if (!r.ok || d.erro) throw new Error(d.erro || ('HTTP ' + r.status));
+    frtRenderMes(d, frtGetConfig());
+    st.textContent = 'atualizado ' + new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+  } catch (e) {
+    st.textContent = 'não deu para ler a Shopify agora (' + (e.message || 'erro') + ')';
+  }
+}
+
+// Conta do mês. Pura (sem DOM) para os testes: recebe os pedidos do endpoint e a config
+// das faturas e devolve totais, tabela por método e a lista de faturas.
+function frtCalcularMes(pedidos, cfg) {
+  const ets = cfg.etiquetas || {};
+  // Custo médio por etiqueta faturada, para estimar o que ainda não veio na fatura.
+  const custos = Object.values(ets).map(frtCustoEtiqueta).filter(v => v > 0);
+  const mediaEtiqueta = custos.length ? custos.reduce((a, b) => a + b, 0) / custos.length : 0;
+  const porMetodo = {}; let retiradas = 0, naoEnviados = 0;
+  const tot = { envios: 0, cobrado: 0, custo: 0, pendentes: 0, estimado: 0 };
+  for (const p of pedidos) {
+    if (p.retirada) { retiradas++; continue; }
+    if (!p.enviado) { naoEnviados++; continue; }
+    const m = porMetodo[p.metodo || '(sem método)'] || (porMetodo[p.metodo || '(sem método)'] = { envios: 0, cobrado: 0, custo: 0, pendentes: 0, estimado: 0 });
+    const achadas = (p.etiquetas || []).filter(e => ets[e]);
+    const custo = achadas.reduce((s, e) => s + frtCustoEtiqueta(ets[e]), 0);
+    for (const alvo of [m, tot]) {
+      alvo.envios++; alvo.cobrado += p.cobrado || 0;
+      if (achadas.length) alvo.custo += custo; else { alvo.pendentes++; alvo.estimado += mediaEtiqueta; }
+    }
+  }
+  const arr = o => { for (const k of Object.keys(o)) if (typeof o[k] === 'number') o[k] = Math.round(o[k] * 100) / 100; return o; };
+  arr(tot); Object.values(porMetodo).forEach(arr);
+  const custoTotal = tot.custo + tot.estimado;
+  return {
+    ...tot, saldo: Math.round((tot.cobrado - custoTotal) * 100) / 100,
+    por_envio: tot.envios ? Math.round((tot.cobrado - custoTotal) / tot.envios * 100) / 100 : 0,
+    media_etiqueta: Math.round(mediaEtiqueta * 100) / 100,
+    retiradas, nao_enviados: naoEnviados, por_metodo: porMetodo,
+  };
+}
+
+function frtRenderMes(d, cfg) {
+  const c = frtCalcularMes(d.pedidos || [], cfg);
+  const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+  set('frt-m-envios', c.envios);
+  set('frt-m-cobrado', fmtBRL(c.cobrado));
+  set('frt-m-custo', fmtBRL(c.custo + c.estimado));
+  set('frt-m-saldo', (c.saldo < 0 ? '−' : '') + fmtBRL(Math.abs(c.saldo)));
+  set('frt-m-por-envio', (c.por_envio < 0 ? '−' : '') + fmtBRL(Math.abs(c.por_envio)));
+  const saldoEl = document.getElementById('frt-m-saldo'); if (saldoEl) saldoEl.style.color = c.saldo < 0 ? '#b91c1c' : '#15803d';
+  const notas = [];
+  if (!Object.keys(cfg.faturas || {}).length) notas.push('Nenhuma fatura da Loggi importada ainda: o custo real fica em zero até importar (botão acima).');
+  else if (c.pendentes) notas.push(`${c.pendentes} envio${c.pendentes > 1 ? 's' : ''} ainda sem fatura: custo estimado pela média das faturas (${fmtBRL(c.media_etiqueta)} por envio), ${fmtBRL(c.estimado)} no total.`);
+  if (c.nao_enviados) notas.push(`${c.nao_enviados} pedido${c.nao_enviados > 1 ? 's' : ''} pago${c.nao_enviados > 1 ? 's' : ''} ainda não enviado${c.nao_enviados > 1 ? 's' : ''} (fora da conta).`);
+  if (c.retiradas) notas.push(`${c.retiradas} retirada${c.retiradas > 1 ? 's' : ''} na loja (fora da conta).`);
+  set('frt-mes-nota', notas.join(' '));
+  const sinal = v => (v < 0 ? '−' : '') + fmtBRL(Math.abs(v));
+  const linhas = Object.entries(c.por_metodo).sort((a, b) => b[1].envios - a[1].envios).map(([met, m]) => {
+    const saldo = m.cobrado - m.custo - m.estimado;
+    return `<tr><td style="padding:5px 4px;font-weight:700">${met}</td><td style="padding:5px 4px;text-align:right">${m.envios}</td>
+      <td style="padding:5px 4px;text-align:right">${fmtBRL(m.cobrado)}</td><td style="padding:5px 4px;text-align:right">${fmtBRL(m.custo + m.estimado)}</td>
+      <td style="padding:5px 4px;text-align:right;font-weight:700;color:${saldo < 0 ? '#b91c1c' : '#15803d'}">${sinal(saldo)}</td>
+      <td style="padding:5px 4px;text-align:right;color:var(--text-ter)">${m.pendentes || '—'}</td></tr>`;
+  }).join('');
+  const tb = document.getElementById('frt-mes-tbody');
+  if (tb) tb.innerHTML = linhas || '<tr><td colspan="6" style="text-align:center;color:var(--text-ter);padding:14px">Nenhum envio neste mês.</td></tr>';
+  const fats = Object.entries(cfg.faturas || {}).sort((a, b) => a[0] < b[0] ? 1 : -1);
+  const fEl = document.getElementById('frt-faturas');
+  if (fEl) fEl.innerHTML = fats.length
+    ? '<b>Faturas da Loggi importadas:</b> ' + fats.map(([id, f]) => `${id}: ${f.envios} envios, ${fmtBRL(f.total)} (entrega ${fmtBRL(f.entrega)} + volumetria ${fmtBRL(f.volumetria)}${f.devolucao ? ' + devolução ' + fmtBRL(f.devolucao) : ''})`).join(' · ')
+    : '';
 }
 
 // ─── CARD: TEMPO DE LIBERAÇÃO (dias úteis do pagamento ao envio) ─────────────

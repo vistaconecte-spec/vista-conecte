@@ -790,6 +790,72 @@
             <div id="atd-pill-retorno" class="atd-pill" onclick="atdShowSub('retorno')"><i class="ti ti-replace"></i> Troca</div>
             <div id="atd-pill-estorno" class="atd-pill" onclick="atdShowSub('estorno')"><i class="ti ti-receipt-refund"></i> Devolução</div>
             <div id="atd-pill-vendas" class="atd-pill" onclick="atdShowSub('vendas')"><i class="ti ti-cash"></i> Vendas</div>
+            <div id="atd-pill-frete" class="atd-pill" onclick="atdShowSub('frete')"><i class="ti ti-truck"></i> Frete</div>
+          </div>
+
+          <!-- FRETE (pedido da Bárbara, 18/09/2026): consulta rápida pro SAC e o custo do mês.
+               A consulta cota na Frenet igual ao checkout (/api/frenet-cotacao). O custo do mês
+               casa os pedidos da Shopify (/api/frete-mes) com a fatura da Loggi importada aqui
+               (planilha billing_invoice_report, guardada em vc:frete-faturas), porque a
+               cotação não enxerga a volumetria que a Loggi cobra depois de pesar o pacote. -->
+          <div id="atd-sub-frete" style="display:none">
+            <div class="card" style="margin-bottom:14px">
+              <div class="card-header">
+                <div class="card-title"><i class="ti ti-map-pin"></i> Consulta de frete</div>
+                <span style="font-size:11px;color:var(--text-ter)">cota na Frenet igual ao checkout da loja</span>
+              </div>
+              <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+                <input id="frt-cep" placeholder="CEP" inputmode="numeric" maxlength="9" style="width:110px;font-size:13px;padding:8px 10px;border:1px solid var(--border);border-radius:8px" onkeydown="if(event.key==='Enter')frtCotar()">
+                <input id="frt-valor" type="number" step="1" min="1" placeholder="Valor R$" value="149" style="width:100px;font-size:13px;padding:8px 10px;border:1px solid var(--border);border-radius:8px" onkeydown="if(event.key==='Enter')frtCotar()">
+                <select id="frt-peso" style="font-size:13px;padding:8px 10px;border:1px solid var(--border);border-radius:8px">
+                  <option value="0.35">1 peça leve (calça, blusa, macaquinho) · 0,35 kg</option>
+                  <option value="0.65">macacão, vestido longo · 0,65 kg</option>
+                  <option value="0.9">2 peças leves · 0,9 kg</option>
+                  <option value="1.3">conjunto de moletom · 1,3 kg</option>
+                  <option value="2">casaco sherpa/bear · 2 kg</option>
+                  <option value="3">combo pesado · 3 kg</option>
+                </select>
+                <button class="btn-primary" style="font-size:12px;padding:8px 14px" onclick="frtCotar()"><i class="ti ti-search"></i> Cotar</button>
+                <span id="frt-status" style="font-size:11px;color:var(--text-ter)"></span>
+              </div>
+              <div id="frt-resultado" style="margin-top:10px"></div>
+            </div>
+
+            <div class="card">
+              <div class="card-header">
+                <div class="card-title"><i class="ti ti-truck"></i> Frete do mês: cobrado x custo real</div>
+                <div style="display:flex;align-items:center;gap:8px;font-size:11px;color:var(--text-sec);flex-wrap:wrap">
+                  <input type="month" id="frt-mes" style="font-size:12px;padding:5px 8px;border:1px solid var(--border);border-radius:6px" onchange="frtCarregarMes()">
+                  <button class="btn-outline" style="font-size:10px;padding:3px 8px" onclick="frtCarregarMes()"><i class="ti ti-refresh"></i> Atualizar</button>
+                  <label class="btn-outline" style="font-size:10px;padding:3px 8px;cursor:pointer" title="Planilha billing_invoice_report que a Loggi manda a cada quinzena"><i class="ti ti-file-spreadsheet"></i> Importar fatura da Loggi
+                    <input type="file" accept=".xlsx" multiple style="display:none" onchange="frtImportarFaturas(this)">
+                  </label>
+                  <span id="frt-mes-status"></span>
+                </div>
+              </div>
+              <div style="display:flex;gap:18px;flex-wrap:wrap;margin:2px 0 12px">
+                <div class="metric"><div class="label">ENVIOS</div><div class="val" id="frt-m-envios">0</div></div>
+                <div class="metric"><div class="label">CLIENTE PAGOU</div><div class="val val-escuro" id="frt-m-cobrado">R$ 0,00</div></div>
+                <div class="metric"><div class="label">LOGGI COBROU (FATURA)</div><div class="val" id="frt-m-custo">R$ 0,00</div></div>
+                <div class="metric" style="border-left:3px solid #b91c1c;padding-left:12px"><div class="label">SALDO</div><div class="val" id="frt-m-saldo">R$ 0,00</div></div>
+                <div class="metric"><div class="label">POR ENVIO</div><div class="val" id="frt-m-por-envio">R$ 0,00</div></div>
+              </div>
+              <div id="frt-mes-nota" style="font-size:11px;color:var(--text-ter);margin-bottom:8px"></div>
+              <div style="overflow-x:auto">
+              <table style="width:100%;font-size:12px;min-width:640px">
+                <thead><tr style="color:var(--text-ter);font-size:11px;text-transform:uppercase">
+                  <th style="text-align:left;padding:4px">Método</th>
+                  <th style="text-align:right;padding:4px">Envios</th>
+                  <th style="text-align:right;padding:4px">Cliente pagou</th>
+                  <th style="text-align:right;padding:4px">Custo real</th>
+                  <th style="text-align:right;padding:4px">Saldo</th>
+                  <th style="text-align:right;padding:4px">Sem fatura ainda</th>
+                </tr></thead>
+                <tbody id="frt-mes-tbody"></tbody>
+              </table>
+              </div>
+              <div id="frt-faturas" style="font-size:11px;color:var(--text-sec);margin-top:10px"></div>
+            </div>
           </div>
 
           <!-- CRM KANBAN — solicitações em andamento (SAC + Trocas + Devoluções), visual visionOS -->
@@ -1055,7 +1121,7 @@
   </div>
 </div>
 <script src="data.js?v=2026091105"></script>
-<script src="main.js?v=2026091701"></script>
+<script src="main.js?v=2026091801"></script>
 <script async src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js" onload="initSupabase()"></script>
 </body>
 </html>
