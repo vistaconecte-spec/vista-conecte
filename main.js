@@ -8111,15 +8111,28 @@ function frtSalvar(cfg) {
 }
 const frtCustoEtiqueta = et => et ? Object.values(et.f || {}).reduce((s, v) => s + (Number(v) || 0), 0) : 0;
 
+// Escolher a embalagem preenche medidas e peso (os mesmos sacos cadastrados na Frenet);
+// "Personalizado" deixa os campos como estão para a pessoa digitar.
+function frtEmbalagem() {
+  const v = document.getElementById('frt-embalagem').value;
+  if (!v) return;
+  const [c, l, a, p] = v.split('x');
+  document.getElementById('frt-comp').value = c; document.getElementById('frt-larg').value = l;
+  document.getElementById('frt-alt').value = a; document.getElementById('frt-peso').value = p;
+}
+
 async function frtCotar() {
   const st = document.getElementById('frt-status'), out = document.getElementById('frt-resultado');
   const cep = (document.getElementById('frt-cep').value || '').replace(/\D/g, '');
   const valor = parseFloat(document.getElementById('frt-valor').value) || 149;
   const peso = parseFloat(document.getElementById('frt-peso').value) || 0.35;
+  const alt = parseInt(document.getElementById('frt-alt').value, 10) || 10;
+  const larg = parseInt(document.getElementById('frt-larg').value, 10) || 15;
+  const comp = parseInt(document.getElementById('frt-comp').value, 10) || 24;
   if (cep.length !== 8) { st.textContent = 'CEP precisa de 8 dígitos'; return; }
   st.textContent = 'cotando na Frenet...'; out.innerHTML = '';
   try {
-    const r = await fetch(`/api/frenet-cotacao?cep=${cep}&valor=${valor}&peso=${peso}`, { cache: 'no-store' });
+    const r = await fetch(`/api/frenet-cotacao?cep=${cep}&valor=${valor}&peso=${peso}&alt=${alt}&larg=${larg}&comp=${comp}`, { cache: 'no-store' });
     const d = await r.json();
     if (!r.ok || d.erro) throw new Error(d.erro || ('HTTP ' + r.status));
     if (!d.opcoes.length) { out.innerHTML = '<span style="color:var(--text-ter)">Nenhuma transportadora atende esse CEP.</span>'; st.textContent = ''; return; }
@@ -8133,7 +8146,7 @@ async function frtCotar() {
             <td style="padding:4px;text-align:right;font-weight:700">${fmtBRL(o.cliente_paga)}</td><td style="padding:4px;text-align:right;color:var(--text-sec)">${fmtBRL(o.tabela)}</td>
             <td style="padding:4px;text-align:right;color:${banca > 0 ? '#b91c1c' : 'var(--text-ter)'}">${banca > 0 ? fmtBRL(banca) : '—'}</td></tr>`;
         }).join('') + '</tbody></table>'
-      + `<div style="font-size:11px;color:var(--text-ter);margin-top:6px">"Tabela" é o preço da transportadora antes da regra da Frenet; não inclui a volumetria que a Loggi cobra depois de pesar o pacote.</div>`;
+      + `<div style="font-size:11px;color:var(--text-ter);margin-top:6px">"Tabela" é o preço da transportadora antes das regras da Frenet. A transportadora cobra pelo maior entre o peso e o volume da embalagem (altura × largura × comprimento ÷ 6000).</div>`;
     st.textContent = '';
   } catch (e) {
     st.textContent = 'não deu para cotar agora (' + (e.message || 'erro') + ')';

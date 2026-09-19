@@ -45,6 +45,9 @@ console.log('\n1) /api/frenet-cotacao: CEP, opções e o que a loja banca');
   const fetchFalso = async (url, opts) => { chamadas.push(JSON.parse(opts.body)); return { ok: true, json: async () => resp }; };
   await cotApi.cotar('tok', { cep: '01310100', valor: 149, peso: 2 }, fetchFalso);
   ok('cota a partir da loja (88067200) com o peso pedido', [chamadas[0].SellerCEP, chamadas[0].ShippingItemArray[0].Weight], ['88067200', 2]);
+  ok('sem medidas, usa o Saco P (24×15×10), a embalagem padrão da Frenet', [chamadas[0].ShippingItemArray[0].Length, chamadas[0].ShippingItemArray[0].Width, chamadas[0].ShippingItemArray[0].Height], [24, 15, 10]);
+  await cotApi.cotar('tok', { cep: '01310100', valor: 149, peso: 2.5, alt: 12, larg: 35, comp: 45 }, fetchFalso);
+  ok('com medidas (Saco GG), manda as medidas', [chamadas[1].ShippingItemArray[0].Length, chamadas[1].ShippingItemArray[0].Width, chamadas[1].ShippingItemArray[0].Height], [45, 35, 12]);
 }
 
 console.log('\n2) /api/frete-mes: período do mês e normalização dos pedidos');
@@ -113,7 +116,8 @@ console.log('\n4) Tela e ligações');
   ok('a aba não ficou duplicada no Atendimento', /atd-sub-frete|atd-pill-frete/.test(html), false);
   ok('as regras vigentes estão escritas na tela', /Regras vigentes \(Frenet, desde 19\/09\/2026\)/.test(html), true);
   ok('o campo de valor diz o que é', /Valor da compra R\$/.test(html), true);
-  ok('a consulta lê /api/frenet-cotacao', /fetch\(`\/api\/frenet-cotacao\?cep=\$\{cep\}&valor=\$\{valor\}&peso=\$\{peso\}`/.test(main), true);
+  ok('a consulta lê /api/frenet-cotacao com embalagem, medidas, peso e valor (igual à calculadora da Frenet)', /fetch\(`\/api\/frenet-cotacao\?cep=\$\{cep\}&valor=\$\{valor\}&peso=\$\{peso\}&alt=\$\{alt\}&larg=\$\{larg\}&comp=\$\{comp\}`/.test(main), true);
+  ok('os sacos da Frenet estão no seletor e preenchem as medidas', /id="frt-embalagem"/.test(html) && /24x15x10x0\.35/.test(html) && /45x35x12x2\.5/.test(html) && /function frtEmbalagem\(\)/.test(main), true);
   ok('o mês lê /api/frete-mes', /fetch\(`\/api\/frete-mes\?mes=\$\{mes\}`/.test(main), true);
   ok('a fatura importada é gravada sem histórico (salvarNuvemREST direto)', /return salvarNuvemREST\('frete-faturas', cfg\);/.test(main), true);
   ok('reimportar a mesma fatura apaga antes o que ela tinha em cada etiqueta', /if \(et\.f && et\.f\[id\] != null\) delete et\.f\[id\];/.test(main), true);

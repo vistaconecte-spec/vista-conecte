@@ -7,19 +7,22 @@
  * diferença entre os dois que a loja banca (a regra da Frenet fixa a Loggi em R$19 em boa
  * parte do país; a tabela em SP é R$27, no combo pesado passa de R$49).
  *
- *   GET /api/frenet-cotacao?cep=01310100&valor=149&peso=0.35
+ *   GET /api/frenet-cotacao?cep=01310100&valor=149&peso=0.35&alt=10&larg=15&comp=24
  *     cep    destino (só dígitos ou com hífen)
  *     valor  valor da compra em R$ (entra no ad valorem/GRIS da transportadora)
  *     peso   peso em kg; se faltar, 0,35 (uma peça leve embalada, mínimo que a Loggi cobra)
+ *     alt/larg/comp  medidas da embalagem em cm; se faltar, o Saco P (24×15×10), que é a
+ *                    embalagem padrão da Frenet e a que o checkout da loja usa
  *   → { cep, valor, peso, opcoes: [{ servico, transportadora, codigo, prazo_dias,
  *        cliente_paga, tabela, erro }], gerado_em }
  *
  * Token: env.FRENET_TOKEN (chave de acesso do painel da Frenet, Profile > Chaves de acesso).
- * A caixa padrão (30×25×10 cm) é a que a Frenet usa quando o app da Shopify não manda
- * medidas; o peso cubado dela é 1,25 kg, então pra peça pesada é o `peso` que manda.
+ * A transportadora cobra pelo maior entre o peso e o cubado (alt × larg × comp ÷ 6000):
+ * o Saco P cuba 0,6 kg; uma caixa 30×25×10 cubaria 1,25 kg e inflava a cotação em R$5 a 8
+ * (foi o erro da simulação de 18/09/2026).
  */
 const ORIGEM_CEP = '88067200'; // Loja Conecte, Florianópolis (mesmo CEP que a Shopify manda)
-const CAIXA = { Height: 10, Length: 30, Width: 25 };
+const SACO_P = { Height: 10, Length: 24, Width: 15 };
 
 const num = v => Math.round((parseFloat(v) || 0) * 100) / 100;
 
@@ -42,10 +45,11 @@ export function montarOpcoes(resposta) {
   })).sort((a, b) => (a.cliente_paga ?? 1e9) - (b.cliente_paga ?? 1e9));
 }
 
-export async function cotar(token, { cep, valor, peso }, fetchFn = fetch) {
+export async function cotar(token, { cep, valor, peso, alt, larg, comp }, fetchFn = fetch) {
+  const caixa = (alt && larg && comp) ? { Height: alt, Length: comp, Width: larg } : SACO_P;
   const body = {
     SellerCEP: ORIGEM_CEP, RecipientCEP: cep, ShipmentInvoiceValue: valor, RecipientCountry: 'BR',
-    ShippingItemArray: [{ ...CAIXA, Weight: peso, Quantity: 1 }],
+    ShippingItemArray: [{ ...caixa, Weight: peso, Quantity: 1 }],
   };
   const r = await fetchFn('https://api.frenet.com.br/shipping/quote', {
     method: 'POST',
@@ -65,9 +69,11 @@ export async function onRequestGet(context) {
   if (!cep) return new Response(JSON.stringify({ erro: 'CEP inválido (precisa de 8 dígitos)' }), { status: 400, headers });
   const valor = num(url.searchParams.get('valor')) || 149;
   const peso = Math.max(0.05, parseFloat(url.searchParams.get('peso')) || 0.35);
+  const dim = k => Math.min(200, Math.max(0, parseInt(url.searchParams.get(k), 10) || 0));
+  const alt = dim('alt'), larg = dim('larg'), comp = dim('comp');
   try {
-    const opcoes = await cotar(env.FRENET_TOKEN, { cep, valor, peso });
-    return new Response(JSON.stringify({ cep, valor, peso, opcoes, gerado_em: new Date().toISOString() }), { headers });
+    const opcoes = await cotar(env.FRENET_TOKEN, { cep, valor, peso, alt, larg, comp });
+    return new Response(JSON.stringify({ cep, valor, peso, alt, larg, comp, opcoes, gerado_em: new Date().toISOString() }), { headers });
   } catch (e) {
     return new Response(JSON.stringify({ erro: e.message }), { status: 502, headers });
   }
