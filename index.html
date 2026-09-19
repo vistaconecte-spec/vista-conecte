@@ -779,42 +779,39 @@
           <iframe id="traf-frame" src="about:blank" style="width:100%;height:calc(100vh - 180px);min-height:520px;border:1px solid var(--border);border-radius:12px;background:#fff"></iframe>
         </div>
       </div>
-      <div id="panel-atendimento" class="tab-panel">
-        <div id="atd-gate" style="max-width:380px;margin:48px auto">
+      <!-- FRETE (pedido da Bárbara, 18/09/2026, aba própria em 19/09): consulta rápida pro SAC
+           e o custo do mês. A consulta cota na Frenet igual ao checkout (/api/frenet-cotacao).
+           O custo do mês casa os pedidos da Shopify (/api/frete-mes) com a fatura importada
+           aqui (planilha da Loggi; etiquetas agora saem pela Frenet), porque cotação nenhuma
+           enxerga a volumetria que a transportadora cobra depois de pesar o pacote.
+           Mesma senha do Financeiro (fin-ok), como Atendimento e Tráfego. -->
+      <div id="panel-frete" class="tab-panel">
+        <div id="frt-gate" style="max-width:380px;margin:48px auto">
           <div class="card" style="text-align:center;padding:30px 26px">
             <i class="ti ti-lock" style="font-size:30px;color:var(--gold-dark)"></i>
-            <div style="font-weight:700;font-size:17px;margin:10px 0 2px">Atendimento</div>
+            <div style="font-weight:700;font-size:17px;margin:10px 0 2px">Frete</div>
             <div style="font-size:12px;color:var(--text-sec);margin-bottom:16px">Digite a senha para acessar</div>
-            <input type="password" id="atd-senha" placeholder="Senha" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;font-size:14px" onkeydown="if(event.key==='Enter')atdUnlock()">
-            <div id="atd-erro" style="color:#dc2626;font-size:12px;height:16px;margin-top:6px"></div>
-            <button class="btn-primary" style="width:100%;margin-top:6px;padding:10px" onclick="atdUnlock()"><i class="ti ti-lock-open"></i> Entrar</button>
+            <input type="password" id="frt-senha" placeholder="Senha" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;font-size:14px" onkeydown="if(event.key==='Enter')frtUnlock()">
+            <div id="frt-erro" style="color:#dc2626;font-size:12px;height:16px;margin-top:6px"></div>
+            <button class="btn-primary" style="width:100%;margin-top:6px;padding:10px" onclick="frtUnlock()"><i class="ti ti-lock-open"></i> Entrar</button>
           </div>
         </div>
-        <div id="atd-content" style="display:none">
-          <style>
-            .atd-pill { display:inline-flex; align-items:center; gap:6px; padding:8px 16px; border-radius:999px; border:1px solid rgba(255,255,255,.9); background:rgba(255,255,255,.55); font-size:12px; font-weight:600; color:var(--text-sec); cursor:pointer; box-shadow:0 2px 8px rgba(50,40,80,.06); }
-            .atd-pill.active { background:#1E1B2B; color:#fff; border-color:rgba(255,255,255,.14); box-shadow:0 4px 14px rgba(30,27,43,.28); }
-          </style>
+        <div id="frt-content" style="display:none">
           <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap">
-            <div style="font-weight:700;font-size:18px"><i class="ti ti-headset"></i> Atendimento</div>
-            <span style="font-size:12px;color:var(--text-sec)">SAC · Troca · Devolução · Vendas</span>
-            <button class="btn-outline" style="margin-left:auto;font-size:11px;padding:5px 10px" onclick="atdLock()"><i class="ti ti-lock"></i> Sair</button>
+            <div style="font-weight:700;font-size:18px"><i class="ti ti-truck"></i> Frete</div>
+            <span style="font-size:12px;color:var(--text-sec)">Consulta · Cobrado x custo real · Regras vigentes</span>
+            <button class="btn-outline" style="margin-left:auto;font-size:11px;padding:5px 10px" onclick="frtLock()"><i class="ti ti-lock"></i> Sair</button>
           </div>
-          <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">
-            <div id="atd-pill-kanban" class="atd-pill" onclick="atdShowSub('kanban')"><i class="ti ti-layout-kanban"></i> CRM</div>
-            <div id="atd-pill-sac" class="atd-pill" onclick="atdShowSub('sac')"><i class="ti ti-headset"></i> SAC</div>
-            <div id="atd-pill-retorno" class="atd-pill" onclick="atdShowSub('retorno')"><i class="ti ti-replace"></i> Troca</div>
-            <div id="atd-pill-estorno" class="atd-pill" onclick="atdShowSub('estorno')"><i class="ti ti-receipt-refund"></i> Devolução</div>
-            <div id="atd-pill-vendas" class="atd-pill" onclick="atdShowSub('vendas')"><i class="ti ti-cash"></i> Vendas</div>
-            <div id="atd-pill-frete" class="atd-pill" onclick="atdShowSub('frete')"><i class="ti ti-truck"></i> Frete</div>
+          <!-- Regras vigentes na Frenet (19/09/2026). É texto fixo de propósito: a Frenet não
+               tem API de regras, então isto é a memória do que está ligado lá. Mudou lá, muda aqui. -->
+          <div class="card" style="margin-bottom:14px;padding:12px 16px;border-left:3px solid var(--gold-dark)">
+            <div style="font-size:11px;font-weight:700;color:var(--gold-dark);letter-spacing:.06em;text-transform:uppercase;margin-bottom:6px">Regras vigentes (Frenet, desde 19/09/2026)</div>
+            <div style="font-size:12px;color:var(--text-sec);line-height:1.6">
+              Até R$400: frete real da Loggi (SP 1 peça ~R$18, 2 peças ~R$21) · R$400 a R$599: Loggi fixo R$24,90 (Sudeste e Sul) · Acima de R$599: frete grátis · Nordeste e Norte: frete real · PAC sempre real.<br>
+              Expedição: etiqueta pela Frenet com Saco P/M/G/GG (peso já vem), casaco no saco, nunca em caixa; despachar pelo método que a cliente escolheu.
+            </div>
           </div>
 
-          <!-- FRETE (pedido da Bárbara, 18/09/2026): consulta rápida pro SAC e o custo do mês.
-               A consulta cota na Frenet igual ao checkout (/api/frenet-cotacao). O custo do mês
-               casa os pedidos da Shopify (/api/frete-mes) com a fatura da Loggi importada aqui
-               (planilha billing_invoice_report, guardada em vc:frete-faturas), porque a
-               cotação não enxerga a volumetria que a Loggi cobra depois de pesar o pacote. -->
-          <div id="atd-sub-frete" style="display:none">
             <div class="card" style="margin-bottom:14px">
               <div class="card-header">
                 <div class="card-title"><i class="ti ti-map-pin"></i> Consulta de frete</div>
@@ -822,7 +819,7 @@
               </div>
               <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
                 <input id="frt-cep" placeholder="CEP" inputmode="numeric" maxlength="9" style="width:110px;font-size:13px;padding:8px 10px;border:1px solid var(--border);border-radius:8px" onkeydown="if(event.key==='Enter')frtCotar()">
-                <input id="frt-valor" type="number" step="1" min="1" placeholder="Valor R$" value="149" style="width:100px;font-size:13px;padding:8px 10px;border:1px solid var(--border);border-radius:8px" onkeydown="if(event.key==='Enter')frtCotar()">
+                <span style="font-size:11px;color:var(--text-ter)">Valor da compra R$</span><input id="frt-valor" type="number" step="1" min="1" placeholder="Valor da compra R$" value="149" title="Valor da compra: entra no seguro que a transportadora cobra sobre a nota" style="width:100px;font-size:13px;padding:8px 10px;border:1px solid var(--border);border-radius:8px" onkeydown="if(event.key==='Enter')frtCotar()">
                 <select id="frt-peso" style="font-size:13px;padding:8px 10px;border:1px solid var(--border);border-radius:8px">
                   <option value="0.35">1 peça leve (calça, blusa, macaquinho) · 0,35 kg</option>
                   <option value="0.65">macacão, vestido longo · 0,65 kg</option>
@@ -872,6 +869,35 @@
               </div>
               <div id="frt-faturas" style="font-size:11px;color:var(--text-sec);margin-top:10px"></div>
             </div>
+                  </div>
+      </div>
+      <div id="panel-atendimento" class="tab-panel">
+        <div id="atd-gate" style="max-width:380px;margin:48px auto">
+          <div class="card" style="text-align:center;padding:30px 26px">
+            <i class="ti ti-lock" style="font-size:30px;color:var(--gold-dark)"></i>
+            <div style="font-weight:700;font-size:17px;margin:10px 0 2px">Atendimento</div>
+            <div style="font-size:12px;color:var(--text-sec);margin-bottom:16px">Digite a senha para acessar</div>
+            <input type="password" id="atd-senha" placeholder="Senha" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;font-size:14px" onkeydown="if(event.key==='Enter')atdUnlock()">
+            <div id="atd-erro" style="color:#dc2626;font-size:12px;height:16px;margin-top:6px"></div>
+            <button class="btn-primary" style="width:100%;margin-top:6px;padding:10px" onclick="atdUnlock()"><i class="ti ti-lock-open"></i> Entrar</button>
+          </div>
+        </div>
+        <div id="atd-content" style="display:none">
+          <style>
+            .atd-pill { display:inline-flex; align-items:center; gap:6px; padding:8px 16px; border-radius:999px; border:1px solid rgba(255,255,255,.9); background:rgba(255,255,255,.55); font-size:12px; font-weight:600; color:var(--text-sec); cursor:pointer; box-shadow:0 2px 8px rgba(50,40,80,.06); }
+            .atd-pill.active { background:#1E1B2B; color:#fff; border-color:rgba(255,255,255,.14); box-shadow:0 4px 14px rgba(30,27,43,.28); }
+          </style>
+          <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap">
+            <div style="font-weight:700;font-size:18px"><i class="ti ti-headset"></i> Atendimento</div>
+            <span style="font-size:12px;color:var(--text-sec)">SAC · Troca · Devolução · Vendas</span>
+            <button class="btn-outline" style="margin-left:auto;font-size:11px;padding:5px 10px" onclick="atdLock()"><i class="ti ti-lock"></i> Sair</button>
+          </div>
+          <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">
+            <div id="atd-pill-kanban" class="atd-pill" onclick="atdShowSub('kanban')"><i class="ti ti-layout-kanban"></i> CRM</div>
+            <div id="atd-pill-sac" class="atd-pill" onclick="atdShowSub('sac')"><i class="ti ti-headset"></i> SAC</div>
+            <div id="atd-pill-retorno" class="atd-pill" onclick="atdShowSub('retorno')"><i class="ti ti-replace"></i> Troca</div>
+            <div id="atd-pill-estorno" class="atd-pill" onclick="atdShowSub('estorno')"><i class="ti ti-receipt-refund"></i> Devolução</div>
+            <div id="atd-pill-vendas" class="atd-pill" onclick="atdShowSub('vendas')"><i class="ti ti-cash"></i> Vendas</div>
           </div>
 
           <!-- CRM KANBAN — solicitações em andamento (SAC + Trocas + Devoluções), visual visionOS -->

@@ -1108,6 +1108,13 @@ function buildSidebar() {
   atdItem.onclick = () => abrirAtendimento(atdItem);
   nav.appendChild(atdItem);
 
+  // Botão Frete — consulta, cobrado x custo real, regras vigentes (mesma senha do Financeiro)
+  const frtItem = document.createElement('div');
+  frtItem.className = 'nav-item nav-dashboard' + (modeloAtual === '__frete__' ? ' active' : '');
+  frtItem.innerHTML = '<i class="ti ti-truck"></i> FRETE';
+  frtItem.onclick = () => abrirFrete(frtItem);
+  nav.appendChild(frtItem);
+
   // Botão Modelagem (arquivos Audaces, croquis, consumo e alterações por modelo)
   const mdlItem = document.createElement('div');
   mdlItem.className = 'nav-item nav-dashboard' + (modeloAtual === '__modelagem__' ? ' active' : '');
@@ -1428,7 +1435,7 @@ function trafLock() {
 function abrirAtendimento(item) {
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   if (item) item.classList.add('active');
-  if (!['__dashboard__', '__financeiro__', '__precos__', '__trafego__', '__fluxo__', '__atendimento__'].includes(modeloAtual) && (estEditado || prodEditado || cfgEditado)) {
+  if (!['__dashboard__', '__financeiro__', '__precos__', '__trafego__', '__fluxo__', '__atendimento__', '__frete__'].includes(modeloAtual) && (estEditado || prodEditado || cfgEditado)) {
     clearTimeout(saveTimer); salvarModelo();
   }
   estEditado = false; prodEditado = false; cfgEditado = false; esconderBtnSalvar();
@@ -1466,9 +1473,52 @@ function atdLock() {
   document.getElementById('atd-content').style.display = 'none';
 }
 
+// ── Frete — consulta, cobrado x custo real e regras vigentes (mesma senha do Financeiro) ──
+// Aba própria a pedido da Bárbara (19/09/2026): antes era uma pílula dentro do Atendimento.
+function abrirFrete(item) {
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  if (item) item.classList.add('active');
+  if (!['__dashboard__', '__financeiro__', '__precos__', '__trafego__', '__fluxo__', '__atendimento__', '__frete__'].includes(modeloAtual) && (estEditado || prodEditado || cfgEditado)) {
+    clearTimeout(saveTimer); salvarModelo();
+  }
+  estEditado = false; prodEditado = false; cfgEditado = false; esconderBtnSalvar();
+  modeloAtual = '__frete__';
+  location.hash = 'frete';
+  document.getElementById('model-title').innerHTML = '<span style="font-family:'Bebas Neue','Arial Narrow',sans-serif;font-weight:400;font-size:26px;letter-spacing:0.1em">FRETE</span>';
+  document.getElementById('model-sub').textContent = '';
+  document.getElementById('topbar-actions').style.display = 'none';
+  document.getElementById('tabs-modelo').style.display = 'none';
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  document.getElementById('panel-frete').classList.add('active');
+  document.body.classList.remove('precos-mode');
+  const ok = sessionStorage.getItem('fin-ok') === '1';
+  document.getElementById('frt-gate').style.display = ok ? 'none' : '';
+  document.getElementById('frt-content').style.display = ok ? '' : 'none';
+  if (ok) frtCarregarMes(); else setTimeout(() => document.getElementById('frt-senha')?.focus(), 60);
+  closeSidebar();
+}
+async function frtUnlock() {
+  const v = document.getElementById('frt-senha').value;
+  if (await conferirSenha(v) === 'dona') {
+    sessionStorage.setItem('fin-ok', '1');
+    document.getElementById('frt-erro').textContent = '';
+    document.getElementById('frt-senha').value = '';
+    document.getElementById('frt-gate').style.display = 'none';
+    document.getElementById('frt-content').style.display = '';
+    frtCarregarMes();
+  } else {
+    document.getElementById('frt-erro').textContent = 'Senha incorreta';
+  }
+}
+function frtLock() {
+  sessionStorage.removeItem('fin-ok');
+  document.getElementById('frt-gate').style.display = '';
+  document.getElementById('frt-content').style.display = 'none';
+}
+
 // Alterna entre as 4 sub-seções (pílulas) dentro do painel Atendimento
 function atdShowSub(sub) {
-  ['kanban', 'sac', 'retorno', 'estorno', 'vendas', 'frete'].forEach(s => {
+  ['kanban', 'sac', 'retorno', 'estorno', 'vendas'].forEach(s => {
     const el = document.getElementById('atd-sub-' + s);
     if (el) el.style.display = (s === sub) ? '' : 'none';
     const pill = document.getElementById('atd-pill-' + s);
@@ -1479,7 +1529,6 @@ function atdShowSub(sub) {
   else if (sub === 'estorno') { estRender(); estSincronizarShopify(); }
   else if (sub === 'kanban') kbAbrir();
   else if (sub === 'vendas') vndCarregar();
-  else if (sub === 'frete') frtCarregarMes();
 }
 
 // ── SAC ──────────────────────────────────────────────────────────────────────
@@ -2933,7 +2982,7 @@ function flxPopularMeses() {
 function abrirFluxo(item) {
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   if (item) item.classList.add('active');
-  if (!['__dashboard__', '__financeiro__', '__precos__', '__trafego__', '__fluxo__', '__atendimento__'].includes(modeloAtual) && (estEditado || prodEditado || cfgEditado)) {
+  if (!['__dashboard__', '__financeiro__', '__precos__', '__trafego__', '__fluxo__', '__atendimento__', '__frete__'].includes(modeloAtual) && (estEditado || prodEditado || cfgEditado)) {
     clearTimeout(saveTimer); salvarModelo();
   }
   estEditado = false; prodEditado = false; cfgEditado = false; esconderBtnSalvar();
@@ -12385,7 +12434,7 @@ function iniciarApp() {
   _appIniciado = true;
 
 const _hashKey = location.hash.replace('#', '');
-const _ESPECIAIS = { confeccao: '__confeccao__', precos: '__precos__', financeiro: '__financeiro__', trafego: '__trafego__', fluxo: '__fluxo__', atendimento: '__atendimento__', modelagem: '__modelagem__', corte: '__corte__', costura: '__costura__' };
+const _ESPECIAIS = { confeccao: '__confeccao__', precos: '__precos__', financeiro: '__financeiro__', trafego: '__trafego__', fluxo: '__fluxo__', atendimento: '__atendimento__', frete: '__frete__', modelagem: '__modelagem__', corte: '__corte__', costura: '__costura__' };
 modeloAtual = _ESPECIAIS[_hashKey] || ((_hashKey && MODELOS[_hashKey]) ? _hashKey : '__dashboard__');
 // Perfis de oficina não escolhem tela: entram direto na aba deles e ficam nela
 if (ehPerfilCorte())     modeloAtual = '__corte__';
@@ -12411,6 +12460,8 @@ if (modeloAtual === '__confeccao__') {
   abrirFluxo(null); // restaura a aba Fluxo de Caixa após F5
 } else if (modeloAtual === '__atendimento__') {
   abrirAtendimento(null); // restaura a aba Atendimento após F5
+} else if (modeloAtual === '__frete__') {
+  abrirFrete(null); // restaura a aba Frete após F5
 } else if (modeloAtual === '__modelagem__') {
   abrirModelagem(null); // restaura a aba Modelagem após F5
 } else if (modeloAtual === '__dashboard__') {
@@ -12432,6 +12483,7 @@ const _renderInicial = () => {
   else if (modeloAtual === '__trafego__') { if (sessionStorage.getItem('fin-ok') === '1') trafCarregarFrame(); }
   else if (modeloAtual === '__fluxo__') { if (sessionStorage.getItem('fin-ok') === '1') renderFluxo(); }
   else if (modeloAtual === '__atendimento__') { if (sessionStorage.getItem('fin-ok') === '1') atdShowSub('sac'); }
+  else if (modeloAtual === '__frete__') { if (sessionStorage.getItem('fin-ok') === '1') frtCarregarMes(); }
   else if (modeloAtual === '__modelagem__') { if (sessionStorage.getItem('mdl-ok') === '1') mdlCarregarLista(); }
   else renderModelo(modeloAtual);
 };

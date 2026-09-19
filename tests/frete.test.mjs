@@ -106,8 +106,13 @@ console.log('\n3) Conta do mês na tela (frtCalcularMes): fatura por etiqueta, e
 
 console.log('\n4) Tela e ligações');
 {
-  ok('a sub-aba Frete existe no Atendimento', /id="atd-pill-frete"/.test(html) && /id="atd-sub-frete"/.test(html), true);
-  ok('atdShowSub conhece a sub-aba e carrega o mês ao abrir', /else if \(sub === 'frete'\) frtCarregarMes\(\);/.test(main), true);
+  ok('a aba FRETE tem painel próprio com cadeado', /id="panel-frete"/.test(html) && /id="frt-gate"/.test(html) && /id="frt-content"/.test(html), true);
+  ok('a sidebar tem o botão FRETE e ele abre a aba', /frtItem\.onclick = \(\) => abrirFrete\(frtItem\);/.test(main), true);
+  ok('abrir a aba carrega o mês (com a senha do Financeiro já dada)', /if \(ok\) frtCarregarMes\(\); else setTimeout/.test(main), true);
+  ok('o hash #frete restaura a aba após F5', /frete: '__frete__'/.test(main) && /abrirFrete\(null\); \/\/ restaura/.test(main), true);
+  ok('a aba não ficou duplicada no Atendimento', /atd-sub-frete|atd-pill-frete/.test(html), false);
+  ok('as regras vigentes estão escritas na tela', /Regras vigentes \(Frenet, desde 19\/09\/2026\)/.test(html), true);
+  ok('o campo de valor diz o que é', /Valor da compra R\$/.test(html), true);
   ok('a consulta lê /api/frenet-cotacao', /fetch\(`\/api\/frenet-cotacao\?cep=\$\{cep\}&valor=\$\{valor\}&peso=\$\{peso\}`/.test(main), true);
   ok('o mês lê /api/frete-mes', /fetch\(`\/api\/frete-mes\?mes=\$\{mes\}`/.test(main), true);
   ok('a fatura importada é gravada sem histórico (salvarNuvemREST direto)', /return salvarNuvemREST\('frete-faturas', cfg\);/.test(main), true);
