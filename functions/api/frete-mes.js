@@ -8,8 +8,12 @@
  * (planilha billing_invoice_report) e casa com estes pedidos pela etiqueta BLI_.
  *
  *   GET /api/frete-mes?mes=2026-09
- *   → { mes, pedidos: [{ numero, criado_em, metodo, cobrado, peso_g, uf, pecas, retirada,
- *        enviado, etiquetas: [] }], gerado_em }
+ *   → { mes, pedidos: [{ numero, criado_em, metodo, cobrado, peso_g, uf, cep, valor, pecas,
+ *        retirada, enviado, etiquetas: [] }], gerado_em }
+ *
+ * `cep` e `valor` (total pago) entraram em 19/09/2026 pra rotina semanal "frete cobrado x
+ * custo" conseguir cotar na Frenet o preço de tabela de cada pedido (peso real + destino +
+ * valor da NF) e medir quanto a loja bancou no fixo R$24,90 e no grátis acima de R$599.
  *
  * GraphQL leve (como shopify-tempo-liberacao): só os campos da conta, ~250 pedidos por
  * página, cabe nos 10 ms de CPU do plano grátis. `cobrado` é o preço COM desconto
@@ -52,6 +56,8 @@ export function normalizar(nos) {
       cobrado: num(sl.discountedPriceSet && sl.discountedPriceSet.shopMoney && sl.discountedPriceSet.shopMoney.amount),
       peso_g: Math.round(o.totalWeight || 0),
       uf: (o.shippingAddress && o.shippingAddress.provinceCode) || null,
+      cep: ((o.shippingAddress && o.shippingAddress.zip) || '').replace(/\D/g, '') || null,
+      valor: num(o.currentTotalPriceSet && o.currentTotalPriceSet.shopMoney && o.currentTotalPriceSet.shopMoney.amount),
       pecas: o.currentSubtotalLineItemsQuantity || 0,
       retirada: ehRetirada(sl.title),
       enviado,
@@ -66,8 +72,9 @@ const QUERY = `query($cursor: String, $q: String) {
     edges { cursor node {
       name createdAt processedAt cancelledAt displayFinancialStatus
       currentSubtotalLineItemsQuantity totalWeight
+      currentTotalPriceSet { shopMoney { amount } }
       shippingLine { title discountedPriceSet { shopMoney { amount } } }
-      shippingAddress { provinceCode }
+      shippingAddress { provinceCode zip }
       fulfillments(first: 3) { status trackingInfo { number } }
     } }
     pageInfo { hasNextPage }

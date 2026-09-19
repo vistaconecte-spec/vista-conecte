@@ -57,7 +57,8 @@ console.log('\n2) /api/frete-mes: período do mês e normalização dos pedidos'
   ok('mês inválido é recusado', mesApi.periodoDoMes('2026-13'), null);
   const nos = [
     { name: '#1', createdAt: '2026-09-02T12:00:00Z', displayFinancialStatus: 'PAID', currentSubtotalLineItemsQuantity: 2, totalWeight: 700,
-      shippingLine: { title: 'Loggi Express', discountedPriceSet: { shopMoney: { amount: '19.0' } } }, shippingAddress: { provinceCode: 'SP' },
+      shippingLine: { title: 'Loggi Express', discountedPriceSet: { shopMoney: { amount: '19.0' } } }, shippingAddress: { provinceCode: 'SP', zip: '01310-100' },
+      currentTotalPriceSet: { shopMoney: { amount: '318.9' } },
       fulfillments: [{ status: 'SUCCESS', trackingInfo: [{ number: 'BLI_1 ' }] }] },
     { name: '#2', createdAt: '2026-09-03T12:00:00Z', displayFinancialStatus: 'PAID', currentSubtotalLineItemsQuantity: 1, totalWeight: 350,
       shippingLine: { title: 'Loja Conecte', discountedPriceSet: { shopMoney: { amount: '0.0' } } }, shippingAddress: null, fulfillments: [] },
@@ -70,6 +71,7 @@ console.log('\n2) /api/frete-mes: período do mês e normalização dos pedidos'
   const p = mesApi.normalizar(nos);
   ok('pendente e cancelado ficam fora', p.map(x => x.numero), ['#1', '#2', '#5']);
   ok('etiqueta sem espaço, cobrado com desconto, peso e UF', [p[0].etiquetas, p[0].cobrado, p[0].peso_g, p[0].uf, p[0].enviado], [['BLI_1'], 19, 700, 'SP', true]);
+  ok('CEP só dígitos e valor total do pedido (pra rotina cotar o custo de tabela)', [p[0].cep, p[0].valor, p[1].cep], ['01310100', 318.9, null]);
   ok('retirada na loja é marcada', p[1].retirada, true);
   ok('remessa cancelada não conta como enviado nem traz etiqueta', [p[2].enviado, p[2].etiquetas], [false, []]);
   const chamadas = [];
