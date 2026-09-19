@@ -1484,7 +1484,7 @@ function abrirFrete(item) {
   estEditado = false; prodEditado = false; cfgEditado = false; esconderBtnSalvar();
   modeloAtual = '__frete__';
   location.hash = 'frete';
-  document.getElementById('model-title').innerHTML = '<span style="font-family:'Bebas Neue','Arial Narrow',sans-serif;font-weight:400;font-size:26px;letter-spacing:0.1em">FRETE</span>';
+  document.getElementById('model-title').innerHTML = '<span style="font-family:\'Bebas Neue\',\'Arial Narrow\',sans-serif;font-weight:400;font-size:26px;letter-spacing:0.1em">FRETE</span>';
   document.getElementById('model-sub').textContent = '';
   document.getElementById('topbar-actions').style.display = 'none';
   document.getElementById('tabs-modelo').style.display = 'none';
