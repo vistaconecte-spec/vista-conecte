@@ -8572,11 +8572,13 @@ function renderProntosParaEnvio() {
       parcial: ped.parcial,
       grande:  ped.itens.reduce((s, i) => s + i.qtd, 0) >= GRANDE_MIN,
       dias:    diasDesde(ped.data),
+      valor:   ped.valor || 0,
     });
   }
 
   window._pedidosPendentes = pendentes;
   renderPedidosParados();
+  renderPedidosGrandes(prontos, pendentes, GRANDE_MIN);
 
   // O que sobrou na arara depois de separar os pedidos prontos — é desse saldo que
   // sai a troca de etiqueta, senão ela roubaria peça de pedido que já ia ser enviado.
@@ -8665,6 +8667,180 @@ function togglePronto(i) {
   const aberto = det.style.display !== 'none';
   det.style.display = aberto ? 'none' : '';
   if (cev) cev.style.transform = aberto ? '' : 'rotate(90deg)';
+}
+
+// ── PEDIDOS GRANDES: LIBERAR COM CARINHO ─────────────────────────────────────────
+// Pedido de 5 peças ou mais (o mesmo GRANDE_MIN dos prontos) é cliente que confiou de
+// verdade na loja. Reter essa cliente é o principal: o pedido sai conferido peça a peça,
+// embalado impecável e com brinde. O card junta os grandes prontos E os grandes parados,
+// para ninguém descobrir "era um pedidão" só na hora de fechar a caixa.
+//
+// As três marcações (conferido / embalagem / brinde) ficam na chave compartilhada
+// 'grandes' (mesma mesclagem por id do SAC), então o PC que separa e o celular que embala
+// veem o mesmo estado. A marcação de um pedido que já foi enviado é podada em 90 dias.
+const GRANDES_CHAVE  = 'grandes';
+const GRANDES_PASSOS = [
+  { campo: 'conferido', rotulo: 'Conferido peça a peça', icone: 'ti-checklist' },
+  { campo: 'embalagem', rotulo: 'Embalagem impecável',   icone: 'ti-package'   },
+  { campo: 'brinde',    rotulo: 'Brinde na caixa',       icone: 'ti-gift'      },
+];
+
+// Junta prontos e parados num só ranking. Prontos primeiro (a caixa pode fechar hoje),
+// depois os parados do mais antigo pro mais novo. Função pura: os testes rodam sem DOM.
+function listarPedidosGrandes(prontos, pendentes, minimo) {
+  const pecasDe = p => (p.itens || []).reduce((s, it) => s + (it.qtd || 0), 0);
+  const base = p => ({
+    id: String(p.id), numero: p.numero, cliente: p.cliente || 'Cliente', data: p.data,
+    url: p.url, itens: p.itens || [], pecas: pecasDe(p), valor: Number(p.valor) || 0,
+    dias: typeof p.dias === 'number' ? p.dias : diasDesde(p.data), parcial: !!p.parcial,
+  });
+  const lista = [];
+  (prontos || []).forEach(p => { if (pecasDe(p) >= minimo) lista.push({ ...base(p), pronto: true, faltas: [] }); });
+  (pendentes || []).forEach(p => { if (pecasDe(p) >= minimo) lista.push({ ...base(p), pronto: false, faltas: p.faltas || [] }); });
+  return lista.sort((a, b) => (Number(b.pronto) - Number(a.pronto)) || (b.dias - a.dias));
+}
+
+function grandesGetConfig() {
+  return loadLocal('vc:' + GRANDES_CHAVE) || { itens: [], updated_at: null };
+}
+function grandesMarcaDe(cfg, id) {
+  return (cfg.itens || []).find(it => it.id === String(id)) || {};
+}
+function grandesCompleto(marca) {
+  return GRANDES_PASSOS.every(p => !!(marca && marca[p.campo]));
+}
+
+function grandesSalvar(cfg) {
+  cfg.updated_at = new Date().toISOString();
+  saveLocal('vc:' + GRANDES_CHAVE, cfg);
+  clearTimeout(window._grandesSaveTimer);
+  window._grandesSaveTimer = setTimeout(() => {
+    salvarListaCompartilhada(GRANDES_CHAVE, 'itens', cfg)
+      .then(final => { if (final && modeloAtual === '__dashboard__') renderProntosParaEnvio(); })
+      .catch(() => {});
+  }, 900);
+}
+
+// Clique numa das três marcações do pedido
+function grandesToggle(id, campo) {
+  const cfg = grandesGetConfig();
+  if (!Array.isArray(cfg.itens)) cfg.itens = [];
+  let it = cfg.itens.find(x => x.id === String(id));
+  if (!it) { it = { id: String(id), criado_em: new Date().toISOString() }; cfg.itens.push(it); }
+  it[campo] = !it[campo];
+  carimbarItem(it);
+  // Poda: marcação de pedido antigo (já enviado há muito) não precisa viver para sempre
+  const corte = new Date(Date.now() - 90 * 86400000).toISOString();
+  cfg.itens = cfg.itens.filter(x => (x.atualizado_em || x.criado_em || '') > corte || x.id === String(id));
+  grandesSalvar(cfg);
+  renderProntosParaEnvio();
+}
+
+function toggleGrande(i) {
+  const det = document.getElementById('grande-det-' + i);
+  const cev = document.getElementById('grande-cev-' + i);
+  if (!det) return;
+  const aberto = det.style.display !== 'none';
+  det.style.display = aberto ? 'none' : '';
+  if (cev) cev.style.transform = aberto ? '' : 'rotate(90deg)';
+}
+
+function renderPedidosGrandes(prontos, pendentes, minimo) {
+  const el    = document.getElementById('dash-grandes');
+  const totEl = document.getElementById('dash-grandes-total');
+  const card  = document.getElementById('card-grandes');
+  if (!el) return;
+
+  const lista = listarPedidosGrandes(prontos, pendentes, minimo);
+  if (card) card.style.display = lista.length ? '' : 'none';
+  if (lista.length === 0) { el.innerHTML = ''; if (totEl) totEl.textContent = ''; return; }
+
+  const cfg = grandesGetConfig();
+  const prontosN = lista.filter(p => p.pronto).length;
+  const valorTot = lista.reduce((s, p) => s + p.valor, 0);
+  if (totEl) totEl.textContent =
+    `${lista.length} pedido${lista.length > 1 ? 's' : ''} · ${fmtBRL(valorTot)}${prontosN ? ` · ${prontosN} pronto${prontosN > 1 ? 's' : ''} pra sair` : ''}`;
+
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c]));
+  const sizeLabel = (key, tam) => {
+    const def = MODELOS[key];
+    if (def && def.tamanhoUnico) return 'Único';
+    return ((def && def.tamanhos) || ['PP','P','M','G','GG'])[tam] || '—';
+  };
+  const nomeModelo = k => (MODELOS[k] && MODELOS[k].nome) || k;
+
+  el.innerHTML = `
+    <style>
+      #dash-grandes .gr-passo { display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:700;
+        border-radius:20px;padding:3px 9px;cursor:pointer;user-select:none;border:1px solid #f9a8d4;
+        color:#9d174d;background:#fff;white-space:nowrap;transition:all .12s }
+      #dash-grandes .gr-passo.on { background:#db2777;border-color:#db2777;color:#fff }
+      #dash-grandes .gr-passo:hover { border-color:#db2777 }
+      #dash-grandes tr.gr-ok td { background:rgba(22,163,74,.07) }
+      #dash-grandes .gr-passos { display:flex;gap:4px;flex-wrap:wrap }
+    </style>
+    <div style="font-size:11px;color:var(--text-sec);margin-bottom:8px;line-height:1.5">
+      <b style="color:#db2777">Pedido com ${minimo} peças ou mais é cliente que confiou de verdade na loja.</b>
+      Reter essa cliente é o principal: sai conferido peça a peça, embalado impecável e sempre com brinde.
+      Marque os três passos conforme fizer, a marcação aparece pra todo mundo.
+    </div>
+    <table>
+      <thead><tr>
+        <th style="text-align:left;width:24px"></th>
+        <th style="text-align:left">Pedido</th>
+        <th style="text-align:left">Cliente</th>
+        <th style="text-align:center">Data</th>
+        <th style="text-align:center">Peças</th>
+        <th style="text-align:right">Valor</th>
+        <th style="text-align:left">Situação</th>
+        <th style="text-align:left">Com carinho</th>
+      </tr></thead>
+      <tbody>
+        ${lista.map((p, i) => {
+          const marca = grandesMarcaDe(cfg, p.id);
+          const completo = grandesCompleto(marca);
+          const dt = p.data ? new Date(p.data).toLocaleDateString('pt-BR', { day:'2-digit', month:'2-digit', year:'2-digit' }) : '—';
+          const pedidoCell = p.url
+            ? `<a href="${esc(p.url)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" style="font-weight:700;color:#db2777;text-decoration:none" title="Abrir pedido na Shopify">${esc(p.numero)} <i class="ti ti-external-link" style="font-size:11px;vertical-align:-1px"></i></a>`
+            : `<span style="font-weight:700;color:#db2777">${esc(p.numero)}</span>`;
+          const badgeParcial = p.parcial
+            ? `&nbsp;<span style="font-size:9px;font-weight:700;background:rgba(245,158,11,0.16);color:#b45309;border-radius:3px;padding:1px 6px;vertical-align:middle">PARCIAL</span>` : '';
+          const faltaN = p.faltas.reduce((s, f) => s + (f.falta || 0), 0);
+          const situacao = p.pronto
+            ? (completo
+                ? `<span style="font-size:10px;font-weight:700;background:#16a34a;color:#fff;border-radius:3px;padding:2px 7px;white-space:nowrap"><i class="ti ti-heart-check"></i> PODE IR COM CARINHO</span>`
+                : `<span style="font-size:10px;font-weight:700;background:rgba(22,163,74,.14);color:#15803d;border-radius:3px;padding:2px 7px;white-space:nowrap">PRONTO PARA SAIR</span>`)
+            : `<span style="font-size:10px;font-weight:700;background:rgba(217,119,6,.14);color:#b45309;border-radius:3px;padding:2px 7px;white-space:nowrap">FALTA ${faltaN} PEÇA${faltaN > 1 ? 'S' : ''}</span>
+               <div style="font-size:10px;color:var(--text-sec);margin-top:3px">${p.faltas.map(f => `${f.falta}× ${esc(nomeModelo(f.key))} ${esc(f.cor)} ${esc(sizeLabel(f.key, f.tam))}`).join('<br>')}</div>`;
+          const passos = GRANDES_PASSOS.map(ps =>
+            `<span class="gr-passo${marca[ps.campo] ? ' on' : ''}" onclick="event.stopPropagation();grandesToggle('${esc(p.id)}','${ps.campo}')" title="${ps.rotulo}"><i class="ti ${ps.icone}"></i> ${ps.rotulo}</span>`
+          ).join('');
+          const itensHtml = p.itens.map(it => `
+            <div style="display:flex;align-items:center;gap:6px;padding:3px 0;font-size:12px">
+              <span style="display:inline-block;min-width:26px;font-weight:700;color:#db2777">${it.qtd}×</span>
+              <span style="font-weight:600">${esc(nomeModelo(it.modelKey))}</span>
+              <span style="color:var(--text-sec)">${esc(it.cor)}</span>
+              <span style="margin-left:auto;background:#fdf2f8;border-radius:4px;padding:1px 8px;font-weight:600;color:var(--text-sec)">${esc(sizeLabel(it.modelKey, it.tam))}</span>
+            </div>`).join('');
+          return `<tr class="pronto-row${completo ? ' gr-ok' : ''}" style="cursor:pointer" onclick="toggleGrande(${i})">
+              <td style="text-align:center"><i class="ti ti-chevron-right" id="grande-cev-${i}" style="transition:transform .15s;color:var(--text-ter)"></i></td>
+              <td>${pedidoCell}${badgeParcial}</td>
+              <td>${esc(p.cliente)}</td>
+              <td style="text-align:center;font-size:11px;color:var(--text-sec)">${dt}<div style="font-size:10px;color:var(--text-ter)">${p.dias} dia${p.dias === 1 ? '' : 's'}</div></td>
+              <td style="text-align:center;font-weight:700;color:#db2777">${p.pecas}</td>
+              <td style="text-align:right;font-weight:600">${p.valor ? fmtBRL(p.valor) : '—'}</td>
+              <td>${situacao}</td>
+              <td><div class="gr-passos">${passos}</div></td>
+            </tr>
+            <tr id="grande-det-${i}" style="display:none">
+              <td></td>
+              <td colspan="7" style="padding:4px 8px 10px">
+                <div style="background:#fdf2f8;border:1px solid #fbcfe8;border-radius:8px;padding:8px 12px">${itensHtml}</div>
+              </td>
+            </tr>`;
+        }).join('')}
+      </tbody>
+    </table>`;
 }
 
 

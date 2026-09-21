@@ -171,6 +171,17 @@
           </div>
           <div id="dash-prontos"></div>
         </div>
+        <!-- Pedido de 5 peças ou mais é cliente que confiou de verdade na loja. Reter essa
+             cliente é o principal: sai conferido peça a peça, embalado impecável e com brinde.
+             As três marcações são compartilhadas (Supabase, chave 'grandes'), então quem
+             separa no PC e quem embala no celular veem o mesmo estado. -->
+        <div class="card" id="card-grandes" style="border-left:3px solid #db2777;display:none">
+          <div class="card-header">
+            <div class="card-title" style="color:#db2777"><i class="ti ti-heart"></i> PEDIDOS GRANDES: LIBERAR COM CARINHO</div>
+            <span id="dash-grandes-total" style="font-size:11px;font-weight:700;color:#db2777"></span>
+          </div>
+          <div id="dash-grandes"></div>
+        </div>
         <div class="card" id="card-parados" style="border-left:3px solid #d97706;display:none">
           <div class="card-header">
             <div class="card-title" style="color:#d97706"><i class="ti ti-clock-exclamation"></i> PEDIDOS PARADOS</div>
@@ -1174,7 +1185,7 @@
   </div>
 </div>
 <script src="data.js?v=2026091105"></script>
-<script src="main.js?v=2026091803"></script>
+<script src="main.js?v=2026092101"></script>
 <script async src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js" onload="initSupabase()"></script>
 </body>
 </html>

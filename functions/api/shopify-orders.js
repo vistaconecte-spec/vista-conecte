@@ -620,6 +620,8 @@ export async function onRequest(context) {
           url:     `https://${store}/admin/orders/${order.id}`,
           financial_status: order.financial_status || null,
           parcial: order.fulfillment_status === 'partial',
+          // Valor do pedido: o card PEDIDOS GRANDES mostra quanto a cliente confiou à loja
+          valor:   Number(order.total_price) || 0,
         });
       }
     }
