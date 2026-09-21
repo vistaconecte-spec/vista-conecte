@@ -6626,7 +6626,8 @@ function cstFatEntregar(d, id, ant, agora) {
 // um "pago": entra direto em `pagas`, com a data da entrega como data do pagamento. Só as
 // levas NOVAS deste ciclo (que não estavam em `aPagar` antes) fazem esse caminho: uma leva
 // que a dona mandou de volta para "a receber" pelo "desfazer" é exceção dela e fica lá.
-// O corte NÃO passa por aqui: o acerto do cortador continua sendo marcado pela dona.
+// O corte passa pelo mesmo caminho desde 21/09/2026 (crtFatSincronizar): o cortador é pago
+// quando a leva muda para "Em costura".
 function cstFatPagarNaEntrega(antes, novo, agora) {
   const jaTinha = (antes && antes.aPagar) || {};
   const novas = Object.keys(novo.aPagar).filter(id => !jaTinha[id]);
@@ -7266,9 +7267,16 @@ async function crtFatSincronizar() {
   // era jogado fora), o que misturava as duas contas.
   const d0 = { abertas: base.abertas || {}, aPagar: base.aPagar || {},
                pagas: Array.isArray(base.pagas) ? base.pagas : [], sumico: base.sumico };
+  // Retrato do "a receber" ANTES do resgate: a leva resgatada (já em costura sem cobrança)
+  // também saiu do corte neste ciclo e também vai direto para pagas, ver abaixo.
+  const antes = { aPagar: { ...d0.aPagar } };
   const resgatou = crtFatResgatarCostura(d0, agora2);
   const novo = cstFatAplicar(d0, atuais, agora2) || (resgatou ? d0 : null);
   if (!novo) return;
+  // Regra da dona (21/09/2026): o cortador é pago quando a leva muda para "Em costura",
+  // igual à costureira na entrega. O que sai do corte já entra como pago; só a leva que ela
+  // devolveu pelo "desfazer" fica em "a receber" (mesma exceção da costura).
+  cstFatPagarNaEntrega(antes, novo, agora2);
   novo.pagas = novo.pagas.slice(0, CST_PAGAS_MAX);
   novo.updated_at = new Date().toISOString();
   saveLocal('vc:' + CRT_FAT_KEY, novo);

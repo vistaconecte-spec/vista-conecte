@@ -263,8 +263,11 @@ ok('e marcada como paga na entrega', novo14.pagas[0].pago_na_entrega, true);
 ok('a que a dona devolveu para "a receber" (desfazer) fica lá, não é repaga sozinha', Object.keys(novo14.aPagar), ['velha|1|r0']);
 ok('a sincronização chama isso logo depois de aplicar, antes de gravar',
    /const novo = cstFatAplicar\(d0, atuais, agora2\);\s*\r?\n\s*if \(!novo\) return;\s*\r?\n\s*cstFatPagarNaEntrega\(d0, novo, agora2\);/.test(main), true);
-ok('e o corte NÃO (o cortador continua sendo marcado pela dona)',
-   /cstFatPagarNaEntrega\(/.test(/async function crtFatSincronizar\(\)[\s\S]*?\n\}/.exec(main)[0]), false);
+// 21/09/2026: o cortador também é pago na saída do corte ("marca como pago sempre que o
+// status mudar pra costura"). O retrato de antes é tirado ANTES do resgate, para a leva
+// resgatada (já em costura sem cobrança) também entrar como paga.
+ok('e o corte TAMBÉM, com o retrato tirado antes do resgate (21/09/2026)',
+   /const antes = \{ aPagar: \{ \.\.\.d0\.aPagar \} \};\s*const resgatou = crtFatResgatarCostura\(d0, agora2\);[\s\S]*?if \(!novo\) return;[\s\S]{0,400}?cstFatPagarNaEntrega\(antes, novo, agora2\);/.test(/async function crtFatSincronizar\(\)[\s\S]*?\n\}/.exec(main)[0]), true);
 
 console.log(falhas ? `\n✗ ${total - falhas}/${total} passaram` : `\n✓ ${total}/${total} passaram`);
 process.exit(falhas ? 1 : 0);
