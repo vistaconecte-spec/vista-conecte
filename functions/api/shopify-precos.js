@@ -18,7 +18,7 @@ const PRODUCT_MAP = {
   'Vestido Frente Única Longo': 'vestido-frente-unica-longo', 'Vestido Frente Única Curto': 'vestido-frente-unica-curto', 'Vestido Amplo': 'vestido-amplo',
   'Conjunto Peace': 'conjunto-peace', 'Conjunto Wide': 'conjunto-wide', 'Conjunto Boho': 'conjunto-boho', 'Conjunto Canelado': 'conjunto-canelado',
   'Conjunto Calça flare com Moletom gola alta': 'conjunto-calca-flare-moletom', 'Conjunto calça flare com moletom gola alta': 'conjunto-calca-flare-moletom', 'Conjunto calça flare com Moletom gola alta': 'conjunto-calca-flare-moletom',
-  'Conjunto Calça Pantalona com Moletom Gola Alta': 'conjunto-calca-pantalona-moletom', 'Conjunto Calça Pantalona com Cropped moletom': 'conjunto-calca-pantalona-cropped', 'Conjunto Cropped Moletom': 'conjunto-calca-pantalona-cropped', 'Conjunto Cropped': 'conjunto-calca-pantalona-cropped',
+  'Conjunto Calça Pantalona com Moletom Gola Alta': 'conjunto-calca-pantalona-moletom', 'Conjunto Calça Pantalona com Cropped moletom': 'conjunto-calca-pantalona-cropped', 'Conjunto Cropped Moletom Pantalona': 'conjunto-calca-pantalona-cropped', 'Conjunto Cropped Moletom': 'conjunto-cropped-basica', 'Conjunto Cropped': 'conjunto-cropped-basica',
   'Conjunto Moletom gola alta com Saia midi fenda frontal': 'conjunto-moletom-saia-midi', 'Conjunto Pantalona com Blusa Canelada': 'conjunto-pantalona-blusa',
   'Conjunto Regata oversized com Mini saia canelada': 'conjunto-regata-mini-saia', 'Conjunto Camiseta oversized com Mini saia canelada': 'conjunto-camiseta-mini-saia',
   'Conjunto Camiseta Oversized Verde Militar + Mini Saia Canelada Preta': 'conjunto-camiseta-mini-saia', 'Conjunto Oversized Verde Militar + Mini Saia Canelada': 'conjunto-camiseta-mini-saia',

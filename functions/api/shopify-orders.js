@@ -40,8 +40,12 @@ const PRODUCT_MAP = {
   'Conjunto calça flare com Moletom gola alta':             'conjunto-calca-flare-moletom',
   'Conjunto Calça Pantalona com Moletom Gola Alta':         'conjunto-calca-pantalona-moletom',
   'Conjunto Calça Pantalona com Cropped moletom':           'conjunto-calca-pantalona-cropped',
-  'Conjunto Cropped Moletom':                               'conjunto-calca-pantalona-cropped',
-  'Conjunto Cropped':                                       'conjunto-calca-pantalona-cropped',
+  // "Conjunto Cropped Moletom" (Preto/Vermelho) leva a calça BÁSICA de moletom, o #8980 (21/09/2026)
+  // estava indo para a pantalona. O produto antigo "... Moletom Pantalona Cinza" fica na pantalona
+  // (prefixo mais longo ganha).
+  'Conjunto Cropped Moletom Pantalona':                     'conjunto-calca-pantalona-cropped',
+  'Conjunto Cropped Moletom':                               'conjunto-cropped-basica',
+  'Conjunto Cropped':                                       'conjunto-cropped-basica',
   'Conjunto Moletom gola alta com Saia midi fenda frontal': 'conjunto-moletom-saia-midi',
   'Conjunto Pantalona com Blusa Canelada':                  'conjunto-pantalona-blusa',
   'Conjunto Regata oversized com Mini saia canelada':       'conjunto-regata-mini-saia',

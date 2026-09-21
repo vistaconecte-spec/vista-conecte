@@ -47,6 +47,8 @@ const ALIASES = [
   [/conjunto.*(calca )?flare.*moletom/, 'conjunto-calca-flare-moletom'],
   [/conjunto.*pantalona.*moletom/, 'conjunto-calca-pantalona-moletom'],
   [/conjunto.*pantalona.*cropped/, 'conjunto-calca-pantalona-cropped'],
+  [/conjunto.*cropped.*moletom.*pantalona/, 'conjunto-calca-pantalona-cropped'],
+  [/conjunto.*cropped(.*moletom)?/, 'conjunto-cropped-basica'],
   [/conjunto.*wide/, 'conjunto-wide'],
   [/conjunto.*moletom.*saia/, 'conjunto-moletom-saia-midi'],
   [/conjunto.*canguru/, 'conjunto-canguru-longo'],

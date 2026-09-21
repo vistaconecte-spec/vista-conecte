@@ -11104,6 +11104,8 @@ let _enviosPendentes = null; // envios sem baixa aguardando decisão na conferê
 const CONJUNTO_PECAS = {
   'conjunto-calca-pantalona-moletom': ['calca-pantalona', 'moletom-gola-alta'],
   'conjunto-calca-pantalona-cropped': ['calca-pantalona', 'cropped-moletom'],
+  // "Conjunto Cropped Moletom" da loja vem com a calça BÁSICA (com bolsos), não a pantalona
+  'conjunto-cropped-basica':          ['calca-basica-moletom', 'cropped-moletom'],
   'conjunto-cozy':                    ['calca-pantalona', 'moletom-ziper-bolsos'],
   'conjunto-mood':                    ['calca-basica-moletom', 'moletom-ziper-bolsos'],
   'conjunto-wide':                    ['calca-pantalona', 'moletom-gola-alta'],

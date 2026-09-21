@@ -18,7 +18,7 @@ const PRODUCT_MAP = {
   'Vestido Frente Única Longo': 'vestido-frente-unica-longo', 'Vestido Frente Única Curto': 'vestido-frente-unica-curto', 'Vestido Amplo': 'vestido-amplo',
   'Conjunto Peace': 'conjunto-peace', 'Conjunto Wide': 'conjunto-wide', 'Conjunto Boho': 'conjunto-boho', 'Conjunto Canelado': 'conjunto-canelado',
   'Conjunto Calça flare com Moletom gola alta': 'conjunto-calca-flare-moletom', 'Conjunto calça flare com moletom gola alta': 'conjunto-calca-flare-moletom', 'Conjunto calça flare com Moletom gola alta': 'conjunto-calca-flare-moletom',
-  'Conjunto Calça Pantalona com Moletom Gola Alta': 'conjunto-calca-pantalona-moletom', 'Conjunto Calça Pantalona com Cropped moletom': 'conjunto-calca-pantalona-cropped', 'Conjunto Cropped Moletom': 'conjunto-calca-pantalona-cropped', 'Conjunto Cropped': 'conjunto-calca-pantalona-cropped',
+  'Conjunto Calça Pantalona com Moletom Gola Alta': 'conjunto-calca-pantalona-moletom', 'Conjunto Calça Pantalona com Cropped moletom': 'conjunto-calca-pantalona-cropped', 'Conjunto Cropped Moletom Pantalona': 'conjunto-calca-pantalona-cropped', 'Conjunto Cropped Moletom': 'conjunto-cropped-basica', 'Conjunto Cropped': 'conjunto-cropped-basica',
   'Conjunto Moletom gola alta com Saia midi fenda frontal': 'conjunto-moletom-saia-midi', 'Conjunto Pantalona com Blusa Canelada': 'conjunto-pantalona-blusa',
   'Conjunto Regata oversized com Mini saia canelada': 'conjunto-regata-mini-saia', 'Conjunto Camiseta oversized com Mini saia canelada': 'conjunto-camiseta-mini-saia',
   'Conjunto Camiseta Oversized Verde Militar + Mini Saia Canelada Preta': 'conjunto-camiseta-mini-saia', 'Conjunto Oversized Verde Militar + Mini Saia Canelada': 'conjunto-camiseta-mini-saia',
@@ -44,7 +44,7 @@ const PRODUCT_MAP = {
 // Peso em gramas = 80% do cubado estimado, por modelo
 const PESO_G = {
   'casaco-sherpa': 900, 'casaco-sherpa-capuz': 900, 'casaco-pele-persa': 900, 'sherpa-ziper-bolsos': 900, 'carneirinho-cropped': 600,
-  'conjunto-cozy': 900, 'conjunto-mood': 900, 'conjunto-wide': 900, 'conjunto-calca-pantalona-moletom': 900, 'conjunto-calca-pantalona-cropped': 800, 'conjunto-calca-flare-moletom': 800, 'conjunto-canguru-longo': 900, 'conjunto-canelado': 700, 'conjunto-pantalona-blusa': 700, 'conjunto-moletom-saia-midi': 700, 'conjunto-peace': 600, 'conjunto-boho': 600,
+  'conjunto-cozy': 900, 'conjunto-mood': 900, 'conjunto-wide': 900, 'conjunto-calca-pantalona-moletom': 900, 'conjunto-calca-pantalona-cropped': 800, 'conjunto-cropped-basica': 700, 'conjunto-calca-flare-moletom': 800, 'conjunto-canguru-longo': 900, 'conjunto-canelado': 700, 'conjunto-pantalona-blusa': 700, 'conjunto-moletom-saia-midi': 700, 'conjunto-peace': 600, 'conjunto-boho': 600,
   // Short + Regata em moletom careca — mais leve que os conjuntos de moletom felpado
   'conjunto-good': 500,
   'conjunto-regata-mini-saia': 450, 'conjunto-camiseta-mini-saia': 450, 'cropped-mini-saia': 400, 'conjunto-saia-midi-oversized': 450, 'conjunto-calca-bolso-camiseta': 600,

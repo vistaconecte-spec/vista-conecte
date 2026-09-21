@@ -122,6 +122,11 @@ ok('se a cor vier na variante, ela manda',
 ok('o conjunto do cropped MOLETOM continua funcionando como antes',
    conj('Conjunto Calça Pantalona com Cropped moletom', 'Cinza / G'),
    [{ modelo:'conjunto-calca-pantalona-cropped', cor:'Cinza', tam:3 }]);
+ok('"Conjunto Cropped Moletom" (#8980) é o conjunto da calça BÁSICA, não da pantalona',
+   conj('Conjunto Cropped Moletom', 'Vermelho / G'),
+   [{ modelo:'conjunto-cropped-basica', cor:'Vermelho', tam:3 }]);
+ok('o rascunho antigo "Conjunto Cropped Moletom Pantalona" continua na pantalona',
+   conj('Conjunto Cropped Moletom Pantalona Cinza', 'G')[0].modelo, 'conjunto-calca-pantalona-cropped');
 ok('Cinza foi cadastrado no Cropped Canelado (pedidos #8719 e #8748)',
    (MODELOS['cropped-canelado'].cores || []).includes('Cinza'), true);
 // Toda peça declarada nesses conjuntos tem que existir de verdade
