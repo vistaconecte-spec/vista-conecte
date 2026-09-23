@@ -59,6 +59,10 @@ const PRODUCT_MAP = {
   'Canguru Longo':                                          'conjunto-canguru-longo',
   'Conjunto Saia Midi Fenda Frontal + Oversized':           'conjunto-saia-midi-oversized',
   'Conjunto Calça Bolso Frontal Offwhite com Camiseta Oversized': 'conjunto-calca-bolso-camiseta',
+  // Nomes novos da loja (21-22/09/2026): o produto foi renomeado, o handle continuou o mesmo
+  'Conjunto Lazy':                                          'conjunto-moletom-short-bolso',
+  'Conjunto Dream':                                         'conjunto-calca-pantalona-moletom',
+  'Conjunto Chill':                                         'conjunto-canguru-longo',
   // Calças
   'Calça Moletom Pantalona':                                'calca-pantalona',
   'Calça Pantalona Moletom':                                'calca-pantalona',
@@ -128,6 +132,8 @@ const EXACT_TITLE_MAP = {
   'Conjunto Peace':                                                            { modelKey: 'conjunto-peace',           color: 'Off White'     },
   // Cor "Preto" no meio do título (em ambas as peças) → cor fixa
   'Conjunto Moletom Gola Alta Preto + Short Bolso Frontal Preto':              { modelKey: 'conjunto-moletom-short-bolso', color: 'Preto'     },
+  // Mesmo produto renomeado em 22/09/2026; só existe em preto e a variante traz só o tamanho
+  'Conjunto Lazy':                                                             { modelKey: 'conjunto-moletom-short-bolso', color: 'Preto'     },
 };
 
 // Cores que precisam de normalização (shopify → sistema)
