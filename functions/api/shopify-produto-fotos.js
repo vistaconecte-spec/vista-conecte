@@ -97,7 +97,26 @@ export async function onRequest({ request, env }) {
       return new Response(JSON.stringify({ ok: true, removidas, restantes: (await listar(produtoId)).length }, null, 2), { headers });
     }
 
-    return new Response(JSON.stringify({ erro: `ação "${b.acao}" desconhecida (use adicionar|remover)` }), { status: 400, headers });
+    if (b.acao === 'reordenar') {
+      const ordem = Array.isArray(b.ordem) ? b.ordem.map(String) : [];
+      if (!ordem.length) return new Response(JSON.stringify({ erro: 'informe ordem[] (ids de imagem na ordem desejada)' }), { status: 400, headers });
+      const atuais = await listar(produtoId);
+      const naoEncontradas = ordem.filter(id => !atuais.some(i => String(i.id) === id));
+      if (naoEncontradas.length) return new Response(JSON.stringify({ erro: 'ids não encontrados no produto', nao_encontradas: naoEncontradas }), { status: 400, headers });
+      if (b.confirmar !== true) {
+        return new Response(JSON.stringify({
+          modo: 'dry-run (nada reordenado)', produto_id: produtoId,
+          nova_ordem: ordem.map((id, n) => ({ posicao: n + 1, imagem_id: id, arquivo: resumo(atuais.find(i => String(i.id) === id)).arquivo })),
+        }, null, 2), { headers });
+      }
+      for (let n = 0; n < ordem.length; n++) {
+        const r = await fetch(api(`products/${produtoId}/images/${ordem[n]}.json`), { method: 'PUT', headers: sh, body: JSON.stringify({ image: { id: Number(ordem[n]), position: n + 1 } }) });
+        if (!r.ok) return new Response(JSON.stringify({ erro: 'falha ao reordenar', imagem_id: ordem[n], status: r.status }, null, 2), { status: 502, headers });
+      }
+      return new Response(JSON.stringify({ ok: true, nova_ordem: (await listar(produtoId)).map(resumo) }, null, 2), { headers });
+    }
+
+    return new Response(JSON.stringify({ erro: `ação "${b.acao}" desconhecida (use adicionar|remover|reordenar)` }), { status: 400, headers });
   } catch (e) {
     return new Response(JSON.stringify({ erro: String(e && e.message || e) }), { status: 500, headers });
   }
