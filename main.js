@@ -8691,11 +8691,8 @@ function grandesToggle(id, campo) {
 
 function toggleGrande(i) {
   const det = document.getElementById('grande-det-' + i);
-  const cev = document.getElementById('grande-cev-' + i);
   if (!det) return;
-  const aberto = det.style.display !== 'none';
-  det.style.display = aberto ? 'none' : '';
-  if (cev) cev.style.transform = aberto ? '' : 'rotate(90deg)';
+  det.style.display = det.style.display !== 'none' ? 'none' : '';
 }
 
 function renderPedidosGrandes(prontos, pendentes, minimo) {
@@ -8722,78 +8719,71 @@ function renderPedidosGrandes(prontos, pendentes, minimo) {
   };
   const nomeModelo = k => (MODELOS[k] && MODELOS[k].nome) || k;
 
+  // Um cartãozinho por pedido (Bárbara, 24/09/2026): a tabela larga não cabia no celular
+  // e escondia os três passos no fim da linha. Tocar no cartão abre as peças.
   el.innerHTML = `
     <style>
-      #dash-grandes .gr-passo { display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:700;
-        border-radius:20px;padding:3px 9px;cursor:pointer;user-select:none;border:1px solid #f9a8d4;
-        color:#9d174d;background:#fff;white-space:nowrap;transition:all .12s }
+      #dash-grandes .gr-grade { display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:8px;align-items:start }
+      #dash-grandes .gr-card { border:1px solid #fbcfe8;border-radius:10px;padding:8px 10px;background:#fff;
+        cursor:pointer;display:flex;flex-direction:column;gap:5px;font-size:11px;min-width:0 }
+      #dash-grandes .gr-card.gr-ok { background:rgba(22,163,74,.07);border-color:#86efac }
+      #dash-grandes .gr-card.gr-falta { border-left:3px solid #d97706 }
+      #dash-grandes .gr-linha { display:flex;align-items:center;justify-content:space-between;gap:6px }
+      #dash-grandes .gr-cli { font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis }
+      #dash-grandes .gr-passos { display:flex;gap:4px }
+      #dash-grandes .gr-passo { flex:1;display:inline-flex;align-items:center;justify-content:center;gap:3px;
+        font-size:9px;font-weight:700;border-radius:20px;padding:3px 4px;cursor:pointer;user-select:none;
+        border:1px solid #f9a8d4;color:#9d174d;background:#fff;white-space:nowrap;transition:all .12s }
       #dash-grandes .gr-passo.on { background:#db2777;border-color:#db2777;color:#fff }
       #dash-grandes .gr-passo:hover { border-color:#db2777 }
-      #dash-grandes tr.gr-ok td { background:rgba(22,163,74,.07) }
-      #dash-grandes .gr-passos { display:flex;gap:4px;flex-wrap:wrap }
+      #dash-grandes .gr-itens { background:#fdf2f8;border-radius:6px;padding:4px 8px }
     </style>
     <div style="font-size:11px;color:var(--text-sec);margin-bottom:8px;line-height:1.5">
       <b style="color:#db2777">Pedido com ${minimo} peças ou mais é cliente que confiou de verdade na loja.</b>
-      Reter essa cliente é o principal: sai conferido peça a peça, embalado impecável e sempre com brinde.
-      Marque os três passos conforme fizer, a marcação aparece pra todo mundo.
+      Sai conferido peça a peça, embalado impecável e sempre com brinde. Toque no pedido pra ver as peças.
     </div>
-    <table>
-      <thead><tr>
-        <th style="text-align:left;width:24px"></th>
-        <th style="text-align:left">Pedido</th>
-        <th style="text-align:left">Cliente</th>
-        <th style="text-align:center">Data</th>
-        <th style="text-align:center">Peças</th>
-        <th style="text-align:right">Valor</th>
-        <th style="text-align:left">Situação</th>
-        <th style="text-align:left">Com carinho</th>
-      </tr></thead>
-      <tbody>
-        ${lista.map((p, i) => {
-          const marca = grandesMarcaDe(cfg, p.id);
-          const completo = grandesCompleto(marca);
-          const dt = p.data ? new Date(p.data).toLocaleDateString('pt-BR', { day:'2-digit', month:'2-digit', year:'2-digit' }) : '—';
-          const pedidoCell = p.url
-            ? `<a href="${esc(p.url)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" style="font-weight:700;color:#db2777;text-decoration:none" title="Abrir pedido na Shopify">${esc(p.numero)} <i class="ti ti-external-link" style="font-size:11px;vertical-align:-1px"></i></a>`
-            : `<span style="font-weight:700;color:#db2777">${esc(p.numero)}</span>`;
-          const badgeParcial = p.parcial
-            ? `&nbsp;<span style="font-size:9px;font-weight:700;background:rgba(245,158,11,0.16);color:#b45309;border-radius:3px;padding:1px 6px;vertical-align:middle">PARCIAL</span>` : '';
-          const faltaN = p.faltas.reduce((s, f) => s + (f.falta || 0), 0);
-          const situacao = p.pronto
-            ? (completo
-                ? `<span style="font-size:10px;font-weight:700;background:#16a34a;color:#fff;border-radius:3px;padding:2px 7px;white-space:nowrap"><i class="ti ti-heart-check"></i> PODE IR COM CARINHO</span>`
-                : `<span style="font-size:10px;font-weight:700;background:rgba(22,163,74,.14);color:#15803d;border-radius:3px;padding:2px 7px;white-space:nowrap">PRONTO PARA SAIR</span>`)
-            : `<span style="font-size:10px;font-weight:700;background:rgba(217,119,6,.14);color:#b45309;border-radius:3px;padding:2px 7px;white-space:nowrap">FALTA ${faltaN} PEÇA${faltaN > 1 ? 'S' : ''}</span>
-               <div style="font-size:10px;color:var(--text-sec);margin-top:3px">${p.faltas.map(f => `${f.falta}× ${esc(nomeModelo(f.key))} ${esc(f.cor)} ${esc(sizeLabel(f.key, f.tam))}`).join('<br>')}</div>`;
-          const passos = GRANDES_PASSOS.map(ps =>
-            `<span class="gr-passo${marca[ps.campo] ? ' on' : ''}" onclick="event.stopPropagation();grandesToggle('${esc(p.id)}','${ps.campo}')" title="${ps.rotulo}"><i class="ti ${ps.icone}"></i> ${ps.rotulo}</span>`
-          ).join('');
-          const itensHtml = p.itens.map(it => `
-            <div style="display:flex;align-items:center;gap:6px;padding:3px 0;font-size:12px">
-              <span style="display:inline-block;min-width:26px;font-weight:700;color:#db2777">${it.qtd}×</span>
-              <span style="font-weight:600">${esc(nomeModelo(it.modelKey))}</span>
-              <span style="color:var(--text-sec)">${esc(it.cor)}</span>
-              <span style="margin-left:auto;background:#fdf2f8;border-radius:4px;padding:1px 8px;font-weight:600;color:var(--text-sec)">${esc(sizeLabel(it.modelKey, it.tam))}</span>
-            </div>`).join('');
-          return `<tr class="pronto-row${completo ? ' gr-ok' : ''}" style="cursor:pointer" onclick="toggleGrande(${i})">
-              <td style="text-align:center"><i class="ti ti-chevron-right" id="grande-cev-${i}" style="transition:transform .15s;color:var(--text-ter)"></i></td>
-              <td>${pedidoCell}${badgeParcial}</td>
-              <td>${esc(p.cliente)}</td>
-              <td style="text-align:center;font-size:11px;color:var(--text-sec)">${dt}<div style="font-size:10px;color:var(--text-ter)">${p.dias} dia${p.dias === 1 ? '' : 's'}</div></td>
-              <td style="text-align:center;font-weight:700;color:#db2777">${p.pecas}</td>
-              <td style="text-align:right;font-weight:600">${p.valor ? fmtBRL(p.valor) : '—'}</td>
-              <td>${situacao}</td>
-              <td><div class="gr-passos">${passos}</div></td>
-            </tr>
-            <tr id="grande-det-${i}" style="display:none">
-              <td></td>
-              <td colspan="7" style="padding:4px 8px 10px">
-                <div style="background:#fdf2f8;border:1px solid #fbcfe8;border-radius:8px;padding:8px 12px">${itensHtml}</div>
-              </td>
-            </tr>`;
-        }).join('')}
-      </tbody>
-    </table>`;
+    <div class="gr-grade">
+      ${lista.map((p, i) => {
+        const marca = grandesMarcaDe(cfg, p.id);
+        const completo = grandesCompleto(marca);
+        const dt = p.data ? new Date(p.data).toLocaleDateString('pt-BR', { day:'2-digit', month:'2-digit' }) : '—';
+        const pedidoCell = p.url
+          ? `<a href="${esc(p.url)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" style="font-weight:800;font-size:13px;color:#db2777;text-decoration:none" title="Abrir pedido na Shopify">${esc(p.numero)} <i class="ti ti-external-link" style="font-size:10px;vertical-align:-1px"></i></a>`
+          : `<span style="font-weight:800;font-size:13px;color:#db2777">${esc(p.numero)}</span>`;
+        const badgeParcial = p.parcial
+          ? ` <span style="font-size:8px;font-weight:700;background:rgba(245,158,11,0.16);color:#b45309;border-radius:3px;padding:1px 4px;vertical-align:middle">PARCIAL</span>` : '';
+        const faltaN = p.faltas.reduce((s, f) => s + (f.falta || 0), 0);
+        const situacao = p.pronto
+          ? (completo
+              ? `<span style="font-size:9px;font-weight:700;background:#16a34a;color:#fff;border-radius:3px;padding:2px 6px;white-space:nowrap"><i class="ti ti-heart-check"></i> PODE IR</span>`
+              : `<span style="font-size:9px;font-weight:700;background:rgba(22,163,74,.14);color:#15803d;border-radius:3px;padding:2px 6px;white-space:nowrap">PRONTO</span>`)
+          : `<span style="font-size:9px;font-weight:700;background:rgba(217,119,6,.14);color:#b45309;border-radius:3px;padding:2px 6px;white-space:nowrap">FALTA ${faltaN}</span>`;
+        const faltasHtml = p.pronto ? '' :
+          `<div style="font-size:10px;color:#b45309;line-height:1.35">${p.faltas.map(f => `${f.falta}× ${esc(nomeModelo(f.key))} ${esc(f.cor)} ${esc(sizeLabel(f.key, f.tam))}`).join('<br>')}</div>`;
+        const curtos = { conferido: 'Conferido', embalagem: 'Embalagem', brinde: 'Brinde' };
+        const passos = GRANDES_PASSOS.map(ps =>
+          `<span class="gr-passo${marca[ps.campo] ? ' on' : ''}" onclick="event.stopPropagation();grandesToggle('${esc(p.id)}','${ps.campo}')" title="${ps.rotulo}"><i class="ti ${ps.icone}"></i> ${curtos[ps.campo] || ps.rotulo}</span>`
+        ).join('');
+        const itensHtml = p.itens.map(it => `
+          <div style="display:flex;align-items:center;gap:5px;padding:2px 0;font-size:11px">
+            <span style="font-weight:700;color:#db2777">${it.qtd}×</span>
+            <span style="font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(nomeModelo(it.modelKey))}</span>
+            <span style="color:var(--text-sec);white-space:nowrap">${esc(it.cor)}</span>
+            <span style="margin-left:auto;font-weight:700;color:var(--text-sec)">${esc(sizeLabel(it.modelKey, it.tam))}</span>
+          </div>`).join('');
+        return `<div class="gr-card${completo ? ' gr-ok' : ''}${p.pronto ? '' : ' gr-falta'}" onclick="toggleGrande(${i})">
+            <div class="gr-linha"><span>${pedidoCell}${badgeParcial}</span>${situacao}</div>
+            <div class="gr-cli" title="${esc(p.cliente)}">${esc(p.cliente)}</div>
+            <div class="gr-linha" style="color:var(--text-sec)">
+              <span>${dt} · ${p.dias} dia${p.dias === 1 ? '' : 's'}</span>
+              <span><b style="color:#db2777">${p.pecas} peças</b>${p.valor ? ' · ' + fmtBRL(p.valor) : ''}</span>
+            </div>
+            ${faltasHtml}
+            <div class="gr-passos">${passos}</div>
+            <div id="grande-det-${i}" class="gr-itens" style="display:none">${itensHtml}</div>
+          </div>`;
+      }).join('')}
+    </div>`;
 }
 
 
