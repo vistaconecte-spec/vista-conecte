@@ -8646,6 +8646,7 @@ function listarPedidosGrandes(prontos, pendentes, minimo) {
     id: String(p.id), numero: p.numero, cliente: p.cliente || 'Cliente', data: p.data,
     url: p.url, itens: p.itens || [], pecas: pecasDe(p), valor: Number(p.valor) || 0,
     dias: typeof p.dias === 'number' ? p.dias : diasDesde(p.data), parcial: !!p.parcial,
+    reqs: p.reqs || null,
   });
   const lista = [];
   (prontos || []).forEach(p => { if (pecasDe(p) >= minimo) lista.push({ ...base(p), pronto: true, faltas: [] }); });
@@ -8740,7 +8741,7 @@ function renderPedidosGrandes(prontos, pendentes, minimo) {
     </style>
     <div style="font-size:11px;color:var(--text-sec);margin-bottom:8px;line-height:1.5">
       <b style="color:#db2777">Pedido com ${minimo} peças ou mais é cliente que confiou de verdade na loja.</b>
-      Sai conferido peça a peça, embalado impecável e sempre com brinde. Toque no pedido pra ver as peças.
+      Sai conferido peça a peça, embalado impecável e sempre com brinde.
     </div>
     <div class="gr-grade">
       ${lista.map((p, i) => {
@@ -8758,29 +8759,50 @@ function renderPedidosGrandes(prontos, pendentes, minimo) {
               ? `<span style="font-size:9px;font-weight:700;background:#16a34a;color:#fff;border-radius:3px;padding:2px 6px;white-space:nowrap"><i class="ti ti-heart-check"></i> PODE IR</span>`
               : `<span style="font-size:9px;font-weight:700;background:rgba(22,163,74,.14);color:#15803d;border-radius:3px;padding:2px 6px;white-space:nowrap">PRONTO</span>`)
           : `<span style="font-size:9px;font-weight:700;background:rgba(217,119,6,.14);color:#b45309;border-radius:3px;padding:2px 6px;white-space:nowrap">FALTA ${faltaN}</span>`;
-        const faltasHtml = p.pronto ? '' :
-          `<div style="font-size:10px;color:#b45309;line-height:1.35">${p.faltas.map(f => `${f.falta}× ${esc(nomeModelo(f.key))} ${esc(f.cor)} ${esc(sizeLabel(f.key, f.tam))}`).join('<br>')}</div>`;
+        // Peça a peça (conjunto já aberto nas peças): o que está na arara e o que falta
+        const pecasPed = {};
+        (p.reqs || p.itens.flatMap(it => requisitosDoItem(it))).forEach(r => {
+          const k = r.key + '|' + r.cor + '|' + r.tam;
+          (pecasPed[k] = pecasPed[k] || { key: r.key, cor: r.cor, tam: r.tam, qtd: 0, falta: 0 }).qtd += r.qtd;
+        });
+        p.faltas.forEach(f => {
+          const x = pecasPed[f.key + '|' + f.cor + '|' + f.tam];
+          if (x) x.falta = Math.min(x.qtd, x.falta + (f.falta || 0));
+        });
+        const temL = [], faltaL = [];
+        Object.values(pecasPed).forEach(x => {
+          if (x.qtd - x.falta > 0) temL.push({ ...x, n: x.qtd - x.falta });
+          if (x.falta > 0) faltaL.push({ ...x, n: x.falta });
+        });
+        const linhaPeca = (x, cor) => `
+          <div style="display:flex;align-items:center;gap:5px;padding:1px 0;font-size:11px">
+            <span style="font-weight:700;color:${cor}">${x.n}×</span>
+            <span style="font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(nomeModelo(x.key))}</span>
+            <span style="color:var(--text-sec);white-space:nowrap">${esc(x.cor)}</span>
+            <span style="margin-left:auto;font-weight:700;color:var(--text-sec)">${esc(sizeLabel(x.key, x.tam))}</span>
+          </div>`;
+        const somaN = l => l.reduce((s, x) => s + x.n, 0);
+        const bloco = (titulo, l, cor, fundo) => l.length === 0 ? '' : `
+          <div style="background:${fundo};border-radius:6px;padding:4px 8px">
+            <div style="font-size:9px;font-weight:800;color:${cor};letter-spacing:.03em">${titulo} (${somaN(l)})</div>
+            ${l.map(x => linhaPeca(x, cor)).join('')}
+          </div>`;
+        const pecasHtml = bloco('JÁ TEM NO ESTOQUE', temL, '#15803d', 'rgba(22,163,74,.08)')
+                        + bloco('FALTA', faltaL, '#b45309', 'rgba(217,119,6,.10)');
         const curtos = { conferido: 'Conferido', embalagem: 'Embalagem', brinde: 'Brinde' };
         const passos = GRANDES_PASSOS.map(ps =>
           `<span class="gr-passo${marca[ps.campo] ? ' on' : ''}" onclick="event.stopPropagation();grandesToggle('${esc(p.id)}','${ps.campo}')" title="${ps.rotulo}"><i class="ti ${ps.icone}"></i> ${curtos[ps.campo] || ps.rotulo}</span>`
         ).join('');
-        const itensHtml = p.itens.map(it => `
-          <div style="display:flex;align-items:center;gap:5px;padding:2px 0;font-size:11px">
-            <span style="font-weight:700;color:#db2777">${it.qtd}×</span>
-            <span style="font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(nomeModelo(it.modelKey))}</span>
-            <span style="color:var(--text-sec);white-space:nowrap">${esc(it.cor)}</span>
-            <span style="margin-left:auto;font-weight:700;color:var(--text-sec)">${esc(sizeLabel(it.modelKey, it.tam))}</span>
-          </div>`).join('');
-        return `<div class="gr-card${completo ? ' gr-ok' : ''}${p.pronto ? '' : ' gr-falta'}" onclick="toggleGrande(${i})">
+        return `<div class="gr-card${completo ? ' gr-ok' : ''}${p.pronto ? '' : ' gr-falta'}">
             <div class="gr-linha"><span>${pedidoCell}${badgeParcial}</span>${situacao}</div>
             <div class="gr-cli" title="${esc(p.cliente)}">${esc(p.cliente)}</div>
             <div class="gr-linha" style="color:var(--text-sec)">
               <span>${dt} · ${p.dias} dia${p.dias === 1 ? '' : 's'}</span>
-              <span><b style="color:#db2777">${p.pecas} peças</b>${p.valor ? ' · ' + fmtBRL(p.valor) : ''}</span>
+              <b style="color:#db2777">${p.pecas} peças</b>
             </div>
-            ${faltasHtml}
+            <div style="font-size:15px;font-weight:800;color:var(--text)">${p.valor ? fmtBRL(p.valor) : 'valor —'}</div>
+            ${pecasHtml}
             <div class="gr-passos">${passos}</div>
-            <div id="grande-det-${i}" class="gr-itens" style="display:none">${itensHtml}</div>
           </div>`;
       }).join('')}
     </div>`;
