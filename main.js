@@ -4902,61 +4902,6 @@ function renderDashboard() {
   renderMiniCards(totalPedidos);
   renderTempoLiberacao();
   renderProntosParaEnvio();
-  renderCorteCostura();
-}
-
-// ─── CARD: CORTE & COSTURA (totais por etapa) ────────────────────────────────
-// Soma a quantidade Em Produção dos modelos com status "Em corte" e "Em costura".
-function renderCorteCostura() {
-  const corteEl     = document.getElementById('dash-corte-total');
-  const costuraEl   = document.getElementById('dash-costura-total');
-  const corteModEl  = document.getElementById('dash-corte-modelos');
-  const costuraModEl = document.getElementById('dash-costura-modelos');
-  const corteListaEl   = document.getElementById('dash-corte-lista');
-  const costuraListaEl = document.getElementById('dash-costura-lista');
-  if (!corteEl || !costuraEl) return;
-
-  let corte = 0, costura = 0, corteMods = 0, costuraMods = 0;
-  const corteList = [], costuraList = [];
-  for (const [key, def] of Object.entries(MODELOS)) {
-    if (CONJUNTO_PECAS[key]) continue; // conjuntos já contados nas peças
-    const saved = loadLocal('vc:' + key) || {};
-    const cores = coresDoModelo(def, saved);
-    // Cada leva conta na etapa do próprio status
-    [{ prod: saved.prod, status: saved.status, leva2: false },
-     { prod: saved.prod2, status: saved.status2, leva2: true }].forEach(l => {
-      if (l.status !== 'Em corte' && l.status !== 'Em costura') return;
-      let totalProd = 0;
-      cores.forEach(cor => {
-        const pv = l.prod && l.prod[cor];
-        if (pv) totalProd += pv.reduce((a, b) => (a || 0) + (b || 0), 0);
-      });
-      if (totalProd <= 0) return;
-      if (l.status === 'Em corte') { corte += totalProd; corteMods++; corteList.push({ key, nome: def.nome, total: totalProd, leva2: l.leva2 }); }
-      else                         { costura += totalProd; costuraMods++; costuraList.push({ key, nome: def.nome, total: totalProd, leva2: l.leva2 }); }
-    });
-  }
-  corteList.sort((a, b) => b.total - a.total);
-  costuraList.sort((a, b) => b.total - a.total);
-
-  corteEl.textContent   = corte;
-  costuraEl.textContent = costura;
-  if (corteModEl)   corteModEl.textContent   = corteMods   ? `${corteMods} ${corteMods === 1 ? 'modelo' : 'modelos'}`     : 'nenhum modelo';
-  if (costuraModEl) costuraModEl.textContent = costuraMods ? `${costuraMods} ${costuraMods === 1 ? 'modelo' : 'modelos'}` : 'nenhum modelo';
-
-  const listaHTML = (lista, cor) => lista.length === 0
-    ? `<div style="font-size:12px;color:var(--text-ter);padding:4px 0">Nenhum modelo.</div>`
-    : `<table style="width:100%;border-collapse:collapse">
-        <tbody>
-          ${lista.map(p => `
-            <tr style="cursor:pointer;border-top:1px solid rgba(0,0,0,0.06)" onclick="selectModel(null,'${p.key}')">
-              <td style="padding:5px 2px;font-size:13px;font-weight:600">${p.nome}${p.leva2 ? ' <span style="font-size:9px;background:rgba(124,58,237,0.12);color:#7C3AED;border-radius:3px;padding:1px 5px;vertical-align:middle">2ª LEVA</span>' : ''}</td>
-              <td style="padding:5px 2px;text-align:right;font-size:13px;font-weight:700;color:${cor}">${p.total}</td>
-            </tr>`).join('')}
-        </tbody>
-      </table>`;
-  if (corteListaEl)   corteListaEl.innerHTML   = listaHTML(corteList, '#7C3AED');
-  if (costuraListaEl) costuraListaEl.innerHTML = listaHTML(costuraList, '#0891b2');
 }
 
 // ─── CARD: PEDIDOS PARADOS ───────────────────────────────────────────────────
