@@ -8720,45 +8720,50 @@ function renderPedidosGrandes(prontos, pendentes, minimo) {
   };
   const nomeModelo = k => (MODELOS[k] && MODELOS[k].nome) || k;
 
-  // Um cartãozinho por pedido (Bárbara, 24/09/2026): a tabela larga não cabia no celular
-  // e escondia os três passos no fim da linha. Tocar no cartão abre as peças.
+  // Um cartãozinho por pedido (Bárbara, 24/09/2026), compacto: uma linha por peça,
+  // verde o que já está na arara, laranja o que falta com a etapa da confecção ao lado.
+  const ETAPA_CURTA = { 'Comprando tecido': 'tecido', 'Em corte': 'corte', 'Em costura': 'costura' };
   el.innerHTML = `
     <style>
-      #dash-grandes .gr-grade { display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:8px;align-items:start }
-      #dash-grandes .gr-card { border:1px solid #fbcfe8;border-radius:10px;padding:8px 10px;background:#fff;
-        cursor:pointer;display:flex;flex-direction:column;gap:5px;font-size:11px;min-width:0 }
+      #dash-grandes .gr-grade { display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:6px;align-items:start }
+      #dash-grandes .gr-card { border:1px solid #fbcfe8;border-radius:8px;padding:6px 8px;background:#fff;
+        display:flex;flex-direction:column;gap:3px;font-size:10px;line-height:1.3;min-width:0 }
       #dash-grandes .gr-card.gr-ok { background:rgba(22,163,74,.07);border-color:#86efac }
       #dash-grandes .gr-card.gr-falta { border-left:3px solid #d97706 }
-      #dash-grandes .gr-linha { display:flex;align-items:center;justify-content:space-between;gap:6px }
-      #dash-grandes .gr-cli { font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis }
-      #dash-grandes .gr-passos { display:flex;gap:4px }
-      #dash-grandes .gr-passo { flex:1;display:inline-flex;align-items:center;justify-content:center;gap:3px;
-        font-size:9px;font-weight:700;border-radius:20px;padding:3px 4px;cursor:pointer;user-select:none;
-        border:1px solid #f9a8d4;color:#9d174d;background:#fff;white-space:nowrap;transition:all .12s }
+      #dash-grandes .gr-linha { display:flex;align-items:center;justify-content:space-between;gap:6px;min-width:0 }
+      #dash-grandes .gr-cli { color:var(--text-sec);white-space:nowrap;overflow:hidden;text-overflow:ellipsis }
+      #dash-grandes .gr-peca { display:flex;align-items:center;gap:4px;min-width:0 }
+      #dash-grandes .gr-peca .nm { white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0 }
+      #dash-grandes .gr-etapa { margin-left:auto;font-size:8px;font-weight:800;text-transform:uppercase;border-radius:3px;
+        padding:0 4px;white-space:nowrap;background:rgba(8,145,178,.12);color:#0891b2 }
+      #dash-grandes .gr-etapa.nao { background:rgba(220,38,38,.12);color:#dc2626 }
+      #dash-grandes .gr-passos { display:flex;gap:3px;margin-top:2px }
+      #dash-grandes .gr-passo { flex:1;display:inline-flex;align-items:center;justify-content:center;gap:2px;
+        font-size:8px;font-weight:700;border-radius:20px;padding:1px 3px;cursor:pointer;user-select:none;
+        border:1px solid #f9a8d4;color:#9d174d;background:#fff;white-space:nowrap }
       #dash-grandes .gr-passo.on { background:#db2777;border-color:#db2777;color:#fff }
-      #dash-grandes .gr-passo:hover { border-color:#db2777 }
-      #dash-grandes .gr-itens { background:#fdf2f8;border-radius:6px;padding:4px 8px }
     </style>
-    <div style="font-size:11px;color:var(--text-sec);margin-bottom:8px;line-height:1.5">
-      <b style="color:#db2777">Pedido com ${minimo} peças ou mais é cliente que confiou de verdade na loja.</b>
-      Sai conferido peça a peça, embalado impecável e sempre com brinde.
+    <div style="font-size:10px;color:var(--text-sec);margin-bottom:6px">
+      <b style="color:#db2777">${minimo}+ peças: cliente que confiou na loja.</b> Conferido peça a peça, embalagem impecável e brinde.
+      <span style="color:#15803d;font-weight:700">● tem</span> <span style="color:#b45309;font-weight:700">● falta</span>
     </div>
     <div class="gr-grade">
-      ${lista.map((p, i) => {
+      ${lista.map(p => {
         const marca = grandesMarcaDe(cfg, p.id);
         const completo = grandesCompleto(marca);
         const dt = p.data ? new Date(p.data).toLocaleDateString('pt-BR', { day:'2-digit', month:'2-digit' }) : '—';
         const pedidoCell = p.url
-          ? `<a href="${esc(p.url)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" style="font-weight:800;font-size:13px;color:#db2777;text-decoration:none" title="Abrir pedido na Shopify">${esc(p.numero)} <i class="ti ti-external-link" style="font-size:10px;vertical-align:-1px"></i></a>`
-          : `<span style="font-weight:800;font-size:13px;color:#db2777">${esc(p.numero)}</span>`;
+          ? `<a href="${esc(p.url)}" target="_blank" rel="noopener" style="font-weight:800;font-size:12px;color:#db2777;text-decoration:none" title="Abrir pedido na Shopify">${esc(p.numero)}</a>`
+          : `<span style="font-weight:800;font-size:12px;color:#db2777">${esc(p.numero)}</span>`;
         const badgeParcial = p.parcial
-          ? ` <span style="font-size:8px;font-weight:700;background:rgba(245,158,11,0.16);color:#b45309;border-radius:3px;padding:1px 4px;vertical-align:middle">PARCIAL</span>` : '';
+          ? ` <span style="font-size:8px;font-weight:700;background:rgba(245,158,11,0.16);color:#b45309;border-radius:3px;padding:0 3px">PARCIAL</span>` : '';
         const faltaN = p.faltas.reduce((s, f) => s + (f.falta || 0), 0);
         const situacao = p.pronto
           ? (completo
-              ? `<span style="font-size:9px;font-weight:700;background:#16a34a;color:#fff;border-radius:3px;padding:2px 6px;white-space:nowrap"><i class="ti ti-heart-check"></i> PODE IR</span>`
-              : `<span style="font-size:9px;font-weight:700;background:rgba(22,163,74,.14);color:#15803d;border-radius:3px;padding:2px 6px;white-space:nowrap">PRONTO</span>`)
-          : `<span style="font-size:9px;font-weight:700;background:rgba(217,119,6,.14);color:#b45309;border-radius:3px;padding:2px 6px;white-space:nowrap">FALTA ${faltaN}</span>`;
+              ? `<span style="font-size:8px;font-weight:700;background:#16a34a;color:#fff;border-radius:3px;padding:1px 4px">PODE IR</span>`
+              : `<span style="font-size:8px;font-weight:700;background:rgba(22,163,74,.14);color:#15803d;border-radius:3px;padding:1px 4px">PRONTO</span>`)
+          : `<span style="font-size:8px;font-weight:700;background:rgba(217,119,6,.14);color:#b45309;border-radius:3px;padding:1px 4px">FALTA ${faltaN}</span>`;
+
         // Peça a peça (conjunto já aberto nas peças): o que está na arara e o que falta
         const pecasPed = {};
         (p.reqs || p.itens.flatMap(it => requisitosDoItem(it))).forEach(r => {
@@ -8769,39 +8774,31 @@ function renderPedidosGrandes(prontos, pendentes, minimo) {
           const x = pecasPed[f.key + '|' + f.cor + '|' + f.tam];
           if (x) x.falta = Math.min(x.qtd, x.falta + (f.falta || 0));
         });
-        const temL = [], faltaL = [];
+        const linhas = [];
         Object.values(pecasPed).forEach(x => {
-          if (x.qtd - x.falta > 0) temL.push({ ...x, n: x.qtd - x.falta });
-          if (x.falta > 0) faltaL.push({ ...x, n: x.falta });
+          const desc = `${esc(nomeModelo(x.key))} ${esc(x.cor)} ${esc(sizeLabel(x.key, x.tam))}`;
+          if (x.qtd - x.falta > 0)
+            linhas.push(`<div class="gr-peca" style="color:#15803d"><b>${x.qtd - x.falta}×</b><span class="nm" title="${desc}">${desc}</span></div>`);
+          if (x.falta > 0) {
+            const pr = producaoDaPeca(x.key, x.cor, x.tam);
+            const etapa = pr.qtd
+              ? `<span class="gr-etapa" title="${esc(pr.etapa)}">${esc(ETAPA_CURTA[pr.etapa] || pr.etapa)}</span>`
+              : `<span class="gr-etapa nao" title="Não está na produção">sem produção</span>`;
+            linhas.push(`<div class="gr-peca" style="color:#b45309"><b>${x.falta}×</b><span class="nm" title="${desc}">${desc}</span>${etapa}</div>`);
+          }
         });
-        const linhaPeca = (x, cor) => `
-          <div style="display:flex;align-items:center;gap:5px;padding:1px 0;font-size:11px">
-            <span style="font-weight:700;color:${cor}">${x.n}×</span>
-            <span style="font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(nomeModelo(x.key))}</span>
-            <span style="color:var(--text-sec);white-space:nowrap">${esc(x.cor)}</span>
-            <span style="margin-left:auto;font-weight:700;color:var(--text-sec)">${esc(sizeLabel(x.key, x.tam))}</span>
-          </div>`;
-        const somaN = l => l.reduce((s, x) => s + x.n, 0);
-        const bloco = (titulo, l, cor, fundo) => l.length === 0 ? '' : `
-          <div style="background:${fundo};border-radius:6px;padding:4px 8px">
-            <div style="font-size:9px;font-weight:800;color:${cor};letter-spacing:.03em">${titulo} (${somaN(l)})</div>
-            ${l.map(x => linhaPeca(x, cor)).join('')}
-          </div>`;
-        const pecasHtml = bloco('JÁ TEM NO ESTOQUE', temL, '#15803d', 'rgba(22,163,74,.08)')
-                        + bloco('FALTA', faltaL, '#b45309', 'rgba(217,119,6,.10)');
+
         const curtos = { conferido: 'Conferido', embalagem: 'Embalagem', brinde: 'Brinde' };
         const passos = GRANDES_PASSOS.map(ps =>
-          `<span class="gr-passo${marca[ps.campo] ? ' on' : ''}" onclick="event.stopPropagation();grandesToggle('${esc(p.id)}','${ps.campo}')" title="${ps.rotulo}"><i class="ti ${ps.icone}"></i> ${curtos[ps.campo] || ps.rotulo}</span>`
+          `<span class="gr-passo${marca[ps.campo] ? ' on' : ''}" onclick="grandesToggle('${esc(p.id)}','${ps.campo}')" title="${ps.rotulo}"><i class="ti ${ps.icone}"></i> ${curtos[ps.campo] || ps.rotulo}</span>`
         ).join('');
         return `<div class="gr-card${completo ? ' gr-ok' : ''}${p.pronto ? '' : ' gr-falta'}">
             <div class="gr-linha"><span>${pedidoCell}${badgeParcial}</span>${situacao}</div>
-            <div class="gr-cli" title="${esc(p.cliente)}">${esc(p.cliente)}</div>
-            <div class="gr-linha" style="color:var(--text-sec)">
-              <span>${dt} · ${p.dias} dia${p.dias === 1 ? '' : 's'}</span>
-              <b style="color:#db2777">${p.pecas} peças</b>
+            <div class="gr-linha">
+              <span class="gr-cli" title="${esc(p.cliente)}">${esc(p.cliente)} · ${dt} · ${p.dias}d</span>
+              <b style="white-space:nowrap;font-size:11px">${p.valor ? fmtBRL(p.valor) : '—'}</b>
             </div>
-            <div style="font-size:15px;font-weight:800;color:var(--text)">${p.valor ? fmtBRL(p.valor) : 'valor —'}</div>
-            ${pecasHtml}
+            ${linhas.join('')}
             <div class="gr-passos">${passos}</div>
           </div>`;
       }).join('')}
