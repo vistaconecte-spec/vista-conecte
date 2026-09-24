@@ -8774,17 +8774,17 @@ function renderPedidosGrandes(prontos, pendentes, minimo) {
           const x = pecasPed[f.key + '|' + f.cor + '|' + f.tam];
           if (x) x.falta = Math.min(x.qtd, x.falta + (f.falta || 0));
         });
-        const linhas = [];
+        const linhasTem = [], linhasFalta = [];
         Object.values(pecasPed).forEach(x => {
           const desc = `${esc(nomeModelo(x.key))} ${esc(x.cor)} ${esc(sizeLabel(x.key, x.tam))}`;
           if (x.qtd - x.falta > 0)
-            linhas.push(`<div class="gr-peca" style="color:#15803d"><b>${x.qtd - x.falta}×</b><span class="nm" title="${desc}">${desc}</span></div>`);
+            linhasTem.push(`<div class="gr-peca" style="color:#15803d"><b>${x.qtd - x.falta}×</b><span class="nm" title="${desc}">${desc}</span></div>`);
           if (x.falta > 0) {
             const pr = producaoDaPeca(x.key, x.cor, x.tam);
             const etapa = pr.qtd
               ? `<span class="gr-etapa" title="${esc(pr.etapa)}">${esc(ETAPA_CURTA[pr.etapa] || pr.etapa)}</span>`
               : `<span class="gr-etapa nao" title="Não está na produção">sem produção</span>`;
-            linhas.push(`<div class="gr-peca" style="color:#b45309"><b>${x.falta}×</b><span class="nm" title="${desc}">${desc}</span>${etapa}</div>`);
+            linhasFalta.push(`<div class="gr-peca" style="color:#b45309"><b>${x.falta}×</b><span class="nm" title="${desc}">${desc}</span>${etapa}</div>`);
           }
         });
 
@@ -8798,7 +8798,7 @@ function renderPedidosGrandes(prontos, pendentes, minimo) {
               <span class="gr-cli" title="${esc(p.cliente)}">${esc(p.cliente)} · ${dt} · ${p.dias}d</span>
               <b style="white-space:nowrap;font-size:11px">${p.valor ? fmtBRL(p.valor) : '—'}</b>
             </div>
-            ${linhas.join('')}
+            ${linhasTem.join('')}${linhasFalta.join('')}
             <div class="gr-passos">${passos}</div>
           </div>`;
       }).join('')}
