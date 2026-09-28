@@ -13,6 +13,7 @@
  *   acao='medidas'          { medidas }            → grava JSON (texto) na coluna projects.medidas
  *   acao='valor-ajuste'     { valorAjuste }        → grava texto na coluna projects.valorAjuste
  *   acao='arquivo-remover'  { tipo, fileId }       → tipo 'croqui'|'foto'|'audaces'; apaga a linha e o objeto do Storage
+ *   acao='renomear'         { title, category? }   → troca título (e categoria, se vier)
  *   acao='projeto-excluir'  { }                    → apaga o modelo inteiro: tabelas filhas + objetos do Storage
  */
 const SB_URL = 'https://hckzsblwyabmhzbjdjgx.supabase.co';
@@ -215,6 +216,17 @@ export async function onRequest(context) {
         if (!pendenciaId || !description) return new Response(JSON.stringify({ erro: 'informe pendenciaId e description' }), { status: 400, headers });
         const pendencia = await sbPatch(env, `project_pendencias?id=eq.${pendenciaId}`, { description });
         return new Response(JSON.stringify({ pendencia }), { headers });
+      }
+
+      // A aba CORTE acha o molde pelo título (moldeNorm), então renomear aqui exige trocar
+      // o `nome` no data.js e na linha do vc_modelos junto, senão a ficha perde o molde.
+      if (acao === 'renomear') {
+        const title = (body.title || '').trim();
+        if (!title) return new Response(JSON.stringify({ erro: 'informe title' }), { status: 400, headers });
+        const patch = { title };
+        if (body.category !== undefined) patch.category = body.category || null;
+        const projeto = await sbPatch(env, `projects?id=eq.${id}`, patch);
+        return new Response(JSON.stringify({ projeto }), { headers });
       }
 
       if (acao === 'medidas') {
