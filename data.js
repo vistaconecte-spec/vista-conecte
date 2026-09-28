@@ -15,6 +15,19 @@ const MODELOS = {
   'top-v':{nome:'Top V',tecido:'',consumo:0,preco:0,componentes:'2 Frentes – 2 Costas',obs:'PILOTO — molde tamanho P, sem grade. Peça toda dupla. Viés de 3cm. Costura do V feita na máquina reta. Bainha de 4cm.',cores:[],aberto:{},croquiFrente:'/croqui-top-v.jpg?v=2026082801'},
   'top-laco':{nome:'Top Laço',tecido:'',consumo:0,preco:0,componentes:'4 Frentes – 2 Costas – 2 Alças',obs:'PILOTO — molde tamanho M, sem grade. Top todo duplo. Alça em rolote. Laço amarrado na frente.',cores:[],aberto:{},croquiFrente:'/croqui-top-laco.jpg?v=2026082801'},
   'blusa-basica':{nome:'Blusa Básica',tecido:'',consumo:0,preco:0,componentes:'1 Frente – 1 Costas – 2 Alças – 2 Forros Frente – 1 Forro Costas',obs:'PILOTO — molde tamanho P, sem grade. Alça em rolote. Pesponto interno na galoneira. Forro da frente duplo com elástico de 0,5cm. Forro fica solto na barra.',cores:[],aberto:{},croquiFrente:'/croqui-blusa-basica.jpg?v=2026082801'},
+  // Segunda leva da modelista, e-mail de 20/09/2026 (projetos 390017–390026 na MODELAGEM).
+  // Componentes lidos dos nomes das peças no .adsx. Sem croqui ainda: pedido à modelista.
+  // Blusa com Amarração e Regata com Amarração vieram só com croqui, SEM molde.
+  'bata':{nome:'Bata',tecido:'',consumo:0,preco:0,componentes:'2 Frentes – 1 Costas Frente – 2 Recortes Frente – 1 Costas – 2 Mangas – 1 Saia Costas',obs:'PILOTO — molde tamanho base, sem grade. Gola em V entretelada. Corpo franzido com pesponto fino. Viés de acabamento nas costas. Barra de 2 viras de 1cm.',cores:[],aberto:{},croquiFrente:'/croqui-bata.jpg?v=2026092801'},
+  'blusa-babado':{nome:'Blusa de Babado',tecido:'',consumo:0,preco:0,componentes:'4 Frentes – 1 Costas – 2 Babados – 2 Babados Frente',obs:'PILOTO — molde tamanho P, sem grade. Aguardando croqui da modelista.',cores:[],aberto:{}},
+  'blusa-estampada':{nome:'Blusa Estampada',tecido:'',consumo:0,preco:0,componentes:'1 Frente – 1 Costas – 2 Mangas',obs:'PILOTO — molde tamanho base (da Camiseta Oversized), sem grade. Aguardando croqui da modelista.',cores:[],aberto:{}},
+  'blusa':{nome:'Blusa',tecido:'',consumo:0,preco:0,componentes:'1 Frente – 1 Costas – 2 Mangas',obs:'PILOTO — molde tamanho P, sem grade. Aguardando croqui da modelista.',cores:[],aberto:{}},
+  'calca-ampla-amarracao-punho':{nome:'Calça Ampla com Amarração no Punho',tecido:'',consumo:0,preco:0,componentes:'2 Frentes – 2 Costas – 2 Cós Frente – 1 Cós Costas – 3 Bolsos – 2 Bolsos Cargo Laterais – 4 Lapelas',obs:'PILOTO — molde tamanho base, sem grade. Aguardando croqui da modelista.',cores:[],aberto:{}},
+  'calca-biker':{nome:'Calça Biker',tecido:'',consumo:0,preco:0,componentes:'2 Frentes – 2 Costas – 1 Cós',obs:'PILOTO — molde tamanho P, sem grade. Aguardando croqui da modelista.',cores:[],aberto:{}},
+  'short-biker':{nome:'Short Biker',tecido:'',consumo:0,preco:0,componentes:'2 Frentes – 2 Costas – 1 Cós',obs:'PILOTO — molde tamanho P, sem grade. Aguardando croqui da modelista.',cores:[],aberto:{}},
+  'shorts':{nome:'Shorts',tecido:'',consumo:0,preco:0,componentes:'2 Dianteiros – 2 Traseiros',obs:'PILOTO — molde tamanho M, sem grade. Aguardando croqui da modelista.',cores:[],aberto:{}},
+  'blusa-amarracao-frontal':{nome:'Blusa com Amarração Frontal',tecido:'',consumo:0,preco:0,componentes:'',obs:'PILOTO — SEM MOLDE AINDA (só croqui e ficha do Audaces Idea). Gola em V com viés rebatido. Costura para passar cordão na frente. Viés de acabamento nas costas. Barra limpa na overlock e 1 vira de 1cm.',cores:[],aberto:{},croquiFrente:'/croqui-blusa-amarracao-frontal.jpg?v=2026092801'},
+  'regata-amarracao-frontal':{nome:'Regata com Amarração Frontal',tecido:'',consumo:0,preco:0,componentes:'',obs:'PILOTO — SEM MOLDE AINDA (só croqui). Frente dupla. Viés de acabamento nas costas. Barra limpa na overlock e 1 vira de 1cm.',cores:[],aberto:{},croquiFrente:'/croqui-regata-amarracao-frontal.jpg?v=2026092801'},
 
   // ── MACACÕES ──────────────────────────────────────────────────────────────
   'macacao-amplo':{nome:'Macacão Amplo',tecido:'Viscose',consumo:1.8,preco:28,componentes:'2 Frentes – 1 Costas – 2 Mangas – 1 Cós – 1 Zíper',obs:'Verificar alinhamento do tecido antes do corte. Manter margem de costura de 1cm.',cores:['Preto','Off White','Marrom','Militar','Roxo','Marsala'],aberto:{'Preto':[0,0,0,0,0],'Off White':[0,0,0,0,0],'Marrom':[0,0,0,0,0],'Militar':[0,0,0,0,0],'Roxo':[0,0,0,0,0],'Marsala':[0,0,0,0,0]},croquiFrente:'/croqui-macacao-amplo-frente.jpg?v=2026060804',croquiCostas:'/croqui-macacao-amplo-costas.jpg?v=2026060804'},
@@ -117,7 +130,7 @@ const SIDEBAR_ESTRUTURA = [
   // Fica no topo e separado de propósito: peça em pilotagem não pode ser confundida
   // com peça de produção na hora de mandar corte/compra. Quando o piloto for aprovado,
   // a chave sai daqui e entra no grupo definitivo (VESTIDOS, SAIAS, TOPS...).
-  {titulo:'PILOTOS',     modelos:['vestido-sereia','vestido-bolso','saia-longa-bolso-faca','mini-saia-envelope','top-basico','top-v','top-laco','blusa-basica']},
+  {titulo:'PILOTOS',     modelos:['vestido-sereia','vestido-bolso','saia-longa-bolso-faca','mini-saia-envelope','top-basico','top-v','top-laco','blusa-basica','bata','blusa-babado','blusa-estampada','blusa','blusa-amarracao-frontal','regata-amarracao-frontal','calca-ampla-amarracao-punho','calca-biker','short-biker','shorts']},
   {titulo:'MACACÕES',    modelos:['macacao-amplo','macacao-manga-longa']},
   {titulo:'MACAQUINHOS', modelos:['macaquinho-amplo','macaquinho-ruel']},
   {titulo:'VESTIDOS',    modelos:['vestido-frente-unica-longo','vestido-frente-unica-curto','vestido-amplo']},
