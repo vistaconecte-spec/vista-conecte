@@ -436,86 +436,10 @@
         </div>
       </div>
       <div id="panel-arquivos" class="tab-panel">
-        <div class="card">
-          <div class="card-header"><div class="card-title"><i class="ti ti-vector-triangle"></i> MOLDE TÉCNICO (DXF)</div></div>
-          <div id="dxf-vazio">
-            <div class="upload-area" ondragover="event.preventDefault();this.classList.add('over')" ondragleave="this.classList.remove('over')" ondrop="handleDrop(event,'dxf')" onclick="document.getElementById('inp-dxf').click()">
-              <i class="ti ti-file-upload"></i>
-              <div class="upload-label">Arraste o arquivo DXF ou clique para importar</div>
-              <div class="upload-sub">Formatos aceitos: .dxf, .plt, .ait</div>
-            </div>
-            <input type="file" id="inp-dxf" accept=".dxf,.plt,.ait" style="display:none" onchange="handleFile(this,'dxf')">
-          </div>
-          <div id="dxf-arquivo" style="display:none">
-            <div class="file-row">
-              <div class="file-info">
-                <div class="file-icon"><i class="ti ti-vector-triangle" style="color:var(--vc-areia-escura)"></i></div>
-                <div><div class="file-name" id="dxf-nome"></div><div class="file-meta" id="dxf-meta"></div></div>
-              </div>
-              <div class="file-actions">
-                <span class="badge">DXF</span>
-                <button class="btn-outline"><i class="ti ti-download"></i> Exportar</button>
-                <button class="btn-del" onclick="removerArq('dxf')"><i class="ti ti-trash"></i></button>
-              </div>
-            </div>
-          </div>
-        </div>
-        <div class="card">
-          <div class="card-header"><div class="card-title"><i class="ti ti-pencil"></i> CROQUI TÉCNICO</div></div>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-
-            <!-- FRENTE -->
-            <div>
-              <div style="font-size:10px;font-weight:700;color:var(--text-sec);letter-spacing:0.07em;margin-bottom:6px">FRENTE</div>
-              <div id="croqui-frente-vazio">
-                <div class="upload-area" ondragover="event.preventDefault();this.classList.add('over')" ondragleave="this.classList.remove('over')" ondrop="handleDrop(event,'croqui-frente')" onclick="document.getElementById('inp-croqui-frente').click()">
-                  <i class="ti ti-photo-up"></i>
-                  <div class="upload-label">Clique ou arraste</div>
-                  <div class="upload-sub">.jpg, .png</div>
-                </div>
-                <input type="file" id="inp-croqui-frente" accept=".jpg,.jpeg,.png" style="display:none" onchange="handleFile(this,'croqui-frente')">
-              </div>
-              <div id="croqui-frente-arquivo" style="display:none">
-                <div class="file-row">
-                  <div class="file-info">
-                    <div class="file-icon"><i class="ti ti-pencil" style="color:var(--vc-areia-escura)"></i></div>
-                    <div><div class="file-name" id="croqui-frente-nome"></div><div class="file-meta" id="croqui-frente-meta"></div></div>
-                  </div>
-                  <div class="file-actions">
-                    <span class="badge">Frente</span>
-                    <button class="btn-del" onclick="removerArq('croqui-frente')"><i class="ti ti-trash"></i></button>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <!-- COSTAS -->
-            <div>
-              <div style="font-size:10px;font-weight:700;color:var(--text-sec);letter-spacing:0.07em;margin-bottom:6px">COSTAS</div>
-              <div id="croqui-costas-vazio">
-                <div class="upload-area" ondragover="event.preventDefault();this.classList.add('over')" ondragleave="this.classList.remove('over')" ondrop="handleDrop(event,'croqui-costas')" onclick="document.getElementById('inp-croqui-costas').click()">
-                  <i class="ti ti-photo-up"></i>
-                  <div class="upload-label">Clique ou arraste</div>
-                  <div class="upload-sub">.jpg, .png</div>
-                </div>
-                <input type="file" id="inp-croqui-costas" accept=".jpg,.jpeg,.png" style="display:none" onchange="handleFile(this,'croqui-costas')">
-              </div>
-              <div id="croqui-costas-arquivo" style="display:none">
-                <div class="file-row">
-                  <div class="file-info">
-                    <div class="file-icon"><i class="ti ti-pencil" style="color:var(--vc-areia-escura)"></i></div>
-                    <div><div class="file-name" id="croqui-costas-nome"></div><div class="file-meta" id="croqui-costas-meta"></div></div>
-                  </div>
-                  <div class="file-actions">
-                    <span class="badge">Costas</span>
-                    <button class="btn-del" onclick="removerArq('croqui-costas')"><i class="ti ti-trash"></i></button>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-          </div>
-        </div>
+        <!-- Croqui, arquivo Audaces e medidas vêm da pasta do modelo na aba MODELAGEM (arqRender
+             no main.js). Antes eram uploads guardados só no navegador de quem subiu: em outro
+             aparelho a aba aparecia vazia (29/09/2026). -->
+        <div id="arq-modelagem"></div>
         <div class="card">
           <div class="card-header"><div class="card-title"><i class="ti ti-file-text"></i> FICHAS GERADAS</div></div>
           <div id="fichas-lista"><div style="font-size:12px;color:var(--vc-texto-ter);padding:8px">Nenhuma ficha gerada ainda.</div></div>
@@ -1169,7 +1093,7 @@
   </div>
 </div>
 <script src="data.js?v=2026092902"></script>
-<script src="main.js?v=2026092903"></script>
+<script src="main.js?v=2026092904"></script>
 <script async src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js" onload="initSupabase()"></script>
 </body>
 </html>

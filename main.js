@@ -7796,6 +7796,186 @@ async function moldeEscolher(key, projetoId) {
   moldeGravarVinculo(key, projetoId).then(() => {
     if (modeloAtual === '__corte__') renderCorte(); // o selo da ficha passa a mostrar a versão
   }).catch(() => {});
+  if (modeloAtual === key) arqRender(key); // escolhido pela aba ARQUIVOS: ela já mostra a pasta
+}
+
+// ─── ABA ARQUIVOS DO MODELO (CONFECÇÃO) ─────────────────────────────────────
+// Croqui, arquivo da Audaces e medidas saem da pasta do modelo na aba MODELAGEM, pelo mesmo
+// vínculo que a aba CORTE usa (moldeProjetoDe). Antes a aba guardava upload só no navegador
+// de quem subiu e o DXF nem era salvo: no Top Básico, em 29/09/2026, a dona abriu e não viu
+// nada, com croqui e dois arquivos Audaces na MODELAGEM. Upload feito aqui vai para a mesma
+// pasta, então as duas abas mostram sempre a mesma coisa.
+let _arqDet = { key: null, projetoId: null, det: null };
+const arqUrl = k => '/api/modelagem-storage?key=' + encodeURIComponent(k);
+
+async function arqRender(key) {
+  const box = document.getElementById('arq-modelagem');
+  if (!box) return;
+  if (_arqDet.key !== key) {
+    _arqDet = { key, projetoId: null, det: null };
+    box.innerHTML = '<div class="card"><div style="font-size:12px;color:var(--text-ter);padding:8px">Buscando a pasta na MODELAGEM…</div></div>';
+  }
+  await moldeCarregarLista();
+  if (modeloAtual !== key) return; // trocou de modelo enquanto buscava
+  if (!_moldeLista) {
+    box.innerHTML = '<div class="card"><div style="font-size:12px;color:#dc2626;padding:8px">Não consegui falar com a MODELAGEM agora. Abra o modelo de novo em instantes.</div></div>';
+    return;
+  }
+  const p = moldeProjetoDe(key);
+  if (!p) {
+    box.innerHTML = `<div class="card">
+      <div class="card-header"><div class="card-title"><i class="ti ti-folder-question"></i> PASTA NA MODELAGEM</div></div>
+      <div style="font-size:12px;color:var(--text-sec);padding:4px 2px 10px">Este modelo ainda não está ligado a uma pasta da aba MODELAGEM, então não tem croqui, molde nem medidas para mostrar.</div>
+      <button class="btn-outline" onclick="crtAbrirMolde('${moldeEsc(key)}')"><i class="ti ti-link"></i> Escolher a pasta</button>
+    </div>`;
+    return;
+  }
+  try {
+    const res = await fetch('/api/molde?id=' + encodeURIComponent(p.id), { cache: 'no-store' });
+    const det = await res.json();
+    if (det.erro) throw new Error(det.erro);
+    if (modeloAtual !== key) return;
+    _arqDet = { key, projetoId: p.id, det };
+    box.innerHTML = arqHTML(key, det);
+  } catch (e) {
+    box.innerHTML = `<div class="card"><div style="font-size:12px;color:#dc2626;padding:8px">Não consegui abrir a pasta da MODELAGEM: ${moldeEsc(e.message)}</div></div>`;
+  }
+}
+
+// Medidas preenchidas por linha e tamanho. "Completa" = toda linha tem os 5 tamanhos que a
+// loja vende (PP a GG), o mesmo critério para publicar a tabela na loja.
+function arqStatusMedidas(medidas) {
+  const m = medidas || {};
+  const linhas = Object.keys(m).filter(k => k !== '__obs')
+    .filter(n => Object.values(m[n] || {}).some(v => (v ?? '').toString().trim()));
+  const faltando = [];
+  linhas.forEach(n => ['PP', 'P', 'M', 'G', 'GG'].forEach(t => {
+    if (!((m[n] || {})[t] ?? '').toString().trim()) faltando.push(n + ' ' + t);
+  }));
+  return { linhas, faltando, completa: linhas.length > 0 && !faltando.length };
+}
+
+function arqHTML(key, d) {
+  const arq = d.arquivos || [];
+  const croquis = d.croquis || [];
+  const med = d.medidas || {};
+  const st = arqStatusMedidas(med);
+  // PP a GG sempre aparecem (a coluna vazia é justamente o que falta); G1 só se tiver valor.
+  const cols = MDL_TAMANHOS.filter(t => ['PP', 'P', 'M', 'G', 'GG'].includes(t) || st.linhas.some(n => ((med[n] || {})[t] ?? '').toString().trim()));
+  const consumo = d.consumo || {};
+  const seloMed = !st.linhas.length
+    ? '<span class="badge" style="background:#fee2e2;color:#b91c1c">SEM MEDIDAS</span>'
+    : st.completa ? '<span class="badge" style="background:#dcfce7;color:#15803d">COMPLETA</span>'
+    : `<span class="badge" style="background:#fef3c7;color:#b45309">FALTAM ${st.faltando.length}</span>`;
+  const botaoSubir = (tipo, accept, rotulo) => `
+    <label class="btn-outline arq-subir" style="display:inline-flex;align-items:center;gap:6px;cursor:pointer">
+      <i class="ti ti-upload"></i> <span>${rotulo}</span>
+      <input type="file" accept="${accept}" style="display:none" onchange="arqSubir(this,'${tipo}')">
+    </label>`;
+
+  return `
+  <div class="card">
+    <div class="card-header" style="flex-wrap:wrap;gap:8px">
+      <div class="card-title"><i class="ti ti-folder"></i> PASTA NA MODELAGEM · ${moldeEsc(d.projeto.title)}</div>
+      <div style="display:flex;gap:12px;font-size:11px">
+        <span class="dash-link" onclick="arqAbrirNaModelagem(${Number(d.projeto.id)})">abrir na MODELAGEM</span>
+        <span class="dash-link" onclick="crtAbrirMolde('${moldeEsc(key)}')">não é esta pasta?</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header"><div class="card-title"><i class="ti ti-pencil"></i> CROQUI TÉCNICO</div>${botaoSubir('croqui', '.jpg,.jpeg,.png', 'Subir croqui')}</div>
+    ${croquis.length ? `
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px">
+        ${croquis.map((c, i) => `
+          <a href="${arqUrl(c.fileKey)}" target="_blank" rel="noopener" style="text-decoration:none;color:inherit">
+            <img src="${arqUrl(c.fileKey)}" loading="lazy" alt="${moldeEsc(c.name || 'croqui')}"
+                 style="width:100%;height:260px;object-fit:contain;border:1px solid var(--border);border-radius:10px;background:#fff">
+            <div style="font-size:10px;color:var(--text-ter);margin-top:4px">${i === 0 ? 'FRENTE · ' : i === 1 ? 'COSTAS · ' : ''}${moldeEsc(moldeData(c.createdAt))}</div>
+          </a>`).join('')}
+      </div>
+      <div style="font-size:10px;color:var(--text-ter);margin-top:6px">A ficha técnica usa o 1º como frente e o 2º como costas.</div>`
+    : '<div style="font-size:12px;color:#b45309;padding:4px 2px">Sem croqui nesta pasta ainda.</div>'}
+  </div>
+
+  <div class="card">
+    <div class="card-header"><div class="card-title"><i class="ti ti-vector-triangle"></i> MOLDE AUDACES</div>${botaoSubir('audaces', '.adsx,.ads,.dxf,.plt,.ait,.zip', 'Subir arquivo')}</div>
+    ${arq.length ? arq.map(a => `
+      <div class="file-row">
+        <div class="file-info">
+          <div class="file-icon"><i class="ti ti-vector-triangle" style="color:var(--vc-areia-escura)"></i></div>
+          <div><div class="file-name">${moldeEsc(a.name)}</div><div class="file-meta">${moldeEsc(moldeDataHora(a.createdAt))}${a.size ? ' · ' + Math.round(a.size / 1024) + ' KB' : ''}</div></div>
+        </div>
+        <div class="file-actions">
+          <span class="badge"${a.atual ? ' style="background:var(--gold-dark);color:#fff"' : ''}>V${a.versao}${a.atual ? ' ATUAL' : ''}</span>
+          <a class="btn-outline" href="${arqUrl(a.fileKey)}" target="_blank" rel="noopener" style="text-decoration:none;color:inherit"><i class="ti ti-download"></i> Baixar</a>
+        </div>
+      </div>`).join('')
+    : '<div style="font-size:12px;color:#b45309;padding:4px 2px">A modelista ainda não subiu o arquivo da Audaces nesta pasta.</div>'}
+  </div>
+
+  <div class="card">
+    <div class="card-header"><div class="card-title"><i class="ti ti-ruler-measure"></i> MEDIDAS DA PEÇA</div>${seloMed}</div>
+    ${st.linhas.length ? `
+      <div style="overflow-x:auto"><table style="width:100%;font-size:12px;border-collapse:collapse">
+        <thead><tr><th style="text-align:left;padding:6px">Medida</th>${cols.map(t => `<th style="padding:6px">${t}</th>`).join('')}</tr></thead>
+        <tbody>${st.linhas.map(n => `<tr style="border-top:1px solid var(--border)"><td style="text-align:left;font-weight:600;padding:6px">${moldeEsc(n)}</td>${cols.map(t => {
+          const v = ((med[n] || {})[t] ?? '').toString().trim();
+          return `<td style="text-align:center;padding:6px${v ? '' : ';background:#fef3c7'}">${v ? moldeEsc(v) : '—'}</td>`;
+        }).join('')}</tr>`).join('')}</tbody>
+      </table></div>
+      ${st.faltando.length ? `<div style="font-size:11px;color:#b45309;margin-top:6px">Falta ${moldeEsc(st.faltando.join(', '))}. Sem a grade PP a GG completa a tabela não vai para a loja.</div>` : ''}`
+    : '<div style="font-size:12px;color:#b91c1c;padding:4px 2px">Nenhuma medida preenchida. Quem preenche é a modelista, na aba MODELAGEM.</div>'}
+    ${((consumo.larguraTecido || '').trim() || (consumo.consumoPorPeca || '').trim()) ? `<div style="font-size:11px;color:var(--text-sec);margin-top:8px">
+      ${(consumo.larguraTecido || '').trim() ? 'Largura do tecido <b>' + moldeEsc(consumo.larguraTecido) + '</b>. ' : ''}
+      ${(consumo.consumoPorPeca || '').trim() ? 'Consumo por peça na modelagem <b>' + moldeEsc(consumo.consumoPorPeca) + '</b>.' : ''}</div>` : ''}
+  </div>`;
+}
+
+async function arqSubir(input, tipo) {
+  const f = input.files && input.files[0];
+  const { key, projetoId } = _arqDet;
+  if (!f || !projetoId) return;
+  const lbl = input.closest('label');
+  const txt = lbl && lbl.querySelector('span');
+  const rotulo = txt ? txt.textContent : '';
+  if (lbl) lbl.style.pointerEvents = 'none';
+  if (txt) txt.textContent = 'Enviando…';
+  try {
+    const form = new FormData();
+    form.append('projectId', String(projetoId));
+    form.append('tipo', tipo);
+    form.append('file', f);
+    const res = await fetch('/api/modelagem-upload', { method: 'POST', body: form });
+    const r = await res.json().catch(() => ({}));
+    if (!res.ok || r.erro) throw new Error(r.erro || ('HTTP ' + res.status));
+    _moldeListaEm = 0; // a versão do molde mudou: o selo da aba CORTE tem de ver
+    _arqDet.key = null;
+    if (modeloAtual === key) arqRender(key);
+  } catch (e) {
+    alert('Não deu para enviar o arquivo: ' + (e.message || 'erro'));
+    if (txt) txt.textContent = rotulo;
+    if (lbl) lbl.style.pointerEvents = '';
+    input.value = '';
+  }
+}
+
+function arqAbrirNaModelagem(id) {
+  abrirModelagem(null);
+  mdlAbrirDetalhe(id);
+}
+
+// Endereço dos croquis da pasta do modelo, na ordem da tela (1º frente, 2º costas).
+async function arqCroquisDoModelo(key) {
+  try {
+    if (_arqDet.key === key && _arqDet.det) return (_arqDet.det.croquis || []).map(c => arqUrl(c.fileKey));
+    await moldeCarregarLista();
+    const p = moldeProjetoDe(key);
+    if (!p) return [];
+    const det = await (await fetch('/api/molde?id=' + encodeURIComponent(p.id))).json();
+    return (det.croquis || []).map(c => arqUrl(c.fileKey));
+  } catch (_) { return []; }
 }
 
 function moldeRenderDetalhe() {
@@ -8915,20 +9095,7 @@ function renderModelo(key) {
   const coresFixas = new Set([...(def.cores || []), ...((d.cores) || [])].map(chaveCor));
   renderCoresTags(cores, coresFixas);
 
-  // Mostra croquis embutidos na aba Arquivos se não houver upload manual
-  ['frente', 'costas'].forEach(lado => {
-    const temUpload = loadLocal('vc:croqui-' + lado + ':' + key);
-    const temEmbutido = def['croqui' + lado.charAt(0).toUpperCase() + lado.slice(1)];
-    if (!temUpload && temEmbutido) {
-      document.getElementById('croqui-' + lado + '-vazio').style.display = 'none';
-      document.getElementById('croqui-' + lado + '-arquivo').style.display = 'block';
-      document.getElementById('croqui-' + lado + '-nome').textContent = 'Croqui ' + lado + ' (padrão)';
-      document.getElementById('croqui-' + lado + '-meta').textContent = 'Imagem embutida no modelo';
-    } else if (!temUpload) {
-      document.getElementById('croqui-' + lado + '-vazio').style.display = 'block';
-      document.getElementById('croqui-' + lado + '-arquivo').style.display = 'none';
-    }
-  });
+  arqRender(key); // aba ARQUIVOS: croqui, Audaces e medidas da pasta na MODELAGEM
 
   const abt = document.getElementById('aberto-tbody');
   const est = document.getElementById('est-tbody');
@@ -9663,41 +9830,6 @@ function showTab(name) {
   document.getElementById('panel-' + name).classList.add('active');
 }
 
-function handleFile(input, tipo) {
-  const f = input.files[0]; if (!f) return;
-  const kb = Math.round(f.size / 1024);
-  document.getElementById(tipo + '-vazio').style.display = 'none';
-  document.getElementById(tipo + '-arquivo').style.display = 'block';
-  document.getElementById(tipo + '-nome').textContent = f.name;
-  document.getElementById(tipo + '-meta').textContent = `${kb}KB • Adicionado agora`;
-  if ((tipo === 'croqui-frente' || tipo === 'croqui-costas') && f.type.startsWith('image/')) {
-    const reader = new FileReader();
-    reader.onload = ev => saveLocal('vc:' + tipo + ':' + modeloAtual, ev.target.result);
-    reader.readAsDataURL(f);
-  }
-}
-
-function handleDrop(e, tipo) {
-  e.preventDefault();
-  document.querySelectorAll('.upload-area').forEach(a => a.classList.remove('over'));
-  const f = e.dataTransfer.files[0]; if (!f) return;
-  const kb = Math.round(f.size / 1024);
-  document.getElementById(tipo + '-vazio').style.display = 'none';
-  document.getElementById(tipo + '-arquivo').style.display = 'block';
-  document.getElementById(tipo + '-nome').textContent = f.name;
-  document.getElementById(tipo + '-meta').textContent = `${kb}KB • Adicionado agora`;
-  if ((tipo === 'croqui-frente' || tipo === 'croqui-costas') && f.type.startsWith('image/')) {
-    const reader = new FileReader();
-    reader.onload = ev => saveLocal('vc:' + tipo + ':' + modeloAtual, ev.target.result);
-    reader.readAsDataURL(f);
-  }
-}
-
-function removerArq(tipo) {
-  document.getElementById(tipo + '-vazio').style.display = 'block';
-  document.getElementById(tipo + '-arquivo').style.display = 'none';
-}
-
 async function urlToBase64(src) {
   if (!src) return null;
   if (src.startsWith('data:')) return src; // já é base64
@@ -9819,9 +9951,12 @@ async function gerarFicha(keyArg, levaArg) {
   const prazo = daTela
     ? ((document.getElementById(leva === 2 ? 'prod2-prazo' : 'prod-prazo') || {}).value || '')
     : ((leva === 2 ? saved.prazo2 : saved.prazo) || '');
-  // prioridade: upload manual → legado → caminho padrão do modelo
-  const croquiFrenteRaw = loadLocal('vc:croqui-frente:' + key) || loadLocal('vc:croqui:' + key) || def.croquiFrente || null;
-  const croquiCostasRaw = loadLocal('vc:croqui-costas:' + key) || def.croquiCostas || null;
+  // prioridade: croqui da pasta na MODELAGEM (1º = frente, 2º = costas) → upload antigo
+  // deste navegador → imagem embutida no data.js. A MODELAGEM vem primeiro porque é a
+  // única que todo aparelho enxerga (29/09/2026).
+  const croquisMdl = await arqCroquisDoModelo(key);
+  const croquiFrenteRaw = croquisMdl[0] || loadLocal('vc:croqui-frente:' + key) || loadLocal('vc:croqui:' + key) || def.croquiFrente || null;
+  const croquiCostasRaw = croquisMdl[1] || loadLocal('vc:croqui-costas:' + key) || def.croquiCostas || null;
 
   // Converte caminhos de URL para base64 (garante impressão offline)
   const [croquiFrente, croquiCostas] = await Promise.all([
