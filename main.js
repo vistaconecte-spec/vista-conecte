@@ -11884,6 +11884,21 @@ async function mdlAbrirDetalhe(id) {
   }
 }
 
+// Imagem em tela cheia por cima de tudo; fecha no clique, no X ou no Esc.
+function mdlAmpliarImagem(src) {
+  document.getElementById('mdl-img-ampliada')?.remove();
+  const ov = document.createElement('div');
+  ov.id = 'mdl-img-ampliada';
+  ov.style.cssText = 'position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,0.85);display:flex;align-items:center;justify-content:center;padding:16px;cursor:zoom-out';
+  ov.innerHTML = `<img src="${src}" style="max-width:100%;max-height:100%;object-fit:contain;background:#fff;border-radius:6px">
+    <button title="Fechar" style="position:absolute;top:12px;right:12px;width:36px;height:36px;border:none;border-radius:50%;background:rgba(255,255,255,0.9);color:#111;font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center"><i class="ti ti-x"></i></button>`;
+  const fechar = () => { ov.remove(); document.removeEventListener('keydown', esc); };
+  const esc = e => { if (e.key === 'Escape') fechar(); };
+  ov.addEventListener('click', fechar);
+  document.addEventListener('keydown', esc);
+  document.body.appendChild(ov);
+}
+
 function mdlRenderDetalhe() {
   const d = mdlProjetoAtual;
   if (!d) return;
@@ -11892,9 +11907,15 @@ function mdlRenderDetalhe() {
   const btnRemoverImg = (tipo, fileId) => `
     <button onclick="mdlRemoverArquivo(${d.projeto.id},'${tipo}',${fileId})" title="Remover" style="position:absolute;top:3px;right:3px;width:15px;height:15px;border:none;border-radius:50%;background:rgba(0,0,0,0.55);color:#fff;font-size:9px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0"><i class="ti ti-x"></i></button>`;
 
+  // Croqui na miniatura (170px) não dá para ler detalhe de costura: lupa no canto e clique
+  // na imagem abrem em tela cheia.
+  const btnAmpliarImg = src => `
+    <button onclick="event.stopPropagation();mdlAmpliarImagem('${src}')" title="Ampliar" style="position:absolute;top:3px;left:3px;width:24px;height:24px;border:none;border-radius:50%;background:rgba(0,0,0,0.55);color:#fff;font-size:13px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0"><i class="ti ti-zoom-in"></i></button>`;
+
   const croquisHtml = (d.croquis || []).map(c => `
     <div style="position:relative">
-      <img src="/api/modelagem-storage?key=${encodeURIComponent(c.fileKey)}" style="width:100%;max-height:170px;object-fit:contain;border-radius:8px;border:1px solid var(--border);background:#fafafa">
+      <img src="/api/modelagem-storage?key=${encodeURIComponent(c.fileKey)}" onclick="mdlAmpliarImagem(this.src)" style="width:100%;max-height:170px;object-fit:contain;border-radius:8px;border:1px solid var(--border);background:#fafafa;cursor:zoom-in">
+      ${btnAmpliarImg('/api/modelagem-storage?key=' + encodeURIComponent(c.fileKey))}
       ${btnRemoverImg('croqui', c.id)}
     </div>`
   ).join('') || '<div style="color:var(--text-ter);font-size:12px">Nenhum croqui ainda.</div>';
