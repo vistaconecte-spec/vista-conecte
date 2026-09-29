@@ -434,6 +434,7 @@ async function salvarNuvemREST(key, dados, opts = {}) {
         // Cropped Canelado, viu "Salvo" e trocou de tela achando que tinha gravado: aquele
         // "Salvo" era do ciclo do corte, que grava sozinho de minuto em minuto.
         if (!opts.silencioso) showCloudOk();
+        else if (!_gravacoesPendentes.size) limparErroNuvem(); // o vermelho de uma falha silenciosa não pode ficar para sempre
         return; // sucesso
       }
     } catch(e) {}
@@ -452,6 +453,17 @@ function showCloudOk() {
   ind.style.color = '';
   ind.classList.add('show');
   setTimeout(() => ind.classList.remove('show'), 2000);
+}
+
+// Uma gravação silenciosa (o corte grava sozinho de minuto em minuto) que falhava acendia o
+// vermelho, e a seguinte, que dava certo, não apagava: em 29/09/2026 o aviso ficou na tela
+// da CONFECÇÃO com a nuvem gravando normal. Só apaga o aviso genérico, e só sem fila pendente.
+function limparErroNuvem() {
+  const ind = document.getElementById('save-ind');
+  // Só o aviso genérico: "outro aparelho gravou depois, confira o modelo" tem de ficar.
+  if (!ind || !ind.classList.contains('show') || !ind.textContent.includes('Erro ao salvar na nuvem')) return;
+  ind.classList.remove('show');
+  ind.style.color = '';
 }
 
 function showCloudError(msg) {
