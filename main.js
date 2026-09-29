@@ -10294,10 +10294,13 @@ function gerarFichaCompraGlobal() {
       if (pecas === 0) return;
       const metros = pecas * consumo;
       const custo  = metros * preco;
-      if (!grupos[chave][cor]) grupos[chave][cor] = { metros: 0, custo: 0, modelos: [] };
-      grupos[chave][cor].metros  += metros;
-      grupos[chave][cor].custo   += custo;
-      grupos[chave][cor].modelos.push(def.nome);
+      // Nome da cor como a loja de tecido conhece (data.js `corFornecedor`): "Mescla" do Boho é
+      // o mescla CINZA (o claro), e a Costa Rica sempre perguntava se era o grafite (29/09/2026).
+      const corF = (def.corFornecedor && def.corFornecedor[cor]) || cor;
+      if (!grupos[chave][corF]) grupos[chave][corF] = { metros: 0, custo: 0, modelos: [] };
+      grupos[chave][corF].metros  += metros;
+      grupos[chave][corF].custo   += custo;
+      grupos[chave][corF].modelos.push(def.nome);
     });
   }
 
