@@ -4383,12 +4383,15 @@ function verificarAvisosStatus() {
     const saved = loadLocal('vc:' + key) || {};
     // Cada leva tem status/relógio próprios e gera aviso independente
     const levas = [
-      { status: saved.status,  at: saved.status_at,  leva: 1 },
-      { status: saved.status2, at: saved.status2_at, leva: 2 },
+      { status: saved.status,  at: saved.status_at,  leva: 1, prod: saved.prod },
+      { status: saved.status2, at: saved.status2_at, leva: 2, prod: saved.prod2 },
     ];
     for (const lv of levas) {
       const statusAt = lv.at ? new Date(lv.at).getTime() : null;
       if (!statusAt) continue;
+      // Leva zerada (peças tiradas por falta de tecido, F na ficha) não está em corte de
+      // verdade: Short/Regata Good e Sandália ficavam cobrando corte há semanas (30/09/2026).
+      if (!Object.values(lv.prod || {}).some(a => (a || []).some(v => v > 0))) continue;
       const horas = Math.floor((Date.now() - statusAt) / 3600000);
 
       // Pega a regra mais severa que se aplica (urgente tem prioridade)
