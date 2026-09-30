@@ -91,3 +91,26 @@ async function varrer(H, dias) {
   itens.sort((a, b) => (b.aberta - a.aberta) || String(b.compra).localeCompare(a.compra));
   return { periodo: { desde: d0, ate: d1 }, total: itens.length, abertas: itens.filter(i => i.aberta).length, itens };
 }
+
+// POST /api/mp-contestacoes  {chargeback: "<id>", arquivos: [{nome, tipo, base64}]}
+// Envia a defesa (comprovante de entrega, conversa, nota) pro chargeback. Só rodar com o OK da
+// usuária pra aquele caso. MP aceita jpg/png/pdf, até 10 MB no total.
+export async function onRequestPost({ request, env }) {
+  const tk = env.MP_ACCESS_TOKEN;
+  if (!tk) return J({ erro: 'MP_ACCESS_TOKEN ausente' }, 500);
+  let b; try { b = await request.json(); } catch { return J({ erro: 'json inválido' }, 400); }
+  const id = String(b.chargeback || '').replace(/\D/g, '');
+  const arqs = Array.isArray(b.arquivos) ? b.arquivos : [];
+  if (!id || !arqs.length) return J({ erro: 'informe chargeback e arquivos' }, 400);
+  const fd = new FormData();
+  for (const a of arqs) {
+    const bin = Uint8Array.from(atob(a.base64 || ''), c => c.charCodeAt(0));
+    fd.append('files[]', new Blob([bin], { type: a.tipo || 'application/pdf' }), a.nome || 'documento.pdf');
+  }
+  const r = await fetch(`https://api.mercadopago.com/v1/chargebacks/${id}/documentation`, {
+    method: 'POST', headers: { Authorization: `Bearer ${tk}` }, body: fd
+  });
+  const t = await r.text();
+  const depois = await get(`https://api.mercadopago.com/v1/chargebacks/${id}`, { Authorization: `Bearer ${tk}` });
+  return J({ http: r.status, resposta: t.slice(0, 500), documentacao: depois.d && depois.d.documentation_status }, r.ok ? 200 : 502);
+}
