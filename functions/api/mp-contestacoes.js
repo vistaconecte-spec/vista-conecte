@@ -1,4 +1,7 @@
 // GET /api/mp-contestacoes?ids=175198112311,173832786475[&claims=1]
+// GET /api/mp-contestacoes?varrer=1[&dias=180] → todo pagamento charged_back/in_mediation criado nos
+//   últimos N dias, com o chargeback, o prazo e se ainda dá pra defender (aberta = sem documentação e
+//   prazo no futuro). É o que a tarefa diária consulta pra avisar a tempo.
 // Contestações do Mercado Pago: detalhe do chargeback de cada pagamento (prazo e status da
 // documentação, cobertura) e as reclamações abertas pela compradora (post-purchase claims).
 // Só leitura. Criado 2026-09-30. Secret: MP_ACCESS_TOKEN.
@@ -18,6 +21,7 @@ export async function onRequestGet({ request, env }) {
   if (!tk) return J({ erro: 'MP_ACCESS_TOKEN ausente' }, 500);
   const u = new URL(request.url);
   const H = { Authorization: `Bearer ${tk}` };
+  if (u.searchParams.get('varrer')) return J(await varrer(H, Number(u.searchParams.get('dias')) || 180));
   const ids = (u.searchParams.get('ids') || '').split(',').map(s => s.trim()).filter(Boolean).slice(0, 20);
   const pagamentos = [];
   for (const id of ids) {
@@ -46,4 +50,44 @@ export async function onRequestGet({ request, env }) {
     reclamacoes = { abertas: c, recentes: c2 };
   }
   return J({ pagamentos, reclamacoes });
+}
+
+async function varrer(H, dias) {
+  const fim = new Date(Date.now() - 3 * 3600e3);
+  const ini = new Date(fim.getTime() - dias * 864e5);
+  const d0 = ini.toISOString().slice(0, 10), d1 = fim.toISOString().slice(0, 10);
+  const achados = [];
+  for (const st of ['charged_back', 'in_mediation']) {
+    for (let offset = 0; offset < 500; offset += 50) {
+      const r = await get(`https://api.mercadopago.com/v1/payments/search?status=${st}&range=date_created&begin_date=${d0}T00:00:00.000-03:00&end_date=${d1}T23:59:59.999-03:00&sort=date_created&criteria=desc&limit=50&offset=${offset}`, H);
+      if (r.http !== 200) return { erro: 'MP ' + r.http, corpo: r.d };
+      const res = (r.d && r.d.results) || [];
+      for (const pay of res) achados.push(pay);
+      if (res.length < 50) break;
+    }
+  }
+  const agora = Date.now();
+  const itens = [];
+  for (const pay of achados) {
+    const busca = await get(`https://api.mercadopago.com/v1/chargebacks/search?payment_id=${pay.id}`, H);
+    const lista = (busca.d && (busca.d.results || busca.d.elements)) || [];
+    const cbs = [];
+    for (const c of lista) { const d = await get(`https://api.mercadopago.com/v1/chargebacks/${c.id}`, H); if (d.http === 200) cbs.push(d.d); }
+    const nome = pay.metadata && pay.metadata.shopify_data && pay.metadata.shopify_data.customer && pay.metadata.shopify_data.customer.billing_address;
+    for (const cb of (cbs.length ? cbs : [null])) {
+      const prazo = cb && cb.date_documentation_deadline;
+      const semDoc = cb && (cb.documentation_status === 'not_supplied' || !(cb.documentation || []).length);
+      itens.push({
+        pagamento: String(pay.id), status: pay.status, detalhe: pay.status_detail, valor: pay.transaction_amount,
+        compra: (pay.date_created || '').slice(0, 10), sessao_shopify: pay.external_reference || '',
+        email: (pay.payer && pay.payer.email) || '', cliente: nome ? [nome.given_name, nome.family_name].filter(Boolean).join(' ') : '',
+        telefone: nome ? nome.phone_number || '' : '',
+        chargeback: cb && { id: String(cb.id), motivo: cb.reason, aberto_em: cb.date_created, prazo, documentacao: cb.documentation_status, cobertura_elegivel: cb.coverage_elegible, cobertura_aplicada: cb.coverage_applied },
+        aberta: !!(cb && semDoc && prazo && Date.parse(prazo) > agora) || pay.status === 'in_mediation',
+        dias_restantes: prazo ? Math.floor((Date.parse(prazo) - agora) / 864e5) : null
+      });
+    }
+  }
+  itens.sort((a, b) => (b.aberta - a.aberta) || String(b.compra).localeCompare(a.compra));
+  return { periodo: { desde: d0, ate: d1 }, total: itens.length, abertas: itens.filter(i => i.aberta).length, itens };
 }
