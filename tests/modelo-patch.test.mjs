@@ -148,7 +148,7 @@ ok('leitura falhou -> guarda a tela e o retrato para mesclar depois, sem gravar'
    /if \(nuvem === undefined\) \{\s*\r?\n\s*const ant = _mesclagensPendentes\.get\(key\);[\s\S]*?return dom;\s*\r?\n\s*\}/.test(subir) && !/if \(nuvem === undefined \|\| !nuvem\)/.test(subir), true);
 ok('linha que nao existe ainda (modelo novo) continua subindo inteira', /if \(!nuvem\) \{ await salvarNuvem\(key, dom\); return dom; \}/.test(subir), true);
 ok('enquanto espera, a chave fica protegida da sincronizacao', /return temGravacaoPendente\(id\) \|\| modeloAbertoProtegido\(id\) \|\| _mesclagensPendentes\.has\(id\);/.test(main), true);
-ok('e a fila de pendentes tenta a mesclagem de novo', /for \(const \[key, m\] of \[\.\.\._mesclagensPendentes\]\) \{\s*\r?\n\s*await subirModeloMesclado\(key, m\.dom, m\.tocado\)/.test(main), true);
+ok('e a fila de pendentes tenta a mesclagem de novo', /for \(const \[key, m\] of \[\.\.\._mesclagensPendentes\]\) \{\s*\r?\n\s*await subirModeloMesclado\(key, m\.dom, m\.tocado, m\.desde/.test(main), true);
 ok('os botoes que mexem no modelo fora da tela leem a nuvem antes de gravar',
    ['mandarTudoParaCorte', 'mandarUrgentesParaProducao', 'mandarTudoParaEstoque', 'transferirParaEstoque', 'transferirParaEstoque2', 'adicionarLeva2', 'removerLeva2', 'transferirTamanhoEstoque']
      .every(f => { const i = main.indexOf('function ' + f + '('); const corpo = main.slice(i, main.indexOf('\n}', i)); return /gravarModeloNaNuvem\(/.test(corpo) && !/loadLocal\('vc:' \+ (key|l\.key|modeloAtual)\) \|\| \{\};\s*\r?\n[\s\S]*?await salvarNuvem\(/.test(corpo); }), true);

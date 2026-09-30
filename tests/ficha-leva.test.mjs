@@ -49,7 +49,7 @@ const SALVO = {
 async function ficha(leva, salvo = SALVO, piloto = false, def = DEF) {
   let saida = null;
   const fn = new Function(
-    'MODELOS', 'loadLocal', 'coresDoModelo', 'tamanhosDe', 'document', 'urlToBase64', 'modeloAtual', 'window', 'ehPiloto',
+    'MODELOS', 'loadLocal', 'coresDoModelo', 'tamanhosDe', 'document', 'urlToBase64', 'modeloAtual', 'window', 'ehPiloto', 'arqCroquisDoModelo',
     src + '; return gerarFicha;'
   )(
     { 'calca-pantalona': def },
@@ -60,7 +60,8 @@ async function ficha(leva, salvo = SALVO, piloto = false, def = DEF) {
     async () => null,
     null,
     { open: () => ({ document: { write: h => { saida = h; }, close: () => {} } }) },
-    () => piloto
+    () => piloto,
+    async () => [] // croquis da pasta da MODELAGEM (7ebee5b): sem pasta no teste
   );
   await fn('calca-pantalona', leva);
   return saida;

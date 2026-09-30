@@ -589,7 +589,7 @@ const _gravacoesPendentes = new Map(); // key -> { dados, emVoo }
 const _gravacoesDescartadas = []; // pacotes velhos que não subiram porque a nuvem já tinha coisa mais nova
 // Mesclagens que ficaram esperando a nuvem responder: a tela e o retrato do que foi tocado.
 // Enquanto a chave estiver aqui, nenhuma sincronização traz a nuvem por cima do local.
-const _mesclagensPendentes = new Map(); // key -> { dom, tocado }
+const _mesclagensPendentes = new Map(); // key -> { dom, tocado, desde }
 function juntarTocados(a, b) {
   return {
     est: new Set([...a.est, ...b.est]), prod: new Set([...a.prod, ...b.prod]), prod2: new Set([...a.prod2, ...b.prod2]),
@@ -634,7 +634,7 @@ async function reenviarPendentes() {
     }
     // Mesclagens que esperavam a nuvem responder: tenta de novo (some da fila se conseguir)
     for (const [key, m] of [..._mesclagensPendentes]) {
-      await subirModeloMesclado(key, m.dom, m.tocado).catch(() => {});
+      await subirModeloMesclado(key, m.dom, m.tocado, m.desde || 1).catch(() => {}); // sem `desde` = veio de antes da validade: vencida
     }
   } finally { _reenviando = false; }
 }
@@ -855,14 +855,38 @@ async function carregarNuvemComRetry(key, tentativas = 3) {
 // Foi assim que a Pantalona Viscolycra voltou de 41 para 24 peças com o cortador na mesa.
 // Agora a digitação fica guardada (local + fila de mesclagem) e sobe mesclada quando a
 // nuvem responder.
-async function subirModeloMesclado(key, dom, tocado) {
+//
+// VALIDADE DA FILA (30/09/2026): a mesclagem que esperava a nuvem não tinha prazo. Um aparelho
+// que ficou dias com a tela aberta (celular dormindo) subiu em 29/09 a grade do Macacão Amplo
+// de 28/09 e, uma hora depois, a de 23/09, por cima da leva certa: peça a mais num tamanho,
+// faltando em outro, e as 3 peças aprovadas na compra sumiram. Agora a mesclagem da fila
+// (`desde` = quando foi digitada) é descartada, com aviso, se passou da validade, ou se era
+// a grade inteira (botão Recalcular) e a nuvem mudou depois dela.
+const MESCLA_VALIDADE_MS = 10 * 60 * 1000;
+function mesclagemVencida(desde, tocado, nuvem, agora = Date.now()) {
+  if (!desde) return false; // gravação da hora, não da fila
+  if (agora - desde > MESCLA_VALIDADE_MS) return true;
+  const gradeInteira = ['est', 'prod', 'prod2'].some(c => tocado[c] && tocado[c].has('*'));
+  const nuvemEm = Date.parse((nuvem && nuvem.updated_at) || '') || 0;
+  return gradeInteira && nuvemEm > desde;
+}
+async function subirModeloMesclado(key, dom, tocado, desde) {
   const nuvem = await carregarNuvemComRetry(key);
   if (nuvem === undefined) {
     const ant = _mesclagensPendentes.get(key);
-    _mesclagensPendentes.set(key, { dom, tocado: ant ? juntarTocados(ant.tocado, tocado) : tocado });
+    _mesclagensPendentes.set(key, { dom, tocado: ant ? juntarTocados(ant.tocado, tocado) : tocado, desde: (ant && ant.desde) || desde || Date.now() });
     return dom;
   }
   _mesclagensPendentes.delete(key);
+  if (nuvem && mesclagemVencida(desde, tocado, nuvem)) {
+    const feitoEm = new Date(desde).toISOString();
+    _gravacoesDescartadas.push({ key, feitoEm, nuvemEm: nuvem.updated_at, dados: dom });
+    console.warn('[nuvem] mesclagem velha descartada', key, feitoEm, '<', nuvem.updated_at);
+    showCloudError('Uma alteração de ' + new Date(desde).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) + ' não subiu: ficou tempo demais sem conexão e a nuvem já mudou. Confira o modelo.');
+    saveLocal('vc:' + key, nuvem);
+    if (modeloAtual === key) renderModeloSeOcioso();
+    return nuvem;
+  }
   if (!nuvem) { await salvarNuvem(key, dom); return dom; } // linha não existe ainda: modelo novo
   const final = mesclarModelo(nuvem, dom, tocado);
   saveLocal('vc:' + key, final);
