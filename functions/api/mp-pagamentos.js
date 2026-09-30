@@ -48,6 +48,7 @@ export async function onRequestGet({ request, env }) {
         tipo: pay.payment_type_id || '',
         parcelas: pay.installments || null,
         valor: pay.transaction_amount || 0,
+        devolvido: pay.transaction_amount_refunded || 0,
         email: (pay.payer && pay.payer.email) || '',
         ref: pay.external_reference || '',
         descricao: pay.description || ''
