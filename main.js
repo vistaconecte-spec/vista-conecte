@@ -280,6 +280,11 @@ async function restaurarVersao(i, btn) {
   if (!confirm(`Restaurar como estava em ${quando}?\n\nO estado de agora continua guardado no histórico, então dá para voltar depois.`)) return;
   if (btn) { btn.disabled = true; btn.textContent = '…'; }
 
+  // Restaurar é uma escolha de agora: carimba as grades com a hora atual, senão a trava do
+  // banco (trg_vc_modelos_grade_velha) recusa a grade antiga como se fosse tela velha.
+  const agoraIso = new Date().toISOString();
+  ['est_at', 'prod_at', 'prod2_at'].forEach(c => { if (ver.d && c in ver.d) ver.d[c] = agoraIso; });
+  if (ver.d && typeof ver.d === 'object' && MODELOS[key]) ver.d.updated_at = agoraIso;
   saveLocal('vc:' + key, ver.d);
   await salvarNuvem(key, ver.d); // entra no histórico como versão nova: nada se perde
   fecharHistorico();
