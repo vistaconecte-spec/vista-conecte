@@ -71,7 +71,7 @@ export async function onRequestGet({ request, env }) {
     }
     return J({ mes, gerando: true, aviso: 'extrato sendo gerado pelo Mercado Pago, chamar de novo em ~3 min',
       pedido, do_mes: doMes.map(f => ({ begin_date: f.begin_date, end_date: f.end_date, date_created: f.date_created, file_name: f.file_name })),
-      recentes: arr.slice(-5).map(f => ({ begin_date: f.begin_date, end_date: f.end_date, date_created: f.date_created, file_name: f.file_name }))
+      total_lista: arr.length, recentes: arr.slice().sort((a, b) => criadoEm(b.date_created) - criadoEm(a.date_created)).slice(0, 6).map(f => ({ begin_date: f.begin_date, end_date: f.end_date, date_created: f.date_created, file_name: f.file_name, status: f.status }))
     }, 202);
   } catch (e) {
     return J({ erro: String(e) }, 502);
