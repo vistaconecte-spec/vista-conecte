@@ -540,11 +540,29 @@ async function sincronizarNuvem() {
 
 const fmt = v => v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
+// Cópia em memória do que o navegador RECUSOU guardar. Em 01/10/2026 o computador do
+// cortador mostrava a aba CORTE sem Vestido Bata, Blusa e Calça Ampla, com os três "Em
+// corte" na nuvem e na tela da dona, e recarregar não resolvia: a carga da página lia a
+// nuvem certinho, mas o setItem falhava (espaço do site cheio) e o erro era engolido, então
+// a tela seguia lendo a versão velha guardada. Agora o que não coube fica aqui e é o que
+// loadLocal devolve; o aparelho mostra a nuvem mesmo sem conseguir guardar.
+const _localMemoria = new Map();
+let _localRecusado = 0;
 function saveLocal(key, val) {
-  try { localStorage.setItem(key, JSON.stringify(val)); } catch(e) {}
+  const txt = JSON.stringify(val);
+  try {
+    localStorage.setItem(key, txt);
+    _localMemoria.delete(key);
+  } catch(e) {
+    _localMemoria.set(key, txt);
+    // O valor velho que ficou guardado não pode voltar por cima no próximo carregamento
+    try { localStorage.removeItem(key); } catch(e2) {}
+    if (!_localRecusado++) console.warn('[local] navegador recusou guardar', key, '—', (e && e.name) || e);
+  }
 }
 
 function loadLocal(key) {
+  if (_localMemoria.has(key)) { try { return JSON.parse(_localMemoria.get(key)); } catch(e) { return null; } }
   try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : null; } catch(e) { return null; }
 }
 
