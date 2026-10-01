@@ -9,7 +9,8 @@
  * mas a quantidade ocultada volta na resposta para a tela dizer que ela existe.
  *
  *   GET /api/shopify-rascunhos?desde=2026-09-01&ate=2026-09-30
- *   → { rascunhos: [...], quantidade, total, ocultos_zero, desde, ate }
+ *   → { rascunhos: [...], quantidade, total, total_pago, ocultos_zero, desde, ate }
+ *   total soma tudo que foi gerado; total_pago só o que a cliente pagou (base da comissão).
  */
 const API_VERSION = '2024-04';
 
@@ -56,6 +57,8 @@ export async function situacaoDosPedidos(store, token, ids, fetchFn = fetch) {
   return out;
 }
 
+export const rascunhoPago = r => !!(r.pedido && r.pedido.pago && !r.pedido.cancelado);
+
 export function montarLista(drafts, pedidos, desde, ate) {
   const noPeriodo = drafts.filter(d => {
     const c = String(d.created_at || '').slice(0, 10);
@@ -76,7 +79,8 @@ export function montarLista(drafts, pedidos, desde, ate) {
         pedido: d.order_id ? {
           id: d.order_id,
           numero: ped ? ped.name : null,
-          pago: ped ? ped.financial_status === 'paid' : null,
+          // estorno parcial continua sendo venda paga (o resto do valor ficou na loja)
+          pago: ped ? ['paid', 'partially_refunded'].includes(ped.financial_status) : null,
           enviado: ped ? ped.fulfillment_status === 'fulfilled' : null,
           cancelado: ped ? !!ped.cancelled_at : null,
         } : null,
@@ -85,7 +89,10 @@ export function montarLista(drafts, pedidos, desde, ate) {
     })
     .sort((a, b) => String(b.criado_em).localeCompare(String(a.criado_em)));
   const total = num(rascunhos.reduce((s, r) => s + r.valor, 0));
-  return { rascunhos, quantidade: rascunhos.length, total, ocultos_zero: ocultosZero, desde, ate };
+  // Venda que conta pra comissão é só a PAGA: link aberto ou pedido sem pagamento não é venda
+  // (01/10/2026: a comissão de setembro foi paga sobre 4 links que as clientes nunca pagaram).
+  const total_pago = num(rascunhos.filter(rascunhoPago).reduce((s, r) => s + r.valor, 0));
+  return { rascunhos, quantidade: rascunhos.length, total, total_pago, ocultos_zero: ocultosZero, desde, ate };
 }
 
 export async function onRequest(context) {

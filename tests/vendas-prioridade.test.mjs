@@ -77,6 +77,26 @@ ok('a nota explica as trocas de R$ 0 ocultas', /nao entra|não entra/.test(main)
 console.log('\n3b) Comissao da Marcelly: 5% do total, calculada no sistema');
 ok('a taxa e 5%', /const VND_COMISSAO = 0\.05;/.test(main), true);
 ok('a metrica existe na tela', /id="vnd-comissao"/.test(html), true);
+{
+  // 01/10/2026: setembro pagou comissao sobre links que a cliente nunca pagou
+  const drafts = [
+    { id: 1, name: '#D1', created_at: '2026-09-02T10:00:00-03:00', status: 'completed', total_price: '100.00', order_id: 11, line_items: [] },
+    { id: 2, name: '#D2', created_at: '2026-09-03T10:00:00-03:00', status: 'open',      total_price: '200.00', order_id: null, line_items: [] },
+    { id: 3, name: '#D3', created_at: '2026-09-04T10:00:00-03:00', status: 'completed', total_price: '300.00', order_id: 13, line_items: [] },
+    { id: 4, name: '#D4', created_at: '2026-09-05T10:00:00-03:00', status: 'completed', total_price: '400.00', order_id: 14, line_items: [] },
+    { id: 5, name: '#D5', created_at: '2026-09-06T10:00:00-03:00', status: 'completed', total_price: '50.00',  order_id: 15, line_items: [] },
+  ];
+  const pedidos = {
+    '11': { name: '#1', financial_status: 'paid', cancelled_at: null },
+    '13': { name: '#3', financial_status: 'pending', cancelled_at: null },
+    '14': { name: '#4', financial_status: 'paid', cancelled_at: '2026-09-07T00:00:00Z' },
+    '15': { name: '#5', financial_status: 'partially_refunded', cancelled_at: null },
+  };
+  const r = api.montarLista(drafts, pedidos, '2026-09-01', '2026-09-30');
+  ok('so venda paga entra no total_pago (aberto, pendente e cancelado ficam fora)', r.total_pago, 150);
+  ok('estorno parcial conta como pago', r.rascunhos.find(x => x.numero === '#D5').pedido.pago, true);
+  ok('a tela soma so as pagas', /const totalContam = pagas\.reduce/.test(main), true);
+}
 ok('e sai do total que conta (sem as trocas de R$ 0 e sem o que a dona tirou)', /set\('vnd-comissao', fmtBRL\(totalContam \* VND_COMISSAO\)\);/.test(main), true);
 
 console.log('\n3c) A dona marca o rascunho que nao e venda da Marcelly, e a comissao recalcula');
@@ -89,7 +109,7 @@ console.log('\n3c) A dona marca o rascunho que nao e venda da Marcelly, e a comi
   ok('marcar grava pela mesclagem (varios aparelhos)', /salvarListaCompartilhada\(VND_EXCL_KEY, 'excluidos', cfg\)/.test(trecho), true);
   ok('desmarcar registra o id em removidos (senao a mesclagem traz de volta)', /cfg\.removidos = \[\.\.\.\(cfg\.removidos \|\| \[\]\), \{ id: String\(id\)/.test(trecho), true);
   ok('a comissao sai so do que conta', /set\('vnd-comissao', fmtBRL\(totalContam \* VND_COMISSAO\)\);/.test(main), true);
-  ok('as vendas e o total tambem', /set\('vnd-qtd', contam\.length\);[\s\S]{0,80}set\('vnd-total', fmtBRL\(totalContam\)\);/.test(main), true);
+  ok('as vendas e o total tambem', /set\('vnd-qtd', pagas\.length\);[\s\S]{0,80}set\('vnd-total', fmtBRL\(totalContam\)\);/.test(main), true);
   ok('a nota diz quais ficaram de fora (sem metrica a mais, a dona nao quis)', /não \$\{fora\.length > 1 \? 'são' : 'é'\} venda da Marcelly/.test(main) && !/id="vnd-fora"/.test(html), true);
   ok('a marcacao e pelo numero do rascunho, com confirmacao (e dinheiro)', /onclick="vndClicouRascunho\('\$\{r\.id\}'\)"/.test(main) && /if \(confirm\(msg\)\) vndToggleComissao\(id\);/.test(main), true);
   ok('sem botao em toda linha', /não é da Marcelly<\/button>/.test(main), false);

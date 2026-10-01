@@ -1882,6 +1882,8 @@ function sacRender() {
 const fmtBRL = v => 'R$ ' + (Number(v) || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 // Comissão da Marcelly sobre as vendas por WhatsApp: 5% do total do mês, sem as trocas de
 // R$ 0 (definido pela dona em 11/09/2026). Calculado aqui, não na planilha.
+// Só entra venda PAGA (01/10/2026): link aberto e pedido aguardando pagamento ficam de fora,
+// porque setembro pagou comissão sobre 4 links que as clientes nunca pagaram.
 const VND_COMISSAO = 0.05;
 // Rascunhos que NÃO são venda da Marcelly (a dona marca na aba). Em 11/09/2026 a Marcelly
 // apontou 3 de setembro que não fez (#D2737, #D2738, #D2745); a Shopify não diz quem criou o
@@ -1947,17 +1949,21 @@ function vndRender(d) {
   const lista = d.rascunhos || [];
   const contam = lista.filter(r => !vndEstaFora(r.id));
   const fora   = lista.filter(r =>  vndEstaFora(r.id));
-  const totalContam = contam.reduce((s, r) => s + (r.valor || 0), 0);
+  const vndPaga = r => !!(r.pedido && r.pedido.pago && !r.pedido.cancelado);
+  const pagas      = contam.filter(vndPaga);
+  const naoPagas   = contam.filter(r => !vndPaga(r));
+  const totalContam = pagas.reduce((s, r) => s + (r.valor || 0), 0);
+  const totalAberto = naoPagas.reduce((s, r) => s + (r.valor || 0), 0);
   const totalFora   = fora.reduce((s, r) => s + (r.valor || 0), 0);
-  const abertos = contam.filter(r => r.status === 'aberto').length;
   const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
-  set('vnd-qtd', contam.length);
+  set('vnd-qtd', pagas.length);
   set('vnd-total', fmtBRL(totalContam));
-  set('vnd-medio', fmtBRL(contam.length ? totalContam / contam.length : 0));
-  set('vnd-abertos', abertos);
+  set('vnd-medio', fmtBRL(pagas.length ? totalContam / pagas.length : 0));
+  set('vnd-abertos', naoPagas.length);
   set('vnd-comissao', fmtBRL(totalContam * VND_COMISSAO));
   const notas = [];
   if (d.ocultos_zero) notas.push(`${d.ocultos_zero} rascunho${d.ocultos_zero > 1 ? 's' : ''} de R$ 0 (troca${d.ocultos_zero > 1 ? 's' : ''}) não entra${d.ocultos_zero > 1 ? 'm' : ''} na conta.`);
+  if (naoPagas.length) notas.push(`${naoPagas.length} ${naoPagas.length > 1 ? 'links ainda não foram pagos' : 'link ainda não foi pago'} (${fmtBRL(totalAberto)}) e não ${naoPagas.length > 1 ? 'entram' : 'entra'} no total nem na comissão até a cliente pagar.`);
   if (fora.length) notas.push(`${fora.length} não ${fora.length > 1 ? 'são' : 'é'} venda da Marcelly e ${fora.length > 1 ? 'ficam' : 'fica'} fora (${fmtBRL(totalFora)}): ${fora.map(r => r.numero).join(', ')}.`);
   set('vnd-nota', notas.join(' '));
   const situacao = r => {
