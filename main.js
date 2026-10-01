@@ -5678,6 +5678,7 @@ function levasEmCompraParaCorte() {
   const out = [];
   for (const [key, def] of Object.entries(MODELOS)) {
     if (CONJUNTO_PECAS[key]) continue; // conjunto não é peça de oficina
+    if (def.revenda) continue; // sapato de revenda não é peça de oficina
     const saved = loadLocal('vc:' + key) || {};
     const SZ    = tamanhosDe(def);
     const tu    = !!def.tamanhoUnico;
@@ -5881,6 +5882,7 @@ function urgentesParaProducao() {
   const levas = [], bloqueados = [];
   for (const [key, def] of Object.entries(MODELOS)) {
     if (CONJUNTO_PECAS[key]) continue; // conjunto não produz: as peças dele já contam sozinhas
+    if (def.revenda) continue; // sapato de revenda é comprado pronto, não passa por tecido/corte/costura (Flat foi parar no corte em 30/09/2026)
     const saved = loadLocal('vc:' + key) || {};
     const SZ    = tamanhosDe(def);
     const tu    = !!def.tamanhoUnico;
@@ -6079,6 +6081,7 @@ function renderCorte() {
   let levas = [];
   for (const [key, def] of Object.entries(MODELOS)) {
     if (CONJUNTO_PECAS[key]) continue; // conjunto não é peça de corte
+    if (def.revenda) continue; // sapato de revenda é comprado pronto, não passa por tecido/corte/costura (Flat foi parar no corte em 30/09/2026)
     const saved = loadLocal('vc:' + key) || {};
     const SZ = tamanhosDe(def);
     [{ prod: saved.prod,  status: saved.status,  at: saved.status_at,  prazo: saved.prazo,  n: 1 },
@@ -6261,6 +6264,7 @@ function cstLevasDe(statusAlvo) {
   const out = [];
   for (const [key, def] of Object.entries(MODELOS)) {
     if (CONJUNTO_PECAS[key]) continue; // conjunto não é peça de oficina
+    if (def.revenda) continue; // sapato de revenda não é peça de oficina
     const saved = loadLocal('vc:' + key) || {};
     const SZ = tamanhosDe(def);
     [{ prod: saved.prod,  status: saved.status,  at: saved.status_at,  prazo: saved.prazo,  n: 1 },
