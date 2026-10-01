@@ -58,14 +58,21 @@ export async function onRequestGet({ request, env }) {
 
     // ainda não existe: pede ao MP (anti-rajada: só se nenhum pedido do mês nos últimos 5 min)
     const pedidoRecente = doMes.some(f => !f.date_created || Date.now() - criadoEm(f.date_created) < 5 * 60 * 1000);
+    let pedido = null;
     if (!pedidoRecente) {
       const iso = t => new Date(t).toISOString().replace(/\.\d+Z/, 'Z');
-      await fetch('https://api.mercadopago.com/v1/account/release_report', {
-        method: 'POST', headers: H,
-        body: JSON.stringify({ begin_date: iso(lim.ini), end_date: iso(lim.fim) })
-      }).catch(() => {});
+      try {
+        const r = await fetch('https://api.mercadopago.com/v1/account/release_report', {
+          method: 'POST', headers: H,
+          body: JSON.stringify({ begin_date: iso(lim.ini), end_date: iso(lim.fim) })
+        });
+        pedido = { status: r.status, resposta: (await r.text()).slice(0, 300) };
+      } catch (e) { pedido = { erro: String(e) }; }
     }
-    return J({ mes, gerando: true, aviso: 'extrato sendo gerado pelo Mercado Pago, chamar de novo em ~3 min' }, 202);
+    return J({ mes, gerando: true, aviso: 'extrato sendo gerado pelo Mercado Pago, chamar de novo em ~3 min',
+      pedido, do_mes: doMes.map(f => ({ begin_date: f.begin_date, end_date: f.end_date, date_created: f.date_created, file_name: f.file_name })),
+      recentes: arr.slice(-5).map(f => ({ begin_date: f.begin_date, end_date: f.end_date, date_created: f.date_created, file_name: f.file_name }))
+    }, 202);
   } catch (e) {
     return J({ erro: String(e) }, 502);
   }
