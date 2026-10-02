@@ -89,6 +89,7 @@ const MODELOS = {
   // Peça de baixo do Conjunto Good (moletom CARECA). Consumo e preço de costura estimados
   // pelo padrão das peças de moletom do cadastro — ajustar quando vier o dado real.
   'short-good':{nome:'Short Good',tecido:'Moletom Careca',consumo:0.8,preco:27.5,componentes:'',obs:'Peça do Conjunto Good. Moletom careca. Consumo/preço estimados — ajustar com o dado real.',cores:['Preto','Vermelho'],aberto:{'Preto':[0,0,0,0,0],'Vermelho':[0,0,0,0,0]}},
+  'bermuda-moletom':{nome:'Bermuda Moletom',tecido:'Moletom',consumo:0.8,preco:27.5,componentes:'',obs:'Peça nova na loja em 02/10/2026. Consumo estimado igual ao do Short Good, conferir no molde.',cores:['Off White','Nude'],aberto:{'Off White':[0,0,0,0,0],'Nude':[0,0,0,0,0]}},
 
   // ── CASACOS ───────────────────────────────────────────────────────────────
   'casaco-sherpa':{nome:'Casaco Sherpa',tecido:'Sherpa',consumo:1.8,preco:35,componentes:'',obs:'',cores:['Preto'],aberto:{'Preto':[0,0,0,0,0]}},
@@ -134,7 +135,7 @@ const SIDEBAR_ESTRUTURA = [
   {titulo:'MACACÕES',    modelos:['macacao-amplo','macacao-manga-longa']},
   {titulo:'MACAQUINHOS', modelos:['macaquinho-amplo','macaquinho-ruel']},
   {titulo:'VESTIDOS',    modelos:['vestido-frente-unica-longo','vestido-frente-unica-curto','vestido-amplo']},
-  {titulo:'CALÇAS',      modelos:['calca-pantalona','calca-basica-moletom','calca-pantalona-viscolycra','calca-flare','calca-peace','calca-bolso-frontal','calca-boho','short-good']},
+  {titulo:'CALÇAS',      modelos:['calca-pantalona','calca-basica-moletom','calca-pantalona-viscolycra','calca-flare','calca-peace','calca-bolso-frontal','calca-boho','short-good','bermuda-moletom']},
   {titulo:'CASACOS',     modelos:['casaco-sherpa','casaco-sherpa-capuz','casaco-pele-persa','carneirinho-cropped','sherpa-ziper-bolsos']},
   {titulo:'TOPS',        modelos:['camiseta-oversized','blusa-canelada-simples','blusa-canelada','regata-oversized','cropped-canelado','cropped-moletom','cropped-peace','cropped-frente-unica','blusa-boho','regata-good']},
   {titulo:'SAIAS',       modelos:['saia-midi','mini-saia-canelada']},

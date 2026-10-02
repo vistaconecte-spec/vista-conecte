@@ -25,6 +25,7 @@ const PRODUCT_MAP = {
   'Conjunto Canguru Longo': 'conjunto-canguru-longo', 'Canguru Longo': 'conjunto-canguru-longo',
   'Conjunto Saia Midi Fenda Frontal + Oversized': 'conjunto-saia-midi-oversized', 'Conjunto Calça Bolso Frontal Offwhite com Camiseta Oversized': 'conjunto-calca-bolso-camiseta',
   'Conjunto Lazy': 'conjunto-moletom-short-bolso', 'Conjunto Dream': 'conjunto-calca-pantalona-moletom', 'Conjunto Chill': 'conjunto-canguru-longo', 'Conjunto Cozy': 'conjunto-cozy', 'Conjunto Mood': 'conjunto-mood', 'Conjunto Good': 'conjunto-good',
+  'Bermuda Moletom': 'bermuda-moletom',
   'Calça Moletom Pantalona': 'calca-pantalona', 'Calça Pantalona Moletom': 'calca-pantalona', 'Calça Pantalona': 'calca-pantalona-viscolycra',
   'Calça Flare Canelada': 'calca-flare', 'Calça Peace': 'calca-peace', 'Calça Bolso Frontal': 'calca-bolso-frontal',
   'Casaco Sherpa com Capuz': 'casaco-sherpa-capuz', 'Casaco Sherpa': 'casaco-sherpa', 'Casaco Pele Persa Xadrez': 'casaco-pele-persa',
