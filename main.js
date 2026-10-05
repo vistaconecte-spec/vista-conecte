@@ -4601,6 +4601,9 @@ function renderDashboard() {
     const dataCurta = iso => iso ? new Date(iso).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }) : '';
     for (const [key, def] of Object.entries(MODELOS)) {
       if (CONJUNTO_PECAS[key]) continue;
+      // Piloto é peça de prova sem pedido: sempre "sobraria" e escondia o que interessa
+      // (05/10/2026: 14 das 29 peças do card eram pilotos).
+      if (ehPiloto(key)) continue;
       const saved = loadLocal('vc:' + key) || {};
       const cores = coresDoModelo(def, saved);
       const tuD   = !!def.tamanhoUnico;
@@ -4651,7 +4654,7 @@ function renderDashboard() {
     if (dupBtn) {
       let naCompra = 0;
       for (const [key, def] of Object.entries(MODELOS)) {
-        if (CONJUNTO_PECAS[key]) continue;
+        if (CONJUNTO_PECAS[key] || ehPiloto(key)) continue;
         const s = sobrasNaCompra(loadLocal('vc:' + key) || {}, def);
         if (s) naCompra += s.total;
       }
@@ -5812,7 +5815,7 @@ async function tirarSobraDaCompra() {
   }
   const itens = [];
   for (const [key, def] of Object.entries(MODELOS)) {
-    if (CONJUNTO_PECAS[key]) continue;
+    if (CONJUNTO_PECAS[key] || ehPiloto(key)) continue; // piloto em compra não tem pedido e nunca sai por aqui
     const s = sobrasNaCompra(loadLocal('vc:' + key) || {}, def);
     if (s) itens.push({ key, nome: (loadLocal('vc:' + key) || {}).nome || def.nome, ...s });
   }

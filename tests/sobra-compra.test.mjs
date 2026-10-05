@@ -86,7 +86,11 @@ console.log('\n7) Tela e gravação');
   ok('o card recalcula a contagem do botão com sobrasNaCompra', /dupBtn\.innerHTML = `<i class="ti ti-eraser"><\/i> Tirar da compra o que não tem pedido \(\$\{naCompra\}\)`/.test(main), true);
   ok('grava lendo a nuvem e recontando lá', /gravarModeloNaNuvem\(it\.key, saved => \{\s*const s = sobrasNaCompra\(saved, def\);/.test(main), true);
   ok('leva vazia volta para sem status', /aplicar\('prod2', s\.tira2\)\) \{ saved\.status2 = ''; saved\.status2_at = null; \}/.test(main), true);
-  ok('oficina não aciona', /async function tirarSobraDaCompra\(\) \{\s*if \(ehPerfilOficina\(\)\) return;/.test(main), true);
+  // 05/10/2026: 14 das 29 peças do card eram pilotos (peça de prova, sem pedido)
+  ok('card ignora piloto', /if \(CONJUNTO_PECAS\[key\]\) continue;\s*\/\/[^\n]*\n\s*\/\/[^\n]*\n\s*if \(ehPiloto\(key\)\) continue;\s*const saved = loadLocal/.test(main), true);
+  ok('contagem do botão ignora piloto', /if \(CONJUNTO_PECAS\[key\] \|\| ehPiloto\(key\)\) continue;\s*const s = sobrasNaCompra\(loadLocal\('vc:' \+ key\) \|\| \{\}, def\);\s*if \(s\) naCompra/.test(main), true);
+  ok('botão nunca tira piloto da compra', /const itens = \[\];\s*for \(const \[key, def\] of Object\.entries\(MODELOS\)\) \{\s*if \(CONJUNTO_PECAS\[key\] \|\| ehPiloto\(key\)\) continue;/.test(main), true);
+  ok('oficina não aciona',/async function tirarSobraDaCompra\(\) \{\s*if \(ehPerfilOficina\(\)\) return;/.test(main), true);
   const iT = main.indexOf('async function tirarSobraDaCompra()'), iU = main.indexOf('async function mandarUrgentesParaProducao()');
   const trecho = (i) => main.slice(i, main.indexOf('const itens = [];', i) > 0 && main.indexOf('const itens = [];', i) < i + 1500 ? main.indexOf('const itens = [];', i) : i + 1200);
   ok('pedidos parados → não grava (tirar da compra)', /if \(!leituraDePedidosFresca\(\)\) \{[\s\S]*?nada foi feito[\s\S]*?return;\s*\}/.test(trecho(iT)), true);
