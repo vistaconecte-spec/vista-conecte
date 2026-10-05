@@ -4596,7 +4596,7 @@ function renderDashboard() {
   const dupTotEl = document.getElementById('dash-duplicado-total');
   const dupCard  = document.getElementById('card-duplicado');
   if (dupEl) {
-    const dupList = [];
+    const dupList = [], aprovList = [];
     const ETAPAS_DUP = ['Comprando tecido', 'Em corte', 'Em costura'];
     const dataCurta = iso => iso ? new Date(iso).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }) : '';
     for (const [key, def] of Object.entries(MODELOS)) {
@@ -4616,17 +4616,25 @@ function renderDashboard() {
       // listava as duas etapas e parecia que a sobra estava na compra quando estava no corte
       // (Bárbara, 16/09/2026: "por que consta item que está em comprando tecido?").
       const c1 = saved.status === 'Comprando tecido', c2 = saved.status2 === 'Comprando tecido';
-      let sobra = 0, sobra1 = 0, sobra2 = 0;
+      // Peça cortada além da ficha para aproveitar tecido (ela pediu) não é erro: abate da
+      // sobra e vai para a linha "aproveitamento do corte" (05/10/2026).
+      const ap1 = aproveitamentoDaLeva(saved, 1), ap2 = aproveitamentoDaLeva(saved, 2);
+      let sobra = 0, sobra1 = 0, sobra2 = 0, aprov = 0;
       cores.forEach(cor => {
         const nrm = o => ((o || []).map(v => v || 0)).concat(new Array(szLen).fill(0)).slice(0, szLen);
         const ab = nrm(def.aberto[cor]), ev = nrm(saved.est && saved.est[cor]);
         const p1 = nrm(l1ok && saved.prod && saved.prod[cor]), p2 = nrm(l2ok && saved.prod2 && saved.prod2[cor]);
+        const a1 = nrm(ap1 && ap1[cor]), a2 = nrm(ap2 && ap2[cor]);
         const som = a => a.reduce((x,y) => x+y, 0);
         let s = 0;
         (tuD ? [0] : ab.map((_, i) => i)).forEach(i => {
           const need = tuD ? Math.max(0, som(ab) - (ev[0]||0)) : Math.max(0, ab[i] - ev[i]);
           const tem1 = tuD ? som(p1) : p1[i], tem2 = tuD ? som(p2) : p2[i];
+          const temAp = Math.min(tem1, tuD ? som(a1) : a1[i]) + Math.min(tem2, tuD ? som(a2) : a2[i]);
           let si = Math.max(0, tem1 + tem2 - need);
+          const ai = Math.min(si, temAp);
+          aprov += ai;
+          si -= ai;
           s += si;
           // ordem: leva em compra primeiro (2ª, depois 1ª), depois as demais
           for (const [ehCompra, n] of [[c2, 2], [c1, 1], [!c2, 2], [!c1, 1]]) {
@@ -4638,6 +4646,7 @@ function renderDashboard() {
         });
         if (s > 0) { sobra += s; det.push(`${cor} ${s}`); }
       });
+      if (aprov > 0) aprovList.push({ nome: def.nome, n: aprov });
       if (sobra > 0) {
         const levas = [sobra1 ? `${saved.status}${saved.status_at ? ' desde ' + dataCurta(saved.status_at) : ''} (${sobra1})` : null,
                        sobra2 ? `2ª leva ${saved.status2}${saved.status2_at ? ' desde ' + dataCurta(saved.status2_at) : ''} (${sobra2})` : null]
@@ -4647,8 +4656,19 @@ function renderDashboard() {
     }
     dupList.sort((a,b) => b.sobra - a.sobra);
     const totalSobra = dupList.reduce((s,x) => s + x.sobra, 0);
-    if (dupCard) dupCard.style.display = dupList.length ? '' : 'none';
-    if (dupTotEl) dupTotEl.textContent = totalSobra > 0 ? totalSobra + ' peças a mais' : '';
+    const totalAprov = aprovList.reduce((s,x) => s + x.n, 0);
+    // Só aproveitamento e nenhuma sobra de verdade: o card fica, sem cara de alerta.
+    const soAprov = !dupList.length && totalAprov > 0;
+    if (dupCard) {
+      dupCard.style.display = (dupList.length || totalAprov) ? '' : 'none';
+      dupCard.style.borderLeftColor = soAprov ? 'var(--border)' : '#d97706';
+    }
+    const dupTit = document.getElementById('dash-duplicado-titulo');
+    if (dupTit) {
+      dupTit.style.color = soAprov ? 'var(--text-sec)' : '#d97706';
+      dupTit.innerHTML = soAprov ? '<i class="ti ti-scissors"></i> APROVEITAMENTO DO CORTE' : '<i class="ti ti-copy-off"></i> PRODUÇÃO ACIMA DO NECESSÁRIO';
+    }
+    if (dupTotEl) dupTotEl.textContent = totalSobra > 0 ? totalSobra + (totalSobra === 1 ? ' peça a mais' : ' peças a mais') : '';
     // Quanto disso ainda está só no papel (leva em compra) e pode sair sem custo
     const dupBtn = document.getElementById('dash-duplicado-btn');
     if (dupBtn) {
@@ -4661,7 +4681,14 @@ function renderDashboard() {
       dupBtn.style.display = naCompra ? '' : 'none';
       dupBtn.innerHTML = `<i class="ti ti-eraser"></i> Tirar da compra o que não tem pedido (${naCompra})`;
     }
-    dupEl.innerHTML = dupList.length === 0 ? '' : `
+    aprovList.sort((a,b) => b.n - a.n);
+    const aprovHTML = !totalAprov ? '' : `
+      <div style="font-size:11px;color:var(--text-sec);margin-top:${dupList.length ? 10 : 0}px">
+        <b>Aproveitamento do corte, ${totalAprov} ${totalAprov === 1 ? 'peça' : 'peças'} (vira estoque):</b>
+        ${aprovList.map(x => `${x.nome} ${x.n}`).join(' · ')}.
+        Cortadas além da ficha para usar o tecido, não são erro de produção.
+      </div>`;
+    dupEl.innerHTML = dupList.length === 0 ? aprovHTML : `
       <div style="font-size:11px;color:var(--text-sec);margin-bottom:6px">
         Estas levas estão com mais peças do que os pedidos em aberto pedem (já descontado o estoque).
         A leva é a grade de quando foi mandada; o pedido que saiu, foi cancelado ou entrou no estoque
@@ -4685,7 +4712,7 @@ function renderDashboard() {
             </tr>`).join('')}
         </tbody>
         <tfoot><tr class="total-row"><td>Total</td><td></td><td></td><td style="text-align:center">${totalSobra}</td></tr></tfoot>
-      </table>`;
+      </table>${aprovHTML}`;
   }
   // ─────────────────────────────────────────────────────────────────────────────
 
@@ -5763,6 +5790,24 @@ async function mandarTudoParaCorte() {
   else if (modeloAtual === '__costura__') renderCostura();
   else if (modeloAtual === '__dashboard__') renderDashboard();
   if (erros) alert(`${erros} modelo(s) NÃO foram gravados: a nuvem não respondeu. Nada mudou neles, confira a lista e tente de novo em instantes.`);
+}
+
+// ─── APROVEITAMENTO DO CORTE ──────────────────────────────────────────────────
+// Quando o cortador corta além da ficha porque ela pediu para usar o tecido que sobrou, a
+// peça a mais é de propósito e vira estoque (Bárbara, 05/10/2026: o card PRODUÇÃO ACIMA DO
+// NECESSÁRIO acusava 13 peças assim). A rotina das fichas de corte grava, junto com a
+// passagem para "Em costura", `aprov` (leva 1) / `aprov2` (2ª leva) =
+// { at, cores: { Cor: [peças a mais por tamanho] } }. Só vale para a MESMA leva: `at` igual
+// ou depois do status_at e a leva ainda em corte/costura. Leva nova tem status_at mais novo
+// e ignora o aproveitamento velho sem ninguém precisar apagar nada.
+function aproveitamentoDaLeva(saved, leva) {
+  const ap = leva === 2 ? saved.aprov2 : saved.aprov;
+  const st = leva === 2 ? saved.status2 : saved.status;
+  const at = leva === 2 ? saved.status2_at : saved.status_at;
+  if (!ap || !ap.cores || !ap.at || !at) return null;
+  if (!['Em corte', 'Em costura'].includes(st)) return null;
+  if (Date.parse(ap.at) < Date.parse(at) - 1000) return null;
+  return ap.cores;
 }
 
 // ─── TIRAR DA COMPRA O QUE NÃO TEM PEDIDO ────────────────────────────────────
