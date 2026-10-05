@@ -17,7 +17,7 @@ export async function onRequest(context) {
 
   try {
     const valores = [];
-    let url = `https://${store}/admin/api/${API_VERSION}/orders.json?status=any&financial_status=paid&created_at_min=${encodeURIComponent(desde)}&limit=250&fields=subtotal_price,total_price,created_at`;
+    let url = `https://${store}/admin/api/${API_VERSION}/orders.json?status=any&financial_status=paid&created_at_min=${encodeURIComponent(desde)}&limit=250&fields=subtotal_price,total_price,created_at,cancelled_at`;
     let guard = 0;
     while (url && guard < 40) {
       guard++;
@@ -25,6 +25,7 @@ export async function onRequest(context) {
       if (!res.ok) return new Response(JSON.stringify({ erro: `Shopify ${res.status}` }), { status: 502, headers: H });
       const data = await res.json();
       for (const o of (data.orders || [])) {
+        if (o.cancelled_at) continue;   // cancelado sem estorno segue `paid` na Shopify
         const v = parseFloat(o.subtotal_price || o.total_price || '0') || 0;
         if (v > 0) valores.push(v);
       }

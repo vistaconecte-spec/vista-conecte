@@ -38,7 +38,7 @@ export async function onRequest(context) {
   };
 
   try {
-    const fields = 'id,created_at,financial_status,current_total_price,line_items,payment_gateway_names,discount_codes,total_discounts,total_shipping_price_set,subtotal_price';
+    const fields = 'id,created_at,financial_status,cancelled_at,current_total_price,line_items,payment_gateway_names,discount_codes,total_discounts,total_shipping_price_set,subtotal_price';
     const orders = await fetchAll(`status=any&created_at_min=${encodeURIComponent(iso(iniMes))}&created_at_max=${encodeURIComponent(iso(fimMes))}&limit=250&fields=${fields}`);
     // Normaliza nome do gateway pra um rótulo curto
     const rotuloGw = (names) => {
@@ -56,6 +56,7 @@ export async function onRequest(context) {
       const st = o.financial_status || 'null';
       dias[dAll].todos_status[st] = (dias[dAll].todos_status[st] || 0) + 1;
       if (!PAGOS.has(o.financial_status)) continue;
+      if (o.cancelled_at) continue;   // cancelado sem estorno segue `paid` na Shopify
       const d = diaBRT(o.created_at);
       dias[d].pedidos++;
       dias[d].pecas += (o.line_items || []).reduce((s, li) => s + (li.quantity || 0), 0);

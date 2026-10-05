@@ -37,7 +37,7 @@ export async function onRequest(context) {
     const iniBRT = new Date(`${desde}T00:00:00-03:00`);
     const fimBRT = new Date(new Date(`${ate}T00:00:00-03:00`).getTime() + 86400000);
     const PAGOS = new Set(['paid', 'partially_refunded']);
-    const fields = 'id,created_at,financial_status,current_total_price,subtotal_price,line_items';
+    const fields = 'id,created_at,financial_status,cancelled_at,current_total_price,subtotal_price,line_items';
     let api = `https://${store}/admin/api/${API_VERSION_SHOP}/orders.json?status=any&created_at_min=${encodeURIComponent(iniBRT.toISOString())}&created_at_max=${encodeURIComponent(fimBRT.toISOString())}&limit=250&fields=${fields}`;
     while (api) {
       const res = await fetch(api, { headers: { 'X-Shopify-Access-Token': stoken } });
@@ -45,6 +45,9 @@ export async function onRequest(context) {
       const data = await res.json();
       for (const o of (data.orders || [])) {
         if (!PAGOS.has(o.financial_status)) continue;
+        // Cancelado sem estorno continua `paid` na Shopify: #9241 (05/10/2026) foi refeito como
+        // #9243 e o card somou os dois, R$ 1.180 a mais no dia.
+        if (o.cancelled_at) continue;
         const d = D(diaBRT(o.created_at));
         d.pedidos++;
         d.receita += num(o.current_total_price);

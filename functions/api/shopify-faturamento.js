@@ -50,7 +50,7 @@ export async function onRequest(context) {
     const PAGOS = new Set(['paid', 'partially_refunded']);
 
     // 1) FATURAMENTO — pedidos CRIADOS no mês
-    const fields = 'id,name,created_at,financial_status,payment_gateway_names,total_price,current_total_price,subtotal_price,total_shipping_price_set,total_discounts,total_tax,refunds,line_items';
+    const fields = 'id,name,created_at,financial_status,cancelled_at,payment_gateway_names,total_price,current_total_price,subtotal_price,total_shipping_price_set,total_discounts,total_tax,refunds,line_items';
     const orders = await fetchAll(`status=any&created_at_min=${encodeURIComponent(iso(iniMes))}&created_at_max=${encodeURIComponent(iso(fimMes))}&limit=250&fields=${fields}`);
 
     // 2) REEMBOLSOS — pedidos MODIFICADOS no mês (pega reembolsos de qualquer pedido, inclusive antigos)
@@ -81,7 +81,8 @@ export async function onRequest(context) {
       const tp = num(o.total_price);
       brutoTodos += tp;
       porStatus[o.financial_status || 'null'] = (porStatus[o.financial_status || 'null'] || 0) + tp;
-      if (PAGOS.has(o.financial_status)) {
+      // cancelado sem estorno segue `paid` na Shopify (ex. #9241, pedido refeito): não é venda
+      if (PAGOS.has(o.financial_status) && !o.cancelled_at) {
         nPagos++;
         brutoPagos += tp;
         pecasPagas += (o.line_items || []).reduce((s, li) => s + (li.quantity || 0), 0);

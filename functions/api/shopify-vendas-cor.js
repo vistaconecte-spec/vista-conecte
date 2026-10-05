@@ -35,7 +35,7 @@ export async function onRequest(context) {
 
   try {
     const contagem = {}; let pedidosVistos = 0, itensContados = 0;
-    let url = `https://${store}/admin/api/${API_VERSION}/orders.json?status=any&financial_status=paid&created_at_min=${encodeURIComponent(desde)}&limit=250&fields=line_items,created_at`;
+    let url = `https://${store}/admin/api/${API_VERSION}/orders.json?status=any&financial_status=paid&created_at_min=${encodeURIComponent(desde)}&limit=250&fields=line_items,created_at,cancelled_at`;
     let guard = 0;
     while (url && guard < 30) {
       guard++;
@@ -43,6 +43,7 @@ export async function onRequest(context) {
       if (!res.ok) return new Response(JSON.stringify({ erro: `Shopify ${res.status}`, detalhe: (await res.text()).slice(0, 200) }), { status: 502, headers: H });
       const data = await res.json();
       for (const o of (data.orders || [])) {
+        if (o.cancelled_at) continue;   // cancelado sem estorno segue `paid` na Shopify
         pedidosVistos++;
         for (const it of (o.line_items || [])) {
           const t = cleanTitle(it.title);
