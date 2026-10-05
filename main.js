@@ -9192,6 +9192,7 @@ function renderModelo(key) {
     const prazo2El = document.getElementById('prod2-prazo');
     if (prazo2El) prazo2El.value = d.prazo2 || '';
   }
+  mostrarEntregaElizete(d);
   document.getElementById('cfg-nome').value = nome;
   document.getElementById('cfg-tecido').value = tecido;
   document.getElementById('cfg-consumo').value = consumo;
@@ -10364,6 +10365,21 @@ const GRADE_ROUPA = ['PP', 'P', 'M', 'G', 'GG', 'G1'];
 function ehNumeracao(def) {
   return !!(def && def.tamanhos && def.tamanhos[0] !== 'PP');
 }
+// Data em que a Elizete devolve a leva da costura. Quem grava é a rotina que lê o WhatsApp dela
+// (entrega/entrega2 + entrega_ref = o status_at da rodada de costura a que a data se refere).
+// Só aparece se a leva ainda está nessa MESMA rodada de costura; a Vi usa a mesma regra
+// (functions/api/previsao-pedido.js) e passa à cliente o dia útil anterior (05/10/2026).
+function mostrarEntregaElizete(d) {
+  [['prod', d.status, d.status_at, d.entrega, d.entrega_ref], ['prod2', d.status2, d.status2_at, d.entrega2, d.entrega2_ref]]
+    .forEach(([pre, st, at, ent, ref]) => {
+      const g = document.getElementById(pre + '-entrega-g'), el = document.getElementById(pre + '-entrega');
+      if (!g || !el) return;
+      const vale = st === 'Em costura' && ent && (!ref || ref === at);
+      g.style.display = vale ? '' : 'none';
+      el.textContent = vale ? new Date(ent + 'T12:00:00').toLocaleDateString('pt-BR') : '';
+    });
+}
+
 function tamanhosDe(def) {
   return (def && def.tamanhos) || ['PP', 'P', 'M', 'G', 'GG'];
 }

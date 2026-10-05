@@ -316,6 +316,7 @@
             <div style="display:flex;gap:12px;align-items:flex-end">
               <div class="ctrl-g"><div class="ctrl-l">STATUS</div><select id="prod-status" onchange="marcarStatusEditado()"><option value="">— Sem status —</option><option>Comprando tecido</option><option>Em corte</option><option>Em costura</option></select></div>
               <div class="ctrl-g"><div class="ctrl-l">PRAZO</div><input type="date" id="prod-prazo" onchange="marcarCfgEditado()"></div>
+              <div class="ctrl-g" id="prod-entrega-g" style="display:none" title="Gravada pela rotina que lê o WhatsApp da Elizete. A Vi passa à cliente o dia útil anterior."><div class="ctrl-l">ENTREGA ELIZETE</div><div id="prod-entrega" style="padding:7px 0;font-weight:600"></div></div>
             </div>
             <div id="conjuntos-linkados" style="display:none;padding:5px 10px;background:rgba(245,240,232,.75);border-radius:12px;font-size:11px;color:var(--text-sec);line-height:1.5"></div>
           </div>
@@ -362,6 +363,7 @@
           <div class="prod-bar-left">
             <div class="ctrl-g"><div class="ctrl-l" style="color:#7C3AED">STATUS · 2ª LEVA</div><select id="prod2-status" onchange="marcarStatusEditado()"><option value="">— Sem status —</option><option>Comprando tecido</option><option>Em corte</option><option>Em costura</option></select></div>
             <div class="ctrl-g"><div class="ctrl-l" style="color:#7C3AED">PRAZO · 2ª LEVA</div><input type="date" id="prod2-prazo" onchange="marcarCfgEditado()"></div>
+            <div class="ctrl-g" id="prod2-entrega-g" style="display:none"><div class="ctrl-l" style="color:#7C3AED">ENTREGA ELIZETE · 2ª LEVA</div><div id="prod2-entrega" style="padding:7px 0;font-weight:600"></div></div>
           </div>
         </div>
         <div class="sections-2" id="row-leva2-resumo" style="margin-bottom:10px">
@@ -1093,7 +1095,7 @@
   </div>
 </div>
 <script src="data.js?v=2026100202"></script>
-<script src="main.js?v=2026100502"></script>
+<script src="main.js?v=2026100601"></script>
 <script async src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js" onload="initSupabase()"></script>
 </body>
 </html>

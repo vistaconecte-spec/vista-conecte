@@ -674,3 +674,6 @@ export async function onRequest(context) {
     return new Response(JSON.stringify({ erro: err.message }), { headers });
   }
 }
+
+// Usado por /api/previsao-pedido (posição do pedido para a Vi): o mesmo casamento título→modelo da produção.
+export { parseLineItemMulti };

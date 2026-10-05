@@ -22,8 +22,11 @@ const RENOVA_QUANDO_FALTAR_MS = 6 * 3600e3;
 //                          pedido/pagamento na API antes de fazer qualquer coisa.
 //   cartao-barrado       → painel desse resgate; aceita a mesma chave `k` (pra rotina de
 //                          fora) OU sessão da dona, conferida dentro dele.
+//   previsao-pedido      → quem chama é a Vi (worker do Wati), com a chave ?k=PREVISAO_KEY
+//                          conferida dentro dele. Só leitura de UM pedido (05/10/2026).
 const PUBLICO = new Set(['/api/login', '/api/logout', '/api/sessao', '/api/shopify-callback',
-  '/api/webhook-shopify-pedido', '/api/webhook-pagarme', '/api/webhook-mp', '/api/cartao-barrado']);
+  '/api/webhook-shopify-pedido', '/api/webhook-pagarme', '/api/webhook-mp', '/api/cartao-barrado',
+  '/api/previsao-pedido']);
 
 // Os perfis de oficina ('corte' e 'costura') abrem UMA aba cada — CORTE e COSTURA —,
 // montadas com o que já veio do Supabase. O que eles alcançam é uma ALLOWLIST, e não uma
