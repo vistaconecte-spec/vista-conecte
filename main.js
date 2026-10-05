@@ -10575,7 +10575,8 @@ function gerarFichaCompraGlobal() {
       tecido: s.tecido,
       cores: s.coresList.map(([cor, c]) => ({
         cor,
-        metros: c.metros,
+        // loja corta em meio metro: pedir 2,27 vira 2,50 (pedido dela, 05/10/2026)
+        metros: Math.ceil(c.metros * 2 - 1e-9) / 2,
         precoM: c.metros > 0 ? c.custo / c.metros : 0,
         modelos: c.modelos
       }))
