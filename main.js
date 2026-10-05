@@ -10562,6 +10562,16 @@ function gerarFichaCompraGlobal() {
   const totalGeral       = modelos.reduce((s,m) => s + m.custo, 0);
   const totalMetrosGeral = modelos.reduce((s,m) => s + m.metros, 0);
 
+  // Ribana canelada de algodão fina para as camisetas: decisão da Bárbara em 05/10/2026,
+  // sempre que a compra tem camiseta de algodão o fornecedor já recebe o aviso, nas mesmas cores.
+  const corFornecedorAlgodao = grupos['algodão'] || {};
+  const coresRibanaCamiseta = Object.entries(corFornecedorAlgodao)
+    .filter(([, c]) => c.modelos.some(m => m.startsWith('Camiseta')))
+    .map(([cor]) => cor);
+  const obsFornecedor = coresRibanaCamiseta.length
+    ? `Ribana canelada de algodão fina para as camisetas: ${coresRibanaCamiseta.join(', ')}.`
+    : '';
+
   // Gera seções por tecido → cor (com linhas editáveis)
   const secoesData = Object.entries(grupos).map(([chave, coresObj]) => {
     const tecido    = gruposLabel[chave] || chave;
@@ -10734,7 +10744,7 @@ function renderFicha() {
 
   html += \`
     <div class="obs-label">Observações ao fornecedor</div>
-    <div class="obs-box" contenteditable="true" style="outline:none"></div>
+    <div class="obs-box" contenteditable="true" style="outline:none">${obsFornecedor}</div>
     <div style="display:flex;justify-content:flex-end;align-items:center;gap:16px;padding:12px 0;border-top:1.5px solid #C4A882;margin-top:8px">
       <span style="font-size:9px;font-weight:800;letter-spacing:0.1em;color:#9a8870;text-transform:uppercase">Valor Estimado Total</span>
       <span id="total-geral-val" style="font-size:16px;font-weight:900;color:#9A7A56">R$ \${fmt(GRUPOS.reduce((s,g) => s + g.cores.reduce((ss,c) => ss + c.metros*c.precoM, 0), 0))}</span>
