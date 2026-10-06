@@ -547,7 +547,6 @@ const TROCA_COR = {
   '#8833': { 'conjunto-boho': { 'Preto': 'Marrom' } },
   '#8991': { 'conjunto-good': { 'Preto': 'Marrom' } },
   '#8956': { 'conjunto-boho': { 'Mescla': 'Mescla Escuro' } },
-  '#9127': { 'conjunto-boho': { 'Mescla': 'Mescla Escuro' } },
 };
 const corEntregue = (pedido, modelKey, cor) => ((TROCA_COR[pedido] || {})[modelKey] || {})[cor] || cor;
 
