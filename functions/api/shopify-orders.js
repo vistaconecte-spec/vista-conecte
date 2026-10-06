@@ -538,6 +538,19 @@ async function fetchVendas(store, token, desdeISO) {
   return orders.filter(o => !o.cancelled_at);
 }
 
+// Pedido que a loja vai entregar em OUTRA cor (tecido da cor comprada faltou na fábrica e a
+// dona decidiu trocar). A Shopify não tem variante da cor nova, então a troca mora aqui:
+// produção, ficha de compra e baixa de estoque passam a ver a cor que vai de fato pra cliente.
+// Chave: número do pedido → modelo → { cor do pedido: cor entregue }. Tirar a linha quando
+// o pedido sair (05/10/2026: careca preto e mescla em falta, Boho/Good em marrom e mescla escuro).
+const TROCA_COR = {
+  '#8833': { 'conjunto-boho': { 'Preto': 'Marrom' } },
+  '#8991': { 'conjunto-good': { 'Preto': 'Marrom' } },
+  '#8956': { 'conjunto-boho': { 'Mescla': 'Mescla Escuro' } },
+  '#9127': { 'conjunto-boho': { 'Mescla': 'Mescla Escuro' } },
+};
+const corEntregue = (pedido, modelKey, cor) => ((TROCA_COR[pedido] || {})[modelKey] || {})[cor] || cor;
+
 export async function onRequest(context) {
   const { env, request } = context;
   const store = env.SHOPIFY_STORE_DOMAIN;
@@ -606,7 +619,8 @@ export async function onRequest(context) {
       for (const item of order.line_items || []) {
         // Multi: um item pode render mais de uma peça, cada uma no seu tamanho (item manual)
         for (const parsed of parseLineItemMulti(item, order.name, ignorados)) {
-        const { modelKey, color, sizeIdx, qty } = parsed;
+        const { modelKey, sizeIdx, qty } = parsed;
+        const color = corEntregue(order.name, modelKey, parsed.color);
 
         // Agregação por modelo/cor/tamanho (comportamento existente)
         if (!result[modelKey]) result[modelKey] = {};
@@ -651,7 +665,7 @@ export async function onRequest(context) {
           const itens = [];
           for (const item of f.line_items || []) {
             for (const parsed of parseLineItemMulti(item, o.name, [], true)) {
-              itens.push({ modelKey: parsed.modelKey, cor: parsed.color, tam: parsed.sizeIdx, qtd: parsed.qty });
+              itens.push({ modelKey: parsed.modelKey, cor: corEntregue(o.name, parsed.modelKey, parsed.color), tam: parsed.sizeIdx, qtd: parsed.qty });
             }
           }
           if (itens.length === 0) continue;
