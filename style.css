@@ -755,12 +755,18 @@ input[type=number].ci:focus {
 /* Qual versão do molde está no sistema. Fica na ficha para ele conferir o papel da mesa
    contra o que a modelista subiu por último — é o que substituiu o envio no WhatsApp. */
 .crt-molde-selo {
-  display: inline-block; margin-bottom: 6px;
-  font-size: 10px; font-weight: 800; letter-spacing: .04em;
-  padding: 2px 7px; border-radius: 4px;
+  display: flex; flex-direction: column; align-items: flex-start; gap: 1px;
+  padding: 5px 11px; border-radius: 7px;
+  border: 1.5px solid var(--gold-dark);
   background: rgba(196,168,130,0.16); color: var(--gold-dark);
+  line-height: 1.15;
 }
-.crt-molde-sem { background: rgba(0,0,0,0.05); color: var(--text-ter); }
+.crt-molde-selo small {
+  font-size: 10px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
+}
+.crt-molde-selo b { font-size: 15px; font-weight: 800; color: var(--text); white-space: nowrap; }
+.crt-molde-sem { background: rgba(0,0,0,0.05); color: var(--text-ter); border-color: var(--border, #ddd); }
+.crt-molde-sem b { color: var(--text-ter); font-size: 13px; }
 /* PILOTO ao lado do nome, no âmbar de aviso do app — não no roxo da etapa. Não é "em que
    ponto está", é "esta peça não é produção": corta UMA, no tamanho do molde, e não a grade.
    O bloco de piloto fica no topo da aba (ver renderCorte), então este selo é o que explica

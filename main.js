@@ -6255,10 +6255,11 @@ function renderCorte() {
               · ${esc(l.tecido || '—')} · entrega ${esc(prazoTxt)}
             </div>
           </div>
-          <div style="display:flex;align-items:center;gap:10px">
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:flex-end">
             <div style="text-align:right">
               <div class="crt-big">${l.total}<span> ${l.total === 1 ? 'peça' : 'peças'} pedidas</span></div>
             </div>
+            ${moldeSeloHTML(l.key)}
             <div class="crt-card-btns">
               <button class="btn-primary" style="font-size:12px;padding:7px 13px" onclick="gerarFicha('${l.key}',${l.leva})">
                 <i class="ti ti-file-text"></i> Abrir ficha
@@ -6272,7 +6273,6 @@ function renderCorte() {
             </div>
           </div>
         </div>
-        ${moldeSeloHTML(l.key)}
         <div class="crt-aviso"><span>O que cortou vai na coluna <b>Cortado</b> da ficha impressa, a caneta.</span></div>
         <div style="overflow-x:auto">
           <table class="crt-tab">
@@ -7810,14 +7810,17 @@ async function moldeCarregarLista(forcar) {
   }
 }
 
-// Selo do molde na ficha da aba CORTE. Antes da lista chegar não promete nada.
+// Selo do molde na ficha da aba CORTE, ao lado do "Abrir ficha": é ali que o cortador olha
+// antes de cortar, e no canto de cima (letra de 10px) ele passava batido (06/10/2026).
+// Antes da lista chegar não promete nada.
 function moldeSeloHTML(key) {
   const p = moldeProjetoDe(key);
-  if (!p) return _moldeLista
-    ? '<span class="crt-molde-selo crt-molde-sem">MOLDE NÃO VINCULADO</span>'
-    : '';
-  if (!p.temArquivo) return '<span class="crt-molde-selo crt-molde-sem">MOLDE SEM ARQUIVO</span>';
-  return `<span class="crt-molde-selo">MOLDE V${p.versao}${p.atualizadoEm ? ' · ' + moldeEsc(moldeData(p.atualizadoEm)) : ''}</span>`;
+  const selo = (titulo, valor, extra) =>
+    `<div class="crt-molde-selo${extra || ''}"><small>${titulo}</small><b>${valor}</b></div>`;
+  if (!p) return _moldeLista ? selo('Molde', 'NÃO VINCULADO', ' crt-molde-sem') : '';
+  if (!p.temArquivo) return selo('Molde', 'SEM ARQUIVO', ' crt-molde-sem');
+  return selo('Última versão do molde',
+    `V${p.versao}${p.atualizadoEm ? ' · ' + moldeEsc(moldeData(p.atualizadoEm)) : ''}`);
 }
 
 function moldeFechar() {
