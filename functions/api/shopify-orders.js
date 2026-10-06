@@ -542,12 +542,12 @@ async function fetchVendas(store, token, desdeISO) {
 // dona decidiu trocar). A Shopify não tem variante da cor nova, então a troca mora aqui:
 // produção, ficha de compra e baixa de estoque passam a ver a cor que vai de fato pra cliente.
 // Chave: número do pedido → modelo → { cor do pedido: cor entregue }. Tirar a linha quando
-// o pedido sair (05/10/2026: careca preto e mescla em falta, Boho/Good em marrom e mescla escuro).
+// o pedido sair (05/10/2026: careca preto e mescla em falta, Boho/Good em marrom e mescla claro).
 const TROCA_COR = {
   '#8833': { 'conjunto-boho': { 'Preto': 'Marrom' } },
   '#8991': { 'conjunto-good': { 'Preto': 'Marrom' } },
-  '#8956': { 'conjunto-boho': { 'Mescla': 'Mescla Escuro' } },
-  '#9127': { 'conjunto-boho': { 'Mescla': 'Mescla Escuro' } },
+  '#8956': { 'conjunto-boho': { 'Mescla': 'Mescla Claro' } },
+  '#9127': { 'conjunto-boho': { 'Mescla': 'Mescla Claro' } },
 };
 const corEntregue = (pedido, modelKey, cor) => ((TROCA_COR[pedido] || {})[modelKey] || {})[cor] || cor;
 
