@@ -1425,3 +1425,6 @@ thead tr th:last-child { border-top-right-radius: 10px; border-bottom-right-radi
   .mini-card--tempo { grid-column: 1 / -1; }
   .tl-colunas { gap: 8px; }
 }
+
+/* Lista do PAGAMENTO DA MODELISTA compacta (07/10/2026): linhas baixas, letra 12px */
+.mdl-pg-tab td { padding: 4px 6px; font-size: 12px; }

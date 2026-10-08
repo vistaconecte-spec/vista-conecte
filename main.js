@@ -12075,6 +12075,15 @@ const MDL_PAGOS_KEY = 'modelagem-pagos';
 // A lista de acertos antigos só cresce e empurra a grade para baixo, então nasce fechada.
 // O estado fica aqui fora porque o card é redesenhado inteiro a cada marcação de pago.
 let mdlJaAcertadoAberto = false;
+// Card PAGAMENTO DA MODELISTA recolhido (07/10/2026, pedido da Bárbara: ocupava a tela
+// inteira). Fechado mostra só o título e os totais; a seta abre a lista. Lembrado neste
+// navegador.
+let mdlPagamentoAberto = (() => { try { return localStorage.getItem('mdl-pagamento-aberto') === '1'; } catch (_) { return false; } })();
+function mdlAlternarPagamento() {
+  mdlPagamentoAberto = !mdlPagamentoAberto;
+  try { localStorage.setItem('mdl-pagamento-aberto', mdlPagamentoAberto ? '1' : '0'); } catch (_) {}
+  mdlRenderTotalModelista();
+}
 
 function mdlPagos() {
   const d = loadLocal('vc:' + MDL_PAGOS_KEY);
@@ -12133,54 +12142,50 @@ function mdlRenderTotalModelista() {
   const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c]));
   const dia = t => t ? new Date(t).toLocaleDateString('pt-BR', { day:'2-digit', month:'2-digit', year:'2-digit' }) : '';
   el.style.display = '';
+  const aberto = mdlPagamentoAberto;
   el.innerHTML = `
-    <div class="card" style="border-left:3px solid #16a34a">
-      <div class="card-header">
-        <div class="card-title" style="color:#16a34a"><i class="ti ti-cash"></i> PAGAMENTO DA MODELISTA</div>
-        <span style="font-size:11px;font-weight:700;color:var(--text-sec)">
-          a pagar <b style="font-size:16px;color:#16a34a">${mdlBRL(totalPagar)}</b>
+    <div class="card" style="border-left:3px solid #16a34a;padding:10px 16px">
+      <div onclick="mdlAlternarPagamento()" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;cursor:pointer;user-select:none">
+        <i class="ti ti-chevron-${aberto ? 'down' : 'right'}" style="font-size:16px;color:#16a34a"></i>
+        <span style="font-weight:700;font-size:12px;letter-spacing:.04em;color:#16a34a"><i class="ti ti-cash"></i> PAGAMENTO DA MODELISTA</span>
+        <span style="margin-left:auto;font-size:11px;font-weight:700;color:var(--text-sec)">
+          a pagar <b style="font-size:14px;color:#16a34a">${mdlBRL(totalPagar)}</b>${aPagar.length ? ` (${aPagar.length})` : ''}
           ${jaPago.length ? ` · já pago <b style="color:var(--text-ter)">${mdlBRL(totalPago)}</b>` : ''}
         </span>
       </div>
-      <div style="font-size:11px;color:var(--text-sec);margin-bottom:8px">
-        Soma do <b>Valor do ajuste</b> de cada modelo. Marque como pago quando acertar com ela —
-        o valor sai do total e fica registrado com a data.
-        ${semValor > 0 ? `${semValor} modelo(s) ainda sem valor lançado.` : ''}
+      ${!aberto ? '' : `
+      <div style="font-size:11px;color:var(--text-ter);margin:8px 0 4px">
+        Marque como pago quando acertar com ela.${semValor > 0 ? ` ${semValor} modelo(s) sem valor lançado.` : ''}
       </div>
       ${aPagar.length ? `
-      <table style="width:100%">
-        <thead><tr><th style="text-align:left">A pagar</th><th style="text-align:right;width:110px">Valor</th><th style="width:110px"></th></tr></thead>
+      <table class="mdl-pg-tab" style="width:100%">
         <tbody>
           ${aPagar.map(p => `<tr>
             <td style="text-align:left;font-weight:600;cursor:pointer" onclick="mdlAbrirDetalhe(${p.id})">${esc(p.title || '(sem nome)')}
               ${p.pg.estado === 'valor-mudou' ? `<div style="font-size:10px;color:#b45309;font-weight:700">
                 <i class="ti ti-alert-triangle"></i> pago ${esc(dia(p.pg.em))} por R$ ${esc(p.pg.valorPago)} — o valor mudou desde então</div>` : ''}
             </td>
-            <td style="text-align:right;font-weight:700">${mdlBRL(p.num)}</td>
-            <td style="text-align:center">
-              <button class="btn-primary" style="font-size:10px;padding:5px 9px;background:#16a34a;border-color:#16a34a;white-space:nowrap"
+            <td style="text-align:right;font-weight:700;width:100px">${mdlBRL(p.num)}</td>
+            <td style="text-align:right;width:80px">
+              <button class="btn-primary" style="font-size:10px;padding:3px 8px;background:#16a34a;border-color:#16a34a;white-space:nowrap"
                 onclick="mdlMarcarPago(${p.id})"><i class="ti ti-check"></i> paguei</button>
             </td></tr>`).join('')}
         </tbody>
-        <tfoot><tr class="total-row">
-          <td style="text-align:left">Total a pagar</td>
-          <td style="text-align:right;color:#16a34a">${mdlBRL(totalPagar)}</td><td></td>
-        </tr></tfoot>
       </table>` : `<div style="font-size:12px;color:#16a34a;font-weight:600;padding:6px 0">
         <i class="ti ti-circle-check"></i> Nada em aberto com a modelista.</div>`}
       ${jaPago.length ? `
-      <details style="margin-top:12px" ${mdlJaAcertadoAberto ? 'open' : ''} ontoggle="mdlJaAcertadoAberto = this.open">
+      <details style="margin-top:8px" ${mdlJaAcertadoAberto ? 'open' : ''} ontoggle="mdlJaAcertadoAberto = this.open">
         <summary style="font-size:11px;font-weight:700;color:var(--text-ter);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;cursor:pointer;user-select:none">Já acertado
           <span style="font-weight:600;text-transform:none;letter-spacing:0"> · ${jaPago.length} modelo${jaPago.length > 1 ? 's' : ''} · ${mdlBRL(totalPago)}</span>
         </summary>
-        <table style="width:100%">
+        <table class="mdl-pg-tab" style="width:100%">
           <tbody>
             ${jaPago.map(p => `<tr style="opacity:.75">
               <td style="text-align:left;cursor:pointer" onclick="mdlAbrirDetalhe(${p.id})">${esc(p.title || '(sem nome)')}
                 <span style="font-size:10px;color:var(--text-ter)"> · pago em ${esc(dia(p.pg.em))}</span></td>
-              <td style="text-align:right;width:110px">${mdlBRL(p.num)}</td>
-              <td style="text-align:center;width:110px">
-                <button class="btn-outline" style="font-size:10px;padding:4px 8px;white-space:nowrap"
+              <td style="text-align:right;width:100px">${mdlBRL(p.num)}</td>
+              <td style="text-align:right;width:80px">
+                <button class="btn-outline" style="font-size:10px;padding:3px 8px;white-space:nowrap"
                   onclick="mdlDesmarcarPago(${p.id})" title="Desfazer a marcação de pago">desfazer</button>
               </td></tr>`).join('')}
           </tbody>
@@ -12188,7 +12193,7 @@ function mdlRenderTotalModelista() {
       </details>` : ''}
       ${ilegiveis.length ? `<div style="font-size:11px;color:#b45309;margin-top:8px">
         <i class="ti ti-alert-triangle"></i> ${ilegiveis.length} modelo(s) com valor que não dá para somar
-        (${ilegiveis.map(p => esc(p.title) + ': "' + esc(p.valorAjuste) + '"').join(' · ')}) — ficaram de fora do total.</div>` : ''}
+        (${ilegiveis.map(p => esc(p.title) + ': "' + esc(p.valorAjuste) + '"').join(' · ')}) — ficaram de fora do total.</div>` : ''}`}
     </div>`;
 }
 
