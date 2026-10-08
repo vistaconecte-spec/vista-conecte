@@ -1423,7 +1423,7 @@ function renderConfeccao() {
   const el = document.getElementById('conf-catalogo');
   if (!el) return;
   const busca = (document.getElementById('conf-busca')?.value || '').trim().toLowerCase();
-  const html = SIDEBAR_ESTRUTURA.map(grupo => {
+  const html = estruturaEfetiva().map(grupo => {
     const cards = grupo.modelos
       .filter(k => MODELOS[k])
       .filter(k => !busca || String(((loadLocal('vc:' + k) || {}).nome || MODELOS[k].nome)).toLowerCase().includes(busca))
@@ -4311,6 +4311,7 @@ function selectModel(el, key) {
   document.getElementById('tabs-modelo').style.display = '';
   document.getElementById('topbar-actions').style.display = '';
   renderModelo(key); // localStorage já foi sincronizado no startup — renderiza direto
+  atualizarBtnPiloto(key);
   showTab('producao');
   closeSidebar();
 }
@@ -9967,12 +9968,44 @@ async function urlToBase64(src) {
 // desce do topo da aba CORTE no mesmo minuto, sem esperar deploy. Mover a chave para
 // VESTIDOS/SAIAS/TOPS continua sendo tarefa de código, feita depois com calma; enquanto ela
 // não acontece, o card mostra APROVADA (e é de lá que se desfaz, se o clique foi errado).
-const PILOTO_KEY = 'pilotos-aprovados';   // { aprovados: { 'vestido-sereia': '2026-08-29T…' } }
+//
+// BOTÃO "APROVAR PILOTO" (07/10/2026, pedido da Bárbara): além de aprovar, ela escolhe o
+// grupo da coleção (VESTIDOS, TOPS...) e a peça muda de grupo na hora. O grupo escolhido
+// fica na mesma linha (`grupos`) e `estruturaEfetiva` aplica por cima do data.js: a chave
+// sai de PILOTOS e entra no grupo escolhido em todo aparelho, sem commit. A chave do modelo
+// não muda, então pedidos, estoque, levas e preços continuam ligados a ela.
+const PILOTO_KEY = 'pilotos-aprovados';   // { aprovados: { 'vestido-sereia': '2026-08-29T…' }, grupos: { 'vestido-sereia': 'VESTIDOS' } }
 
 function noGrupoPilotos(key) {
-  const g = (typeof SIDEBAR_ESTRUTURA === 'undefined' ? [] : SIDEBAR_ESTRUTURA)
-    .find(x => x.titulo === 'PILOTOS');
+  const g = estruturaEfetiva().find(x => x.titulo === 'PILOTOS');
   return !!g && g.modelos.includes(key);
+}
+
+function gruposAprovados() {
+  const d = loadLocal('vc:' + PILOTO_KEY);
+  return (d && typeof d === 'object' && d.grupos && typeof d.grupos === 'object') ? d.grupos : {};
+}
+
+function grupoAprovadoDe(key) {
+  const g = gruposAprovados()[key];
+  return typeof g === 'string' && g ? g : null;
+}
+
+// SIDEBAR_ESTRUTURA do data.js + os pilotos que já foram mandados para a coleção pelo botão.
+// Grupo que não existe mais no data.js é ignorado: a peça fica em PILOTOS em vez de sumir.
+function estruturaEfetiva() {
+  const base = typeof SIDEBAR_ESTRUTURA === 'undefined' ? [] : SIDEBAR_ESTRUTURA;
+  const est = base.map(g => ({ ...g, modelos: [...g.modelos] }));
+  const pil = est.find(g => g.titulo === 'PILOTOS');
+  if (!pil) return est;
+  const grupos = gruposAprovados();
+  pil.modelos = pil.modelos.filter(k => {
+    const destino = est.find(g => g.titulo !== 'PILOTOS' && g.titulo === grupos[k]);
+    if (!destino) return true;
+    if (!destino.modelos.includes(k)) destino.modelos.push(k);
+    return false;
+  });
+  return est;
 }
 
 function pilotosAprovados() {
@@ -9989,33 +10022,127 @@ function pilotoAprovado(key) { return !!pilotosAprovados()[key]; }
 function ehPiloto(key) { return noGrupoPilotos(key) && !pilotoAprovado(key); }
 
 // Lê a nuvem antes de gravar: a aprovação pode ter sido feita no outro aparelho.
-async function gravarAprovacaoPiloto(key, aprovado) {
+// `grupo` (opcional) é o grupo da coleção para onde a peça vai; desaprovar tira os dois.
+async function gravarAprovacaoPiloto(key, aprovado, grupo) {
   const naNuvem = await carregarNuvem(PILOTO_KEY);
   if (naNuvem === undefined) { alert('Não consegui ler a nuvem agora — nada foi alterado. Tente de novo.'); return false; }
   const aprovados = { ...((naNuvem && naNuvem.aprovados) || {}), ...pilotosAprovados() };
+  const grupos = { ...((naNuvem && naNuvem.grupos) || {}), ...gruposAprovados() };
   if (aprovado) aprovados[key] = new Date().toISOString(); else delete aprovados[key];
-  const dados = { aprovados };
+  if (aprovado && grupo) grupos[key] = grupo; else if (!aprovado) delete grupos[key];
+  const dados = { aprovados, grupos };
   saveLocal('vc:' + PILOTO_KEY, dados);
   await salvarNuvemREST(PILOTO_KEY, dados);
   return true;
 }
 
-async function aprovarPiloto(key) {
-  const nome = (loadLocal('vc:' + key) || {}).nome || (MODELOS[key] || {}).nome || key;
-  if (!confirm(`Aprovar a peça "${nome}"?\n\n`
-    + 'A ficha para de sair carimbada como PILOTO e a peça desce do topo da aba CORTE — '
-    + 'passa a ser tratada como produção.\n\n'
-    + 'Falta ainda, fora do app: preencher tecido, consumo, preço e cores, e mover o modelo '
-    + 'do grupo PILOTOS para o grupo definitivo.\n\nDá para desfazer no próprio card.')) return;
-  if (!await gravarAprovacaoPiloto(key, true)) return;
-  showSaved();
-  if (modeloAtual === '__corte__') renderCorte();
-}
+// O botão "Peça aprovada" da aba CORTE abre a mesma janela do botão da tela do modelo.
+function aprovarPiloto(key) { abrirAprovarPiloto(key); }
 
 async function desfazerAprovacaoPiloto(key) {
+  const nome = (loadLocal('vc:' + key) || {}).nome || (MODELOS[key] || {}).nome || key;
+  if (!confirm(`Voltar "${nome}" para PILOTOS?\n\nA ficha volta a sair carimbada como PILOTO.`)) return;
   if (!await gravarAprovacaoPiloto(key, false)) return;
   showSaved();
+  redesenharDepoisDoPiloto(key);
+}
+
+function redesenharDepoisDoPiloto(key) {
   if (modeloAtual === '__corte__') renderCorte();
+  if (typeof renderConfeccao === 'function') renderConfeccao();
+  if (modeloAtual === key) atualizarBtnPiloto(key);
+}
+
+// Grupo sugerido pelo nome; ela confirma ou troca na lista.
+function grupoSugeridoPiloto(nome) {
+  const n = chaveCor(nome);
+  if (/^macacao/.test(n)) return 'MACACÕES';
+  if (/^macaquinho/.test(n)) return 'MACAQUINHOS';
+  if (/^vestido|^bata/.test(n)) return 'VESTIDOS';
+  if (/saia/.test(n)) return 'SAIAS';
+  if (/^calca|^short|^bermuda/.test(n)) return 'CALÇAS';
+  if (/^casaco|sherpa/.test(n)) return 'CASACOS';
+  if (/^conjunto/.test(n)) return 'CONJUNTOS';
+  if (/^top|^blusa|^regata|^cropped|^camiseta/.test(n)) return 'TOPS';
+  return '';
+}
+
+// O que falta no cadastro para a peça entrar na conta da produção/compra. Não trava a
+// aprovação (ela aprova na prova, o resto vem depois), mas fica escrito na janela.
+function faltasPiloto(key) {
+  const def = MODELOS[key] || {};
+  const saved = loadLocal('vc:' + key) || {};
+  const faltas = [];
+  if (!String(saved.tecido || def.tecido || '').trim()) faltas.push('tecido');
+  if (!(parseFloat(saved.consumo || def.consumo) > 0)) faltas.push('consumo por peça (sem ele a compra de tecido não compra nada)');
+  if (!(parseFloat(saved.preco || def.preco) > 0)) faltas.push('custo do tecido');
+  if (!coresDoModelo(def, saved).length) faltas.push('cores');
+  return faltas;
+}
+
+function abrirAprovarPiloto(key) {
+  if (!MODELOS[key]) return;
+  const nome = (loadLocal('vc:' + key) || {}).nome || MODELOS[key].nome;
+  const grupos = (typeof SIDEBAR_ESTRUTURA === 'undefined' ? [] : SIDEBAR_ESTRUTURA)
+    .map(g => g.titulo).filter(t => t !== 'PILOTOS');
+  const sug = grupoSugeridoPiloto(nome);
+  const faltas = faltasPiloto(key);
+  document.getElementById('modal-piloto')?.remove();
+  const m = document.createElement('div');
+  m.id = 'modal-piloto';
+  m.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px';
+  m.onclick = e => { if (e.target === m) m.remove(); };
+  m.innerHTML = `
+    <div style="background:var(--surface);border-radius:12px;max-width:440px;width:100%;padding:20px 22px;box-shadow:0 20px 60px rgba(0,0,0,.3)">
+      <div style="display:flex;align-items:center;gap:8px;font-weight:700;font-size:16px;margin-bottom:10px">
+        <i class="ti ti-checks" style="color:#16a34a;font-size:20px"></i> Aprovar piloto
+      </div>
+      <div style="font-size:14px;margin-bottom:12px"><b>${moldeEsc(nome)}</b> sai de PILOTOS e entra na coleção. A ficha para de sair carimbada como PILOTO e a aba CORTE passa a tratar a peça como produção.</div>
+      <label style="font-size:12px;color:var(--text-sec);font-weight:600">Grupo da coleção
+        <select id="piloto-grupo" style="display:block;width:100%;margin-top:4px;padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-size:14px;background:var(--surface);color:var(--text)">
+          <option value="">Escolha o grupo...</option>
+          ${grupos.map(g => `<option value="${moldeEsc(g)}"${g === sug ? ' selected' : ''}>${moldeEsc(g)}</option>`).join('')}
+        </select>
+      </label>
+      ${faltas.length ? `<div style="margin-top:12px;font-size:12px;background:rgba(180,83,9,0.10);color:#b45309;border-radius:6px;padding:8px 10px">
+        Ainda falta preencher no modelo: <b>${faltas.map(moldeEsc).join(', ')}</b>. Dá para aprovar agora e completar depois.</div>` : ''}
+      <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:16px">
+        <button class="btn-outline" onclick="document.getElementById('modal-piloto').remove()">Cancelar</button>
+        <button class="btn-primary" id="piloto-confirmar" onclick="confirmarAprovarPiloto('${key}')"><i class="ti ti-checks"></i> Aprovar e mover</button>
+      </div>
+    </div>`;
+  document.body.appendChild(m);
+}
+
+async function confirmarAprovarPiloto(key) {
+  const grupo = (document.getElementById('piloto-grupo') || {}).value || '';
+  if (!grupo) { alert('Escolha o grupo da coleção.'); return; }
+  const btn = document.getElementById('piloto-confirmar');
+  if (btn) { btn.disabled = true; btn.style.opacity = '0.6'; }
+  const ok = await gravarAprovacaoPiloto(key, true, grupo);
+  if (btn) { btn.disabled = false; btn.style.opacity = ''; }
+  if (!ok) return;
+  document.getElementById('modal-piloto')?.remove();
+  showSaved();
+  redesenharDepoisDoPiloto(key);
+}
+
+// Botão da tela do modelo: "Aprovar piloto" enquanto está em PILOTOS; depois de mover,
+// "Voltar p/ piloto" (o desfazer, para clique errado).
+function atualizarBtnPiloto(key) {
+  const b = document.getElementById('btn-aprovar-piloto');
+  if (!b) return;
+  const movido = !!grupoAprovadoDe(key) && !noGrupoPilotos(key);
+  const mostrar = !ehPerfilOficina() && (noGrupoPilotos(key) || movido);
+  b.style.display = mostrar ? '' : 'none';
+  if (!mostrar) return;
+  b.innerHTML = movido
+    ? '<i class="ti ti-arrow-back-up"></i><span class="btn-label"> Voltar p/ piloto</span>'
+    : '<i class="ti ti-checks"></i><span class="btn-label"> Aprovar piloto</span>';
+  b.title = movido ? `Aprovado e movido para ${grupoAprovadoDe(key)}. Clique para voltar a ser piloto.` : 'Aprovar a peça e mandar para um grupo da coleção';
+  b.style.color = movido ? '' : '#16a34a';
+  b.style.borderColor = movido ? '' : '#16a34a';
+  b.onclick = () => movido ? desfazerAprovacaoPiloto(key) : abrirAprovarPiloto(key);
 }
 
 // Sem argumento: ficha do modelo aberto, lendo a TELA — sai com o que acabou de ser

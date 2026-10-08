@@ -202,5 +202,26 @@ ok('linha da nuvem vazia ou estranha não quebra a leitura',
    new Function('SIDEBAR_ESTRUTURA', 'loadLocal', 'PILOTO_KEY',
      blocoPiloto + '; return ehPiloto;')(ESTRUTURA, () => null, 'k')('top-laco'), true);
 
+console.log('\n10) Botão "Aprovar piloto" escolhe o grupo e a peça muda de grupo sem commit');
+// 07/10/2026: o grupo escolhido fica em `grupos` na mesma linha e estruturaEfetiva aplica
+// por cima do data.js. A chave do modelo não muda (pedidos/estoque continuam ligados).
+const comGrupos = (aprovados, grupos) => new Function(
+  'SIDEBAR_ESTRUTURA', 'loadLocal', 'PILOTO_KEY',
+  blocoPiloto + '; return { ehPiloto, noGrupoPilotos, estruturaEfetiva, grupoAprovadoDe };'
+)(ESTRUTURA, () => ({ aprovados, grupos }), 'pilotos-aprovados');
+const movida = comGrupos({ 'top-laco': 'x' }, { 'top-laco': 'TOPS' });
+const est = movida.estruturaEfetiva();
+ok('sai de PILOTOS', est.find(g => g.titulo === 'PILOTOS').modelos.includes('top-laco'), false);
+ok('entra em TOPS', est.find(g => g.titulo === 'TOPS').modelos.includes('top-laco'), true);
+ok('deixa de ser piloto e de mostrar o selo APROVADA',
+   [movida.ehPiloto('top-laco'), movida.noGrupoPilotos('top-laco')], [false, false]);
+ok('não mexe no SIDEBAR_ESTRUTURA original',
+   ESTRUTURA.find(g => g.titulo === 'PILOTOS').modelos.includes('top-laco'), true);
+ok('a irmã continua em PILOTOS', movida.ehPiloto('vestido-sereia'), true);
+ok('grupo que não existe deixa a peça em PILOTOS em vez de sumir',
+   comGrupos({ 'top-laco': 'x' }, { 'top-laco': 'NAO-EXISTE' }).noGrupoPilotos('top-laco'), true);
+ok('linha antiga só com aprovados continua funcionando',
+   comGrupos({ 'top-laco': 'x' }, undefined).noGrupoPilotos('top-laco'), true);
+
 console.log(`\n${falhas ? '✗' : '✓'} ${total - falhas}/${total} passaram\n`);
 process.exit(falhas ? 1 : 0);

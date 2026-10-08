@@ -107,6 +107,7 @@
       <div class="topbar-actions" id="topbar-actions">
         <button id="btn-salvar" class="btn-salvar" onclick="salvarManual()" style="display:none"><i class="ti ti-device-floppy"></i><span class="btn-label"> Salvar</span></button>
         <button class="btn-outline" onclick="abrirHistorico(modeloAtual, (MODELOS[modeloAtual]||{}).nome)" title="Ver e restaurar versões anteriores desta tela"><i class="ti ti-history"></i><span class="btn-label"> Histórico</span></button>
+        <button id="btn-aprovar-piloto" class="btn-outline" style="display:none"><i class="ti ti-checks"></i><span class="btn-label"> Aprovar piloto</span></button>
         <button class="btn-outline" onclick="showTab('config')"><i class="ti ti-settings"></i><span class="btn-label"> Configurações</span></button>
         <button class="btn-primary" onclick="gerarFicha()"><i class="ti ti-file-text"></i><span class="btn-label"> GERAR FICHA</span></button>
       </div>
@@ -1095,7 +1096,7 @@
   </div>
 </div>
 <script src="data.js?v=2026100202"></script>
-<script src="main.js?v=2026100602"></script>
+<script src="main.js?v=2026100701"></script>
 <script async src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js" onload="initSupabase()"></script>
 </body>
 </html>
