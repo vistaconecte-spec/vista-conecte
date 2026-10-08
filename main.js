@@ -175,8 +175,12 @@ async function registrarVersao(key, dados) {
 }
 
 async function salvarNuvem(key, dados, opts) {
-  await salvarNuvemREST(key, dados, opts);
+  const r = await salvarNuvemREST(key, dados, opts);
+  // Versão recusada pela trava não entra no histórico: ela nunca existiu na nuvem, e
+  // restaurá-la traria de volta o dado velho que a trava barrou.
+  if (r === 'recusada') return r;
   registrarVersao(key, dados); // sem await: histórico nunca segura a tela
+  return r;
 }
 
 // Resumo do que mudou de uma versão para a outra, em português — sem isso a lista de
@@ -440,7 +444,20 @@ async function salvarNuvemREST(key, dados, opts = {}) {
         // "Salvo" era do ciclo do corte, que grava sozinho de minuto em minuto.
         if (!opts.silencioso) showCloudOk();
         else if (!_gravacoesPendentes.size) limparErroNuvem(); // o vermelho de uma falha silenciosa não pode ficar para sempre
-        return; // sucesso
+        return true; // sucesso
+      }
+      // Recusa da trava do banco (sql/trava-escrita-atrasada-v3.sql, código 23514): o dado
+      // deste aparelho é velho. Tentar de novo nunca vai passar. Até 08/10/2026 isso caía no
+      // caminho de queda de rede: a gravação velha ficava na fila, era reenviada a cada 15 s
+      // e o "Erro ao salvar na nuvem" não saía mais da tela.
+      if (res.status === 400) {
+        const corpo = await res.json().catch(() => null);
+        if (corpo && corpo.code === '23514') {
+          if (souOAtual()) _gravacoesPendentes.delete(key);
+          console.warn('[nuvem] gravação recusada pela trava', key, corpo.message);
+          await trazerVersaoRecusada(key);
+          return 'recusada';
+        }
       }
     } catch(e) {}
     if (i < MAX_TRIES - 1) await new Promise(r => setTimeout(r, 1000 * (i + 1)));
@@ -449,6 +466,20 @@ async function salvarNuvemREST(key, dados, opts = {}) {
   // no próximo ciclo); sem isso a nuvem antiga voltaria por cima do que foi digitado.
   if (souOAtual()) _gravacoesPendentes.set(key, { dados, emVoo: false });
   showCloudError();
+  return false;
+}
+
+// A trava recusou: este aparelho trabalhava em cima de uma versão velha (em 08/10/2026, um
+// Macacão Amplo de 29/09 com "Comprando tecido" por cima do "Em corte" de 06/10). Troca o
+// local pela versão da nuvem, para a próxima gravação partir do dado certo, e diz qual foi.
+async function trazerVersaoRecusada(key) {
+  const nuvem = await carregarNuvem(key);
+  if (nuvem) {
+    saveLocal('vc:' + key, nuvem);
+    if (modeloAtual === key) renderModeloSeOcioso();
+  }
+  const nome = (MODELOS[key] && MODELOS[key].nome) || key;
+  showCloudError(nome + ' estava desatualizado neste aparelho e a nuvem recusou a gravação. A versão certa foi trazida da nuvem.');
 }
 
 function showCloudOk() {
@@ -12166,26 +12197,41 @@ async function baixarEstoqueDoPedido(itens) {
   const baixado = [];
   for (const item of (itens || [])) {
     for (const r of requisitosDoItem(item)) {
-      // Sempre da NUVEM. Ler o local e devolver o objeto inteiro para a nuvem faz este
-      // aparelho gravar por cima do que os outros mexeram: em 11/08/2026 isso apagou as
-      // contagens de estoque de uma tarde inteira e ressuscitou uma leva já concluída.
-      const saved = await carregarNuvem(r.key);
-      if (saved === undefined) continue; // nuvem fora do ar: não inventa baixa
-      // Sem estoque cadastrado para esta cor não há o que baixar (e criar entrada
-      // zerada aqui inventaria linha de estoque que a dona nunca lançou).
-      if (!saved || !saved.est || !saved.est[r.cor]) continue;
       const i = (MODELOS[r.key] && MODELOS[r.key].tamanhoUnico) ? 0 : r.tam;
-      const antes = saved.est[r.cor][i] || 0;
-      if (antes <= 0) continue;
-      const tirar = Math.min(antes, r.qtd);
-      saved.est[r.cor][i] = antes - tirar;
-      saved.est_at = saved.updated_at = new Date().toISOString();
-      saveLocal('vc:' + r.key, saved);
-      salvarNuvem(r.key, saved);
-      baixado.push({ key: r.key, nome: (MODELOS[r.key] && MODELOS[r.key].nome) || r.key, cor: r.cor, tam: i, qtd: tirar });
+      const tirado = await baixarUmaPeca(r, i);
+      if (tirado) baixado.push({ key: r.key, nome: (MODELOS[r.key] && MODELOS[r.key].nome) || r.key, cor: r.cor, tam: i, qtd: tirado });
     }
   }
   return baixado;
+}
+
+// Devolve quantas peças saíram do estoque (0 = nada baixado).
+//
+// Recusa da trava = o que foi lido era velho. Em 29/09, 07/10 e 08/10/2026 a baixa de um
+// aparelho gravou o Macacão Amplo com a leva de 29/09 junto: a trava barrou, mas a peça
+// entrava no registro como baixada. Agora lê de novo e refaz uma vez; se for recusada de
+// novo, não conta (fica no estoque, que é o lado que se corrige contando a arara).
+async function baixarUmaPeca(r, i) {
+  for (let tentativa = 0; tentativa < 2; tentativa++) {
+    // Sempre da NUVEM. Ler o local e devolver o objeto inteiro para a nuvem faz este
+    // aparelho gravar por cima do que os outros mexeram: em 11/08/2026 isso apagou as
+    // contagens de estoque de uma tarde inteira e ressuscitou uma leva já concluída.
+    const saved = await carregarNuvem(r.key);
+    if (saved === undefined) return 0; // nuvem fora do ar: não inventa baixa
+    // Sem estoque cadastrado para esta cor não há o que baixar (e criar entrada
+    // zerada aqui inventaria linha de estoque que a dona nunca lançou).
+    if (!saved || !saved.est || !saved.est[r.cor]) return 0;
+    const antes = saved.est[r.cor][i] || 0;
+    if (antes <= 0) return 0;
+    const tirar = Math.min(antes, r.qtd);
+    saved.est[r.cor][i] = antes - tirar;
+    saved.est_at = saved.updated_at = new Date().toISOString();
+    saveLocal('vc:' + r.key, saved);
+    // Com await: duas peças do mesmo modelo no pedido leem a nuvem uma depois da outra.
+    if (await salvarNuvem(r.key, saved) === 'recusada') continue;
+    return tirar;
+  }
+  return 0;
 }
 
 let _ultimaBaixaAuto = null; // { quando, pedidos:[], pecas:[] } — alimenta o aviso do dashboard

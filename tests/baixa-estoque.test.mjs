@@ -118,9 +118,11 @@ ok('ignorar marca sem mexer no estoque', /'ignorado na conferência'/.test(ignor
    && !/baixarEstoqueDoPedido/.test(ignora.slice(0, ignora.indexOf('\n}'))), true);
 
 console.log('\n5) A baixa não inventa nem estoura estoque');
+// Desde 08/10/2026 a peça é baixada em baixarUmaPeca (lê de novo se a trava recusar):
+// o trecho vai do pedido até o fim dela.
 const baixa = main.slice(main.indexOf('function baixarEstoqueDoPedido'),
-                         main.indexOf('\n}', main.indexOf('function baixarEstoqueDoPedido')));
-ok('cor sem estoque cadastrado é pulada', /if \(!saved \|\| !saved\.est \|\| !saved\.est\[r\.cor\]\) continue;/.test(baixa), true);
+                         main.indexOf('\n}', main.indexOf('async function baixarUmaPeca')));
+ok('cor sem estoque cadastrado é pulada', /if \(!saved \|\| !saved\.est \|\| !saved\.est\[r\.cor\]\) return 0;/.test(baixa), true);
 ok('nunca deixa o estoque negativo', /Math\.min\(antes, r\.qtd\)/.test(baixa), true);
 ok('tamanho único baixa na posição 0', /tamanhoUnico\) \? 0 : r\.tam/.test(baixa), true);
 ok('conjunto é expandido pela fonte única (requisitosDoItem)', /requisitosDoItem\(item\)/.test(baixa), true);
@@ -145,13 +147,12 @@ ok('lerLedgerBaixas não usa mais loadLocal como fonte', /=\s*loadLocal\(LEDGER_
 ok('leitura que FALHOU não vira "registro não existe"', /if \(l === undefined\) return undefined/.test(lerLedger), true);
 ok('sem conseguir ler a nuvem, a baixa não roda', /if \(ledger === undefined\) return;/.test(corpo), true);
 
-const baixarPedido = main.slice(main.indexOf('async function baixarEstoqueDoPedido'),
-                                main.indexOf('\n}', main.indexOf('async function baixarEstoqueDoPedido')));
+const baixarPedido = baixa;
 ok('o estoque de cada modelo também vem da nuvem antes de mexer',
    /const saved = await carregarNuvem\(r\.key\)/.test(baixarPedido), true);
 ok('modelo não é mais lido do localStorage na hora de baixar',
    /const saved = loadLocal\('vc:' \+ r\.key\)/.test(baixarPedido), false);
-ok('nuvem fora do ar não inventa baixa', /if \(saved === undefined\) continue;/.test(baixarPedido), true);
+ok('nuvem fora do ar não inventa baixa', /if \(saved === undefined\) return 0;/.test(baixarPedido), true);
 
 const casca = main.slice(main.indexOf('async function baixaImediataDeProcessados'),
                          main.indexOf('\n}', main.indexOf('async function baixaImediataDeProcessados')));
