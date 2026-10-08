@@ -12282,7 +12282,27 @@ function mdlAlternarCategoria(chave) {
   mdlRenderLista();
 }
 
-function mdlCardHtml(p) {
+// Faixa da ETAPA no topo do cartão, no mesmo formato da faixa de PENDÊNCIA (07/10/2026,
+// pedido da Bárbara): a etapa do modelo ligado na CONFECÇÃO (leva 1; sem ela, a 2ª leva).
+const MDL_FAIXA_ETAPA = {
+  'Comprando tecido': ['#a8844f', 'COMPRANDO TECIDO'],
+  'Em corte':         ['#7C3AED', 'EM CORTE'],
+  'Em costura':       ['#0891b2', 'EM COSTURA'],
+};
+function mdlFaixaEtapaHtml(key) {
+  if (!key) return '';
+  const saved = loadLocal('vc:' + key) || {};
+  const leva2 = !saved.status && !!saved.status2;
+  const status = saved.status || saved.status2 || '';
+  const at = leva2 ? saved.status2_at : saved.status_at;
+  const def = MDL_FAIXA_ETAPA[status];
+  if (!def) return '';
+  const dias = at ? Math.floor((Date.now() - new Date(at).getTime()) / 86400000) : null;
+  const ha = dias === null ? '' : dias <= 0 ? ' · HOJE' : ` · ${dias} ${dias === 1 ? 'DIA' : 'DIAS'}`;
+  return `<div style="background:${def[0]};color:#fff;font-size:8px;font-weight:700;letter-spacing:0.03em;text-align:center;padding:2px 6px">${leva2 ? '2ª LEVA ' : ''}${def[1]}${ha}</div>`;
+}
+
+function mdlCardHtml(p, modeloDe) {
   const thumb = p.croquiKey
     ? `<img src="/api/modelagem-storage?key=${encodeURIComponent(p.croquiKey)}" style="width:100%;height:100%;object-fit:contain" loading="lazy">`
     : `<i class="ti ti-folder" style="font-size:38px;color:var(--gold)"></i>`;
@@ -12294,6 +12314,7 @@ function mdlCardHtml(p) {
   return `
     <div class="card" style="padding:0;cursor:pointer;overflow:hidden" onclick="mdlAbrirDetalhe(${p.id})">
       ${faixaPendencia}
+      ${mdlFaixaEtapaHtml((modeloDe || {})[p.id])}
       <div style="position:relative;aspect-ratio:4/5;background:${p.croquiKey ? '#fff' : '#f5f0e8'};display:flex;align-items:center;justify-content:center">
         ${thumb}
       </div>
@@ -12353,7 +12374,7 @@ function mdlRenderLista() {
           ${pend ? `<span style="margin-left:auto;background:#dc2626;color:#fff;font-size:10px;font-weight:700;border-radius:4px;padding:2px 7px"><i class="ti ti-alert-triangle"></i> ${pend} PENDÊNCIA${pend > 1 ? 'S' : ''}</span>` : ''}
         </div>
         ${aberta ? `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:14px;margin:12px 0 16px">
-          ${g.itens.map(mdlCardHtml).join('')}
+          ${g.itens.map(p => mdlCardHtml(p, modeloDe)).join('')}
         </div>` : ''}
       </div>`;
   }).join('');
