@@ -1432,6 +1432,8 @@ thead tr th:last-child { border-top-right-radius: 10px; border-bottom-right-radi
 /* Nome do grupo no catálogo da CONFECÇÃO (PILOTOS, CALÇAS...) com mais destaque
    (07/10/2026): no cinza de 12px do card-title ele sumia no meio dos cartões. */
 .conf-grupo-titulo {
-  font-size: 17px; font-weight: 800; letter-spacing: .06em; color: var(--text);
-  border-left: 4px solid var(--gold-dark); padding-left: 10px; margin-bottom: 12px; line-height: 1.2;
+  font-size: 14px; font-weight: 700; letter-spacing: .05em; color: var(--text);
+  border-left: 3px solid var(--gold-dark); padding-left: 9px; margin-bottom: 12px; line-height: 1.2;
 }
+/* Sombra leve em volta do card de cada grupo, para separar um grupo do outro */
+.conf-grupo-card { box-shadow: 0 2px 12px rgba(30,30,60,0.10), 0 0 0 1px rgba(30,30,60,0.05); }
