@@ -1434,7 +1434,7 @@ function renderConfeccao() {
     // NOVA COLEÇÃO aparece mesmo vazia: é o destino do "Aprovar piloto" e ela quer ver o lugar
     if (!cards && !(grupo.titulo === PILOTO_GRUPO_APROVADO && !busca)) return '';
     return `<div class="card" style="margin-bottom:14px">
-      <div class="card-title" style="margin-bottom:10px">${grupo.titulo}</div>
+      <div class="conf-grupo-titulo">${grupo.titulo}</div>
       ${cards ? '' : '<div style="font-size:12px;color:var(--text-ter)">Nenhuma peça aprovada ainda. O botão "Aprovar piloto" traz a peça para cá.</div>'}
       <div class="conf-grid">${cards}</div>
     </div>`;
