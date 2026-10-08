@@ -8,7 +8,10 @@
  *   GET /api/etiquetas-dados?numeros=9266,9265
  *   → { pedidos: [{ numero, id, nome, cpf, email, telefone, cep, rua, numero_end, complemento,
  *        bairro, cidade, uf, metodo, servico_cliente, cobrado, valor, peso_g, pecas, saco,
- *        regra, enviado, pago }], faltando: ['#9999'] }
+ *        regra, enviado, pago, itens: [{ nome, qtd, preco }] }], faltando: ['#9999'] }
+ *
+ * `itens` vira a DECLARAÇÃO DE CONTEÚDO da etiqueta: sem nota fiscal, a Frenet exige a lista
+ * do que vai no pacote e responde erro 500 se ela vier vazia (2º teste do #8943, 08/10/2026).
  *
  * O robô chama com o X-VC-Token, do notebook. Nada disto vai para o Supabase: a linha da
  * fila só leva número do pedido, saco e serviço, porque o vc_modelos é lido com a chave
@@ -127,6 +130,13 @@ export function normalizar(o) {
     saco: sacoPorPeso(peso),
     regra: regraDoPedido(cobrado, sl.title),
     pago: ['PAID', 'PARTIALLY_REFUNDED'].includes(o.displayFinancialStatus) && !o.cancelledAt,
+    itens: ((o.lineItems && o.lineItems.edges) || []).map(e => e.node)
+      .filter(n => (n.currentQuantity ?? n.quantity) > 0)
+      .map(n => ({
+        nome: String(n.name || '').slice(0, 60),
+        qtd: n.currentQuantity ?? n.quantity,
+        preco: num(n.discountedUnitPriceAfterAllDiscountsSet && n.discountedUnitPriceAfterAllDiscountsSet.shopMoney && n.discountedUnitPriceAfterAllDiscountsSet.shopMoney.amount),
+      })),
     enviado: o.displayFulfillmentStatus === 'FULFILLED',
   };
 }
@@ -140,6 +150,7 @@ const QUERY = `query($q: String) {
       shippingLine { title discountedPriceSet { shopMoney { amount } } }
       shippingAddress { name firstName lastName address1 address2 city provinceCode zip phone }
       localizationExtensions(first: 5) { edges { node { key purpose value } } }
+      lineItems(first: 30) { edges { node { name quantity currentQuantity discountedUnitPriceAfterAllDiscountsSet { shopMoney { amount } } } } }
     } }
   }
 }`;

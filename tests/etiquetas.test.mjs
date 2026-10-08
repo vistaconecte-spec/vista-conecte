@@ -54,8 +54,13 @@ console.log('\n3) Normalização do pedido');
     shippingLine: { title: 'Loggi Express', discountedPriceSet: { shopMoney: { amount: '0.0' } } },
     shippingAddress: { name: 'Ana Souza', address1: `Rua X, ${WJ}10`, address2: `${WJ}Centro`, city: 'Brasília', provinceCode: 'DF', zip: '71071264', phone: '+5561999998888' },
     localizationExtensions: { edges: [{ node: { key: 'TAX_CREDENTIAL_BR', purpose: 'TAX', value: '12345678901' } }] },
+    lineItems: { edges: [
+      { node: { name: 'Calça Pantalona Moletom - Preto / M', quantity: 2, currentQuantity: 2, discountedUnitPriceAfterAllDiscountsSet: { shopMoney: { amount: '139.45' } } } },
+      { node: { name: 'Item devolvido', quantity: 1, currentQuantity: 0, discountedUnitPriceAfterAllDiscountsSet: { shopMoney: { amount: '50' } } } },
+    ] },
   });
   ok('CPF, CEP e telefone formatados', [p.cpf, p.cep, p.telefone], ['123.456.789-01', '71071-264', '(61) 99999-8888']);
+  ok('itens viram a declaração de conteúdo (item devolvido fica fora)', p.itens, [{ nome: 'Calça Pantalona Moletom - Preto / M', qtd: 2, preco: 139.45 }]);
   ok('saco M, peso 0,7 kg, frete grátis = mais barato, pago e não enviado', [p.saco, p.peso_kg, p.regra, p.pago, p.enviado], ['M', 0.7, 'mais_barato', true, false]);
 }
 
