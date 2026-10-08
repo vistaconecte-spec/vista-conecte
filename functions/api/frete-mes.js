@@ -7,9 +7,14 @@
  * etiquetas de rastreio. O lado "custo real" vem da fatura da Loggi, que a tela importa
  * (planilha billing_invoice_report) e casa com estes pedidos pela etiqueta BLI_.
  *
- *   GET /api/frete-mes?mes=2026-09
+ *   GET /api/frete-mes?mes=2026-09[&antes=2]
  *   → { mes, pedidos: [{ numero, criado_em, metodo, cobrado, peso_g, uf, cep, valor, pecas,
- *        retirada, enviado, etiquetas: [] }], gerado_em }
+ *        retirada, enviado, etiquetas: [], nome, cidade }], gerado_em }
+ *
+ * Desde 08/10/2026 o custo real vem das etiquetas da Frenet (a Manu compra lá, não mais
+ * direto na Loggi). A etiqueta de outubro pode ser de um pedido de agosto (peça feita sob
+ * encomenda), por isso `antes=N` puxa também os N meses anteriores; e a tela casa
+ * etiqueta com pedido pelo código de rastreio ou, sem ele, pelo `nome` da entrega.
  *
  * `cep` e `valor` (total pago) entraram em 19/09/2026 pra rotina semanal "frete cobrado x
  * custo" conseguir cotar na Frenet o preço de tabela de cada pedido (peso real + destino +
@@ -25,12 +30,14 @@ const num = v => Math.round((parseFloat(v) || 0) * 100) / 100;
 const ehRetirada = titulo => /loja|retir/i.test(titulo || '');
 
 /** Primeiro e último dia do mês "AAAA-MM" em Brasília, como a Shopify espera na busca. */
-export function periodoDoMes(mes) {
+export function periodoDoMes(mes, antes = 0) {
   const m = /^(\d{4})-(\d{2})$/.exec(mes || '');
   if (!m) return null;
   const ano = +m[1], mm = +m[2];
   if (mm < 1 || mm > 12) return null;
-  const ini = `${m[1]}-${m[2]}-01`;
+  const voltas = Math.max(0, Math.min(3, parseInt(antes, 10) || 0));
+  const iniAbs = ano * 12 + (mm - 1) - voltas;
+  const ini = `${Math.floor(iniAbs / 12)}-${String(iniAbs % 12 + 1).padStart(2, '0')}-01`;
   const prox = mm === 12 ? `${ano + 1}-01-01` : `${m[1]}-${String(mm + 1).padStart(2, '0')}-01`;
   return { ini, prox };
 }
@@ -62,6 +69,8 @@ export function normalizar(nos) {
       retirada: ehRetirada(sl.title),
       enviado,
       etiquetas,
+      nome: (o.shippingAddress && o.shippingAddress.name) || null,
+      cidade: (o.shippingAddress && o.shippingAddress.city) || null,
     });
   }
   return lista;
@@ -74,21 +83,21 @@ const QUERY = `query($cursor: String, $q: String) {
       currentSubtotalLineItemsQuantity totalWeight
       currentTotalPriceSet { shopMoney { amount } }
       shippingLine { title discountedPriceSet { shopMoney { amount } } }
-      shippingAddress { provinceCode zip }
+      shippingAddress { provinceCode zip name city }
       fulfillments(first: 3) { status trackingInfo { number } }
     } }
     pageInfo { hasNextPage }
   }
 }`;
 
-export async function buscarPedidos(store, token, mes, fetchFn = fetch) {
-  const p = periodoDoMes(mes);
+export async function buscarPedidos(store, token, mes, fetchFn = fetch, antes = 0) {
+  const p = periodoDoMes(mes, antes);
   // Fuso de Brasília explícito: sem ele a Shopify corta o mês em UTC e um pedido das 22h
   // do dia 31 cai no mês seguinte.
   const q = `created_at:>='${p.ini}T00:00:00-03:00' AND created_at:<'${p.prox}T00:00:00-03:00'`;
   const nos = [];
   let cursor = null;
-  for (let pagina = 0; pagina < 6; pagina++) {
+  for (let pagina = 0; pagina < 8; pagina++) {
     const r = await fetchFn(`https://${store}/admin/api/${API_VERSION}/graphql.json`, {
       method: 'POST',
       headers: { 'X-Shopify-Access-Token': token, 'Content-Type': 'application/json' },
@@ -110,10 +119,12 @@ export async function onRequestGet(context) {
   const store = env.SHOPIFY_STORE_DOMAIN, token = env.SHOPIFY_ADMIN_TOKEN;
   const headers = { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' };
   if (!store || !token) return new Response(JSON.stringify({ erro: 'env não configurado' }), { status: 500, headers });
-  const mes = new URL(request.url).searchParams.get('mes') || new Date(Date.now() - 3 * 3600000).toISOString().slice(0, 7);
+  const params = new URL(request.url).searchParams;
+  const mes = params.get('mes') || new Date(Date.now() - 3 * 3600000).toISOString().slice(0, 7);
+  const antes = params.get('antes') || 0;
   if (!periodoDoMes(mes)) return new Response(JSON.stringify({ erro: 'mes inválido (AAAA-MM)' }), { status: 400, headers });
   try {
-    const nos = await buscarPedidos(store, token, mes);
+    const nos = await buscarPedidos(store, token, mes, fetch, antes);
     return new Response(JSON.stringify({ mes, pedidos: normalizar(nos), gerado_em: new Date().toISOString() }), { headers });
   } catch (err) {
     return new Response(JSON.stringify({ erro: err.message }), { status: 502, headers });

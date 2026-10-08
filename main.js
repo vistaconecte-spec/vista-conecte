@@ -8502,11 +8502,14 @@ async function frtCarregarMes() {
   if (!st) return;
   const mes = frtMes();
   st.textContent = 'buscando na Shopify...';
+  // Mês da Frenet: a etiqueta de outubro pode ser de pedido de agosto (sob encomenda).
+  const frenet = mes >= FRT_FRENET_DESDE;
   try {
-    const r = await fetch(`/api/frete-mes?mes=${mes}`, { cache: 'no-store' });
+    const r = await fetch(`/api/frete-mes?mes=${mes}${frenet ? '&antes=2' : ''}`, { cache: 'no-store' });
     const d = await r.json();
     if (!r.ok || d.erro) throw new Error(d.erro || ('HTTP ' + r.status));
-    frtRenderMes(d, frtGetConfig());
+    if (frenet) frtRenderMesFrenet(d, loadLocal('vc:frete-frenet-' + mes));
+    else frtRenderMes(d, frtGetConfig());
     st.textContent = 'atualizado ' + new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
   } catch (e) {
     st.textContent = 'não deu para ler a Shopify agora (' + (e.message || 'erro') + ')';
@@ -8550,9 +8553,131 @@ function frtCalcularMes(pedidos, cfg) {
   };
 }
 
+// ── Custo real pela Frenet (outubro/2026 em diante) ──
+// Pedido da Bárbara em 08/10/2026: "esse dado do que realmente pagamos precisa vir da
+// Frenet, não compro mais etiqueta direto com a Loggi". A Frenet não tem API de etiquetas
+// para lojista; eu (Claude) puxo pelo painel dela, logado no navegador do app, com o
+// script Desktop/claude/frete-frenet/puxar-frenet.js, e gravo uma linha por mês:
+//
+// vc:frete-frenet-AAAA-MM = { mes, puxado_em, etiquetas: [{ id, d, n, cid, uf, s, v, div, cod }] }
+//   d = criação da etiqueta (ISO UTC); n = destinatário; s = serviço (Loggi, PAC, Sedex...);
+//   v = o que a loja pagou na etiqueta; div = o que a Frenet cobrou depois por divergência
+//   de peso/medida (positivo = pagou a mais); cod = rastreio (vazio até imprimir).
+//
+// A Manu cria a etiqueta à parte, não a partir do pedido que a Frenet importa da Shopify,
+// então a etiqueta não sabe o número do pedido. O casamento é pelo rastreio (a Shopify
+// recebe o mesmo código) e, sem ele, pelo nome da entrega: em 08/10/2026 casaram 108 de
+// 113 etiquetas de cliente (70 pelo código, 38 pelo nome). Etiqueta para "VISTA CONECTE"
+// é troca ou devolução voltando para a loja: entra no custo, em linha própria.
+const FRT_FRENET_DESDE = '2026-10';
+const frtNome = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z ]/g, ' ').replace(/\s+/g, ' ').trim();
+const frtEhLoja = n => /vista conecte/i.test(n || '');
+const FRT_TROCAS = 'Trocas e devoluções (para a loja)';
+
+function frtCalcularMesFrenet(pedidos, frenet) {
+  const r2 = v => Math.round(v * 100) / 100;
+  const validos = (pedidos || []).filter(p => !p.retirada);
+  const porCod = {};
+  for (const p of validos) for (const c of p.etiquetas || []) porCod[String(c).trim().toUpperCase()] = p;
+  const cobrados = new Set(); // pedido cujo frete já entrou: duas etiquetas de um pedido não somam o frete duas vezes
+  const casadosNome = new Set();
+  const porMetodo = {}; const semPedido = []; const casados = { codigo: 0, nome: 0 };
+  const porPedido = {}; const outroServico = [];
+  const tot = { envios: 0, cobrado: 0, custo: 0, divergencia: 0, trocas: 0, custo_trocas: 0 };
+  const linha = k => porMetodo[k] || (porMetodo[k] = { envios: 0, cobrado: 0, custo: 0, divergencia: 0 });
+  // Em ordem de criação, para o casamento por nome pegar o pedido certo quando a mesma
+  // cliente compra duas vezes.
+  const ets = [...((frenet && frenet.etiquetas) || [])].sort((a, b) => (a.d < b.d ? -1 : a.d > b.d ? 1 : 0));
+  for (const e of ets) {
+    const div = Number(e.div) || 0, custo = (Number(e.v) || 0) + div;
+    if (frtEhLoja(e.n)) {
+      const m = linha(FRT_TROCAS); m.envios++; m.custo += custo; m.divergencia += div;
+      tot.trocas++; tot.custo_trocas += custo; tot.custo += custo; tot.divergencia += div;
+      continue;
+    }
+    let p = e.cod ? porCod[String(e.cod).trim().toUpperCase()] : null;
+    if (p) casados.codigo++;
+    else {
+      const nn = frtNome(e.n), pal = nn.split(' '), pri = pal[0], ult = pal[pal.length - 1];
+      const cands = validos.filter(x => {
+        if (!x.nome || casadosNome.has(x.numero) || String(x.criado_em) > String(e.d)) return false;
+        const xn = frtNome(x.nome), xp = xn.split(' ');
+        return xn === nn || (xp[0] === pri && xp[xp.length - 1] === ult);
+      }).sort((a, b) => (a.criado_em < b.criado_em ? 1 : -1));
+      p = cands[0] || null;
+      if (p) { casados.nome++; casadosNome.add(p.numero); }
+    }
+    if (!p) semPedido.push({ n: e.n, cid: e.cid, s: e.s, v: r2(custo), d: e.d });
+    const cobrado = p && !cobrados.has(p.numero) ? (p.cobrado || 0) : 0;
+    if (p) {
+      cobrados.add(p.numero);
+      (porPedido[p.numero] = porPedido[p.numero] || { numero: p.numero, n: e.n, etiquetas: [] }).etiquetas.push({ s: e.s, v: r2(custo) });
+      // Cliente escolheu Loggi e saiu por PAC/Sedex (CEP fora de rota, pressa): em 08/10/2026
+      // eram 6 de 8 PAC/Sedex de outubro, quase todos com frete grátis ou R$19 da Loggi.
+      const escolheu = String(p.metodo || ''), saiu = String(e.s || '');
+      if (escolheu && saiu && !frtNome(escolheu).startsWith(frtNome(saiu).split(' ')[0])) {
+        outroServico.push({ numero: p.numero, escolheu, saiu, cobrado: p.cobrado || 0, custo: r2(custo) });
+      }
+    }
+    const m = linha(e.s || '(sem serviço)');
+    for (const alvo of [m, tot]) { alvo.envios++; alvo.cobrado += cobrado; alvo.custo += custo; alvo.divergencia += div; }
+  }
+  for (const o of [tot, ...Object.values(porMetodo)]) for (const k of Object.keys(o)) o[k] = r2(o[k]);
+  const saldo = r2(tot.cobrado - tot.custo);
+  return {
+    ...tot, saldo, por_envio: tot.envios ? r2(saldo / tot.envios) : 0,
+    por_metodo: porMetodo, sem_pedido: semPedido, casados,
+    // Pedido com duas etiquetas pagas: reenvio de propósito ou etiqueta comprada a mais
+    // (Mariane Xavier #9219, 06/10/2026: Loggi R$24,08 e Sedex R$47,97 no mesmo pedido).
+    varias_etiquetas: Object.values(porPedido).filter(x => x.etiquetas.length > 1),
+    outro_servico: outroServico,
+    puxado_em: (frenet && frenet.puxado_em) || null,
+  };
+}
+
+function frtRenderMesFrenet(d, frenet) {
+  const c = frtCalcularMesFrenet(d.pedidos || [], frenet);
+  const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+  const sinal = v => (v < 0 ? '−' : '') + fmtBRL(Math.abs(v));
+  set('frt-m-custo-label', 'CUSTO REAL (FRENET)');
+  set('frt-m-col-extra', 'Divergência');
+  set('frt-m-envios', c.envios);
+  set('frt-m-cobrado', fmtBRL(c.cobrado));
+  set('frt-m-custo', fmtBRL(c.custo));
+  set('frt-m-saldo', sinal(c.saldo));
+  set('frt-m-por-envio', sinal(c.por_envio));
+  const saldoEl = document.getElementById('frt-m-saldo'); if (saldoEl) saldoEl.style.color = c.saldo < 0 ? '#b91c1c' : '#15803d';
+  const notas = [];
+  if (!frenet) notas.push('As etiquetas da Frenet deste mês ainda não foram puxadas: o custo fica em zero até eu puxar (rotina de segunda).');
+  else {
+    const quando = c.puxado_em ? new Date(c.puxado_em).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '?';
+    notas.push(`Custo = o que a loja pagou em cada etiqueta na Frenet (puxado em ${quando}), mais a divergência de peso cobrada depois.`);
+    notas.push(`Cliente pagou = frete do pedido da Shopify casado com a etiqueta (${c.casados.codigo} pelo rastreio, ${c.casados.nome} pelo nome).`);
+    if (c.trocas) notas.push(`${c.trocas} etiqueta${c.trocas > 1 ? 's' : ''} de troca/devolução voltando para a loja (${fmtBRL(c.custo_trocas)}): entram no custo, mas não contam como envio.`);
+    if (c.sem_pedido.length) notas.push(`Sem pedido na Shopify (conferir se é reenvio ou etiqueta duplicada): ${c.sem_pedido.map(x => `${x.n} (${x.s}, ${fmtBRL(x.v)})`).join('; ')}.`);
+    if (c.varias_etiquetas.length) notas.push(`Pedido com mais de uma etiqueta paga: ${c.varias_etiquetas.map(x => `${x.numero} ${x.n} (${x.etiquetas.map(t => `${t.s} ${fmtBRL(t.v)}`).join(' + ')})`).join('; ')}.`);
+    if (c.outro_servico.length) notas.push(`Cliente escolheu um serviço e saiu por outro: ${c.outro_servico.map(x => `${x.numero} escolheu ${x.escolheu} (${fmtBRL(x.cobrado)}), saiu ${x.saiu} (${fmtBRL(x.custo)})`).join('; ')}.`);
+  }
+  set('frt-mes-nota', notas.join(' '));
+  const linhas = Object.entries(c.por_metodo)
+    .sort((a, b) => (a[0] === FRT_TROCAS) - (b[0] === FRT_TROCAS) || b[1].envios - a[1].envios)
+    .map(([met, m]) => {
+      const troca = met === FRT_TROCAS, saldo = m.cobrado - m.custo;
+      return `<tr><td style="padding:5px 4px;font-weight:700">${met}</td><td style="padding:5px 4px;text-align:right">${m.envios}</td>
+      <td style="padding:5px 4px;text-align:right">${troca ? '—' : fmtBRL(m.cobrado)}</td><td style="padding:5px 4px;text-align:right">${fmtBRL(m.custo)}</td>
+      <td style="padding:5px 4px;text-align:right;font-weight:700;color:${saldo < 0 ? '#b91c1c' : '#15803d'}">${sinal(saldo)}</td>
+      <td style="padding:5px 4px;text-align:right;color:var(--text-ter)">${m.divergencia ? fmtBRL(m.divergencia) : '—'}</td></tr>`;
+    }).join('');
+  const tb = document.getElementById('frt-mes-tbody');
+  if (tb) tb.innerHTML = linhas || '<tr><td colspan="6" style="text-align:center;color:var(--text-ter);padding:14px">Nenhuma etiqueta neste mês.</td></tr>';
+  const fEl = document.getElementById('frt-faturas'); if (fEl) fEl.innerHTML = '';
+}
+
 function frtRenderMes(d, cfg) {
   const c = frtCalcularMes(d.pedidos || [], cfg);
   const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+  set('frt-m-custo-label', 'LOGGI COBROU (FATURA)');
+  set('frt-m-col-extra', 'Sem fatura ainda');
   set('frt-m-envios', c.envios);
   set('frt-m-cobrado', fmtBRL(c.cobrado));
   set('frt-m-custo', fmtBRL(c.custo + c.estimado));

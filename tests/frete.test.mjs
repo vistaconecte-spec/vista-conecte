@@ -78,6 +78,13 @@ console.log('\n2) /api/frete-mes: período do mês e normalização dos pedidos'
   const fetchFalso = async (url, opts) => { chamadas.push(JSON.parse(opts.body).variables.q); return { ok: true, json: async () => ({ data: { orders: { edges: [], pageInfo: { hasNextPage: false } } } }) }; };
   await mesApi.buscarPedidos('loja', 'tok', '2026-09', fetchFalso);
   ok('a busca corta o mês no fuso de Brasília', chamadas[0], "created_at:>='2026-09-01T00:00:00-03:00' AND created_at:<'2026-10-01T00:00:00-03:00'");
+  ok('antes=2 volta dois meses (etiqueta de outubro pode ser de pedido de agosto)', mesApi.periodoDoMes('2026-10', 2), { ini: '2026-08-01', prox: '2026-11-01' });
+  ok('antes atravessa o ano', mesApi.periodoDoMes('2027-01', 2), { ini: '2026-11-01', prox: '2027-02-01' });
+  ok('antes tem teto de 3 meses (CPU do plano grátis)', mesApi.periodoDoMes('2026-10', 9).ini, '2026-07-01');
+  await mesApi.buscarPedidos('loja', 'tok', '2026-10', fetchFalso, 2);
+  ok('a busca com antes=2 começa em agosto', chamadas[1], "created_at:>='2026-08-01T00:00:00-03:00' AND created_at:<'2026-11-01T00:00:00-03:00'");
+  const comNome = mesApi.normalizar([{ ...nos[0], shippingAddress: { provinceCode: 'SP', zip: '01310-100', name: 'Ana Souza', city: 'São Paulo' } }]);
+  ok('traz nome e cidade da entrega (casamento com a etiqueta da Frenet)', [comNome[0].nome, comNome[0].cidade], ['Ana Souza', 'São Paulo']);
 }
 
 console.log('\n3) Conta do mês na tela (frtCalcularMes): fatura por etiqueta, estimativa e exclusões');
@@ -109,7 +116,49 @@ console.log('\n3) Conta do mês na tela (frtCalcularMes): fatura por etiqueta, e
   ok('sem fatura nenhuma, nada é estimado (média 0) e só a Loggi fica pendente', [vazio.custo, vazio.estimado, vazio.pendentes], [30, 0, 3]);
 }
 
-console.log('\n4) Tela e ligações');
+console.log('\n4) Custo pela Frenet (frtCalcularMesFrenet): etiqueta casada com o pedido');
+{
+  const i = main.indexOf('const FRT_FRENET_DESDE'), f = main.indexOf('function frtRenderMesFrenet');
+  ok('a conta da Frenet existe no main.js', i > 0 && f > i, true);
+  const calcular = new Function('pedidos', 'frenet', main.slice(i, f) + '\nreturn frtCalcularMesFrenet(pedidos, frenet);');
+  const pedidos = [
+    { numero: '#1', criado_em: '2026-09-20T12:00:00Z', cobrado: 19, retirada: false, etiquetas: ['ABCD1234'], nome: 'Ana Souza' },
+    { numero: '#2', criado_em: '2026-09-28T12:00:00Z', cobrado: 24.9, retirada: false, etiquetas: [], nome: 'Bruna  Lima' },
+    { numero: '#3', criado_em: '2026-10-02T12:00:00Z', cobrado: 0, retirada: false, etiquetas: [], nome: 'Carla Maria Dias' },
+    { numero: '#4', criado_em: '2026-10-03T12:00:00Z', cobrado: 30, retirada: false, etiquetas: [], nome: 'Bruna Lima' },
+    { numero: '#5', criado_em: '2026-10-03T12:00:00Z', cobrado: 0, retirada: true, etiquetas: [], nome: 'Dani Retira' },
+    { numero: '#6', criado_em: '2026-10-09T12:00:00Z', cobrado: 18, retirada: false, etiquetas: [], nome: 'Eva Depois' },
+  ];
+  const frenet = { puxado_em: '2026-10-08T12:00:00Z', etiquetas: [
+    { id: 1, d: '2026-10-05T13:00:00.000Z', n: 'Ana Souza', s: 'Loggi', v: 20, div: 0, cod: 'abcd1234' },          // pelo rastreio
+    { id: 2, d: '2026-10-05T14:00:00.000Z', n: 'Bruna Lima', s: 'Loggi', v: 22, div: 0, cod: '' },                  // pelo nome: o pedido mais recente (#4)
+    { id: 3, d: '2026-10-06T14:00:00.000Z', n: 'Bruna Lima', s: 'Loggi', v: 21, div: 0, cod: '' },                  // segunda etiqueta da Bruna: o pedido anterior (#2)
+    { id: 4, d: '2026-10-06T15:00:00.000Z', n: 'Carla Dias', s: 'PAC', v: 25, div: 4.5, cod: '' },                  // primeiro + último nome; divergência soma no custo
+    { id: 5, d: '2026-10-06T16:00:00.000Z', n: 'VISTA CONECTE LTDA', s: 'PAC', v: 23.3, div: 0, cod: 'AP1BR' },     // troca voltando para a loja
+    { id: 6, d: '2026-10-07T10:00:00.000Z', n: 'Eva Depois', s: 'Sedex', v: 30, div: 0, cod: '' },                  // pedido é posterior à etiqueta: não casa
+    { id: 7, d: '2026-10-07T11:00:00.000Z', n: 'Ana Souza', s: 'Sedex', v: 40, div: 0, cod: 'ABCD1234' },           // 2ª etiqueta do mesmo pedido: frete da cliente não conta de novo
+  ] };
+  const c = calcular(pedidos, frenet);
+  ok('casa 2 pelo rastreio (maiúscula/minúscula não importa) e 3 pelo nome', c.casados, { codigo: 2, nome: 3 });
+  ok('envios de cliente não contam a troca', [c.envios, c.trocas], [6, 1]);
+  ok('cliente pagou: 19 (#1, uma vez só) + 30 (#4) + 24,9 (#2) + 0 (#3)', c.cobrado, 73.9);
+  ok('custo: etiquetas + divergência + troca', c.custo, 20 + 22 + 21 + 29.5 + 23.3 + 30 + 40);
+  ok('divergência separada', c.divergencia, 4.5);
+  ok('saldo e por envio', [c.saldo, c.por_envio], [Math.round((73.9 - 185.8) * 100) / 100, Math.round((73.9 - 185.8) / 6 * 100) / 100]);
+  ok('etiqueta sem pedido aparece pra conferir', c.sem_pedido.map(x => x.n), ['Eva Depois']);
+  ok('tabela por serviço da Frenet com a troca em linha própria', Object.keys(c.por_metodo).sort(), ['Loggi', 'PAC', 'Sedex', 'Trocas e devoluções (para a loja)']);
+  ok('Loggi: 3 envios, cobrou 73,9, custou 63', [c.por_metodo.Loggi.envios, c.por_metodo.Loggi.cobrado, c.por_metodo.Loggi.custo], [3, 73.9, 63]);
+  ok('pedido com duas etiquetas pagas aparece (#1: Loggi + Sedex)', c.varias_etiquetas.map(x => [x.numero, x.etiquetas.map(t => t.s)]), [['#1', ['Loggi', 'Sedex']]]);
+  const comMetodo = pedidos.map(p => ({ ...p, metodo: 'Loggi Express' })); // todas escolheram Loggi no checkout
+  const c2 = calcular(comMetodo, frenet);
+  ok('escolheu Loggi e saiu PAC/Sedex é apontado; Loggi Express x Loggi não', c2.outro_servico.map(x => [x.numero, x.saiu]), [['#3', 'PAC'], ['#1', 'Sedex']]);
+  const vazio = calcular(pedidos, null);
+  ok('sem etiquetas puxadas, tudo zero', [vazio.envios, vazio.custo, vazio.saldo], [0, 0, 0]);
+  ok('outubro/2026 em diante usa a Frenet, setembro segue com a fatura da Loggi', /const FRT_FRENET_DESDE = '2026-10';/.test(main) && /if \(frenet\) frtRenderMesFrenet\(d, loadLocal\('vc:frete-frenet-' \+ mes\)\);/.test(main), true);
+  ok('o rótulo do custo muda conforme a fonte', /set\('frt-m-custo-label', 'CUSTO REAL \(FRENET\)'\)/.test(main) && /set\('frt-m-custo-label', 'LOGGI COBROU \(FATURA\)'\)/.test(main) && /id="frt-m-custo-label"/.test(html), true);
+}
+
+console.log('\n5) Tela e ligações');
 {
   ok('a aba FRETE tem painel próprio com cadeado', /id="panel-frete"/.test(html) && /id="frt-gate"/.test(html) && /id="frt-content"/.test(html), true);
   ok('a sidebar tem o botão FRETE e ele abre a aba', /frtItem\.onclick = \(\) => abrirFrete\(frtItem\);/.test(main), true);
@@ -120,7 +169,7 @@ console.log('\n4) Tela e ligações');
   ok('o campo de valor diz o que é', /Valor da compra R\$/.test(html), true);
   ok('a consulta lê /api/frenet-cotacao com embalagem, medidas, peso e valor (igual à calculadora da Frenet)', /fetch\(`\/api\/frenet-cotacao\?cep=\$\{cep\}&valor=\$\{valor\}&peso=\$\{peso\}&alt=\$\{alt\}&larg=\$\{larg\}&comp=\$\{comp\}`/.test(main), true);
   ok('os sacos da Frenet estão no seletor e preenchem as medidas', /id="frt-embalagem"/.test(html) && /24x15x10x0\.35/.test(html) && /45x35x12x2\.5/.test(html) && /function frtEmbalagem\(\)/.test(main), true);
-  ok('o mês lê /api/frete-mes', /fetch\(`\/api\/frete-mes\?mes=\$\{mes\}`/.test(main), true);
+  ok('o mês lê /api/frete-mes (com 2 meses antes quando é mês da Frenet)', /fetch\(`\/api\/frete-mes\?mes=\$\{mes\}\$\{frenet \? '&antes=2' : ''\}`/.test(main), true);
   ok('a fatura importada é gravada sem histórico (salvarNuvemREST direto)', /return salvarNuvemREST\('frete-faturas', cfg\);/.test(main), true);
   ok('reimportar a mesma fatura apaga antes o que ela tinha em cada etiqueta', /if \(et\.f && et\.f\[id\] != null\) delete et\.f\[id\];/.test(main), true);
   ok('o leitor de planilha só carrega na importação', /xlsx\.full\.min\.js/.test(main) && !/xlsx\.full\.min\.js/.test(html), true);

@@ -773,7 +773,7 @@
                 <div style="display:flex;align-items:center;gap:8px;font-size:11px;color:var(--text-sec);flex-wrap:wrap">
                   <input type="month" id="frt-mes" style="font-size:12px;padding:5px 8px;border:1px solid var(--border);border-radius:6px" onchange="frtCarregarMes()">
                   <button class="btn-outline" style="font-size:10px;padding:3px 8px" onclick="frtCarregarMes()"><i class="ti ti-refresh"></i> Atualizar</button>
-                  <label class="btn-outline" style="font-size:10px;padding:3px 8px;cursor:pointer" title="Planilha billing_invoice_report que a Loggi manda a cada quinzena"><i class="ti ti-file-spreadsheet"></i> Importar fatura da Loggi
+                  <label class="btn-outline" style="font-size:10px;padding:3px 8px;cursor:pointer" title="Só para meses até setembro/2026: planilha billing_invoice_report da Loggi. De outubro em diante o custo vem das etiquetas da Frenet."><i class="ti ti-file-spreadsheet"></i> Importar fatura da Loggi
                     <input type="file" accept=".xlsx" multiple style="display:none" onchange="frtImportarFaturas(this)">
                   </label>
                   <span id="frt-mes-status"></span>
@@ -782,7 +782,7 @@
               <div style="display:flex;gap:18px;flex-wrap:wrap;margin:2px 0 12px">
                 <div class="metric"><div class="label">ENVIOS</div><div class="val" id="frt-m-envios">0</div></div>
                 <div class="metric"><div class="label">CLIENTE PAGOU</div><div class="val val-escuro" id="frt-m-cobrado">R$ 0,00</div></div>
-                <div class="metric"><div class="label">LOGGI COBROU (FATURA)</div><div class="val" id="frt-m-custo">R$ 0,00</div></div>
+                <div class="metric"><div class="label" id="frt-m-custo-label">CUSTO REAL</div><div class="val" id="frt-m-custo">R$ 0,00</div></div>
                 <div class="metric" style="border-left:3px solid #b91c1c;padding-left:12px"><div class="label">SALDO</div><div class="val" id="frt-m-saldo">R$ 0,00</div></div>
                 <div class="metric"><div class="label">POR ENVIO</div><div class="val" id="frt-m-por-envio">R$ 0,00</div></div>
               </div>
@@ -795,7 +795,7 @@
                   <th style="text-align:right;padding:4px">Cliente pagou</th>
                   <th style="text-align:right;padding:4px">Custo real</th>
                   <th style="text-align:right;padding:4px">Saldo</th>
-                  <th style="text-align:right;padding:4px">Sem fatura ainda</th>
+                  <th style="text-align:right;padding:4px" id="frt-m-col-extra">Sem fatura ainda</th>
                 </tr></thead>
                 <tbody id="frt-mes-tbody"></tbody>
               </table>
@@ -1096,7 +1096,7 @@
   </div>
 </div>
 <script src="data.js?v=2026100701"></script>
-<script src="main.js?v=2026100801"></script>
+<script src="main.js?v=2026100802"></script>
 <script async src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js" onload="initSupabase()"></script>
 </body>
 </html>
