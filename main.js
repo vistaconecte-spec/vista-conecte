@@ -8708,6 +8708,153 @@ function frtRenderMes(d, cfg) {
     : '';
 }
 
+// ─── GERAR ETIQUETAS NA FRENET (botão no card PRONTOS PARA ENVIO) ────────────
+// Pedido da Bárbara em 08/10/2026. A Manu digitava cada etiqueta no painel da Frenet: Saco P
+// até em pacote de 700 g, SOS e rastreio por WhatsApp vêm marcados no formulário, e o pedido
+// #9219 ficou com Loggi E Sedex pagas. Agora ela marca os prontos aqui e um robô no notebook
+// da Bárbara (Desktop/claude/frete-frenet/robo-etiquetas.mjs) monta tudo no CARRINHO da
+// Frenet. O robô NÃO paga: a Manu confere o total no carrinho, paga e imprime.
+//
+// Duas linhas no Supabase, cada uma com um único dono (sem gravação cruzada):
+//   etiquetas-pedido    (esta tela grava) { lote, criado_em, pedidos: [{ numero, saco, servico }] }
+//   etiquetas-resultado (o robô grava)    { lote, status, msg, inicio, fim, itens: [...], total,
+//                                           robo_visto_em, feitos: { '#9266': { frenet_id, preco, servico, em } } }
+// Só número, saco e serviço vão para o Supabase: o vc_modelos é lido com a chave anon do
+// JavaScript público, e CPF/endereço da cliente não podem ficar lá. O robô busca esses dados
+// em /api/etiquetas-dados com o token dele.
+//
+// Serviço "auto" = regra decidida com a Bárbara: a cliente pagou um serviço → compra esse;
+// frete grátis ou fixo R$24,90 → o mais barato entre Loggi e Correios (Sedex nunca sozinho).
+const ETQ_SACOS = { P: 'Saco P (até 0,35 kg)', M: 'Saco M (até 0,8 kg)', G: 'Saco G (até 1,5 kg)', GG: 'Saco GG (acima)' };
+const ETQ_SERVICOS = { auto: 'Automático', LOG_DRPOFF: 'Loggi', '03298': 'PAC', '03220': 'Sedex' };
+const ETQ_FEITO_DIAS = 15; // etiqueta gerada há menos que isso some da lista (evita a segunda etiqueta do #9219)
+let _etqDados = {}, _etqTimer = null;
+
+/** Prontos que ainda não têm etiqueta feita pelo robô nos últimos ETQ_FEITO_DIAS. Pura (testes). */
+function etqPendentes(prontos, resultado, agora = Date.now()) {
+  const feitos = (resultado && resultado.feitos) || {};
+  return (prontos || []).filter(p => {
+    const f = feitos[p.numero];
+    return !(f && f.em && (agora - new Date(f.em).getTime()) < ETQ_FEITO_DIAS * 86400000);
+  });
+}
+
+/** O que o "Automático" vai fazer com este pedido, em português. Pura (testes). */
+function etqExplicaAuto(d) {
+  if (!d) return '';
+  if (d.regra === 'mais_barato') return 'mais barato entre Loggi e PAC (frete ' + (d.cobrado ? 'fixo' : 'grátis') + ')';
+  return 'o que a cliente escolheu (' + (ETQ_SERVICOS[d.servico_cliente] || d.metodo || '?') + ')';
+}
+
+async function etqLerResultado() {
+  // Lê direto a linha do robô (não espera o ciclo de 15 s): enquanto a janela está aberta
+  // a Manu quer ver o carrinho sendo montado. Linha pequena, só enquanto a janela está aberta.
+  try {
+    const r = await fetch(`${SUPABASE_URL}/rest/v1/vc_modelos?id=eq.etiquetas-resultado&select=dados`, {
+      headers: { apikey: SUPABASE_KEY, Authorization: 'Bearer ' + SUPABASE_KEY }, cache: 'no-store' });
+    if (r.ok) { const j = await r.json(); if (j[0]) { saveLocal('vc:etiquetas-resultado', j[0].dados); return j[0].dados; } }
+  } catch (_) {}
+  return loadLocal('vc:etiquetas-resultado') || {};
+}
+
+async function etqAbrir() {
+  const m = document.getElementById('modal-etiquetas');
+  m.style.display = 'flex';
+  document.getElementById('etq-lista').innerHTML = '<div style="padding:14px;color:var(--text-ter);font-size:12px">carregando os pedidos prontos...</div>';
+  const resultado = await etqLerResultado();
+  const pend = etqPendentes(window._prontosEnvio || [], resultado);
+  _etqDados = {};
+  if (pend.length) {
+    try {
+      const r = await fetch('/api/etiquetas-dados?numeros=' + encodeURIComponent(pend.map(p => p.numero).join(',')), { cache: 'no-store' });
+      const j = await r.json();
+      if (!r.ok || j.erro) throw new Error(j.erro || 'HTTP ' + r.status);
+      for (const d of j.pedidos) _etqDados[d.numero] = d;
+    } catch (e) {
+      document.getElementById('etq-lista').innerHTML = `<div style="padding:14px;color:#b91c1c;font-size:12px">Não deu para ler os pedidos na Shopify (${e.message}).</div>`;
+      return;
+    }
+  }
+  etqRenderLista(pend);
+  etqRenderStatus(resultado);
+  clearInterval(_etqTimer);
+  _etqTimer = setInterval(async () => {
+    if (document.getElementById('modal-etiquetas').style.display === 'none') { clearInterval(_etqTimer); return; }
+    etqRenderStatus(await etqLerResultado());
+  }, 5000);
+}
+function etqFechar() { document.getElementById('modal-etiquetas').style.display = 'none'; clearInterval(_etqTimer); }
+
+function etqRenderLista(pend) {
+  const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const el = document.getElementById('etq-lista');
+  const linhas = pend.map(p => {
+    const d = _etqDados[p.numero];
+    if (!d) return `<tr><td></td><td style="padding:6px 4px;font-weight:700">${esc(p.numero)}</td><td colspan="5" style="padding:6px 4px;color:var(--text-ter)">não achei na Shopify</td></tr>`;
+    const falta = [!d.cpf && 'CPF', !d.cep && 'CEP', !d.nome && 'nome'].filter(Boolean);
+    const ok = d.pago && !d.enviado && !falta.length;
+    const sacoSel = Object.keys(ETQ_SACOS).map(k => `<option value="${k}"${k === d.saco ? ' selected' : ''}>${k}</option>`).join('');
+    const servSel = Object.keys(ETQ_SERVICOS).map(k => `<option value="${k}">${ETQ_SERVICOS[k]}</option>`).join('');
+    return `<tr data-numero="${esc(d.numero)}">
+      <td style="padding:6px 4px"><input type="checkbox" class="etq-marca" ${ok ? 'checked' : 'disabled'}></td>
+      <td style="padding:6px 4px;font-weight:700">${esc(d.numero)}</td>
+      <td style="padding:6px 4px">${esc(d.nome)}<div style="font-size:10px;color:var(--text-ter)">${esc(d.cidade)}/${esc(d.uf)} · ${d.pecas} peça${d.pecas > 1 ? 's' : ''} · ${(d.peso_g / 1000).toLocaleString('pt-BR')} kg</div></td>
+      <td style="padding:6px 4px;font-size:11px">${esc(d.metodo || '—')}<div style="color:var(--text-ter)">${fmtBRL(d.cobrado)}</div></td>
+      <td style="padding:6px 4px"><select class="etq-saco" style="font-size:12px;padding:3px">${sacoSel}</select></td>
+      <td style="padding:6px 4px"><select class="etq-servico" style="font-size:12px;padding:3px" title="${esc(etqExplicaAuto(d))}">${servSel}</select>
+        <div style="font-size:10px;color:var(--text-ter);max-width:170px">${esc(etqExplicaAuto(d))}</div></td>
+      <td style="padding:6px 4px;font-size:10px;color:#b91c1c">${!d.pago ? 'não pago' : d.enviado ? 'já enviado' : falta.length ? 'falta ' + falta.join(', ') : ''}</td>
+    </tr>`;
+  }).join('');
+  el.innerHTML = pend.length ? `<table style="width:100%;font-size:12px;min-width:640px"><thead><tr style="color:var(--text-ter);font-size:10px;text-transform:uppercase">
+      <th></th><th style="text-align:left;padding:4px">Pedido</th><th style="text-align:left;padding:4px">Cliente</th><th style="text-align:left;padding:4px">Frete da cliente</th>
+      <th style="text-align:left;padding:4px">Saco</th><th style="text-align:left;padding:4px">Serviço</th><th></th></tr></thead><tbody>${linhas}</tbody></table>`
+    : '<div style="padding:14px;color:var(--text-ter);font-size:12px">Nenhum pedido pronto sem etiqueta.</div>';
+  etqContar();
+  el.querySelectorAll('.etq-marca').forEach(c => c.addEventListener('change', etqContar));
+}
+function etqContar() {
+  const n = document.querySelectorAll('#etq-lista .etq-marca:checked').length;
+  const b = document.getElementById('etq-gerar');
+  b.textContent = n ? `Gerar ${n} etiqueta${n > 1 ? 's' : ''} no carrinho` : 'Gerar etiquetas';
+  b.disabled = !n;
+}
+
+async function etqGerar() {
+  const pedidos = [...document.querySelectorAll('#etq-lista tr[data-numero]')]
+    .filter(tr => tr.querySelector('.etq-marca:checked'))
+    .map(tr => ({ numero: tr.dataset.numero, saco: tr.querySelector('.etq-saco').value, servico: tr.querySelector('.etq-servico').value }));
+  if (!pedidos.length) return;
+  const res = loadLocal('vc:etiquetas-resultado') || {};
+  if (res.status === 'processando') { alert('O robô ainda está montando o lote anterior. Espere ele terminar.'); return; }
+  if (!confirm(`Montar ${pedidos.length} etiqueta${pedidos.length > 1 ? 's' : ''} no carrinho da Frenet?\n\nO robô não paga: depois confira o total no carrinho da Frenet, pague e imprima.`)) return;
+  const agora = new Date();
+  const lote = 'L' + agora.toISOString().replace(/\D/g, '').slice(0, 14);
+  await salvarNuvemREST('etiquetas-pedido', { lote, criado_em: agora.toISOString(), pedidos });
+  saveLocal('vc:etiquetas-pedido', { lote, criado_em: agora.toISOString(), pedidos });
+  document.querySelectorAll('#etq-lista .etq-marca:checked').forEach(c => { c.checked = false; c.disabled = true; });
+  etqContar();
+  etqRenderStatus(res);
+}
+
+function etqRenderStatus(res) {
+  const el = document.getElementById('etq-status');
+  if (!el) return;
+  const ped = loadLocal('vc:etiquetas-pedido') || {};
+  res = res || {};
+  const visto = res.robo_visto_em ? (Date.now() - new Date(res.robo_visto_em).getTime()) / 60000 : Infinity;
+  const robo = visto < 15 ? `<span style="color:#15803d">robô ligado</span>` : `<span style="color:#b91c1c">robô sem sinal${isFinite(visto) ? ' há ' + Math.round(visto) + ' min' : ''}: o notebook da Bárbara precisa estar ligado</span>`;
+  let corpo = '';
+  if (ped.lote && ped.lote !== res.lote) corpo = `Lote de ${ped.pedidos.length} pedido${ped.pedidos.length > 1 ? 's' : ''} enviado, esperando o robô pegar...`;
+  else if (res.lote) {
+    const st = { processando: 'montando no carrinho...', pronto: 'pronto', erro: 'parou com erro', frenet_deslogada: 'a Frenet deslogou no robô: a Bárbara precisa entrar de novo (atalho "Entrar na Frenet do robô")' }[res.status] || res.status;
+    const itens = (res.itens || []).map(i => `<div>${i.ok ? '✓' : '✗'} <b>${i.numero}</b> ${i.ok ? `${i.servico_nome || ''} ${fmtBRL(i.preco)}` : ''}${i.aviso ? ` <span style="color:#b45309">(${i.aviso})</span>` : ''}${i.erro ? ` <span style="color:#b91c1c">${i.erro}</span>` : ''}</div>`).join('');
+    corpo = `<b>Último lote:</b> ${st}${res.total ? ` · ${fmtBRL(res.total)} no carrinho` : ''}${res.msg ? `<div style="color:#b45309">${res.msg}</div>` : ''}<div style="margin-top:4px">${itens}</div>`
+      + (res.status === 'pronto' ? `<div style="margin-top:6px"><a href="https://painel.frenet.com.br/ShoppingCart/Index" target="_blank" rel="noopener" style="font-weight:700">Abrir o carrinho da Frenet para conferir e pagar</a></div>` : '');
+  }
+  el.innerHTML = `<div style="font-size:11px;margin-bottom:4px">${robo}</div><div style="font-size:12px">${corpo}</div>`;
+}
+
 // ─── CARD: TEMPO DE LIBERAÇÃO (dias úteis do pagamento ao envio) ─────────────
 // Pedido da Bárbara em 15/09/2026 ("é legal ir acompanhando esses dados"). A conta é
 // feita em /api/shopify-tempo-liberacao (GraphQL leve, ~800 pedidos de 90 dias); aqui só
@@ -8963,6 +9110,7 @@ function renderProntosParaEnvio() {
   }
 
   window._pedidosPendentes = pendentes;
+  window._prontosEnvio = prontos; // a janela GERAR ETIQUETAS parte desta mesma lista
   renderPedidosParados();
   renderPedidosGrandes(prontos, pendentes, GRANDE_MIN);
 

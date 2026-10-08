@@ -71,6 +71,27 @@
   </div>
 </div>
 
+<!-- Modal GERAR ETIQUETAS (08/10/2026): a Manu marca os prontos e o robô do notebook monta
+     no carrinho da Frenet. Ver "GERAR ETIQUETAS NA FRENET" no main.js. -->
+<div id="modal-etiquetas" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9999;align-items:center;justify-content:center;padding:16px">
+  <div style="background:var(--surface);border-radius:12px;max-width:860px;width:100%;max-height:90vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.3)">
+    <div style="padding:18px 22px 0">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px">
+        <i class="ti ti-tag" style="font-size:22px;color:#16a34a"></i>
+        <span style="font-weight:700;font-size:16px">Gerar etiquetas na Frenet</span>
+        <button onclick="etqFechar()" title="Fechar" style="margin-left:auto;background:none;border:none;cursor:pointer;font-size:20px;line-height:1;color:var(--text-ter);padding:4px 6px">&times;</button>
+      </div>
+      <p style="font-size:12px;color:var(--text-sec);margin:6px 0 12px">O robô monta as etiquetas no carrinho da Frenet com o saco e o serviço escolhidos, sem SOS e sem rastreio pago por WhatsApp. Ele não paga: confira o total no carrinho da Frenet, pague e imprima.</p>
+    </div>
+    <div id="etq-lista" style="padding:0 22px;overflow-x:auto"></div>
+    <div id="etq-status" style="margin:12px 22px 0;padding:10px 12px;background:var(--bg,#f6f6f6);border-radius:8px"></div>
+    <div style="padding:14px 22px;display:flex;gap:10px;justify-content:flex-end;border-top:1px solid var(--border);margin-top:12px">
+      <button onclick="etqFechar()" style="background:none;border:1px solid var(--border);border-radius:8px;padding:8px 18px;cursor:pointer;font-size:13px;color:var(--text-sec)">Fechar</button>
+      <button id="etq-gerar" onclick="etqGerar()" style="background:#16a34a;border:none;border-radius:8px;padding:8px 18px;cursor:pointer;font-size:13px;font-weight:600;color:#fff">Gerar etiquetas</button>
+    </div>
+  </div>
+</div>
+
 <!-- Modal: o molde que a modelista subiu na aba MODELAGEM, para o cortador imprimir ou
      baixar sem depender de alguém mandar no WhatsApp (ver "O MOLDE ATUALIZADO" no main.js) -->
 <div id="modal-molde" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9999;align-items:center;justify-content:center;padding:16px">
@@ -167,6 +188,7 @@
             <div class="card-title" style="color:#16a34a"><i class="ti ti-truck-delivery"></i> PRONTOS PARA ENVIO</div>
             <div style="display:flex;align-items:center;gap:10px">
               <span id="dash-prontos-total" style="font-size:11px;font-weight:700;color:#16a34a"></span>
+              <button class="btn-outline" style="font-size:10px;padding:4px 8px" onclick="etqAbrir()" title="Monta as etiquetas dos pedidos prontos no carrinho da Frenet (o robô não paga)"><i class="ti ti-tag"></i> gerar etiquetas</button>
               <button class="btn-outline" style="font-size:10px;padding:4px 8px" onclick="verificarEnvios()" title="Compara o estoque com os pedidos que saíram e mostra o que ainda não teve baixa"><i class="ti ti-checkup-list"></i> conferir envios</button>
             </div>
           </div>
@@ -1096,7 +1118,7 @@
   </div>
 </div>
 <script src="data.js?v=2026100701"></script>
-<script src="main.js?v=2026100802"></script>
+<script src="main.js?v=2026100803"></script>
 <script async src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js" onload="initSupabase()"></script>
 </body>
 </html>
