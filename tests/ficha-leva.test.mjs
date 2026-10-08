@@ -220,6 +220,11 @@ ok('não mexe no SIDEBAR_ESTRUTURA original',
 ok('a irmã continua em PILOTOS', movida.ehPiloto('vestido-sereia'), true);
 ok('grupo que não existe deixa a peça em PILOTOS em vez de sumir',
    comGrupos({ 'top-laco': 'x' }, { 'top-laco': 'NAO-EXISTE' }).noGrupoPilotos('top-laco'), true);
+ok('o grupo NOVA COLEÇÃO existe no data.js (destino do Aprovar piloto)',
+   ESTRUTURA.some(g => g.titulo === 'NOVA COLEÇÃO'), true);
+const novaCol = comGrupos({ bata: 'x' }, { bata: 'NOVA COLEÇÃO' }).estruturaEfetiva();
+ok('aprovada, a peça vai para NOVA COLEÇÃO',
+   novaCol.find(g => g.titulo === 'NOVA COLEÇÃO').modelos.includes('bata'), true);
 ok('linha antiga só com aprovados continua funcionando',
    comGrupos({ 'top-laco': 'x' }, undefined).noGrupoPilotos('top-laco'), true);
 

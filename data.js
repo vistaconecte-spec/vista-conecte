@@ -132,6 +132,10 @@ const SIDEBAR_ESTRUTURA = [
   // com peça de produção na hora de mandar corte/compra. Quando o piloto for aprovado,
   // a chave sai daqui e entra no grupo definitivo (VESTIDOS, SAIAS, TOPS...).
   {titulo:'PILOTOS',     modelos:['vestido-sereia','vestido-bolso','saia-longa-bolso-faca','mini-saia-envelope','top-basico','top-v','top-laco','blusa-basica','bata','blusa','blusa-amarracao-frontal','regata-amarracao-frontal','calca-ampla-amarracao-punho','calca-biker','short-biker','shorts']},
+  // Piloto aprovado pelo botão "Aprovar piloto" cai aqui (07/10/2026, pedido da Bárbara).
+  // Fica vazio no código: quem põe a peça aqui é a linha `pilotos-aprovados` (ver
+  // estruturaEfetiva no main.js). Para fixar de vez, mover a chave para cá ou para o grupo final.
+  {titulo:'NOVA COLEÇÃO', modelos:[]},
   {titulo:'MACACÕES',    modelos:['macacao-amplo','macacao-manga-longa']},
   {titulo:'MACAQUINHOS', modelos:['macaquinho-amplo','macaquinho-ruel']},
   {titulo:'VESTIDOS',    modelos:['vestido-frente-unica-longo','vestido-frente-unica-curto','vestido-amplo']},

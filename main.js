@@ -1429,9 +1429,11 @@ function renderConfeccao() {
       .filter(k => !busca || String(((loadLocal('vc:' + k) || {}).nome || MODELOS[k].nome)).toLowerCase().includes(busca))
       .map(k => `<div class="conf-card" onclick="selectModel(null,'${k}')">${modeloLabelHtml(k)}</div>`)
       .join('');
-    if (!cards) return '';
+    // NOVA COLEÇÃO aparece mesmo vazia: é o destino do "Aprovar piloto" e ela quer ver o lugar
+    if (!cards && !(grupo.titulo === PILOTO_GRUPO_APROVADO && !busca)) return '';
     return `<div class="card" style="margin-bottom:14px">
       <div class="card-title" style="margin-bottom:10px">${grupo.titulo}</div>
+      ${cards ? '' : '<div style="font-size:12px;color:var(--text-ter)">Nenhuma peça aprovada ainda. O botão "Aprovar piloto" traz a peça para cá.</div>'}
       <div class="conf-grid">${cards}</div>
     </div>`;
   }).join('');
@@ -9969,12 +9971,13 @@ async function urlToBase64(src) {
 // VESTIDOS/SAIAS/TOPS continua sendo tarefa de código, feita depois com calma; enquanto ela
 // não acontece, o card mostra APROVADA (e é de lá que se desfaz, se o clique foi errado).
 //
-// BOTÃO "APROVAR PILOTO" (07/10/2026, pedido da Bárbara): além de aprovar, ela escolhe o
-// grupo da coleção (VESTIDOS, TOPS...) e a peça muda de grupo na hora. O grupo escolhido
+// BOTÃO "APROVAR PILOTO" (07/10/2026, pedido da Bárbara): além de aprovar, a peça muda de
+// grupo na hora e vai para NOVA COLEÇÃO (PILOTO_GRUPO_APROVADO). O grupo
 // fica na mesma linha (`grupos`) e `estruturaEfetiva` aplica por cima do data.js: a chave
 // sai de PILOTOS e entra no grupo escolhido em todo aparelho, sem commit. A chave do modelo
 // não muda, então pedidos, estoque, levas e preços continuam ligados a ela.
-const PILOTO_KEY = 'pilotos-aprovados';   // { aprovados: { 'vestido-sereia': '2026-08-29T…' }, grupos: { 'vestido-sereia': 'VESTIDOS' } }
+const PILOTO_KEY = 'pilotos-aprovados';
+const PILOTO_GRUPO_APROVADO = 'NOVA COLEÇÃO';   // { aprovados: { 'vestido-sereia': '2026-08-29T…' }, grupos: { 'vestido-sereia': 'VESTIDOS' } }
 
 function noGrupoPilotos(key) {
   const g = estruturaEfetiva().find(x => x.titulo === 'PILOTOS');
@@ -10053,20 +10056,6 @@ function redesenharDepoisDoPiloto(key) {
   if (modeloAtual === key) atualizarBtnPiloto(key);
 }
 
-// Grupo sugerido pelo nome; ela confirma ou troca na lista.
-function grupoSugeridoPiloto(nome) {
-  const n = chaveCor(nome);
-  if (/^macacao/.test(n)) return 'MACACÕES';
-  if (/^macaquinho/.test(n)) return 'MACAQUINHOS';
-  if (/^vestido|^bata/.test(n)) return 'VESTIDOS';
-  if (/saia/.test(n)) return 'SAIAS';
-  if (/^calca|^short|^bermuda/.test(n)) return 'CALÇAS';
-  if (/^casaco|sherpa/.test(n)) return 'CASACOS';
-  if (/^conjunto/.test(n)) return 'CONJUNTOS';
-  if (/^top|^blusa|^regata|^cropped|^camiseta/.test(n)) return 'TOPS';
-  return '';
-}
-
 // O que falta no cadastro para a peça entrar na conta da produção/compra. Não trava a
 // aprovação (ela aprova na prova, o resto vem depois), mas fica escrito na janela.
 function faltasPiloto(key) {
@@ -10083,9 +10072,6 @@ function faltasPiloto(key) {
 function abrirAprovarPiloto(key) {
   if (!MODELOS[key]) return;
   const nome = (loadLocal('vc:' + key) || {}).nome || MODELOS[key].nome;
-  const grupos = (typeof SIDEBAR_ESTRUTURA === 'undefined' ? [] : SIDEBAR_ESTRUTURA)
-    .map(g => g.titulo).filter(t => t !== 'PILOTOS');
-  const sug = grupoSugeridoPiloto(nome);
   const faltas = faltasPiloto(key);
   document.getElementById('modal-piloto')?.remove();
   const m = document.createElement('div');
@@ -10097,26 +10083,19 @@ function abrirAprovarPiloto(key) {
       <div style="display:flex;align-items:center;gap:8px;font-weight:700;font-size:16px;margin-bottom:10px">
         <i class="ti ti-checks" style="color:#16a34a;font-size:20px"></i> Aprovar piloto
       </div>
-      <div style="font-size:14px;margin-bottom:12px"><b>${moldeEsc(nome)}</b> sai de PILOTOS e entra na coleção. A ficha para de sair carimbada como PILOTO e a aba CORTE passa a tratar a peça como produção.</div>
-      <label style="font-size:12px;color:var(--text-sec);font-weight:600">Grupo da coleção
-        <select id="piloto-grupo" style="display:block;width:100%;margin-top:4px;padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-size:14px;background:var(--surface);color:var(--text)">
-          <option value="">Escolha o grupo...</option>
-          ${grupos.map(g => `<option value="${moldeEsc(g)}"${g === sug ? ' selected' : ''}>${moldeEsc(g)}</option>`).join('')}
-        </select>
-      </label>
+      <div style="font-size:14px;margin-bottom:4px"><b>${moldeEsc(nome)}</b> sai de PILOTOS e vai para <b>${PILOTO_GRUPO_APROVADO}</b>. A ficha para de sair carimbada como PILOTO e a aba CORTE passa a tratar a peça como produção.</div>
       ${faltas.length ? `<div style="margin-top:12px;font-size:12px;background:rgba(180,83,9,0.10);color:#b45309;border-radius:6px;padding:8px 10px">
         Ainda falta preencher no modelo: <b>${faltas.map(moldeEsc).join(', ')}</b>. Dá para aprovar agora e completar depois.</div>` : ''}
       <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:16px">
         <button class="btn-outline" onclick="document.getElementById('modal-piloto').remove()">Cancelar</button>
-        <button class="btn-primary" id="piloto-confirmar" onclick="confirmarAprovarPiloto('${key}')"><i class="ti ti-checks"></i> Aprovar e mover</button>
+        <button class="btn-primary" id="piloto-confirmar" onclick="confirmarAprovarPiloto('${key}')"><i class="ti ti-checks"></i> Aprovar</button>
       </div>
     </div>`;
   document.body.appendChild(m);
 }
 
 async function confirmarAprovarPiloto(key) {
-  const grupo = (document.getElementById('piloto-grupo') || {}).value || '';
-  if (!grupo) { alert('Escolha o grupo da coleção.'); return; }
+  const grupo = PILOTO_GRUPO_APROVADO;
   const btn = document.getElementById('piloto-confirmar');
   if (btn) { btn.disabled = true; btn.style.opacity = '0.6'; }
   const ok = await gravarAprovacaoPiloto(key, true, grupo);
@@ -10139,7 +10118,7 @@ function atualizarBtnPiloto(key) {
   b.innerHTML = movido
     ? '<i class="ti ti-arrow-back-up"></i><span class="btn-label"> Voltar p/ piloto</span>'
     : '<i class="ti ti-checks"></i><span class="btn-label"> Aprovar piloto</span>';
-  b.title = movido ? `Aprovado e movido para ${grupoAprovadoDe(key)}. Clique para voltar a ser piloto.` : 'Aprovar a peça e mandar para um grupo da coleção';
+  b.title = movido ? `Aprovado e movido para ${grupoAprovadoDe(key)}. Clique para voltar a ser piloto.` : `Aprovar a peça e mandar para ${PILOTO_GRUPO_APROVADO}`;
   b.style.color = movido ? '' : '#16a34a';
   b.style.borderColor = movido ? '' : '#16a34a';
   b.onclick = () => movido ? desfazerAprovacaoPiloto(key) : abrirAprovarPiloto(key);
