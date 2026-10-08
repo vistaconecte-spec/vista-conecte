@@ -12218,6 +12218,86 @@ function mdlRenderAlertaMedidas() {
     </div>`;
 }
 
+// Lista da MODELAGEM separada por CATEGORIA, cada uma com seta para abrir/fechar
+// (07/10/2026, pedido da Bárbara: com ~50 pastas a grade virou uma parede). Categoria
+// escrita de jeitos diferentes no cadastro ("Vestido" e "Vestidos", "macaquinho") cai no
+// mesmo grupo: a chave ignora caixa, acento e o "s" do plural. Começa tudo fechado; a
+// busca abre sozinha as categorias que têm resultado. Quais estão abertas fica só neste
+// navegador (localStorage), é conveniência de quem está olhando.
+//
+// PILOTO À PARTE (mesmo dia): quem ainda está em pilotagem vai para o grupo "Em piloto", no
+// topo. Quem decide é a CONFECÇÃO (ehPiloto: grupo PILOTOS e não aprovado), não a categoria
+// digitada na MODELAGEM, porque aprovar pelo botão "Aprovar piloto" não mexe na categoria
+// daqui. O projeto é ligado ao modelo pelo vínculo salvo ou pelo nome (moldeAuto, o mesmo
+// do botão Molde). Projeto sem modelo ligado usa a categoria "Pilotos" como antes.
+// Aprovado e ainda com categoria "Pilotos", ele aparece no grupo da coleção para onde foi.
+const MDL_CAT_ABERTAS_KEY = 'mdl-cat-abertas';
+const MDL_PILOTO_CHAVE = '!piloto';
+const mdlCatChave = c => chaveCor(c || '').replace(/s$/, '') || '~';
+
+// projectId → chave do modelo na CONFECÇÃO
+function mdlModeloDosProjetos(projetos) {
+  const mapa = {};
+  const vinc = moldeVinculos();
+  // Conjuntos por último: "Calça Básica Moletom" tem que ligar na calça, não no conjunto que a contém
+  const chaves = Object.keys(MODELOS).sort((a, b) => a.startsWith('conjunto-') - b.startsWith('conjunto-'));
+  chaves.forEach(key => {
+    const nome = (loadLocal('vc:' + key) || {}).nome || MODELOS[key].nome;
+    const pr = vinc[key]
+      ? projetos.find(m => String(m.id) === String(vinc[key]))
+      : moldeAuto(nome, projetos);
+    if (pr && !mapa[pr.id]) mapa[pr.id] = key;
+  });
+  return mapa;
+}
+
+// Grupo da lista: '!piloto' para quem está em pilotagem; senão a categoria do projeto.
+function mdlGrupoDoProjeto(p, modeloDe) {
+  const key = modeloDe[p.id];
+  const catPiloto = mdlCatChave(p.category) === 'piloto';
+  if (key ? ehPiloto(key) : catPiloto) return { chave: MDL_PILOTO_CHAVE, nome: 'Em piloto' };
+  // Categoria "Pilotos" de quem já foi aprovado, ou categoria em branco: usa o grupo da CONFECÇÃO
+  if ((catPiloto || !(p.category || '').trim()) && key) {
+    const g = estruturaEfetiva().find(x => x.titulo !== 'PILOTOS' && x.modelos.includes(key));
+    if (g) {
+      const nome = g.titulo.charAt(0) + g.titulo.slice(1).toLowerCase();
+      return { chave: mdlCatChave(nome), nome };
+    }
+  }
+  return { chave: mdlCatChave(p.category), nome: (p.category || '').trim() || 'Sem categoria' };
+}
+function mdlCatAbertas() {
+  try { return JSON.parse(localStorage.getItem(MDL_CAT_ABERTAS_KEY) || '{}') || {}; } catch (_) { return {}; }
+}
+function mdlAlternarCategoria(chave) {
+  const ab = mdlCatAbertas();
+  if (ab[chave]) delete ab[chave]; else ab[chave] = 1;
+  try { localStorage.setItem(MDL_CAT_ABERTAS_KEY, JSON.stringify(ab)); } catch (_) {}
+  mdlRenderLista();
+}
+
+function mdlCardHtml(p) {
+  const thumb = p.croquiKey
+    ? `<img src="/api/modelagem-storage?key=${encodeURIComponent(p.croquiKey)}" style="width:100%;height:100%;object-fit:contain" loading="lazy">`
+    : `<i class="ti ti-folder" style="font-size:38px;color:var(--gold)"></i>`;
+  const audacesIcon = p.temAudaces ? ' · <i class="ti ti-file-check" style="color:#16a34a"></i>' : '';
+  const totalPendencias = (p.alteracoesPendentes || 0); // grade destaca só alterações/ajustes no projeto
+  const faixaPendencia = totalPendencias > 0
+    ? `<div style="background:#dc2626;color:#fff;font-size:8px;font-weight:700;letter-spacing:0.03em;text-align:center;padding:2px 6px"><i class="ti ti-alert-triangle"></i> ${totalPendencias} PENDÊNCIA${totalPendencias > 1 ? 'S' : ''}</div>`
+    : '';
+  return `
+    <div class="card" style="padding:0;cursor:pointer;overflow:hidden" onclick="mdlAbrirDetalhe(${p.id})">
+      ${faixaPendencia}
+      <div style="position:relative;aspect-ratio:4/5;background:${p.croquiKey ? '#fff' : '#f5f0e8'};display:flex;align-items:center;justify-content:center">
+        ${thumb}
+      </div>
+      <div style="padding:10px 12px">
+        <div style="font-weight:600;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${p.title}</div>
+        <div style="font-size:11px;color:var(--text-ter);margin-top:2px">${p.category || '—'}${audacesIcon}</div>
+      </div>
+    </div>`;
+}
+
 function mdlRenderLista() {
   mdlRenderTotalModelista();
   mdlRenderAlertaMedidas();
@@ -12231,25 +12311,43 @@ function mdlRenderLista() {
     grid.innerHTML = '<div style="color:var(--text-ter);font-size:13px;padding:20px">Nenhum modelo encontrado.</div>';
     return;
   }
-  grid.innerHTML = lista.map(p => {
-    const thumb = p.croquiKey
-      ? `<img src="/api/modelagem-storage?key=${encodeURIComponent(p.croquiKey)}" style="width:100%;height:100%;object-fit:contain" loading="lazy">`
-      : `<i class="ti ti-folder" style="font-size:38px;color:var(--gold)"></i>`;
-    const audacesIcon = p.temAudaces ? ' · <i class="ti ti-file-check" style="color:#16a34a"></i>' : '';
-    const totalPendencias = (p.alteracoesPendentes || 0); // grade destaca só alterações/ajustes no projeto
-    const faixaPendencia = totalPendencias > 0
-      ? `<div style="background:#dc2626;color:#fff;font-size:8px;font-weight:700;letter-spacing:0.03em;text-align:center;padding:2px 6px"><i class="ti ti-alert-triangle"></i> ${totalPendencias} PENDÊNCIA${totalPendencias > 1 ? 'S' : ''}</div>`
-      : '';
+  // Agrupa; o nome exibido é o da grafia mais usada no grupo (empate: a com maiúscula)
+  const grupos = new Map();
+  const modeloDe = mdlModeloDosProjetos(mdlProjetos);
+  lista.forEach(p => {
+    const { chave: k, nome } = mdlGrupoDoProjeto(p, modeloDe);
+    if (!grupos.has(k)) grupos.set(k, { chave: k, itens: [], nomes: {} });
+    const g = grupos.get(k);
+    g.itens.push(p);
+    g.nomes[nome] = (g.nomes[nome] || 0) + 1;
+  });
+  const nomeDe = g => {
+    const n = Object.entries(g.nomes)
+      .sort((a, b) => b[1] - a[1] || (a[0][0] === a[0][0].toUpperCase() ? -1 : 1))[0][0];
+    return n.charAt(0).toUpperCase() + n.slice(1);
+  };
+  // Em piloto no topo, Sem categoria no fim, o resto em ordem alfabética
+  const peso = g => g.chave === MDL_PILOTO_CHAVE ? -1 : g.chave === '~' ? 1 : 0;
+  const ordem = [...grupos.values()].sort((a, b) =>
+    peso(a) - peso(b) || nomeDe(a).localeCompare(nomeDe(b), 'pt-BR'));
+  const abertas = mdlCatAbertas();
+  grid.innerHTML = ordem.map(g => {
+    const nome = nomeDe(g);
+    const aberta = !!busca || !!abertas[g.chave];
+    const pend = g.itens.reduce((t, p) => t + nPend(p), 0);
+    const chaveJs = g.chave.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '&quot;');
+    const piloto = g.chave === MDL_PILOTO_CHAVE;
     return `
-      <div class="card" style="padding:0;cursor:pointer;overflow:hidden" onclick="mdlAbrirDetalhe(${p.id})">
-        ${faixaPendencia}
-        <div style="position:relative;aspect-ratio:4/5;background:${p.croquiKey ? '#fff' : '#f5f0e8'};display:flex;align-items:center;justify-content:center">
-          ${thumb}
+      <div style="margin-bottom:10px${piloto ? ';padding-bottom:10px;border-bottom:2px dashed var(--border)' : ''}">
+        <div onclick="mdlAlternarCategoria('${chaveJs}')" style="display:flex;align-items:center;gap:10px;cursor:pointer;user-select:none;padding:10px 14px;background:${piloto ? 'rgba(180,83,9,0.08)' : 'var(--surface)'};border:1px solid ${piloto ? '#b45309' : 'var(--border)'};border-radius:10px">
+          <i class="ti ti-chevron-${aberta ? 'down' : 'right'}" style="font-size:18px;color:${piloto ? '#b45309' : 'var(--gold-dark)'}"></i>
+          <span style="font-weight:700;font-size:14px${piloto ? ';color:#b45309' : ''}">${piloto ? '<i class="ti ti-flask"></i> ' : ''}${moldeEsc(nome)}</span>
+          <span style="font-size:12px;color:var(--text-ter)">${g.itens.length} ${g.itens.length === 1 ? 'modelo' : 'modelos'}</span>
+          ${pend ? `<span style="margin-left:auto;background:#dc2626;color:#fff;font-size:10px;font-weight:700;border-radius:4px;padding:2px 7px"><i class="ti ti-alert-triangle"></i> ${pend} PENDÊNCIA${pend > 1 ? 'S' : ''}</span>` : ''}
         </div>
-        <div style="padding:10px 12px">
-          <div style="font-weight:600;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${p.title}</div>
-          <div style="font-size:11px;color:var(--text-ter);margin-top:2px">${p.category || '—'}${audacesIcon}</div>
-        </div>
+        ${aberta ? `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:14px;margin:12px 0 16px">
+          ${g.itens.map(mdlCardHtml).join('')}
+        </div>` : ''}
       </div>`;
   }).join('');
 }
