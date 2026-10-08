@@ -12347,10 +12347,12 @@ function mdlRenderLista() {
       .sort((a, b) => b[1] - a[1] || (a[0][0] === a[0][0].toUpperCase() ? -1 : 1))[0][0];
     return n.charAt(0).toUpperCase() + n.slice(1);
   };
+  // Categoria com pendência primeiro (pedido da Bárbara, 07/10/2026); dentro de cada bloco,
   // Em piloto no topo, Sem categoria no fim, o resto em ordem alfabética
+  const temPend = g => g.itens.some(p => nPend(p) > 0) ? 0 : 1;
   const peso = g => g.chave === MDL_PILOTO_CHAVE ? -1 : g.chave === '~' ? 1 : 0;
   const ordem = [...grupos.values()].sort((a, b) =>
-    peso(a) - peso(b) || nomeDe(a).localeCompare(nomeDe(b), 'pt-BR'));
+    temPend(a) - temPend(b) || peso(a) - peso(b) || nomeDe(a).localeCompare(nomeDe(b), 'pt-BR'));
   const abertas = mdlCatAbertas();
   grid.innerHTML = ordem.map(g => {
     const nome = nomeDe(g);
