@@ -1435,5 +1435,5 @@ thead tr th:last-child { border-top-right-radius: 10px; border-bottom-right-radi
   font-size: 14px; font-weight: 700; letter-spacing: .05em; color: var(--text);
   border-left: 3px solid var(--gold-dark); padding-left: 9px; margin-bottom: 12px; line-height: 1.2;
 }
-/* Sombra leve em volta do card de cada grupo, para separar um grupo do outro */
-.conf-grupo-card { box-shadow: 0 2px 12px rgba(30,30,60,0.10), 0 0 0 1px rgba(30,30,60,0.05); }
+/* Sombra em volta do card de cada grupo, para separar um grupo do outro (forte, 08/10/2026) */
+.conf-grupo-card { box-shadow: 0 6px 22px rgba(30,30,60,0.22), 0 0 0 1px rgba(30,30,60,0.08); }
