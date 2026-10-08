@@ -40,7 +40,7 @@ export async function onRequest(context) {
   const creativeFields = [
     'id', 'name', 'object_type', 'url_tags', 'template_url',
     'object_story_spec', 'asset_feed_spec',
-    'body', 'title', 'effective_object_story_id',
+    'body', 'title', 'effective_object_story_id', 'thumbnail_url',
   ].join(',');
   const fields = [
     'name', 'effective_status', 'created_time', 'updated_time', 'adset{name}', 'campaign{name}',
@@ -131,6 +131,9 @@ export async function onRequest(context) {
           url_tags: (ad.creative || {}).url_tags || null,
           links: extrairLinks(ad.creative),
           textos: leve ? undefined : extrairTextos(ad.creative),
+          // Miniatura do vídeo/imagem, pra saber qual peça o anúncio mostra sem abrir o Gerenciador.
+          miniatura: leve ? undefined : ((ad.creative || {}).thumbnail_url
+            || (((ad.creative || {}).object_story_spec || {}).video_data || {}).image_url || null),
         });
       }
       api = (data.paging || {}).next || null;
