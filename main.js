@@ -12192,32 +12192,6 @@ function mdlRenderTotalModelista() {
     </div>`;
 }
 
-// Aviso no topo da aba: modelo sem medida preenchida é produto sem tabela de medidas
-// na loja, e isso só aparece quando a cliente reclama do tamanho. Some sozinho quando
-// todos estão preenchidos.
-function mdlRenderAlertaMedidas() {
-  const el = document.getElementById('mdl-alerta-medidas');
-  if (!el) return;
-  const sem = (mdlProjetos || []).filter(p => p.semMedidas);
-  if (!sem.length) { el.style.display = 'none'; el.innerHTML = ''; return; }
-  const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c]));
-  el.style.display = '';
-  el.innerHTML = `
-    <div class="card" style="border-left:3px solid #b45309">
-      <div class="card-header">
-        <div class="card-title" style="color:#b45309"><i class="ti ti-ruler-measure"></i> MODELOS SEM MEDIDAS</div>
-        <span style="font-size:11px;font-weight:700;color:var(--text-sec)">${sem.length} de ${(mdlProjetos || []).length}</span>
-      </div>
-      <div style="font-size:11px;color:var(--text-sec);margin-bottom:8px">
-        Sem a tabela de MEDIDAS DA PEÇA preenchida não dá para publicar a tabela de medidas
-        na descrição do produto na loja. Clique no modelo para preencher.
-      </div>
-      <div style="display:flex;flex-wrap:wrap;gap:6px">
-        ${sem.map(p => `<button class="btn-outline" style="font-size:11px;padding:5px 10px" onclick="mdlAbrirDetalhe(${p.id})">${esc(p.title || '(sem nome)')}</button>`).join('')}
-      </div>
-    </div>`;
-}
-
 // Lista da MODELAGEM separada por CATEGORIA, cada uma com seta para abrir/fechar
 // (07/10/2026, pedido da Bárbara: com ~50 pastas a grade virou uma parede). Categoria
 // escrita de jeitos diferentes no cadastro ("Vestido" e "Vestidos", "macaquinho") cai no
@@ -12300,7 +12274,8 @@ function mdlCardHtml(p) {
 
 function mdlRenderLista() {
   mdlRenderTotalModelista();
-  mdlRenderAlertaMedidas();
+  // O card MODELOS SEM MEDIDAS saiu a pedido da Bárbara (07/10/2026). O semMedidas da
+  // API continua valendo para o resumo do que falta antes de publicar o produto.
   const grid = document.getElementById('mdl-grid');
   const busca = (document.getElementById('mdl-busca').value || '').toLowerCase().trim();
   const nPend = p => (p.alteracoesPendentes || 0); // grade destaca só alterações/ajustes no projeto (consumo e pendências antigas não contam)

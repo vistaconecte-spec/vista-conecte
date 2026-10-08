@@ -112,7 +112,7 @@ ok('lê o body_html atual antes de gravar', /fields=id,title,body_html/.test(api
 ok('a tela pede confirmação antes do apply', /confirm\('Vai gravar a tabela de medidas/.test(main), true);
 ok('a prévia roda sem apply', main.indexOf("fetch('/api/shopify-medidas', {") < main.indexOf("fetch('/api/shopify-medidas?apply=1'"), true);
 
-console.log('\n8) Modelo sem medidas aparece como alerta na aba MODELAGEM');
+console.log('\n8) A API sabe quem está sem medidas (o card do topo saiu em 07/10/2026)');
 ok('a lista traz a coluna medidas do banco', /select=id,title,category,status,createdAt,valorAjuste,medidas/.test(api), true);
 ok('e devolve semMedidas por projeto', /semMedidas: !temMedidas\(p\.medidas\)/.test(api), true);
 const temMedidas = new Function(
@@ -124,11 +124,10 @@ ok('só observação preenchida não conta', temMedidas(JSON.stringify({ __obs: 
 ok('linha salva sem valor não conta', temMedidas(JSON.stringify({ Busto: {} })), false);
 ok('linha só com espaço não conta', temMedidas(JSON.stringify({ Busto: { PP: '   ' } })), false);
 ok('uma medida preenchida basta', temMedidas(JSON.stringify({ Busto: { PP: '88' } })), true);
-ok('o card do alerta existe na tela', /id="mdl-alerta-medidas"/.test(idx), true);
-// O aviso mora só no card do topo: a faixa no cartão da grade foi retirada a pedido.
+// Pedido da Bárbara (07/10/2026): o card MODELOS SEM MEDIDAS do topo saiu da aba.
+ok('o card do alerta saiu da tela', /id="mdl-alerta-medidas"/.test(idx), false);
+ok('e a lista não tenta mais desenhá-lo', /mdlRenderAlertaMedidas/.test(main), false);
 ok('a grade NÃO carimba faixa no cartão do modelo', /faixaSemMedidas/.test(main), false);
-ok('o aviso continua no card do topo', /MODELOS SEM MEDIDAS/.test(main), true);
-ok('o alerta é redesenhado junto com a lista', /mdlRenderLista\(\) \{\n  mdlRenderTotalModelista\(\);\n  mdlRenderAlertaMedidas\(\);/.test(main), true);
 
 console.log('\n9) O vínculo modelo → produto aguenta os dois links do mesmo modelo');
 ok('o vínculo é uma lista de produtos', /vinculos\[String\(id\)\] = lista/.test(main), true);
