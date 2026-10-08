@@ -104,7 +104,8 @@ export async function onRequest(context) {
     if (desdeTs) filtros.push({ field: 'ad.created_time', operator: 'GREATER_THAN', value: Math.floor(desdeTs / 1000) });
     if (ateTs) filtros.push({ field: 'ad.created_time', operator: 'LESS_THAN', value: Math.floor(ateTs / 1000) });
     const filtering = filtros.length ? `&filtering=${encodeURIComponent(JSON.stringify(filtros))}` : '';
-    let api = `https://graph.facebook.com/${API_VERSION}/${conta}/ads?fields=${encodeURIComponent(fields)}&limit=100${filtering}&access_token=${encodeURIComponent(token)}`;
+    const tamMini = leve ? '' : '&thumbnail_width=480&thumbnail_height=480';
+    let api = `https://graph.facebook.com/${API_VERSION}/${conta}/ads?fields=${encodeURIComponent(fields)}&limit=100${filtering}${tamMini}&access_token=${encodeURIComponent(token)}`;
     let guard = 0;
     while (api && guard < 20) {
       guard++;
@@ -133,7 +134,9 @@ export async function onRequest(context) {
           textos: leve ? undefined : extrairTextos(ad.creative),
           // Miniatura do vídeo/imagem, pra saber qual peça o anúncio mostra sem abrir o Gerenciador.
           miniatura: leve ? undefined : ((ad.creative || {}).thumbnail_url
-            || (((ad.creative || {}).object_story_spec || {}).video_data || {}).image_url || null),
+            || (((ad.creative || {}).object_story_spec || {}).video_data || {}).image_url
+            || ((((ad.creative || {}).asset_feed_spec || {}).videos || [])[0] || {}).thumbnail_url
+            || ((((ad.creative || {}).asset_feed_spec || {}).images || [])[0] || {}).url || null),
         });
       }
       api = (data.paging || {}).next || null;
