@@ -12419,10 +12419,41 @@ function mdlAmpliarImagem(src) {
   document.body.appendChild(ov);
 }
 
+// Etapa do modelo na CONFECÇÃO, no topo do detalhe da MODELAGEM (07/10/2026, pedido da
+// Bárbara): abrindo a pasta do piloto, ela vê na hora se a peça está comprando tecido, no
+// corte ou na costura, sem trocar de aba. O projeto é ligado ao modelo do mesmo jeito que
+// a lista (vínculo salvo ou nome). Projeto sem modelo ligado não mostra nada.
+const MDL_ETAPA_COR = {
+  'Comprando tecido': ['var(--gold-dark)', 'rgba(196,168,130,0.20)'],
+  'Em corte':         ['#7C3AED', 'rgba(124,58,237,0.12)'],
+  'Em costura':       ['#0891b2', 'rgba(8,145,178,0.12)'],
+};
+function mdlEtapaHtml(projeto) {
+  const lista = (mdlProjetos && mdlProjetos.length) ? mdlProjetos : [projeto];
+  const key = mdlModeloDosProjetos(lista)[projeto.id];
+  if (!key) return '';
+  const saved = loadLocal('vc:' + key) || {};
+  const pill = (txt, cor, bg) => `<span style="font-size:12px;font-weight:700;letter-spacing:.03em;background:${bg};color:${cor};border-radius:6px;padding:4px 10px;white-space:nowrap">${txt}</span>`;
+  const etapa = (status, at, prefixo) => {
+    const [cor, bg] = MDL_ETAPA_COR[status] || ['var(--text-sec)', 'rgba(0,0,0,0.05)'];
+    const dias = at ? Math.floor((Date.now() - new Date(at).getTime()) / 86400000) : null;
+    const ha = dias === null ? '' : dias <= 0 ? ' · desde hoje' : ` · há ${dias} ${dias === 1 ? 'dia' : 'dias'}`;
+    return pill(`${prefixo}${moldeEsc(status.toUpperCase())}${ha}`, cor, bg);
+  };
+  const partes = [];
+  if (ehPiloto(key)) partes.push(pill('PILOTO', '#b45309', 'rgba(180,83,9,0.12)'));
+  if (saved.status) partes.push(etapa(saved.status, saved.status_at, ''));
+  if (saved.status2) partes.push(etapa(saved.status2, saved.status2_at, '2ª LEVA: '));
+  if (!saved.status && !saved.status2) partes.push(pill('SEM ETAPA NA PRODUÇÃO', 'var(--text-ter)', 'rgba(0,0,0,0.05)'));
+  return partes.join('');
+}
+
 function mdlRenderDetalhe() {
   const d = mdlProjetoAtual;
   if (!d) return;
   document.getElementById('mdl-det-titulo').textContent = d.projeto.title;
+  const etapaEl = document.getElementById('mdl-det-etapa');
+  if (etapaEl) etapaEl.innerHTML = mdlEtapaHtml(d.projeto);
 
   const btnRemoverImg = (tipo, fileId) => `
     <button onclick="mdlRemoverArquivo(${d.projeto.id},'${tipo}',${fileId})" title="Remover" style="position:absolute;top:3px;right:3px;width:15px;height:15px;border:none;border-radius:50%;background:rgba(0,0,0,0.55);color:#fff;font-size:9px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0"><i class="ti ti-x"></i></button>`;
