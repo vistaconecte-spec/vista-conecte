@@ -8829,7 +8829,7 @@ function etqContar() {
     todos.indeterminate = n > 0 && n < livres;
   }
   const b = document.getElementById('etq-gerar');
-  b.textContent = n ? `Gerar ${n} etiqueta${n > 1 ? 's' : ''} no carrinho` : 'Gerar etiquetas';
+  b.textContent = n ? `Gerar ${n} etiqueta${n > 1 ? 's' : ''}` : 'Gerar etiquetas';
   b.disabled = !n;
 }
 
@@ -8840,7 +8840,7 @@ async function etqGerar() {
   if (!pedidos.length) return;
   const res = loadLocal('vc:etiquetas-resultado') || {};
   if (res.status === 'processando') { alert('O robô ainda está montando o lote anterior. Espere ele terminar.'); return; }
-  if (!confirm(`Montar ${pedidos.length} etiqueta${pedidos.length > 1 ? 's' : ''} no carrinho da Frenet?\n\nO robô não paga: depois confira o total no carrinho da Frenet, pague e imprima.`)) return;
+  if (!confirm(`Gerar ${pedidos.length} etiqueta${pedidos.length > 1 ? 's' : ''} na Frenet?\n\nO robô não paga: depois confira na tela Etiquetas da Frenet ("Aguardando pagamento"), pague e imprima.`)) return;
   const agora = new Date();
   const lote = 'L' + agora.toISOString().replace(/\D/g, '').slice(0, 14);
   await salvarNuvemREST('etiquetas-pedido', { lote, criado_em: agora.toISOString(), pedidos });
@@ -8860,10 +8860,12 @@ function etqRenderStatus(res) {
   let corpo = '';
   if (ped.lote && ped.lote !== res.lote) corpo = `Lote de ${ped.pedidos.length} pedido${ped.pedidos.length > 1 ? 's' : ''} enviado, esperando o robô pegar...`;
   else if (res.lote) {
-    const st = { processando: 'montando no carrinho...', pronto: 'pronto', erro: 'parou com erro', frenet_deslogada: 'a Frenet deslogou no robô: a Bárbara precisa entrar de novo (atalho "Entrar na Frenet do robô")' }[res.status] || res.status;
+    const st = { processando: 'criando as etiquetas...', pronto: 'pronto', erro: 'parou com erro', frenet_deslogada: 'a Frenet deslogou no robô: a Bárbara precisa entrar de novo (atalho "Entrar na Frenet do robô")' }[res.status] || res.status;
     const itens = (res.itens || []).map(i => `<div>${i.ok ? '✓' : '✗'} <b>${i.numero}</b> ${i.ok ? `${i.servico_nome || ''} ${fmtBRL(i.preco)}` : ''}${i.aviso ? ` <span style="color:#b45309">(${i.aviso})</span>` : ''}${i.erro ? ` <span style="color:#b91c1c">${i.erro}</span>` : ''}</div>`).join('');
-    corpo = `<b>Último lote:</b> ${st}${res.total ? ` · ${fmtBRL(res.total)} no carrinho` : ''}${res.msg ? `<div style="color:#b45309">${res.msg}</div>` : ''}<div style="margin-top:4px">${itens}</div>`
-      + (res.status === 'pronto' ? `<div style="margin-top:6px"><a href="https://painel.frenet.com.br/ShoppingCart/Index" target="_blank" rel="noopener" style="font-weight:700">Abrir o carrinho da Frenet para conferir e pagar</a></div>` : '');
+    corpo = `<b>Último lote:</b> ${st}${res.total ? ` · ${fmtBRL(res.total)} esperando pagamento` : ''}${res.msg ? `<div style="color:#b45309">${res.msg}</div>` : ''}<div style="margin-top:4px">${itens}</div>`
+      // As etiquetas nascem em "Aguardando pagamento" na tela Etiquetas, não no carrinho: o passo do
+      // carrinho dá erro 500 na Frenet mas a etiqueta é criada mesmo assim (#8943 e #9075, 08/10/2026).
+      + (res.status === 'pronto' ? `<div style="margin-top:6px"><a href="https://painel.frenet.com.br/Order/LabelCart" target="_blank" rel="noopener" style="font-weight:700">Abrir as etiquetas na Frenet para conferir e pagar</a></div>` : '');
   }
   el.innerHTML = `<div style="font-size:11px;margin-bottom:4px">${robo}</div><div style="font-size:12px">${corpo}</div>`;
 }
