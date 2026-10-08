@@ -74,6 +74,7 @@ console.log('\n4) Janela no painel');
   ok('a lista parte dos prontos do painel', /window\._prontosEnvio = prontos;/.test(main), true);
   ok('a fila no Supabase leva só número, saco e serviço (sem CPF/endereço)', /\.map\(tr => \(\{ numero: tr\.dataset\.numero, saco: tr\.querySelector\('\.etq-saco'\)\.value, servico: tr\.querySelector\('\.etq-servico'\)\.value \}\)\)/.test(main)
     && /salvarNuvemREST\('etiquetas-pedido', \{ lote, criado_em: agora\.toISOString\(\), pedidos \}\)/.test(main), true);
+  ok('caixa no topo marca/desmarca todos os pedidos liberados', /id="etq-todos"/.test(main) && main.includes("querySelectorAll('.etq-marca:not(:disabled)').forEach(c => { c.checked = todos.checked; })"), true);
   ok('não manda lote novo enquanto o robô monta o anterior', /if \(res\.status === 'processando'\)/.test(main), true);
   ok('a tela avisa que o robô não paga', /O robô não paga/.test(main) && /Ele não paga/.test(html), true);
   ok('oficina e modelagem não alcançam /api/etiquetas-dados (fora das allowlists)', !/etiquetas-dados/.test(mw), true);

@@ -8807,14 +8807,27 @@ function etqRenderLista(pend) {
     </tr>`;
   }).join('');
   el.innerHTML = pend.length ? `<table style="width:100%;font-size:12px;min-width:640px"><thead><tr style="color:var(--text-ter);font-size:10px;text-transform:uppercase">
-      <th></th><th style="text-align:left;padding:4px">Pedido</th><th style="text-align:left;padding:4px">Cliente</th><th style="text-align:left;padding:4px">Frete da cliente</th>
+      <th style="padding:4px"><input type="checkbox" id="etq-todos" title="Marcar ou desmarcar todos"></th><th style="text-align:left;padding:4px">Pedido</th><th style="text-align:left;padding:4px">Cliente</th><th style="text-align:left;padding:4px">Frete da cliente</th>
       <th style="text-align:left;padding:4px">Saco</th><th style="text-align:left;padding:4px">Serviço</th><th></th></tr></thead><tbody>${linhas}</tbody></table>`
     : '<div style="padding:14px;color:var(--text-ter);font-size:12px">Nenhum pedido pronto sem etiqueta.</div>';
   etqContar();
   el.querySelectorAll('.etq-marca').forEach(c => c.addEventListener('change', etqContar));
+  // Pedido da Bárbara no primeiro uso: marcar/desmarcar todos de uma vez (pedido travado, sem
+  // CPF ou já enviado continua desmarcado, porque a caixa dele está desligada).
+  const todos = document.getElementById('etq-todos');
+  if (todos) todos.addEventListener('change', () => {
+    el.querySelectorAll('.etq-marca:not(:disabled)').forEach(c => { c.checked = todos.checked; });
+    etqContar();
+  });
 }
 function etqContar() {
   const n = document.querySelectorAll('#etq-lista .etq-marca:checked').length;
+  const todos = document.getElementById('etq-todos');
+  if (todos) {
+    const livres = document.querySelectorAll('#etq-lista .etq-marca:not(:disabled)').length;
+    todos.checked = livres > 0 && n === livres;
+    todos.indeterminate = n > 0 && n < livres;
+  }
   const b = document.getElementById('etq-gerar');
   b.textContent = n ? `Gerar ${n} etiqueta${n > 1 ? 's' : ''} no carrinho` : 'Gerar etiquetas';
   b.disabled = !n;
