@@ -975,7 +975,7 @@ function salvarModelo() {
       status2:    statusVal2,
       prazo2:     document.getElementById('prod2-prazo')?.value || '',
       prod2_at:   prod2Editado ? new Date().toISOString() : (existente.prod2_at || null),
-      status2_at: ['Comprando tecido', 'Em corte', 'Em costura'].includes(statusVal2)
+      status2_at: ['Comprando tecido', 'Em corte', 'Em costura', 'Prova piloto'].includes(statusVal2)
         ? (existente.status2 === statusVal2 && existente.status2_at ? existente.status2_at : new Date().toISOString())
         : null,
     } : {}),
@@ -995,7 +995,7 @@ function salvarModelo() {
     // confirmarStatus (linha ~3548): eram duas e 'Em costura' ficava sem carimbo quando a
     // troca vinha por aqui — o faturamento usa esse carimbo para separar uma rodada da
     // outra, e sem ele a segunda passagem da leva sumia.
-    status_at: ['Comprando tecido', 'Em corte', 'Em costura'].includes(statusVal)
+    status_at: ['Comprando tecido', 'Em corte', 'Em costura', 'Prova piloto'].includes(statusVal)
       ? (existente.status === statusVal && existente.status_at ? existente.status_at : new Date().toISOString())
       : null,
   };
@@ -1222,6 +1222,8 @@ function modeloLabelHtml(key) {
         } else {
           item.innerHTML = `<span style="color:var(--gold);font-weight:600">${nome}</span>&nbsp;<span style="font-size:9px;background:rgba(196,168,130,0.18);color:var(--gold);border-radius:3px;padding:1px 5px;letter-spacing:0.04em;vertical-align:middle">TECIDO</span>`;
         }
+      } else if (status === 'Prova piloto') {
+        item.innerHTML = `<span style="color:#b45309;font-weight:600">${nome}</span>&nbsp;<span style="font-size:9px;background:rgba(180,83,9,0.12);color:#b45309;border-radius:3px;padding:1px 5px;letter-spacing:0.04em;vertical-align:middle">PROVA PILOTO</span>`;
       } else if (status === 'Em corte') {
         const vencido = statusAt && horas >= 48;
         const urgente = statusAt && horas >= 60;
@@ -4322,10 +4324,10 @@ function confirmarStatus(key, novoStatus, leva) {
   const saved = loadLocal('vc:' + key) || {};
   if (leva === 2) {
     saved.status2    = novoStatus;
-    saved.status2_at = ['Em corte', 'Em costura'].includes(novoStatus) ? new Date().toISOString() : null;
+    saved.status2_at = ['Em corte', 'Em costura', 'Prova piloto'].includes(novoStatus) ? new Date().toISOString() : null;
   } else {
     saved.status     = novoStatus;
-    saved.status_at  = ['Em corte', 'Em costura'].includes(novoStatus) ? new Date().toISOString() : null;
+    saved.status_at  = ['Em corte', 'Em costura', 'Prova piloto'].includes(novoStatus) ? new Date().toISOString() : null;
   }
   saved.updated_at = new Date().toISOString();
   saveLocal('vc:' + key, saved);
@@ -9179,9 +9181,16 @@ function renderModelo(key) {
   document.getElementById('preco-m').value = preco.toFixed(2);
   renderPedidosModelo(key); // lista de pedidos deste modelo, clicáveis para a Shopify
   const statusSel = document.getElementById('prod-status');
+  // PROVA PILOTO (07/10/2026, pedido da Bárbara): etapa depois da costura, só de piloto. A
+  // peça voltou da oficina e está sendo provada; fica com a faixa na MODELAGEM até ser
+  // aprovada (o "Aprovar piloto" limpa o status). Fora das listas de produção de propósito:
+  // para as contas, é como "sem status" (a peça já foi feita), igual ao 'Comprado' da revenda.
+  // Sair de "Em costura" para cá paga a costura, como qualquer saída da costura.
   const opcoesStatus = def.revenda
     ? ['', 'Comprado']
-    : ['', 'Comprando tecido', 'Em corte', 'Em costura'];
+    : (ehPiloto(key) || d.status === 'Prova piloto')
+      ? ['', 'Comprando tecido', 'Em corte', 'Em costura', 'Prova piloto']
+      : ['', 'Comprando tecido', 'Em corte', 'Em costura'];
   statusSel.innerHTML = opcoesStatus
     .map(s => `<option value="${s}">${s === '' ? '— Sem status —' : s}</option>`)
     .join('');
@@ -10101,6 +10110,10 @@ async function confirmarAprovarPiloto(key) {
   const ok = await gravarAprovacaoPiloto(key, true, grupo);
   if (btn) { btn.disabled = false; btn.style.opacity = ''; }
   if (!ok) return;
+  // a prova acabou: o status "Prova piloto" sai junto (só ele sobe, o resto vem da nuvem)
+  const sv = loadLocal('vc:' + key) || {};
+  if (sv.status === 'Prova piloto') confirmarStatus(key, '');
+  if (sv.status2 === 'Prova piloto') confirmarStatus(key, '', 2);
   document.getElementById('modal-piloto')?.remove();
   showSaved();
   redesenharDepoisDoPiloto(key);
@@ -12267,6 +12280,7 @@ const MDL_FAIXA_ETAPA = {
   'Comprando tecido': ['#a8844f', 'COMPRANDO TECIDO'],
   'Em corte':         ['#7C3AED', 'EM CORTE'],
   'Em costura':       ['#0891b2', 'EM COSTURA'],
+  'Prova piloto':     ['#b45309', 'PROVA PILOTO'],
 };
 function mdlFaixaEtapaHtml(key) {
   if (!key) return '';
@@ -12427,6 +12441,7 @@ const MDL_ETAPA_COR = {
   'Comprando tecido': ['var(--gold-dark)', 'rgba(196,168,130,0.20)'],
   'Em corte':         ['#7C3AED', 'rgba(124,58,237,0.12)'],
   'Em costura':       ['#0891b2', 'rgba(8,145,178,0.12)'],
+  'Prova piloto':     ['#b45309', 'rgba(180,83,9,0.12)'],
 };
 function mdlEtapaHtml(projeto) {
   const lista = (mdlProjetos && mdlProjetos.length) ? mdlProjetos : [projeto];

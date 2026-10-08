@@ -174,7 +174,7 @@ const listaBotao  = (main.match(/saved\.status_at\s*= \[([^\]]*)\]\.includes\(no
 ok('salvarModelo carimba Em costura', /Em costura/.test(listaSalvar), true);
 ok('confirmarStatus também', /Em costura/.test(listaBotao), true);
 ok('e a leva 2 idem',
-   /status2_at: \['Comprando tecido', 'Em corte', 'Em costura'\]/.test(main), true);
+   /status2_at: \['Comprando tecido', 'Em corte', 'Em costura'[\],]/.test(main), true);
 
 console.log('\n11) Pagar TODAS de uma vez');
 // Ela acerta com a costureira por semana: seis botoes seguidos e onde se esquece um.
