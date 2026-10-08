@@ -96,7 +96,7 @@ ok('se o valor mudou depois do acerto, volta a aparecer',
 ok('id casa como texto (a lista usa número)',
    statusPg({ id: 7, valorAjuste: '15,00' }, { '7': { em: 'x', valor: '15,00' } }).estado, 'pago');
 
-ok('guarda o valor junto com a data', /valor: p\.valorAjuste \|\| ''/.test(pagosBloco), true);
+ok('guarda o valor junto com a data', /valor: \(aj \? p\.valorAjuste2 : p\.valorAjuste\) \|\| ''/.test(pagosBloco), true);
 ok('não exige coluna nova no banco', /const MDL_PAGOS_KEY = 'modelagem-pagos'/.test(main), true);
 ok('grava pela nuvem (então entra no histórico)', /await salvarNuvem\(MDL_PAGOS_KEY, dados\)/.test(pagosBloco), true);
 ok('dá para desfazer', /async function mdlDesmarcarPago/.test(main), true);
@@ -104,10 +104,28 @@ ok('só o que NÃO está pago entra no total a pagar',
    /aPagar\s*=\s*validos\.filter\(p => p\.pg\.estado !== 'pago'\)/.test(main), true);
 ok('mostra também quanto já foi pago', /totalPago\s*=\s*mdlSomaValores\(jaPago/.test(main), true);
 ok('avisa quando o valor mudou depois do pagamento', /o valor mudou desde ent/.test(main), true);
-ok('botão de pagar na listagem', /onclick="mdlMarcarPago\(\$\{p\.id\}\)"/.test(main), true);
-ok('e também na tela do projeto', /onclick="mdlMarcarPago\(\$\{d\.projeto\.id\}\)"/.test(main), true);
-ok('sem valor lançado não oferece marcar pago',
-   /\(valorAjuste \|\| ''\)\.trim\(\) === '' \? '' :/.test(main), true);
+ok('botão de pagar na listagem, com o tipo', /onclick="mdlMarcarPago\(\$\{p\.id\},'\$\{p\.tipo\}'\)"/.test(main), true);
+ok('e também na tela do projeto', /onclick="mdlMarcarPago\(\$\{p\.id\}\$\{tipoArg\}\)"/.test(main), true);
+ok('sem valor lançado não oferece marcar pago', /\$\{valor === '' \? '' : \(pg\.estado === 'pago'/.test(main), true);
+
+console.log('\n7) Molde e ajuste separados (07/10/2026)');
+// O campo antigo (coluna valorAjuste) é o MOLDE; o AJUSTE mora em modelagem-ajustes e tem
+// o próprio "pago" na chave 'ajuste:<id>'. Um não pode marcar o outro como pago.
+const pgMolde = { '1': { em: 'x', valor: '30,00' } };
+ok('molde pago não marca o ajuste',
+   statusPg({ id: 1, valorAjuste: '30,00', valorAjuste2: '30,00' }, pgMolde, 'ajuste').estado, 'aberto');
+ok('ajuste pago na chave própria',
+   statusPg({ id: 1, valorAjuste: '30,00', valorAjuste2: '20,00' }, { 'ajuste:1': { em: 'x', valor: '20,00' } }, 'ajuste').estado, 'pago');
+ok('e o molde continua em aberto quando só o ajuste foi pago',
+   statusPg({ id: 1, valorAjuste: '30,00', valorAjuste2: '20,00' }, { 'ajuste:1': { em: 'x', valor: '20,00' } }).estado, 'aberto');
+ok('ajuste com valor mudado volta a aparecer',
+   statusPg({ id: 1, valorAjuste2: '25,00' }, { 'ajuste:1': { em: 'x', valor: '20,00' } }, 'ajuste').estado, 'valor-mudou');
+ok('o ajuste mora em vc_modelos, sem coluna nova', /const MDL_AJUSTES_KEY = 'modelagem-ajustes'/.test(main), true);
+ok('o total soma molde e ajuste como itens separados', /tipo: 'molde'[\s\S]{0,300}tipo: 'ajuste'/.test(card), true);
+ok('gravar o ajuste lê a nuvem antes e não grava às cegas',
+   /async function mdlSalvarValorAjuste2[\s\S]{0,300}carregarNuvem\(MDL_AJUSTES_KEY\)[\s\S]{0,200}naNuvem === undefined/.test(main), true);
+ok('a tela do projeto mostra os dois blocos',
+   /mdlBlocoValorHtml\(mdlComAjuste\(d\.projeto\), 'molde'\)[\s\S]{0,200}mdlBlocoValorHtml\(mdlComAjuste\(d\.projeto\), 'ajuste'\)/.test(main), true);
 
 console.log(`\n${falhas === 0 ? '✓ TODOS OS TESTES PASSARAM' : '✗ ' + falhas + ' FALHA(S)'} — ${total - falhas}/${total}\n`);
 process.exit(falhas === 0 ? 0 : 1);
