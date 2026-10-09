@@ -3,8 +3,8 @@
  * Troca a URL de destino de anúncios que já estão rodando.
  * Token: env.META_ACCESS_TOKEN (System User, precisa de ads_management).
  *
- * POST { trocas: [{ id: "120...", link: "https://vistaconecte.com.br/products/..." }],
- *        url_tags?: "utm_source=...", aplicar?: false }
+ * POST { trocas: [{ id: "120...", link: "https://vistaconecte.com.br/products/...", texto? }],
+ *        url_tags?: "utm_source=...", texto?: "legenda nova", aplicar?: false }
  *
  * Por padrão NÃO grava: devolve o plano (link de agora, link novo). Só com aplicar:true
  * a mudança sai. Criado em 08/10/2026: os 7 anúncios mais novos da conta mostravam
@@ -14,6 +14,8 @@
  * com o mesmo vídeo, texto e variações do Advantage+ e troca o criativo do anúncio.
  * O anúncio volta pra análise da Meta e perde curtidas e comentários do post antigo.
  * url_tags (UTM) é copiado do criativo antigo; se vier no corpo, substitui.
+ * texto (no corpo ou por troca) troca a legenda no mesmo criativo novo: link e legenda
+ * juntos passam por uma análise só, em vez de duas (09/10/2026).
  */
 const API_VERSION = 'v23.0';
 const CONTA_PADRAO = 'act_968164338120112';
@@ -32,6 +34,26 @@ async function api(url, init) {
   const r = await fetch(url, init);
   const d = await r.json().catch(() => ({}));
   return { ok: r.ok && !d.error, status: r.status, dado: d, erro: d.error || (r.ok ? null : `HTTP ${r.status}`) };
+}
+
+function textoAtual(oss) {
+  for (const ramo of RAMOS) {
+    const d = oss[ramo];
+    if (d && (d.message || d.caption)) return d.message || d.caption;
+  }
+  return null;
+}
+
+// Põe a legenda nova onde o criativo guarda o texto principal. Com asset_feed_spec é ele
+// que manda no que aparece, então as variações viram um texto só.
+function trocarTexto(oss, afs, texto) {
+  for (const ramo of RAMOS) {
+    const d = oss[ramo];
+    if (!d) continue;
+    if ('caption' in d && !('message' in d)) d.caption = texto;
+    else d.message = texto;
+  }
+  if (afs && (afs.bodies || []).length) afs.bodies = [{ text: texto }];
 }
 
 // Troca todo link do criativo pelo novo e devolve os que existiam antes.
@@ -74,13 +96,17 @@ export async function onRequest(context) {
   const trocas = Array.isArray(body.trocas) ? body.trocas.filter(t => t && t.id && t.link) : [];
   const aplicar = body.aplicar === true;
   const urlTags = typeof body.url_tags === 'string' && body.url_tags ? body.url_tags : null;
+  const textoGeral = typeof body.texto === 'string' && body.texto.trim() ? body.texto : null;
   if (!trocas.length) return new Response(JSON.stringify({ erro: 'Informe trocas: [{ id, link }]' }), { status: 400, headers: H });
   // Só link da própria loja: um link errado aqui manda verba paga pra fora.
   const fora = trocas.filter(t => !String(t.link).startsWith(DOMINIO));
   if (fora.length) return new Response(JSON.stringify({ erro: `Link precisa começar com ${DOMINIO}`, ids: fora.map(t => t.id) }), { status: 400, headers: H });
+  const longos = trocas.filter(t => String(t.texto || textoGeral || '').length > 2000);
+  if (longos.length) return new Response(JSON.stringify({ erro: 'Texto longo demais (máx 2000)', ids: longos.map(t => t.id) }), { status: 400, headers: H });
 
   const resultados = [];
-  for (const { id, link } of trocas) {
+  for (const { id, link, texto: textoTroca } of trocas) {
+    const texto = typeof textoTroca === 'string' && textoTroca.trim() ? textoTroca : textoGeral;
     const passo = { id, aplicado: false, link_novo: link };
     const lida = await api(`${G}/${id}?fields=name,effective_status,creative{${CRIATIVO_FIELDS}}&access_token=${encodeURIComponent(token)}`);
     if (!lida.ok) { passo.erro = lida.erro; resultados.push(passo); continue; }
@@ -94,6 +120,11 @@ export async function onRequest(context) {
     const oss = JSON.parse(JSON.stringify(creative.object_story_spec || {}));
     const afs = creative.asset_feed_spec ? JSON.parse(JSON.stringify(creative.asset_feed_spec)) : null;
     passo.links_atuais = trocarLinks(oss, afs, link);
+    if (texto) {
+      passo.texto_atual = textoAtual(oss);
+      passo.texto_novo = texto;
+      trocarTexto(oss, afs, texto);
+    }
     if (creative.template_url) passo.links_atuais.push(creative.template_url);
     passo.url_tags = urlTags || creative.url_tags || null;
 
@@ -101,7 +132,11 @@ export async function onRequest(context) {
       passo.erro = 'Não achei o link dentro do criativo. Este precisa ser trocado no Gerenciador.';
       resultados.push(passo); continue;
     }
-    if (passo.links_atuais.every(l => l === link)) { passo.aviso = 'Já aponta pra esse link.'; resultados.push(passo); continue; }
+    const textoIgual = !texto || passo.texto_atual === texto;
+    if (passo.links_atuais.every(l => l === link) && textoIgual) {
+      passo.aviso = texto ? 'Já aponta pra esse link e já tem essa legenda.' : 'Já aponta pra esse link.';
+      resultados.push(passo); continue;
+    }
     if (!aplicar) { resultados.push(passo); continue; }
 
     // A Meta devolve image_url e image_hash juntos, mas recusa os dois na volta
@@ -111,7 +146,7 @@ export async function onRequest(context) {
       if (d && d.image_hash && d.image_url) delete d.image_url;
     }
 
-    const nome = `${creative.name || ad.name} — link ${new Date().toISOString().slice(0, 10)}`;
+    const nome = `${creative.name || ad.name} — ${texto ? 'link e texto' : 'link'} ${new Date().toISOString().slice(0, 10)}`;
     const criar = (extra) => api(`${G}/${conta}/adcreatives`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -133,6 +168,12 @@ export async function onRequest(context) {
     if (!novo.ok && afs && creative.degrees_of_freedom_spec) {
       passo.aviso_advantage = novo.erro;
       novo = await criar({ asset_feed_spec: afs });
+    }
+    // Com Advantage+ a Meta exige mais de uma opção em algum campo, e uma legenda só é
+    // justamente o pedido. Então o criativo sai sem a otimização de texto.
+    if (!novo.ok && texto && (novo.erro || {}).error_subcode === 2446218) {
+      passo.advantage_desligado = true;
+      novo = await criar({});
     }
     if (!novo.ok) { passo.erro = novo.erro; resultados.push(passo); continue; }
     passo.criativo_novo = novo.dado.id;
