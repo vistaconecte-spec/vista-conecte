@@ -15,10 +15,18 @@ export async function onRequestGet({ request, env }) {
   const dias = Math.max(1, Math.min(60, parseInt(u.searchParams.get('dias') || '7', 10)));
   const corte = new Date(Date.now() - dias * 86400000).toISOString().slice(0, 10);
   const busca = (u.searchParams.get('busca') || '').toLowerCase();
+  const campanhaId = u.searchParams.get('campanha');
 
-  async function lista(tipo, fields) {
+  const fmt = x => ({
+    id: x.id, nome: x.name, status: x.effective_status || x.status,
+    criado: (x.created_time || '').slice(0, 16), alterado: (x.updated_time || '').slice(0, 16),
+    campanha: x.campaign && x.campaign.name, conjunto: x.adset && x.adset.name,
+    criativo: x.creative && x.creative.name, orcamento_diario: x.daily_budget ? Number(x.daily_budget) / 100 : undefined
+  });
+
+  async function lista(tipo, fields, base) {
     const out = [];
-    let api = `https://graph.facebook.com/${API_VERSION}/${CONTA}/${tipo}?fields=${fields}&limit=200&access_token=${token}`;
+    let api = `https://graph.facebook.com/${API_VERSION}/${base}/${tipo}?fields=${fields}&limit=200&access_token=${token}`;
     let guard = 0;
     while (api && guard++ < 10) {
       const r = await fetch(api);
@@ -30,20 +38,26 @@ export async function onRequestGet({ request, env }) {
     return out;
   }
 
+  // ?campanha=ID é a consulta BARATA: só os filhos de UMA campanha (2 chamadas), sem
+  // paginar os ~2000 anúncios da conta inteira — evita o rate limit "too many calls to
+  // this ad-account" da conta cheia. Criado 13/10/2026 (achar/ativar campanha de vaga).
+  if (campanhaId) {
+    const [filhosAdsets, filhosAds] = await Promise.all([
+      lista('adsets', 'id,name,status,effective_status,created_time,updated_time,daily_budget', campanhaId),
+      lista('ads', 'id,name,status,effective_status,created_time,updated_time,adset{name},creative{name,thumbnail_url,body,title}', campanhaId)
+    ]);
+    if (filhosAdsets.erro || filhosAds.erro) return J({ erro: filhosAdsets.erro || filhosAds.erro }, 502);
+    return J({ campanha: campanhaId, conjuntos: filhosAdsets.map(fmt), anuncios: filhosAds.map(fmt) });
+  }
+
   const [ads, adsets, campanhas] = await Promise.all([
-    lista('ads', 'id,name,status,effective_status,created_time,updated_time,adset{name},campaign{name},creative{name,thumbnail_url}'),
-    lista('adsets', 'id,name,status,effective_status,created_time,updated_time,daily_budget,campaign{name}'),
-    lista('campaigns', 'id,name,status,effective_status,created_time,updated_time,daily_budget')
+    lista('ads', 'id,name,status,effective_status,created_time,updated_time,adset{name},campaign{name},creative{name,thumbnail_url}', CONTA),
+    lista('adsets', 'id,name,status,effective_status,created_time,updated_time,daily_budget,campaign{name}', CONTA),
+    lista('campaigns', 'id,name,status,effective_status,created_time,updated_time,daily_budget', CONTA)
   ]);
   if (ads.erro || adsets.erro || campanhas.erro) return J({ erro: ads.erro || adsets.erro || campanhas.erro }, 502);
 
   const recente = x => (x.created_time || '').slice(0, 10) >= corte || (x.updated_time || '').slice(0, 10) >= corte;
-  const fmt = x => ({
-    id: x.id, nome: x.name, status: x.effective_status || x.status,
-    criado: (x.created_time || '').slice(0, 16), alterado: (x.updated_time || '').slice(0, 16),
-    campanha: x.campaign && x.campaign.name, conjunto: x.adset && x.adset.name,
-    criativo: x.creative && x.creative.name, orcamento_diario: x.daily_budget ? Number(x.daily_budget) / 100 : undefined
-  });
   const resp = {
     corte, totais: { anuncios: ads.length, conjuntos: adsets.length, campanhas: campanhas.length },
     anuncios_recentes: ads.filter(recente).map(fmt).sort((a, b) => b.alterado.localeCompare(a.alterado)),
