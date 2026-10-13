@@ -14,6 +14,7 @@ export async function onRequestGet({ request, env }) {
   const u = new URL(request.url);
   const dias = Math.max(1, Math.min(60, parseInt(u.searchParams.get('dias') || '7', 10)));
   const corte = new Date(Date.now() - dias * 86400000).toISOString().slice(0, 10);
+  const busca = (u.searchParams.get('busca') || '').toLowerCase();
 
   async function lista(tipo, fields) {
     const out = [];
@@ -43,11 +44,17 @@ export async function onRequestGet({ request, env }) {
     campanha: x.campaign && x.campaign.name, conjunto: x.adset && x.adset.name,
     criativo: x.creative && x.creative.name, orcamento_diario: x.daily_budget ? Number(x.daily_budget) / 100 : undefined
   });
-  return J({
+  const resp = {
     corte, totais: { anuncios: ads.length, conjuntos: adsets.length, campanhas: campanhas.length },
     anuncios_recentes: ads.filter(recente).map(fmt).sort((a, b) => b.alterado.localeCompare(a.alterado)),
     conjuntos_recentes: adsets.filter(recente).map(fmt).sort((a, b) => b.alterado.localeCompare(a.alterado)),
     campanhas_recentes: campanhas.filter(recente).map(fmt).sort((a, b) => b.alterado.localeCompare(a.alterado)),
     ativos: ads.filter(a => a.effective_status === 'ACTIVE').map(fmt)
-  });
+  };
+  // ?busca=termo acha em TODAS as campanhas (não só as recentes) por nome — pra achar
+  // campanha antiga e parada sem abrir o Gerenciador. Criado 13/10/2026 (campanha de vaga).
+  if (busca) {
+    resp.campanhas_busca = campanhas.filter(c => (c.name || '').toLowerCase().includes(busca)).map(fmt);
+  }
+  return J(resp);
 }
