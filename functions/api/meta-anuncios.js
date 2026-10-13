@@ -51,10 +51,15 @@ export async function onRequestGet({ request, env }) {
     campanhas_recentes: campanhas.filter(recente).map(fmt).sort((a, b) => b.alterado.localeCompare(a.alterado)),
     ativos: ads.filter(a => a.effective_status === 'ACTIVE').map(fmt)
   };
-  // ?busca=termo acha em TODAS as campanhas (não só as recentes) por nome — pra achar
-  // campanha antiga e parada sem abrir o Gerenciador. Criado 13/10/2026 (campanha de vaga).
+  // ?busca=termo acha em TODAS as campanhas/conjuntos/anúncios (não só os recentes) por nome
+  // próprio ou da campanha-mãe — pra achar campanha antiga e parada sem abrir o Gerenciador.
+  // Criado 13/10/2026 (campanha de vaga).
   if (busca) {
     resp.campanhas_busca = campanhas.filter(c => (c.name || '').toLowerCase().includes(busca)).map(fmt);
+    resp.conjuntos_busca = adsets.filter(x => (x.name || '').toLowerCase().includes(busca)
+      || (x.campaign && (x.campaign.name || '').toLowerCase().includes(busca))).map(fmt);
+    resp.anuncios_busca = ads.filter(x => (x.name || '').toLowerCase().includes(busca)
+      || (x.campaign && (x.campaign.name || '').toLowerCase().includes(busca))).map(fmt);
   }
   return J(resp);
 }
