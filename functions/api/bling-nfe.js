@@ -180,29 +180,58 @@ export async function onRequestGet({ request, env }) {
         return json({ ...saida, emitido: false, erro: 'falhou ao gerar a nota: ' + e.message }, 502);
       }
 
-      try {
+      if (q.get('so_gerar') === '1') {
+        // Nota criada no Bling e NÃO enviada: dá pra conferir (natureza, valores, frete) e,
+        // se estiver errada, apagar no Bling sem efeito fiscal. Envia com acao=enviar.
+        const pend = { ...doc, status: 'gerada-aguardando-envio', nota: idNota };
+        await gravarTrava(env, idPedido, pend);
         await esperar(PAUSA_MS);
-        await bling(env, `/nfe/${idNota}/enviar`, { method: 'POST', token });
-      } catch (e) {
-        // A nota existe no Bling mas não foi pra SEFAZ: NÃO tentar de novo sozinho, alguém olha.
-        await gravarTrava(env, idPedido, { ...doc, status: 'gerada-nao-enviada', nota: idNota, erro: e.message });
-        return json({ ...saida, emitido: false, nota: idNota, erro: 'nota criada mas o envio à SEFAZ falhou: ' + e.message }, 502);
+        let nota = null;
+        try { nota = (await bling(env, `/nfe/${idNota}`, { token })).data; } catch { /* confere no Bling */ }
+        return json({ ...saida, emitido: false, gerada: true, nota: pend, conferir: nota });
       }
 
-      await esperar(PAUSA_MS * 3);
-      let nota = null;
-      try { nota = (await bling(env, `/nfe/${idNota}`, { token })).data; } catch { /* confere depois */ }
-      const fim = {
-        ...doc, status: 'enviada', nota: idNota,
-        numero_nota: nota ? nota.numero : null, situacao_nota: nota ? nota.situacao : null,
-        chave: nota ? nota.chaveAcesso : null, danfe: nota ? nota.linkDanfe : null,
-      };
-      await gravarTrava(env, idPedido, fim);
-      return json({ ...saida, emitido: true, nota: fim });
+      return json(await enviarNota(env, token, idPedido, idNota, doc, saida));
     }
 
-    return json({ erro: 'acao desconhecida (status, previa, diagnostico, emitir, get)' }, 400);
+    if (acao === 'enviar') {
+      // Manda pra SEFAZ uma nota gerada com so_gerar=1, depois de conferida.
+      const ref = q.get('pedido');
+      if (!ref || q.get('confirmar') !== '1') return json({ erro: 'precisa de ?pedido=ID_DO_BLING&confirmar=1' }, 400);
+      const anterior = await lerTrava(env, ref);
+      if (!anterior || anterior.status !== 'gerada-aguardando-envio' || !anterior.nota) {
+        return json({ erro: 'não há nota gerada aguardando envio para este pedido', anterior }, 409);
+      }
+      const token = await tokenValido(env);
+      const nota = (await bling(env, `/nfe/${anterior.nota}`, { token })).data;
+      if (!nota || nota.situacao !== 1) return json({ erro: `a nota não está mais pendente no Bling (situação ${nota && nota.situacao})`, anterior }, 409);
+      return json(await enviarNota(env, token, ref, anterior.nota, anterior, {}));
+    }
+
+    return json({ erro: 'acao desconhecida (status, previa, diagnostico, emitir, enviar, get)' }, 400);
   } catch (e) {
     return json({ erro: e.message, status: e.status || null }, e.status && e.status < 500 ? e.status : 502);
   }
+}
+
+async function enviarNota(env, token, idPedido, idNota, doc, saida) {
+  try {
+    await esperar(PAUSA_MS);
+    await bling(env, `/nfe/${idNota}/enviar`, { method: 'POST', token });
+  } catch (e) {
+    // A nota existe no Bling mas não foi pra SEFAZ: NÃO tentar de novo sozinho, alguém olha.
+    await gravarTrava(env, idPedido, { ...doc, status: 'gerada-nao-enviada', nota: idNota, erro: e.message });
+    return { ...saida, emitido: false, nota: idNota, erro: 'nota criada mas o envio à SEFAZ falhou: ' + e.message };
+  }
+
+  await esperar(PAUSA_MS * 3);
+  let nota = null;
+  try { nota = (await bling(env, `/nfe/${idNota}`, { token })).data; } catch { /* confere depois */ }
+  const fim = {
+    ...doc, status: 'enviada', nota: idNota,
+    numero_nota: nota ? nota.numero : null, situacao_nota: nota ? nota.situacao : null,
+    chave: nota ? nota.chaveAcesso : null, danfe: nota ? nota.linkDanfe : null,
+  };
+  await gravarTrava(env, idPedido, fim);
+  return { ...saida, emitido: true, nota: fim };
 }

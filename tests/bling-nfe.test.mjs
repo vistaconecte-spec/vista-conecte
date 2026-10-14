@@ -78,6 +78,8 @@ ok('gerar-nfe só depois do confirmar=1 + decisão', iGate > 0 && iGate < iGerar
 ok('gerar-nfe só depois da trava no Supabase', iTrava > 0 && iTrava < iGerar, true);
 ok('envio que falha não tenta de novo (gerada-nao-enviada)', f.includes("status: 'gerada-nao-enviada'"), true);
 ok('refazer só quando falhou ANTES de gerar', f.includes("anterior.status === 'falhou-ao-gerar'"), true);
+ok('so_gerar para ANTES do envio à SEFAZ', f.indexOf("q.get('so_gerar') === '1'") < f.indexOf('return json(await enviarNota(env, token, idPedido'), true);
+ok('acao=enviar só manda nota gerada-aguardando-envio e ainda pendente no Bling', f.includes("anterior.status !== 'gerada-aguardando-envio'") && f.includes('nota.situacao !== 1'), true);
 ok('nenhum DELETE na API do Bling', /method: 'DELETE'/.test(f), false);
 
 console.log(`\n${total - falhas}/${total} ok`);
