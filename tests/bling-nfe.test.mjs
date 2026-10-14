@@ -77,6 +77,7 @@ const iTrava = f.indexOf('await travar(env, idPedido');
 ok('gerar-nfe só depois do confirmar=1 + decisão', iGate > 0 && iGate < iGerar, true);
 ok('gerar-nfe só depois da trava no Supabase', iTrava > 0 && iTrava < iGerar, true);
 ok('envio que falha não tenta de novo (gerada-nao-enviada)', f.includes("status: 'gerada-nao-enviada'"), true);
+ok('erro do gerar-nfe relê o pedido (Bling cria a nota e responde 400)', f.includes("status: 'gerada-com-erro'") && f.indexOf("status: 'gerada-com-erro'") < f.indexOf("status: 'falhou-ao-gerar'"), true);
 ok('refazer só quando falhou ANTES de gerar', f.includes("anterior.status === 'falhou-ao-gerar'"), true);
 ok('so_gerar para ANTES do envio à SEFAZ', f.indexOf("q.get('so_gerar') === '1'") < f.indexOf('return json(await enviarNota(env, token, idPedido'), true);
 ok('acao=enviar só manda nota gerada-aguardando-envio e ainda pendente no Bling', f.includes("anterior.status !== 'gerada-aguardando-envio'") && f.includes('nota.situacao !== 1'), true);

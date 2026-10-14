@@ -176,6 +176,15 @@ export async function onRequestGet({ request, env }) {
         idNota = idDaResposta(await bling(env, `/pedidos/vendas/${idPedido}/gerar-nfe`, { method: 'POST', token }));
         if (!idNota) throw new Error('Bling não devolveu o id da nota');
       } catch (e) {
+        // O Bling CRIA a nota (pendente) e mesmo assim responde 400 "erros de validação"
+        // quando falta dado fiscal, ex. NCM do produto (nota 007620, 14/10/2026). Então erro
+        // aqui não quer dizer "nada foi criado": relê o pedido antes de liberar outra tentativa.
+        let criada = null;
+        try { await esperar(PAUSA_MS * 2); const p = (await bling(env, `/pedidos/vendas/${idPedido}`, { token })).data; criada = p && p.notaFiscal && p.notaFiscal.id ? p.notaFiscal.id : null; } catch { criada = 'desconhecido'; }
+        if (criada) {
+          await gravarTrava(env, idPedido, { ...doc, status: 'gerada-com-erro', nota: criada, erro: e.message });
+          return json({ ...saida, emitido: false, nota: criada, erro: 'o Bling criou a nota PENDENTE mas recusou a validação (conferir no Bling): ' + e.message }, 502);
+        }
         await gravarTrava(env, idPedido, { ...doc, status: 'falhou-ao-gerar', erro: e.message });
         return json({ ...saida, emitido: false, erro: 'falhou ao gerar a nota: ' + e.message }, 502);
       }
