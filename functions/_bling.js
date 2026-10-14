@@ -201,7 +201,10 @@ export async function bling(env, caminho, { method = 'GET', body, token } = {}) 
   let d = null; try { d = txt ? JSON.parse(txt) : {}; } catch { d = { bruto: txt.slice(0, 300) }; }
   if (!r.ok) {
     const e = d && d.error ? d.error : d;
-    const err = new Error(`Bling ${method} ${caminho} ${r.status}: ${(e && (e.description || e.message)) || JSON.stringify(e).slice(0, 300)}`);
+    // Erro de validação vem com a lista do que está errado em `fields`; sem ela a mensagem
+    // é só "não pode ser gerada devido a erros de validação".
+    const campos = e && Array.isArray(e.fields) ? ' [' + e.fields.map(f => [f.element, f.msg || f.message].filter(Boolean).join(': ')).join(' | ') + ']' : '';
+    const err = new Error(`Bling ${method} ${caminho} ${r.status}: ${(e && (e.description || e.message)) || JSON.stringify(e).slice(0, 300)}${campos}`);
     err.status = r.status; err.corpo = d;
     throw err;
   }
