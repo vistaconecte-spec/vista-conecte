@@ -1,0 +1,50 @@
+/**
+ * /api/bling-produtos: NCM nos produtos do Bling (14/10/2026).
+ *
+ * Por que existe: o gerar-nfe do Bling recusa a nota quando o produto não tem NCM, e nas
+ * notas feitas à mão o NCM era digitado item a item, cada vez de um jeito (inclusive
+ * 6309.00.10, que é roupa usada). A tabela por modelo está na memória do projeto.
+ *
+ * GET ?acao=ncm&id=PRODUTO&ncm=6114.30.00            → mostra o que mudaria, sem gravar
+ * GET ?acao=ncm&id=PRODUTO&ncm=6114.30.00&confirmar=1 → grava SÓ se o NCM estiver vazio,
+ *                                                       relê e confere que só o NCM mudou
+ *
+ * Nunca sobrescreve NCM já preenchido: devolve 'ja-tinha' e alguém decide.
+ */
+import { bling, tokenValido, json, esperar, PAUSA_MS } from '../_bling.js';
+
+const NCM = /^\d{4}\.\d{2}\.\d{2}$/;
+// Campos que não podem mudar quando só o NCM foi mexido.
+const CONFERIR = ['nome', 'codigo', 'preco', 'situacao', 'formato', 'tipo', 'gtin', 'unidade', 'pesoBruto', 'pesoLiquido'];
+
+export async function onRequestGet({ request, env }) {
+  const q = new URL(request.url).searchParams;
+  if ((q.get('acao') || '') !== 'ncm') return json({ erro: 'acao desconhecida (ncm)' }, 400);
+  const id = String(q.get('id') || '');
+  const ncm = String(q.get('ncm') || '');
+  if (!/^\d{6,}$/.test(id)) return json({ erro: 'id do produto inválido' }, 400);
+  if (!NCM.test(ncm)) return json({ erro: 'NCM no formato 0000.00.00' }, 400);
+  try {
+    const token = await tokenValido(env);
+    const antes = (await bling(env, `/produtos/${id}`, { token })).data;
+    const atual = antes && antes.tributacao ? String(antes.tributacao.ncm || '') : '';
+    const base = { id, nome: antes && antes.nome, formato: antes && antes.formato, ncm_antes: atual, ncm_novo: ncm };
+    if (atual) return json({ ...base, status: atual === ncm ? 'ja-estava-certo' : 'ja-tinha' });
+    if (q.get('confirmar') !== '1') return json({ ...base, status: 'previa' });
+
+    // PUT com o produto inteiro como veio, só trocando o NCM: o PUT do Bling substitui o
+    // cadastro, então mandar parcial apagaria o resto.
+    const corpo = { ...antes, tributacao: { ...antes.tributacao, ncm } };
+    delete corpo.id;
+    await esperar(PAUSA_MS);
+    await bling(env, `/produtos/${id}`, { method: 'PUT', body: corpo, token });
+
+    await esperar(PAUSA_MS);
+    const depois = (await bling(env, `/produtos/${id}`, { token })).data;
+    const mudou = CONFERIR.filter(k => JSON.stringify(antes[k]) !== JSON.stringify(depois[k]));
+    const ncmDepois = depois && depois.tributacao ? depois.tributacao.ncm : null;
+    return json({ ...base, status: mudou.length ? 'gravou-mas-mudou-outra-coisa' : (ncmDepois === ncm ? 'gravado' : 'nao-gravou'), ncm_depois: ncmDepois, mudou: mudou.map(k => ({ campo: k, antes: antes[k], depois: depois[k] })) });
+  } catch (e) {
+    return json({ id, erro: e.message, status: 'erro' }, e.status && e.status < 500 ? e.status : 502);
+  }
+}
