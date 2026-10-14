@@ -49,7 +49,7 @@ ok('callback é público', mw.includes("'/api/bling-callback'"), true);
 ok('bling-auth NÃO é público', /PUBLICO[^;]*'\/api\/bling-auth'/.test(mw), false);
 ok('bling-nfe NÃO é público', /PUBLICO[^;]*'\/api\/bling-nfe'/.test(mw), false);
 const nfe = readFileSync(new URL('../functions/api/bling-nfe.js', import.meta.url), 'utf8');
-ok('bling-nfe só tem GET nesta etapa', /onRequestPost|onRequest\(|method: 'POST'/.test(nfe), false);
+ok('bling-nfe não aceita POST de fora (só GET com confirmar=1)', /onRequestPost|onRequest\(/.test(nfe), false);
 
 console.log(`\n${total - falhas}/${total} ok`);
 if (falhas) process.exit(1);
