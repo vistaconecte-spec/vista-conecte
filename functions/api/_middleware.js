@@ -24,9 +24,12 @@ const RENOVA_QUANDO_FALTAR_MS = 6 * 3600e3;
 //                          fora) OU sessão da dona, conferida dentro dele.
 //   previsao-pedido      → quem chama é a Vi (worker do Wati), com a chave ?k=PREVISAO_KEY
 //                          conferida dentro dele. Só leitura de UM pedido (05/10/2026).
+//   bling-callback       → volta do "permitir acesso" do Bling, mesma situação do
+//                          shopify-callback. Só troca o `code` se o `state` tiver sido
+//                          assinado pelo /api/bling-auth (que exige sessão) há menos de 15 min.
 const PUBLICO = new Set(['/api/login', '/api/logout', '/api/sessao', '/api/shopify-callback',
   '/api/webhook-shopify-pedido', '/api/webhook-pagarme', '/api/webhook-mp', '/api/cartao-barrado',
-  '/api/previsao-pedido']);
+  '/api/previsao-pedido', '/api/bling-callback']);
 
 // Os perfis de oficina ('corte' e 'costura') abrem UMA aba cada — CORTE e COSTURA —,
 // montadas com o que já veio do Supabase. O que eles alcançam é uma ALLOWLIST, e não uma
