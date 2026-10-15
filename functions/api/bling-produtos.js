@@ -45,7 +45,10 @@ export async function onRequestGet({ request, env }) {
 
     await esperar(PAUSA_MS);
     const depois = (await bling(env, `/produtos/${id}`, { token })).data;
-    const mudou = CONFERIR.filter(k => JSON.stringify(antes[k]) !== JSON.stringify(depois[k]));
+    // O Bling apara espaço sobrando no fim do nome ao salvar ("Calça flare marsala "): isso
+    // não é mudança de cadastro, o vínculo com a Shopify é por id/código.
+    const igual = (a, b) => (typeof a === 'string' && typeof b === 'string') ? a.trim() === b.trim() : JSON.stringify(a) === JSON.stringify(b);
+    const mudou = CONFERIR.filter(k => !igual(antes[k], depois[k]));
     const ncmDepois = depois && depois.tributacao ? depois.tributacao.ncm : null;
     return json({ ...base, status: mudou.length ? 'gravou-mas-mudou-outra-coisa' : (ncmDepois === ncm ? 'gravado' : 'nao-gravou'), ncm_depois: ncmDepois, mudou: mudou.map(k => ({ campo: k, antes: antes[k], depois: depois[k] })) });
   } catch (e) {
