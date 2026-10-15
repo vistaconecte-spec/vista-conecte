@@ -9,7 +9,8 @@
  * GET ?acao=ncm&id=PRODUTO&ncm=6114.30.00&confirmar=1 → grava SÓ se o NCM estiver vazio,
  *                                                       relê e confere que só o NCM mudou
  *
- * Nunca sobrescreve NCM já preenchido: devolve 'ja-tinha' e alguém decide.
+ * NCM já preenchido só é trocado com &de=<NCM atual> (decisão de 14/10/2026: 6309.00.10
+ * e os códigos que não batiam com a tabela). Sem o &de, devolve 'ja-tinha'.
  */
 import { bling, tokenValido, json, esperar, PAUSA_MS } from '../_bling.js';
 
@@ -29,7 +30,10 @@ export async function onRequestGet({ request, env }) {
     const antes = (await bling(env, `/produtos/${id}`, { token })).data;
     const atual = antes && antes.tributacao ? String(antes.tributacao.ncm || '') : '';
     const base = { id, nome: antes && antes.nome, formato: antes && antes.formato, ncm_antes: atual, ncm_novo: ncm };
-    if (atual) return json({ ...base, status: atual === ncm ? 'ja-estava-certo' : 'ja-tinha' });
+    if (atual === ncm) return json({ ...base, status: 'ja-estava-certo' });
+    // Trocar um NCM já preenchido exige dizer QUAL era (&de=6309.00.10): assim uma rodada
+    // feita com a lista velha não atropela um cadastro que alguém corrigiu à mão depois.
+    if (atual && q.get('de') !== atual) return json({ ...base, status: 'ja-tinha' });
     if (q.get('confirmar') !== '1') return json({ ...base, status: 'previa' });
 
     // PUT com o produto inteiro como veio, só trocando o NCM: o PUT do Bling substitui o
