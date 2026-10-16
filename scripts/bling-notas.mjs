@@ -49,7 +49,15 @@ export async function rodada(token) {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ rodada: { resultados, erro_geral } }),
   });
-  return { emitidas: resultados.filter(x => x.emitido).length, pedidos: resultados.length, erro_geral };
+  // O Bling arquiva o pedido na Shopify alguns segundos depois que a nota sai, e ela não quer
+  // pedido arquivado. Espera e reabre; repete uma vez pra pegar o que o Bling demorou a fechar.
+  const reabertos = [];
+  for (const espera of [45e3, 60e3]) {
+    await new Promise(r => setTimeout(r, espera));
+    const x = await chamar(token, '/api/bling-nfe?acao=reabrir&confirmar=1');
+    reabertos.push(...((x.d && x.d.reabertos) || []).filter(o => o.ok).map(o => o.pedido));
+  }
+  return { emitidas: resultados.filter(x => x.emitido).length, pedidos: resultados.length, reabertos, erro_geral };
 }
 
 if (process.argv[1] && process.argv[1].endsWith('bling-notas.mjs')) {

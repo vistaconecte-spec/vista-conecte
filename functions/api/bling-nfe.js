@@ -20,7 +20,7 @@
  * chamar isto pedido a pedido, parando no primeiro erro inesperado.
  */
 import { bling, tokenValido, statusToken, json, esperar, PAUSA_MS } from '../_bling.js';
-import { decidir, idDaResposta, soDigitos, lerTrava, travar, gravarTrava, travasExistentes, completarNcmItens, LOJA_SHOPIFY_BLING, SITUACAO_EM_ABERTO } from '../_bling-nfe.js';
+import { decidir, idDaResposta, soDigitos, lerTrava, travar, gravarTrava, travasExistentes, completarNcmItens, pedidosComNotaRecentes, LOJA_SHOPIFY_BLING, SITUACAO_EM_ABERTO } from '../_bling-nfe.js';
 
 const DATA = /^\d{4}-\d{2}-\d{2}$/;
 const semAcentoLower = t => String(t || '').normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
@@ -182,6 +182,27 @@ export async function onRequestGet({ request, env }) {
         pedidos: candidatos.filter(p => !feitos.has(String(p.id))).map(p => ({ id: p.id, numero: p.numero, data: p.data, total: p.total })),
         ja_processados: candidatos.filter(p => feitos.has(String(p.id))).length,
       });
+    }
+
+    if (acao === 'reabrir') {
+      // A integração do Bling ARQUIVA o pedido na Shopify quando a nota sai (16/10/2026: os 7
+      // primeiros pedidos com nota sumiram da lista de abertos). Ela não quer pedido arquivado,
+      // então isto reabre os que o automático emitiu e que estão arquivados SEM ter sido enviados
+      // nem cancelados. Pedido enviado e arquivado pela equipe não é tocado.
+      const nossos = await pedidosComNotaRecentes(env, 4);
+      const desde = new Date(Date.now() - 6 * 86400e3).toISOString();
+      const sh = `https://${env.SHOPIFY_STORE_DOMAIN}/admin/api/${SHOPIFY_API}`;
+      const H = { 'X-Shopify-Access-Token': env.SHOPIFY_ADMIN_TOKEN, 'Content-Type': 'application/json' };
+      const r = await fetch(`${sh}/orders.json?status=closed&fulfillment_status=unfulfilled&created_at_min=${encodeURIComponent(desde)}&limit=250&fields=id,name,closed_at,cancelled_at,fulfillment_status`, { headers: H });
+      if (!r.ok) throw new Error(`Shopify ${r.status}`);
+      const arquivados = ((await r.json()).orders || []).filter(o => nossos.has(o.name) && !o.cancelled_at && !o.fulfillment_status);
+      const reabertos = [];
+      for (const o of arquivados) {
+        if (q.get('confirmar') !== '1') { reabertos.push({ pedido: o.name, previa: true }); continue; }
+        const x = await fetch(`${sh}/orders/${o.id}/open.json`, { method: 'POST', headers: H, body: '{}' });
+        reabertos.push({ pedido: o.name, ok: x.ok, status: x.status });
+      }
+      return json({ com_nota: nossos.size, arquivados: arquivados.length, reabertos });
     }
 
     if (acao === 'diagnostico' || acao === 'emitir') {

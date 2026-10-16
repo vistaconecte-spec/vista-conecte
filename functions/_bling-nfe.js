@@ -193,6 +193,14 @@ export async function lerRodadas(env, dias = 7) {
   return (await r.json()).map(x => x.dados);
 }
 
+// Pedidos com nota emitida pelo automático nos últimos `dias` (nome da Shopify, ex. '#9344').
+export async function pedidosComNotaRecentes(env, dias = 4) {
+  const desde = new Date(Date.now() - dias * 86400e3).toISOString();
+  const r = await fetch(`${SB_URL}/rest/v1/vc_modelos?id=like.${encodeURIComponent('bling-nfe:*')}&updated_at=gte.${encodeURIComponent(desde)}&select=dados`, { headers: sbHeaders(env) });
+  if (!r.ok) throw new Error(`Supabase list ${r.status}`);
+  return new Set((await r.json()).map(x => x.dados).filter(d => d && d.status === 'enviada' && d.shopify).map(d => d.shopify));
+}
+
 export async function gravarTrava(env, idPedido, dados) {
   const r = await fetch(`${SB_URL}/rest/v1/vc_modelos?id=eq.${encodeURIComponent(docId(idPedido))}`, {
     method: 'PATCH', headers: sbHeaders(env, { Prefer: 'return=minimal' }),

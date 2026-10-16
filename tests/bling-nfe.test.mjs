@@ -92,7 +92,9 @@ ok('pendentes pula pedido que já tem doc de emissão', f.includes('travasExiste
 ok('automático nunca pega pedido de antes de 16/10/2026 (atrasados são decisão fiscal)', f.includes("INICIO_AUTOMATICO = '2026-10-16'") && f.includes('calc < INICIO_AUTOMATICO ? INICIO_AUTOMATICO : calc'), true);
 const yml = readFileSync(new URL('../.github/workflows/bling-notas.yml', import.meta.url), 'utf8');
 ok('cron 8h47 e 13h47 de Brasília (minuto quebrado), seg a sex', yml.includes("'47 11 * * 1-5'") && yml.includes("'47 16 * * 1-5'"), true);
-ok('agendamento PAUSADO até o Bling parar de arquivar o pedido na Shopify', /^\s*# schedule:/m.test(yml) && !/^\s*schedule:/m.test(yml), true);
+ok('agendamento ligado', /^\s*schedule:/m.test(yml), true);
+ok('rodada reabre no fim os pedidos que o Bling arquivou', w.includes("/api/bling-nfe?acao=reabrir&confirmar=1"), true);
+ok('reabrir só toca pedido com nota nossa, não enviado e não cancelado', f.includes('nossos.has(o.name) && !o.cancelled_at && !o.fulfillment_status'), true);
 ok('duas rodadas nunca rodam juntas', yml.includes('group: bling-notas') && yml.includes('cancel-in-progress: false'), true);
 ok('token vem do secret, nunca no arquivo', yml.includes('${{ secrets.VC_API_TOKEN }}'), true);
 const mainjs = readFileSync(new URL('../main.js', import.meta.url), 'utf8');
