@@ -1191,6 +1191,13 @@ function buildSidebar() {
   trfItem.onclick = () => abrirTrafego(trfItem);
   nav.appendChild(trfItem);
 
+  // Botão Notas fiscais: emissão automática pelo Bling (mesma senha do Financeiro)
+  const nfeItem = document.createElement('div');
+  nfeItem.className = 'nav-item nav-dashboard' + (modeloAtual === '__notas__' ? ' active' : '');
+  nfeItem.innerHTML = '<i class="ti ti-file-invoice"></i> NOTAS FISCAIS';
+  nfeItem.onclick = () => abrirNotas(nfeItem);
+  nav.appendChild(nfeItem);
+
   // Botão Atendimento — SAC/Troca/Devolução/Vendas (mesma senha do Financeiro)
   const atdItem = document.createElement('div');
   atdItem.className = 'nav-item nav-dashboard' + (modeloAtual === '__atendimento__' ? ' active' : '');
@@ -1487,7 +1494,7 @@ function trafCarregarFrame() {
 function abrirTrafego(item) {
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   if (item) item.classList.add('active');
-  if (!['__dashboard__', '__financeiro__', '__precos__', '__trafego__'].includes(modeloAtual) && (estEditado || prodEditado || cfgEditado)) {
+  if (!['__dashboard__', '__financeiro__', '__precos__', '__trafego__', '__notas__'].includes(modeloAtual) && (estEditado || prodEditado || cfgEditado)) {
     clearTimeout(saveTimer); salvarModelo();
   }
   estEditado = false; prodEditado = false; cfgEditado = false; esconderBtnSalvar();
@@ -1525,11 +1532,59 @@ function trafLock() {
   document.getElementById('traf-content').style.display = 'none';
 }
 
+// ── Notas fiscais: resumo da emissão automática pelo Bling (mesma senha do Financeiro) ──
+// A emissão roda sozinha no GitHub (9h e 14h, seg-sex); aqui só se vê o que saiu e o que
+// ficou de fora. A página é a /notas.html, a mesma que abre fora do painel.
+function notasCarregarFrame(recarregar) {
+  const f = document.getElementById('nfe-frame');
+  if (f && (recarregar || !(f.getAttribute('src') || '').includes('notas.html'))) f.setAttribute('src', '/notas.html?embed=1&t=' + Date.now());
+}
+function abrirNotas(item) {
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  if (item) item.classList.add('active');
+  if (!['__dashboard__', '__financeiro__', '__precos__', '__trafego__', '__fluxo__', '__atendimento__', '__frete__', '__notas__'].includes(modeloAtual) && (estEditado || prodEditado || cfgEditado)) {
+    clearTimeout(saveTimer); salvarModelo();
+  }
+  estEditado = false; prodEditado = false; cfgEditado = false; esconderBtnSalvar();
+  modeloAtual = '__notas__';
+  location.hash = 'notas';
+  document.getElementById('model-title').innerHTML = '<span style="font-family:\'Bebas Neue\',\'Arial Narrow\',sans-serif;font-weight:400;font-size:26px;letter-spacing:0.1em">NOTAS FISCAIS</span>';
+  document.getElementById('model-sub').textContent = '';
+  document.getElementById('topbar-actions').style.display = 'none';
+  document.getElementById('tabs-modelo').style.display = 'none';
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  document.getElementById('panel-notas').classList.add('active');
+  document.body.classList.remove('precos-mode');
+  const ok = sessionStorage.getItem('fin-ok') === '1';
+  document.getElementById('nfe-gate').style.display = ok ? 'none' : '';
+  document.getElementById('nfe-content').style.display = ok ? '' : 'none';
+  if (ok) notasCarregarFrame(true); else setTimeout(() => document.getElementById('nfe-senha')?.focus(), 60);
+  closeSidebar();
+}
+async function notasUnlock() {
+  const v = document.getElementById('nfe-senha').value;
+  if (await conferirSenha(v) === 'dona') {
+    sessionStorage.setItem('fin-ok', '1');
+    document.getElementById('nfe-erro').textContent = '';
+    document.getElementById('nfe-senha').value = '';
+    document.getElementById('nfe-gate').style.display = 'none';
+    document.getElementById('nfe-content').style.display = '';
+    notasCarregarFrame(true);
+  } else {
+    document.getElementById('nfe-erro').textContent = 'Senha incorreta';
+  }
+}
+function notasLock() {
+  sessionStorage.removeItem('fin-ok');
+  document.getElementById('nfe-gate').style.display = '';
+  document.getElementById('nfe-content').style.display = 'none';
+}
+
 // ── Atendimento — SAC / Troca / Devolução / Vendas (mesma senha do Financeiro) ──
 function abrirAtendimento(item) {
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   if (item) item.classList.add('active');
-  if (!['__dashboard__', '__financeiro__', '__precos__', '__trafego__', '__fluxo__', '__atendimento__', '__frete__'].includes(modeloAtual) && (estEditado || prodEditado || cfgEditado)) {
+  if (!['__dashboard__', '__financeiro__', '__precos__', '__trafego__', '__fluxo__', '__atendimento__', '__frete__', '__notas__'].includes(modeloAtual) && (estEditado || prodEditado || cfgEditado)) {
     clearTimeout(saveTimer); salvarModelo();
   }
   estEditado = false; prodEditado = false; cfgEditado = false; esconderBtnSalvar();
@@ -1572,7 +1627,7 @@ function atdLock() {
 function abrirFrete(item) {
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   if (item) item.classList.add('active');
-  if (!['__dashboard__', '__financeiro__', '__precos__', '__trafego__', '__fluxo__', '__atendimento__', '__frete__'].includes(modeloAtual) && (estEditado || prodEditado || cfgEditado)) {
+  if (!['__dashboard__', '__financeiro__', '__precos__', '__trafego__', '__fluxo__', '__atendimento__', '__frete__', '__notas__'].includes(modeloAtual) && (estEditado || prodEditado || cfgEditado)) {
     clearTimeout(saveTimer); salvarModelo();
   }
   estEditado = false; prodEditado = false; cfgEditado = false; esconderBtnSalvar();
@@ -3082,7 +3137,7 @@ function flxPopularMeses() {
 function abrirFluxo(item) {
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   if (item) item.classList.add('active');
-  if (!['__dashboard__', '__financeiro__', '__precos__', '__trafego__', '__fluxo__', '__atendimento__', '__frete__'].includes(modeloAtual) && (estEditado || prodEditado || cfgEditado)) {
+  if (!['__dashboard__', '__financeiro__', '__precos__', '__trafego__', '__fluxo__', '__atendimento__', '__frete__', '__notas__'].includes(modeloAtual) && (estEditado || prodEditado || cfgEditado)) {
     clearTimeout(saveTimer); salvarModelo();
   }
   estEditado = false; prodEditado = false; cfgEditado = false; esconderBtnSalvar();
@@ -13545,7 +13600,7 @@ function iniciarApp() {
   _appIniciado = true;
 
 const _hashKey = location.hash.replace('#', '');
-const _ESPECIAIS = { confeccao: '__confeccao__', precos: '__precos__', financeiro: '__financeiro__', trafego: '__trafego__', fluxo: '__fluxo__', atendimento: '__atendimento__', frete: '__frete__', modelagem: '__modelagem__', corte: '__corte__', costura: '__costura__' };
+const _ESPECIAIS = { confeccao: '__confeccao__', precos: '__precos__', financeiro: '__financeiro__', trafego: '__trafego__', notas: '__notas__', fluxo: '__fluxo__', atendimento: '__atendimento__', frete: '__frete__', modelagem: '__modelagem__', corte: '__corte__', costura: '__costura__' };
 modeloAtual = _ESPECIAIS[_hashKey] || ((_hashKey && MODELOS[_hashKey]) ? _hashKey : '__dashboard__');
 // Perfis de oficina não escolhem tela: entram direto na aba deles e ficam nela
 if (ehPerfilCorte())     modeloAtual = '__corte__';
@@ -13567,6 +13622,8 @@ if (modeloAtual === '__confeccao__') {
   abrirFinanceiro(null); // restaura a aba Financeiro após F5
 } else if (modeloAtual === '__trafego__') {
   abrirTrafego(null); // restaura a aba Tráfego após F5
+} else if (modeloAtual === '__notas__') {
+  abrirNotas(null); // restaura a aba Notas fiscais após F5
 } else if (modeloAtual === '__fluxo__') {
   abrirFluxo(null); // restaura a aba Fluxo de Caixa após F5
 } else if (modeloAtual === '__atendimento__') {
@@ -13592,6 +13649,7 @@ const _renderInicial = () => {
   else if (modeloAtual === '__precos__') { if (sessionStorage.getItem('fin-ok') === '1') renderPrecos(); }
   else if (modeloAtual === '__financeiro__') { if (sessionStorage.getItem('fin-ok') === '1') renderFinanceiro(); }
   else if (modeloAtual === '__trafego__') { if (sessionStorage.getItem('fin-ok') === '1') trafCarregarFrame(); }
+  else if (modeloAtual === '__notas__') { if (sessionStorage.getItem('fin-ok') === '1') notasCarregarFrame(); }
   else if (modeloAtual === '__fluxo__') { if (sessionStorage.getItem('fin-ok') === '1') renderFluxo(); }
   else if (modeloAtual === '__atendimento__') { if (sessionStorage.getItem('fin-ok') === '1') atdShowSub('sac'); }
   else if (modeloAtual === '__frete__') { if (sessionStorage.getItem('fin-ok') === '1') frtCarregarMes(); }

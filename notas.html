@@ -40,6 +40,8 @@
   </div>
 </div>
 <script>
+// Dentro do painel (aba NOTAS FISCAIS) o cabeçalho já existe.
+if (new URLSearchParams(location.search).get('embed') === '1') document.querySelectorAll('h1, .sub').forEach(e => e.remove());
 const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const brl = v => v == null ? '' : 'R$ ' + Number(v).toLocaleString('pt-BR', { minimumFractionDigits: 2 });
 const dataBR = d => d.split('-').reverse().join('/');

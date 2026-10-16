@@ -94,6 +94,10 @@ const yml = readFileSync(new URL('../.github/workflows/bling-notas.yml', import.
 ok('cron às 9h e 14h de Brasília (12 e 17 UTC), seg a sex', yml.includes("'0 12 * * 1-5'") && yml.includes("'0 17 * * 1-5'"), true);
 ok('duas rodadas nunca rodam juntas', yml.includes('group: bling-notas') && yml.includes('cancel-in-progress: false'), true);
 ok('token vem do secret, nunca no arquivo', yml.includes('${{ secrets.VC_API_TOKEN }}'), true);
+const mainjs = readFileSync(new URL('../main.js', import.meta.url), 'utf8');
+const indexhtml = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+ok('aba NOTAS FISCAIS no menu, atrás da senha do Financeiro', mainjs.includes("nfeItem.onclick = () => abrirNotas(nfeItem)") && mainjs.includes("notasUnlock") && indexhtml.includes('id="panel-notas"') && indexhtml.includes('id="nfe-gate"'), true);
+ok('aba NOTAS volta depois do F5 (#notas)', mainjs.includes("notas: '__notas__'") && mainjs.includes('abrirNotas(null)'), true);
 ok('nenhum DELETE na API do Bling', /method: 'DELETE'/.test(f), false);
 
 console.log(`\n${total - falhas}/${total} ok`);
