@@ -120,6 +120,7 @@ ok('item fora da tabela vira motivo (nota não sai)', comp.faltando, ['Coturno M
 ok('não preenche NCM já existente', completarNcmItens([{ descricao: 'Macacão Amplo', classificacaoFiscal: '6104.43.00' }]).itens[0].classificacaoFiscal, '6104.43.00');
 ok('nota pendente confere a Shopify de novo antes de enviar', f.includes("problemas.push('pedido cancelado na Shopify')") && f.includes('valor da nota'), true);
 ok('agendador segue quando o erro é de um pedido só (nota criada)', w.includes('!d.emitido && !d.nota)'), true);
+ok('PUT da nota manda desconto como número e código do item sem produto', f.includes('if (desconto > 0) corpo.desconto = desconto;') && f.includes('`SHP${l.variant_id}`'), true);
 ok('nenhum DELETE na API do Bling', /method: 'DELETE'/.test(f), false);
 
 console.log(`\n${total - falhas}/${total} ok`);
