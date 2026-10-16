@@ -23,6 +23,7 @@ import { bling, tokenValido, statusToken, json, esperar, PAUSA_MS } from '../_bl
 import { decidir, idDaResposta, soDigitos, lerTrava, travar, gravarTrava, travasExistentes, completarNcmItens, LOJA_SHOPIFY_BLING, SITUACAO_EM_ABERTO } from '../_bling-nfe.js';
 
 const DATA = /^\d{4}-\d{2}-\d{2}$/;
+const semAcentoLower = t => String(t || '').normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 export const INICIO_AUTOMATICO = '2026-10-16';
 const SHOPIFY_API = '2024-04';
 
@@ -63,7 +64,7 @@ async function pedidoBling(env, token, ref) {
 
 async function pedidoShopify(env, orderId) {
   if (!orderId) return null;
-  const fields = 'id,name,total_price,current_total_price,financial_status,cancelled_at,refunds,source_name,shipping_lines';
+  const fields = 'id,name,total_price,current_total_price,financial_status,cancelled_at,refunds,source_name,shipping_lines,line_items';
   const r = await fetch(`https://${env.SHOPIFY_STORE_DOMAIN}/admin/api/${SHOPIFY_API}/orders/${encodeURIComponent(orderId)}.json?fields=${fields}`, {
     headers: { 'X-Shopify-Access-Token': env.SHOPIFY_ADMIN_TOKEN },
   });
@@ -286,7 +287,20 @@ async function completarEEnviar(env, token, idPedido, idNota, doc, saida, order)
 
   const mudou = itens.some((it, i) => it.classificacaoFiscal !== (nota.itens[i] || {}).classificacaoFiscal);
   if (mudou) {
-    const corpo = { ...nota, itens };
+    // Item sem produto no Bling (variação da Shopify sem SKU, nunca cadastrada lá): o PUT exige
+    // um código. Usa o SKU da Shopify ou, sem SKU, o id da variação. E o PUT recalcula o total
+    // pelos itens, então frete e desconto vão explícitos pra fechar com as parcelas.
+    const linhas = (order && order.line_items) || [];
+    const chave = t => semAcentoLower(t).replace(/\s+/g, ' ').trim();
+    const itensCod = itens.map(it => {
+      if (it.codigo) return it;
+      const l = linhas.find(x => chave(`${x.title} - ${x.variant_title || ''}`) === chave(it.descricao)) || linhas.find(x => chave(it.descricao).startsWith(chave(x.title)));
+      return { ...it, codigo: l ? (l.sku || `SHP${l.variant_id}`) : `VC${idPedido}` };
+    });
+    const somaItens = itensCod.reduce((t, it) => t + Number(it.valor) * Number(it.quantidade), 0);
+    const desconto = Math.round((somaItens + Number(nota.valorFrete || 0) - Number(nota.valorNota)) * 100) / 100;
+    const corpo = { ...nota, itens: itensCod, transporte: { ...(nota.transporte || {}), frete: Number(nota.valorFrete || 0) } };
+    if (desconto > 0) corpo.desconto = { valor: desconto, unidade: 'REAL' };
     for (const k of ['id', 'xml', 'linkDanfe', 'linkPDF', 'chaveAcesso', 'situacao']) delete corpo[k];
     try {
       await esperar(PAUSA_MS);
