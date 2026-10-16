@@ -20,7 +20,7 @@
  * chamar isto pedido a pedido, parando no primeiro erro inesperado.
  */
 import { bling, tokenValido, statusToken, json, esperar, PAUSA_MS } from '../_bling.js';
-import { decidir, idDaResposta, soDigitos, lerTrava, travar, gravarTrava } from '../_bling-nfe.js';
+import { decidir, idDaResposta, soDigitos, lerTrava, travar, gravarTrava, travasExistentes, LOJA_SHOPIFY_BLING, SITUACAO_EM_ABERTO } from '../_bling-nfe.js';
 
 const DATA = /^\d{4}-\d{2}-\d{2}$/;
 const SHOPIFY_API = '2024-04';
@@ -149,6 +149,32 @@ export async function onRequestGet({ request, env }) {
         cliente_com_nota: pedidos.filter(p => p.nota_da_cliente.length).length,
         sem_nota: pedidos.filter(p => !p.nota_da_cliente.length).length,
         pedidos,
+      });
+    }
+
+    if (acao === 'pendentes') {
+      // Lista pro agendador (workers/bling-cron): pedidos em aberto da loja nos últimos
+      // `dias`, com total > 0, que ainda não passaram pela emissão (sem doc bling-nfe:<id>).
+      // A decisão de verdade é do acao=emitir, pedido a pedido; isto só evita bater no Bling
+      // à toa com o que já foi feito.
+      const dias = Math.min(parseInt(q.get('dias') || '4', 10) || 4, 15);
+      const ate = hojeSP();
+      const de = new Date(Date.now() - 3 * 3600e3 - (dias - 1) * 86400e3).toISOString().slice(0, 10);
+      const token = await tokenValido(env);
+      const lista = [];
+      for (let pagina = 1; pagina <= 5; pagina++) {
+        const d = await bling(env, `/pedidos/vendas?pagina=${pagina}&limite=100&dataInicial=${de}&dataFinal=${ate}`, { token });
+        const itens = (d && d.data) || [];
+        lista.push(...itens);
+        if (itens.length < 100) break;
+        await esperar(PAUSA_MS);
+      }
+      const candidatos = lista.filter(p => p.situacao && p.situacao.id === SITUACAO_EM_ABERTO && p.loja && p.loja.id === LOJA_SHOPIFY_BLING && Number(p.total) > 0);
+      const feitos = await travasExistentes(env, candidatos.map(p => p.id));
+      return json({
+        de, ate,
+        pedidos: candidatos.filter(p => !feitos.has(String(p.id))).map(p => ({ id: p.id, numero: p.numero, data: p.data, total: p.total })),
+        ja_processados: candidatos.filter(p => feitos.has(String(p.id))).length,
       });
     }
 

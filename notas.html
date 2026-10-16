@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CONECTE · Notas fiscais</title>
+<style>
+  :root{ --navy:#1a2b4a; --gold:#b8923f; --bg:#f4f5f7; --card:#fff; --border:#e6e8ec; --txt:#1a2b4a; --muted:#7a8699; --red:#dc2626; --green:#0f9d58; --amber:#b45309; }
+  *{box-sizing:border-box} body{margin:0;font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;background:var(--bg);color:var(--txt)}
+  .wrap{max-width:980px;margin:0 auto;padding:18px 16px}
+  h1{font-size:20px;letter-spacing:.18em;font-weight:800;margin:0}
+  .sub{color:var(--muted);font-size:12px;margin:2px 0 16px}
+  .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:16px}
+  .kpi{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:14px}
+  .kpi .l{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+  .kpi .v{font-size:22px;font-weight:800;margin-top:4px}
+  .dia{background:var(--card);border:1px solid var(--border);border-radius:12px;margin-bottom:14px;overflow:hidden}
+  .dia h2{font-size:14px;margin:0;padding:12px 14px;background:#eef0f3;display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap}
+  .rod{padding:10px 14px;border-top:1px solid var(--border)}
+  .rod .hora{font-size:12px;color:var(--muted);margin-bottom:6px}
+  .linha{display:flex;gap:10px;font-size:13px;padding:4px 0;flex-wrap:wrap}
+  .linha .p{font-weight:700;min-width:110px}
+  .ok{color:var(--green);font-weight:700}
+  .fora{color:var(--amber)}
+  .erro{color:var(--red);font-weight:700}
+  .alerta{background:#fff1f2;border:1px solid #fecaca;color:#991b1b;border-radius:10px;padding:10px 14px;font-size:13px;margin:6px 0}
+  .loading{padding:40px;text-align:center;color:var(--muted)}
+  .foot{color:var(--muted);font-size:11px;margin-top:14px;line-height:1.5}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>CONECTE</h1>
+  <div class="sub">Notas fiscais automáticas (Bling). Rodam às 9h e às 14h, de segunda a sexta.</div>
+  <div class="cards" id="kpis"></div>
+  <div id="conteudo" class="loading">Carregando…</div>
+  <div class="foot">
+    Pedido "fora" não recebeu nota porque alguma trava não passou (já tem nota, cancelado, reembolso, valor diferente da Shopify, rascunho, retirada). Ele volta a ser tentado na próxima rodada enquanto estiver em aberto no Bling, então quando o motivo some a nota sai sozinha.
+    Pedido com <b>erro</b> precisa de alguém olhar no Bling antes da próxima rodada.
+  </div>
+</div>
+<script>
+const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const brl = v => v == null ? '' : 'R$ ' + Number(v).toLocaleString('pt-BR', { minimumFractionDigits: 2 });
+const dataBR = d => d.split('-').reverse().join('/');
+const hora = iso => new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Sao_Paulo' });
+
+async function carregar() {
+  const el = document.getElementById('conteudo');
+  let d;
+  try {
+    const r = await fetch('/api/bling-nfe-resumo', { credentials: 'same-origin' });
+    if (r.status === 401) { el.innerHTML = 'Entre no painel primeiro e abra esta página de novo.'; return; }
+    d = await r.json();
+  } catch (e) { el.innerHTML = '<div class="alerta">Não consegui ler o resumo: ' + esc(e.message) + '</div>'; return; }
+  const dias = (d.rodadas_por_dia || []);
+  const hoje = dias[0] && dias[0].dia === new Date(Date.now() - 3 * 3600e3).toISOString().slice(0, 10) ? dias[0] : null;
+  const somar = (lista, f) => lista.reduce((s, r) => s + (r.resultados || []).filter(f).length, 0);
+  const rodHoje = hoje ? hoje.rodadas : [];
+  const ultimo = (lista) => { const m = new Map(); lista.forEach(r => (r.resultados || []).forEach(x => m.set(x.pedido, x))); return [...m.values()]; };
+  const finalHoje = ultimo(rodHoje);
+  document.getElementById('kpis').innerHTML = [
+    ['Notas emitidas hoje', somar(rodHoje, x => x.emitido)],
+    ['Fora (travas) agora', finalHoje.filter(x => !x.emitido && !x.erro).length],
+    ['Com erro agora', finalHoje.filter(x => x.erro).length],
+    ['Notas nos últimos 7 dias', dias.reduce((s, dd) => s + somar(dd.rodadas || [], x => x.emitido), 0)],
+  ].map(([l, v]) => `<div class="kpi"><div class="l">${l}</div><div class="v">${v}</div></div>`).join('');
+  if (!dias.length) { el.className = ''; el.innerHTML = '<div class="dia"><h2>Nenhuma rodada ainda</h2></div>'; return; }
+  el.className = '';
+  el.innerHTML = dias.map(dd => `
+    <div class="dia">
+      <h2><span>${dataBR(dd.dia)}</span><span>${somar(dd.rodadas || [], x => x.emitido)} notas</span></h2>
+      ${(dd.rodadas || []).slice().reverse().map(r => `
+        <div class="rod">
+          <div class="hora">Rodada das ${hora(r.em)} · ${r.emitidas} emitida(s) de ${(r.resultados || []).length} pedido(s)</div>
+          ${r.erro_geral ? `<div class="alerta">${esc(r.erro_geral)}</div>` : ''}
+          ${(r.resultados || []).map(x => `
+            <div class="linha">
+              <span class="p">${esc(x.shopify || ('Bling ' + x.numero))}</span>
+              <span>${brl(x.total)}</span>
+              ${x.emitido ? `<span class="ok">nota ${esc(x.nota || '')}</span>`
+                : x.erro ? `<span class="erro">${esc(x.erro)}</span>`
+                : `<span class="fora">fora: ${esc((x.motivos || []).join('; '))}</span>`}
+            </div>`).join('') || '<div class="linha">Nenhum pedido pendente.</div>'}
+        </div>`).join('')}
+    </div>`).join('');
+}
+carregar();
+</script>
+</body>
+</html>

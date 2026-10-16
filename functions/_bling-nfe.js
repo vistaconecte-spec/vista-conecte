@@ -105,6 +105,35 @@ export async function travar(env, idPedido, dados) {
   return true;
 }
 
+// Quais destes pedidos já têm doc de emissão (uma consulta só, em vez de uma por pedido).
+export async function travasExistentes(env, ids) {
+  if (!ids.length) return new Set();
+  const lista = ids.map(id => `"${docId(id)}"`).join(',');
+  const r = await fetch(`${SB_URL}/rest/v1/vc_modelos?id=in.(${encodeURIComponent(lista)})&select=id`, { headers: sbHeaders(env) });
+  if (!r.ok) throw new Error(`Supabase list ${r.status}`);
+  return new Set((await r.json()).map(x => x.id.replace('bling-nfe:', '')));
+}
+
+// Resumo de cada rodada do agendador: doc bling-nfe-rodada:<AAAA-MM-DD> com a lista do dia.
+export async function gravarRodada(env, dia, rodada) {
+  const id = `bling-nfe-rodada:${dia}`;
+  const r0 = await fetch(`${SB_URL}/rest/v1/vc_modelos?id=eq.${encodeURIComponent(id)}&select=dados`, { headers: sbHeaders(env) });
+  const rows = r0.ok ? await r0.json() : [];
+  const atual = rows[0] ? rows[0].dados : { dia, rodadas: [] };
+  atual.rodadas = [...(atual.rodadas || []), rodada].slice(-10);
+  const r = await fetch(`${SB_URL}/rest/v1/vc_modelos?on_conflict=id`, {
+    method: 'POST', headers: sbHeaders(env, { Prefer: 'resolution=merge-duplicates,return=minimal' }),
+    body: JSON.stringify({ id, dados: atual }),
+  });
+  if (!r.ok) throw new Error(`Supabase upsert ${r.status}`);
+}
+
+export async function lerRodadas(env, dias = 7) {
+  const r = await fetch(`${SB_URL}/rest/v1/vc_modelos?id=like.${encodeURIComponent('bling-nfe-rodada:*')}&select=dados&order=id.desc&limit=${dias}`, { headers: sbHeaders(env) });
+  if (!r.ok) throw new Error(`Supabase list ${r.status}`);
+  return (await r.json()).map(x => x.dados);
+}
+
 export async function gravarTrava(env, idPedido, dados) {
   const r = await fetch(`${SB_URL}/rest/v1/vc_modelos?id=eq.${encodeURIComponent(docId(idPedido))}`, {
     method: 'PATCH', headers: sbHeaders(env, { Prefer: 'return=minimal' }),
