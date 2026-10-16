@@ -1,32 +1,34 @@
-// Agendador da emissão de NF-e (16/10/2026). Worker separado do Pages porque o Pages não tem
-// cron. Não sabe nada de Bling: só chama o painel, que tem todas as travas.
+// Rodada da emissão automática de NF-e (16/10/2026). Roda no GitHub Actions
+// (.github/workflows/bling-notas.yml) às 9h e às 14h de Brasília, de segunda a sexta, sem
+// Claude e sem computador ligado. Não sabe nada de Bling: só chama o painel, que tem as travas.
 //
 // Em cada rodada: pega os pedidos pendentes (/api/bling-nfe?acao=pendentes), chama
 // acao=emitir&confirmar=1 UM POR VEZ e grava o resumo em /api/bling-nfe-resumo (página
 // /notas.html). Para na primeira falha de emissão: nota autorizada só cancela em 24h, então
 // erro repetido em lote é pior que pedido esperando a próxima rodada.
 //
-// Secret: VC_API_TOKEN (o mesmo API_TOKEN do Pages). Horários no wrangler.toml (UTC).
+// Precisa do secret VC_API_TOKEN no repositório (o mesmo API_TOKEN do Pages).
+//   node scripts/bling-notas.mjs
 
 const BASE = 'https://vistaconecte.pages.dev';
-const MAX_POR_RODADA = 40; // limite de subrequisições do plano grátis (50 por execução)
+const MAX_POR_RODADA = 40;
 
-async function chamar(env, caminho, init = {}) {
-  const r = await fetch(BASE + caminho, { ...init, headers: { 'X-VC-Token': env.VC_API_TOKEN, ...(init.headers || {}) } });
+async function chamar(token, caminho, init = {}) {
+  const r = await fetch(BASE + caminho, { ...init, headers: { 'X-VC-Token': token, ...(init.headers || {}) } });
   let d = null;
   try { d = await r.json(); } catch { d = { erro: `resposta não-JSON (${r.status})` }; }
   return { status: r.status, d };
 }
 
-export async function rodada(env) {
+export async function rodada(token) {
   const resultados = [];
   let erro_geral = null;
-  const p = await chamar(env, '/api/bling-nfe?acao=pendentes&dias=4');
+  const p = await chamar(token, '/api/bling-nfe?acao=pendentes&dias=4');
   if (p.status !== 200 || !p.d || !Array.isArray(p.d.pedidos)) {
     erro_geral = 'pendentes: ' + ((p.d && p.d.erro) || p.status);
   } else {
     for (const ped of p.d.pedidos.slice(0, MAX_POR_RODADA)) {
-      const e = await chamar(env, `/api/bling-nfe?acao=emitir&pedido=${ped.id}&confirmar=1`);
+      const e = await chamar(token, `/api/bling-nfe?acao=emitir&pedido=${ped.id}&confirmar=1`);
       const d = e.d || {};
       const r = d.resumo || {};
       resultados.push({
@@ -41,20 +43,17 @@ export async function rodada(env) {
       if (e.status >= 500 && !d.decisao) { erro_geral = `parou no pedido ${ped.numero}: ${d.erro || e.status}`; break; }
     }
   }
-  await chamar(env, '/api/bling-nfe-resumo', {
+  await chamar(token, '/api/bling-nfe-resumo', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ rodada: { resultados, erro_geral } }),
   });
-  return { emitidas: resultados.filter(x => x.emitido).length, total: resultados.length, erro_geral };
+  return { emitidas: resultados.filter(x => x.emitido).length, pedidos: resultados.length, erro_geral };
 }
 
-export default {
-  async scheduled(_evento, env, ctx) {
-    ctx.waitUntil(rodada(env));
-  },
-  // Rodada manual: só com o mesmo token do painel.
-  async fetch(request, env) {
-    if (request.headers.get('X-VC-Token') !== env.VC_API_TOKEN || !env.VC_API_TOKEN) return new Response('não', { status: 404 });
-    return Response.json(await rodada(env));
-  },
-};
+if (process.argv[1] && process.argv[1].endsWith('bling-notas.mjs')) {
+  const token = process.env.VC_API_TOKEN;
+  if (!token) { console.error('falta VC_API_TOKEN'); process.exit(1); }
+  const r = await rodada(token);
+  console.log(JSON.stringify(r));
+  if (r.erro_geral) process.exit(1); // o GitHub marca a execução em vermelho e manda e-mail
+}

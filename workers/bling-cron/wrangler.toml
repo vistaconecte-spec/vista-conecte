@@ -1,8 +1,0 @@
-name = "vista-bling-cron"
-main = "index.js"
-compatibility_date = "2026-09-01"
-account_id = "01fa31fcd84b2751dd51b738072537a1"
-
-# 9h e 14h de Brasília (UTC-3), segunda a sexta.
-[triggers]
-crons = ["0 12 * * 1-5", "0 17 * * 1-5"]

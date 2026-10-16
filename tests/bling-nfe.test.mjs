@@ -83,15 +83,16 @@ ok('não existe mais so_gerar (o Bling transmite sozinho ao gerar, 16/10/2026)',
 ok('só chama /enviar quando a nota ficou pendente (situação 1)', f.includes('if (nota && nota.situacao === 1) return json(await enviarNota('), true);
 ok('acao=enviar só manda nota ainda pendente no Bling', f.includes('nota.situacao !== 1'), true);
 ok('emitido=true só com nota autorizada (5 ou 6)', f.includes('nota.situacao === 5 || nota.situacao === 6') && f.includes('emitido: autorizada'), true);
-console.log('\nagendador (workers/bling-cron)');
-const w = readFileSync(new URL('../workers/bling-cron/index.js', import.meta.url), 'utf8');
+console.log('\nagendador (scripts/bling-notas.mjs + GitHub Actions)');
+const w = readFileSync(new URL('../scripts/bling-notas.mjs', import.meta.url), 'utf8');
 ok('agendador emite um pedido por chamada, com confirmar=1', w.includes('acao=emitir&pedido=${ped.id}&confirmar=1'), true);
 ok('agendador para quando a trava disse emitir e não emitiu', w.includes('if (d.decisao && d.decisao.emitir && !d.emitido)') && w.includes('break;'), true);
-ok('agendador respeita o limite de 50 subrequisições', /MAX_POR_RODADA = (\d+)/.exec(w) && Number(/MAX_POR_RODADA = (\d+)/.exec(w)[1]) <= 45, true);
-ok('rodada manual exige o token', w.includes("request.headers.get('X-VC-Token') !== env.VC_API_TOKEN"), true);
+ok('agendador sai com erro (GitHub avisa) quando a rodada parou', w.includes('if (r.erro_geral) process.exit(1)'), true);
 ok('pendentes pula pedido que já tem doc de emissão', f.includes('travasExistentes(env, candidatos.map'), true);
-const toml = readFileSync(new URL('../workers/bling-cron/wrangler.toml', import.meta.url), 'utf8');
-ok('cron às 9h e 14h de Brasília (12 e 17 UTC), seg a sex', toml.includes('"0 12 * * 1-5"') && toml.includes('"0 17 * * 1-5"'), true);
+const yml = readFileSync(new URL('../.github/workflows/bling-notas.yml', import.meta.url), 'utf8');
+ok('cron às 9h e 14h de Brasília (12 e 17 UTC), seg a sex', yml.includes("'0 12 * * 1-5'") && yml.includes("'0 17 * * 1-5'"), true);
+ok('duas rodadas nunca rodam juntas', yml.includes('group: bling-notas') && yml.includes('cancel-in-progress: false'), true);
+ok('token vem do secret, nunca no arquivo', yml.includes('${{ secrets.VC_API_TOKEN }}'), true);
 ok('nenhum DELETE na API do Bling', /method: 'DELETE'/.test(f), false);
 
 console.log(`\n${total - falhas}/${total} ok`);

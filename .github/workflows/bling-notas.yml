@@ -1,0 +1,22 @@
+name: Notas fiscais (Bling)
+on:
+  schedule:
+    # 9h e 14h de Brasília (UTC-3), segunda a sexta. O GitHub pode atrasar alguns minutos.
+    - cron: '0 12 * * 1-5'
+    - cron: '0 17 * * 1-5'
+  workflow_dispatch: {}
+concurrency:
+  group: bling-notas
+  cancel-in-progress: false
+jobs:
+  rodada:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: node scripts/bling-notas.mjs
+        env:
+          VC_API_TOKEN: ${{ secrets.VC_API_TOKEN }}
