@@ -661,6 +661,12 @@ export async function onRequest(context) {
         for (const f of o.fulfillments || []) {
           // Remessa cancelada/falhada não tirou peça da arara
           if (f.status && f.status !== 'success') continue;
+          // A busca filtra por updated_at do PEDIDO: mexer num pedido de agosto (nota, tag,
+          // NF-e) trazia de volta as remessas dele. O app poda do registro o que passa de 60
+          // dias, então essas remessas pareciam novas e baixavam de novo a cada minuto
+          // (16/10/2026: comeu 8 peças que a costura tinha acabado de entregar). Só a remessa
+          // criada dentro da janela entra.
+          if (f.created_at && Date.parse(f.created_at) < Date.parse(desde)) continue;
           const itens = [];
           for (const item of f.line_items || []) {
             for (const parsed of parseLineItemMulti(item, o.name, [], true)) {

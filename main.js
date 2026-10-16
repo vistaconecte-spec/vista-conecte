@@ -12276,8 +12276,13 @@ async function _baixaImediataDeProcessados() {
     return;
   }
 
+  // Mesmo corte da poda lá embaixo: remessa mais velha que isso já saiu do registro, então
+  // "não está no registro" deixa de provar que nunca teve baixa. Sem este corte, uma remessa
+  // de agosto que a Shopify devolvesse de novo baixava outra vez a cada minuto (16/10/2026).
+  const corte = new Date(Date.now() - 60 * 86400000).toISOString();
   const novos = processados.filter(p =>
     !ledger.envios[p.id] && p.enviado_em && maisNovoQue(p.enviado_em, ledger.desde)
+    && maisNovoQue(p.enviado_em, corte)
   );
   if (novos.length === 0) return;
 
@@ -12288,8 +12293,7 @@ async function _baixaImediataDeProcessados() {
     if (b.length) { pecas.push(...b); if (!numeros.includes(p.numero)) numeros.push(p.numero); }
   }
 
-  // Poda: 60 dias bastam para a idempotência (a janela da API é de 7)
-  const corte = new Date(Date.now() - 60 * 86400000).toISOString();
+  // Poda: 60 dias bastam para a idempotência (a janela da API é de 7), com o corte lá de cima
   for (const [id, r] of Object.entries(ledger.envios)) if (r.em && !maisNovoQue(r.em, corte)) delete ledger.envios[id];
 
   saveLocal(LEDGER_LOCAL, ledger);

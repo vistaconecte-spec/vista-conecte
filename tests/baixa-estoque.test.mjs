@@ -172,5 +172,16 @@ ok('carregarNuvem repassa o undefined da leitura', /if \(rows === undefined\) re
 ok('leitura direta que falha cai na reserva /api/modelos', /'\/api\/modelos'/.test(carregar), true);
 ok('histórico não é gravado se a leitura falhou', /if \(atual === undefined\) return;/.test(main), true);
 
+console.log('\n9) FURO ACHADO 16/10/2026 — remessa velha voltando baixava a cada minuto');
+// A busca filtra por updated_at do pedido: mexer num pedido de agosto trazia as remessas
+// dele de volta. O registro poda o que passa de 60 dias, então elas pareciam novas e a
+// baixa se repetia a cada ciclo — comeu as 8 peças que a costura tinha acabado de entregar.
+ok('a API descarta remessa criada antes da janela',
+   /if \(f\.created_at && Date\.parse\(f\.created_at\) < Date\.parse\(desde\)\) continue;/.test(api), true);
+ok('o app não baixa remessa mais velha que a poda do registro',
+   /maisNovoQue\(p\.enviado_em, ledger\.desde\)\s*&& maisNovoQue\(p\.enviado_em, corte\)/.test(corpo), true);
+ok('o corte é calculado ANTES do filtro de novos (não só na poda)',
+   corpo.indexOf('const corte') > -1 && corpo.indexOf('const corte') < corpo.indexOf('const novos'), true);
+
 console.log(`\n${falhas === 0 ? '✓ TODOS OS TESTES PASSARAM' : '✗ ' + falhas + ' FALHA(S)'} — ${total - falhas}/${total}\n`);
 process.exit(falhas === 0 ? 0 : 1);
