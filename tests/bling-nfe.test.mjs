@@ -89,6 +89,7 @@ ok('agendador emite um pedido por chamada, com confirmar=1', w.includes('acao=em
 ok('agendador para quando a trava disse emitir e não emitiu', w.includes('if (d.decisao && d.decisao.emitir && !d.emitido)') && w.includes('break;'), true);
 ok('agendador sai com erro (GitHub avisa) quando a rodada parou', w.includes('if (r.erro_geral) process.exit(1)'), true);
 ok('pendentes pula pedido que já tem doc de emissão', f.includes('travasExistentes(env, candidatos.map'), true);
+ok('automático nunca pega pedido de antes de 16/10/2026 (atrasados são decisão fiscal)', f.includes("INICIO_AUTOMATICO = '2026-10-16'") && f.includes('calc < INICIO_AUTOMATICO ? INICIO_AUTOMATICO : calc'), true);
 const yml = readFileSync(new URL('../.github/workflows/bling-notas.yml', import.meta.url), 'utf8');
 ok('cron às 9h e 14h de Brasília (12 e 17 UTC), seg a sex', yml.includes("'0 12 * * 1-5'") && yml.includes("'0 17 * * 1-5'"), true);
 ok('duas rodadas nunca rodam juntas', yml.includes('group: bling-notas') && yml.includes('cancel-in-progress: false'), true);

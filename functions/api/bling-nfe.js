@@ -23,6 +23,7 @@ import { bling, tokenValido, statusToken, json, esperar, PAUSA_MS } from '../_bl
 import { decidir, idDaResposta, soDigitos, lerTrava, travar, gravarTrava, travasExistentes, LOJA_SHOPIFY_BLING, SITUACAO_EM_ABERTO } from '../_bling-nfe.js';
 
 const DATA = /^\d{4}-\d{2}-\d{2}$/;
+export const INICIO_AUTOMATICO = '2026-10-16';
 const SHOPIFY_API = '2024-04';
 
 function hojeSP() {
@@ -157,9 +158,13 @@ export async function onRequestGet({ request, env }) {
       // `dias`, com total > 0, que ainda não passaram pela emissão (sem doc bling-nfe:<id>).
       // A decisão de verdade é do acao=emitir, pedido a pedido; isto só evita bater no Bling
       // à toa com o que já foi feito.
-      const dias = Math.min(parseInt(q.get('dias') || '4', 10) || 4, 15);
+      const dias = Math.min(parseInt(q.get('dias') || '2', 10) || 2, 15);
       const ate = hojeSP();
-      const de = new Date(Date.now() - 3 * 3600e3 - (dias - 1) * 86400e3).toISOString().slice(0, 10);
+      // Pedido "em aberto" no Bling não quer dizer "não enviado": a maioria fica em aberto
+      // depois de despachada. O automático só pega do dia em que foi ligado pra frente; os
+      // atrasados (enviados sem nota) são decisão fiscal à parte, não do agendador.
+      const calc = new Date(Date.now() - 3 * 3600e3 - (dias - 1) * 86400e3).toISOString().slice(0, 10);
+      const de = calc < INICIO_AUTOMATICO ? INICIO_AUTOMATICO : calc;
       const token = await tokenValido(env);
       const lista = [];
       for (let pagina = 1; pagina <= 5; pagina++) {

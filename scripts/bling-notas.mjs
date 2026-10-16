@@ -23,7 +23,7 @@ async function chamar(token, caminho, init = {}) {
 export async function rodada(token) {
   const resultados = [];
   let erro_geral = null;
-  const p = await chamar(token, '/api/bling-nfe?acao=pendentes&dias=4');
+  const p = await chamar(token, '/api/bling-nfe?acao=pendentes&dias=2');
   if (p.status !== 200 || !p.d || !Array.isArray(p.d.pedidos)) {
     erro_geral = 'pendentes: ' + ((p.d && p.d.erro) || p.status);
   } else {
