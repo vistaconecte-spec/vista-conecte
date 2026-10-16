@@ -1,11 +1,13 @@
 name: Notas fiscais (Bling)
 on:
-  schedule:
+  # PAUSADO em 16/10/2026: a integração Bling→Shopify ARQUIVA o pedido na loja quando a nota
+  # sai (#9333, #9344..#9350 foram reabertos à mão). Religar só depois de desligar isso no Bling.
+  # schedule:
     # Por volta de 9h e 14h de Brasília (UTC-3), segunda a sexta. Minuto quebrado de
     # propósito: em hora cheia o GitHub enfileira tudo junto e a de 14h saiu às 16h50
     # (16/10/2026). Marcado 13 min antes pra cair perto da hora mesmo com atraso.
-    - cron: '47 11 * * 1-5'
-    - cron: '47 16 * * 1-5'
+    # - cron: '47 11 * * 1-5'
+    # - cron: '47 16 * * 1-5'
   workflow_dispatch: {}
 concurrency:
   group: bling-notas
