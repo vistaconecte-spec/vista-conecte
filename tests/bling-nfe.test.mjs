@@ -79,8 +79,10 @@ ok('gerar-nfe só depois da trava no Supabase', iTrava > 0 && iTrava < iGerar, t
 ok('envio que falha não tenta de novo (gerada-nao-enviada)', f.includes("status: 'gerada-nao-enviada'"), true);
 ok('erro do gerar-nfe relê o pedido (Bling cria a nota e responde 400)', f.includes("status: 'gerada-com-erro'") && f.indexOf("status: 'gerada-com-erro'") < f.indexOf("status: 'falhou-ao-gerar'"), true);
 ok('refazer só quando falhou ANTES de gerar', f.includes("anterior.status === 'falhou-ao-gerar'"), true);
-ok('so_gerar para ANTES do envio à SEFAZ', f.indexOf("q.get('so_gerar') === '1'") < f.indexOf('return json(await enviarNota(env, token, idPedido'), true);
-ok('acao=enviar só manda nota gerada-aguardando-envio e ainda pendente no Bling', f.includes("anterior.status !== 'gerada-aguardando-envio'") && f.includes('nota.situacao !== 1'), true);
+ok('não existe mais so_gerar (o Bling transmite sozinho ao gerar, 16/10/2026)', f.includes("so_gerar"), false);
+ok('só chama /enviar quando a nota ficou pendente (situação 1)', f.includes('if (nota && nota.situacao === 1) return json(await enviarNota('), true);
+ok('acao=enviar só manda nota ainda pendente no Bling', f.includes('nota.situacao !== 1'), true);
+ok('emitido=true só com nota autorizada (5 ou 6)', f.includes('nota.situacao === 5 || nota.situacao === 6') && f.includes('emitido: autorizada'), true);
 ok('nenhum DELETE na API do Bling', /method: 'DELETE'/.test(f), false);
 
 console.log(`\n${total - falhas}/${total} ok`);

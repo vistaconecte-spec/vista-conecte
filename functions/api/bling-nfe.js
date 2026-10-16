@@ -10,7 +10,9 @@
  *                                     → se as travas passarem: gera a NF-e a partir do pedido
  *                                       e manda pra SEFAZ. Sem confirmar=1 é só o diagnóstico.
  *                                       &refazer=1 só vale quando a tentativa anterior falhou
- *                                       ANTES de criar a nota.
+ *                                       ANTES de criar a nota. ATENÇÃO: o Bling desta conta
+ *                                       transmite à SEFAZ sozinho ao gerar; confirmar=1 é
+ *                                       emissão de verdade.
  * GET ?acao=get&caminho=/pedidos/vendas/123
  *                                     → GET cru na API do Bling, pra conferir formato. Só GET.
  *
@@ -189,27 +191,24 @@ export async function onRequestGet({ request, env }) {
         return json({ ...saida, emitido: false, erro: 'falhou ao gerar a nota: ' + e.message }, 502);
       }
 
-      if (q.get('so_gerar') === '1') {
-        // Nota criada no Bling e NÃO enviada: dá pra conferir (natureza, valores, frete) e,
-        // se estiver errada, apagar no Bling sem efeito fiscal. Envia com acao=enviar.
-        const pend = { ...doc, status: 'gerada-aguardando-envio', nota: idNota };
-        await gravarTrava(env, idPedido, pend);
-        await esperar(PAUSA_MS);
-        let nota = null;
-        try { nota = (await bling(env, `/nfe/${idNota}`, { token })).data; } catch { /* confere no Bling */ }
-        return json({ ...saida, emitido: false, gerada: true, nota: pend, conferir: nota });
-      }
-
-      return json(await enviarNota(env, token, idPedido, idNota, doc, saida));
+      // A conta do Bling TRANSMITE SOZINHA toda nota que passa na validação: o gerar-nfe já
+      // devolve a nota autorizada (007626, #9345, 16/10/2026). Não existe "gerar sem enviar"
+      // por aqui. Só chama o /enviar quando a nota ficou pendente (situação 1).
+      await esperar(PAUSA_MS * 2);
+      let nota = null;
+      try { nota = (await bling(env, `/nfe/${idNota}`, { token })).data; } catch { /* confere abaixo */ }
+      if (nota && nota.situacao === 1) return json(await enviarNota(env, token, idPedido, idNota, doc, saida));
+      return json(await registrarNota(env, idPedido, idNota, doc, saida, nota));
     }
 
     if (acao === 'enviar') {
-      // Manda pra SEFAZ uma nota gerada com so_gerar=1, depois de conferida.
+      // Manda pra SEFAZ uma nota que ficou PENDENTE no Bling (ex.: criada sem NCM e corrigida
+      // à mão depois). Só aceita nota ainda pendente.
       const ref = q.get('pedido');
       if (!ref || q.get('confirmar') !== '1') return json({ erro: 'precisa de ?pedido=ID_DO_BLING&confirmar=1' }, 400);
       const anterior = await lerTrava(env, ref);
-      if (!anterior || anterior.status !== 'gerada-aguardando-envio' || !anterior.nota) {
-        return json({ erro: 'não há nota gerada aguardando envio para este pedido', anterior }, 409);
+      if (!anterior || !anterior.nota || !['gerada-aguardando-envio', 'gerada-com-erro'].includes(anterior.status)) {
+        return json({ erro: 'não há nota pendente registrada para este pedido', anterior }, 409);
       }
       const token = await tokenValido(env);
       const nota = (await bling(env, `/nfe/${anterior.nota}`, { token })).data;
@@ -236,11 +235,17 @@ async function enviarNota(env, token, idPedido, idNota, doc, saida) {
   await esperar(PAUSA_MS * 3);
   let nota = null;
   try { nota = (await bling(env, `/nfe/${idNota}`, { token })).data; } catch { /* confere depois */ }
+  return registrarNota(env, idPedido, idNota, doc, saida, nota);
+}
+
+// Situação da nota no Bling: 5 autorizada, 6 emitida DANFE. Qualquer outra fica pra conferir.
+async function registrarNota(env, idPedido, idNota, doc, saida, nota) {
+  const autorizada = !!nota && (nota.situacao === 5 || nota.situacao === 6);
   const fim = {
-    ...doc, status: 'enviada', nota: idNota,
+    ...doc, status: autorizada ? 'enviada' : 'conferir-situacao', nota: idNota,
     numero_nota: nota ? nota.numero : null, situacao_nota: nota ? nota.situacao : null,
     chave: nota ? nota.chaveAcesso : null, danfe: nota ? nota.linkDanfe : null,
   };
   await gravarTrava(env, idPedido, fim);
-  return { ...saida, emitido: true, nota: fim };
+  return { ...saida, emitido: autorizada, nota: fim };
 }
