@@ -251,7 +251,7 @@ export async function onRequestGet({ request, env }) {
       const token = await tokenValido(env);
       const pedido = (await bling(env, `/pedidos/vendas/${ref}`, { token })).data;
       const order = await pedidoShopify(env, pedido && pedido.numeroLoja);
-      return json(await completarEEnviar(env, token, ref, anterior.nota, anterior, {}, order));
+      return json(await completarEEnviar(env, token, ref, anterior.nota, anterior, {}, order, q.get('fd')));
     }
 
     return json({ erro: 'acao desconhecida (status, previa, diagnostico, emitir, enviar, get)' }, 400);
@@ -263,7 +263,7 @@ export async function onRequestGet({ request, env }) {
 // Nota PENDENTE no Bling (situação 1): confere a Shopify de novo, completa o NCM dos itens
 // que vieram sem (tabela em _bling-nfe.js), grava a nota e manda pra SEFAZ. Se algum item não
 // está na tabela ou a Shopify não confere, a nota fica pendente com o motivo.
-async function completarEEnviar(env, token, idPedido, idNota, doc, saida, order) {
+async function completarEEnviar(env, token, idPedido, idNota, doc, saida, order, formatoDesconto) {
   await esperar(PAUSA_MS);
   const nota = (await bling(env, `/nfe/${idNota}`, { token })).data;
   if (!nota || nota.situacao !== 1) return registrarNota(env, idPedido, idNota, doc, saida, nota);
@@ -300,7 +300,22 @@ async function completarEEnviar(env, token, idPedido, idNota, doc, saida, order)
     const somaItens = itensCod.reduce((t, it) => t + Number(it.valor) * Number(it.quantidade), 0);
     const desconto = Math.round((somaItens + Number(nota.valorFrete || 0) - Number(nota.valorNota)) * 100) / 100;
     const corpo = { ...nota, itens: itensCod, transporte: { ...(nota.transporte || {}), frete: Number(nota.valorFrete || 0) } };
-    if (desconto > 0) corpo.desconto = { valor: desconto, unidade: 'REAL' };
+    // Formato do desconto no PUT da NF-e ainda em teste (16/10/2026): &fd= escolhe qual tentar.
+    if (desconto > 0) {
+      const fd = formatoDesconto || 'objeto';
+      if (fd === 'objeto') corpo.desconto = { valor: desconto, unidade: 'REAL' };
+      else if (fd === 'numero') corpo.desconto = desconto;
+      else if (fd === 'valorDesconto') corpo.valorDesconto = desconto;
+      else if (fd === 'itens') {
+        // rateio do desconto nos itens, proporcional ao valor de cada um
+        let resto = desconto;
+        corpo.itens = corpo.itens.map((it, i, arr) => {
+          const parte = i === arr.length - 1 ? resto : Math.round(desconto * (Number(it.valor) * Number(it.quantidade)) / somaItens * 100) / 100;
+          resto = Math.round((resto - parte) * 100) / 100;
+          return { ...it, desconto: parte };
+        });
+      }
+    }
     for (const k of ['id', 'xml', 'linkDanfe', 'linkPDF', 'chaveAcesso', 'situacao']) delete corpo[k];
     try {
       await esperar(PAUSA_MS);
