@@ -20,7 +20,7 @@
  * chamar isto pedido a pedido, parando no primeiro erro inesperado.
  */
 import { bling, tokenValido, statusToken, json, esperar, PAUSA_MS } from '../_bling.js';
-import { decidir, idDaResposta, soDigitos, lerTrava, travar, gravarTrava, travasExistentes, LOJA_SHOPIFY_BLING, SITUACAO_EM_ABERTO } from '../_bling-nfe.js';
+import { decidir, idDaResposta, soDigitos, lerTrava, travar, gravarTrava, travasExistentes, completarNcmItens, LOJA_SHOPIFY_BLING, SITUACAO_EM_ABERTO } from '../_bling-nfe.js';
 
 const DATA = /^\d{4}-\d{2}-\d{2}$/;
 export const INICIO_AUTOMATICO = '2026-10-16';
@@ -214,9 +214,15 @@ export async function onRequestGet({ request, env }) {
         // aqui não quer dizer "nada foi criado": relê o pedido antes de liberar outra tentativa.
         let criada = null;
         try { await esperar(PAUSA_MS * 2); const p = (await bling(env, `/pedidos/vendas/${idPedido}`, { token })).data; criada = p && p.notaFiscal && p.notaFiscal.id ? p.notaFiscal.id : null; } catch { criada = 'desconhecido'; }
-        if (criada) {
+        if (criada && criada !== 'desconhecido') {
+          // Quase sempre é item sem NCM (produto sem NCM ou item sem produto ligado no Bling):
+          // completa pela tabela e manda. Se o item não está na tabela, fica pendente.
           await gravarTrava(env, idPedido, { ...doc, status: 'gerada-com-erro', nota: criada, erro: e.message });
-          return json({ ...saida, emitido: false, nota: criada, erro: 'o Bling criou a nota PENDENTE mas recusou a validação (conferir no Bling): ' + e.message }, 502);
+          return json(await completarEEnviar(env, token, idPedido, criada, { ...doc, status: 'gerada-com-erro' }, saida, d.order));
+        }
+        if (criada) {
+          await gravarTrava(env, idPedido, { ...doc, status: 'gerada-com-erro', nota: null, erro: e.message });
+          return json({ ...saida, emitido: false, erro: 'o Bling recusou e não deu pra saber se criou a nota (conferir no Bling): ' + e.message }, 502);
         }
         await gravarTrava(env, idPedido, { ...doc, status: 'falhou-ao-gerar', erro: e.message });
         return json({ ...saida, emitido: false, erro: 'falhou ao gerar a nota: ' + e.message }, 502);
@@ -228,7 +234,7 @@ export async function onRequestGet({ request, env }) {
       await esperar(PAUSA_MS * 2);
       let nota = null;
       try { nota = (await bling(env, `/nfe/${idNota}`, { token })).data; } catch { /* confere abaixo */ }
-      if (nota && nota.situacao === 1) return json(await enviarNota(env, token, idPedido, idNota, doc, saida));
+      if (nota && nota.situacao === 1) return json(await completarEEnviar(env, token, idPedido, idNota, doc, saida, d.order));
       return json(await registrarNota(env, idPedido, idNota, doc, saida, nota));
     }
 
@@ -242,15 +248,56 @@ export async function onRequestGet({ request, env }) {
         return json({ erro: 'não há nota pendente registrada para este pedido', anterior }, 409);
       }
       const token = await tokenValido(env);
-      const nota = (await bling(env, `/nfe/${anterior.nota}`, { token })).data;
-      if (!nota || nota.situacao !== 1) return json({ erro: `a nota não está mais pendente no Bling (situação ${nota && nota.situacao})`, anterior }, 409);
-      return json(await enviarNota(env, token, ref, anterior.nota, anterior, {}));
+      const pedido = (await bling(env, `/pedidos/vendas/${ref}`, { token })).data;
+      const order = await pedidoShopify(env, pedido && pedido.numeroLoja);
+      return json(await completarEEnviar(env, token, ref, anterior.nota, anterior, {}, order));
     }
 
     return json({ erro: 'acao desconhecida (status, previa, diagnostico, emitir, enviar, get)' }, 400);
   } catch (e) {
     return json({ erro: e.message, status: e.status || null }, e.status && e.status < 500 ? e.status : 502);
   }
+}
+
+// Nota PENDENTE no Bling (situação 1): confere a Shopify de novo, completa o NCM dos itens
+// que vieram sem (tabela em _bling-nfe.js), grava a nota e manda pra SEFAZ. Se algum item não
+// está na tabela ou a Shopify não confere, a nota fica pendente com o motivo.
+async function completarEEnviar(env, token, idPedido, idNota, doc, saida, order) {
+  await esperar(PAUSA_MS);
+  const nota = (await bling(env, `/nfe/${idNota}`, { token })).data;
+  if (!nota || nota.situacao !== 1) return registrarNota(env, idPedido, idNota, doc, saida, nota);
+
+  const problemas = [];
+  if (!order) problemas.push('pedido não encontrado na Shopify');
+  else {
+    if (order.cancelled_at) problemas.push('pedido cancelado na Shopify');
+    if (order.financial_status !== 'paid') problemas.push(`Shopify não está como pago (${order.financial_status})`);
+    if ((order.refunds || []).length) problemas.push('pedido tem reembolso na Shopify');
+    const diff = Math.abs(Math.round(parseFloat(order.current_total_price ?? order.total_price) * 100) - Math.round(parseFloat(nota.valorNota) * 100));
+    if (diff > 1) problemas.push(`valor da nota ${nota.valorNota} diferente da Shopify ${order.current_total_price ?? order.total_price}`);
+  }
+  const { itens, faltando } = completarNcmItens(nota.itens);
+  if (faltando.length) problemas.push('sem NCM na tabela: ' + faltando.join(', '));
+  if (problemas.length) {
+    const pend = { ...doc, status: 'gerada-com-erro', nota: idNota, numero_nota: nota.numero, erro: problemas.join('; ') };
+    await gravarTrava(env, idPedido, pend);
+    return { ...saida, emitido: false, nota: pend, erro: `nota ${nota.numero} ficou PENDENTE no Bling: ${problemas.join('; ')}` };
+  }
+
+  const mudou = itens.some((it, i) => it.classificacaoFiscal !== (nota.itens[i] || {}).classificacaoFiscal);
+  if (mudou) {
+    const corpo = { ...nota, itens };
+    for (const k of ['id', 'xml', 'linkDanfe', 'linkPDF', 'chaveAcesso', 'situacao']) delete corpo[k];
+    try {
+      await esperar(PAUSA_MS);
+      await bling(env, `/nfe/${idNota}`, { method: 'PUT', body: corpo, token });
+    } catch (e) {
+      const pend = { ...doc, status: 'gerada-com-erro', nota: idNota, numero_nota: nota.numero, erro: 'não consegui gravar o NCM na nota: ' + e.message };
+      await gravarTrava(env, idPedido, pend);
+      return { ...saida, emitido: false, nota: pend, erro: `nota ${nota.numero} ficou PENDENTE: ` + pend.erro };
+    }
+  }
+  return enviarNota(env, token, idPedido, idNota, doc, saida);
 }
 
 async function enviarNota(env, token, idPedido, idNota, doc, saida) {

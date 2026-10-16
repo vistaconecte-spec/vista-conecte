@@ -38,8 +38,10 @@ export async function rodada(token) {
         motivos: d.decisao ? d.decisao.motivos : [],
         erro: d.erro || (e.status >= 400 ? `HTTP ${e.status}` : null),
       });
-      // Travas recusaram = normal, segue. Falha DEPOIS de decidir emitir = para tudo.
-      if (d.decisao && d.decisao.emitir && !d.emitido) { erro_geral = `parou no pedido ${ped.numero}: ${d.erro || 'sem detalhe'}`; break; }
+      // Travas recusaram = normal, segue. Nota criada e pendente (ex.: item fora da tabela de
+      // NCM) é problema SÓ daquele pedido: registra e segue. Falha sem nota criada (Bling fora,
+      // token) é do sistema: para tudo, que os próximos iam falhar igual.
+      if (d.decisao && d.decisao.emitir && !d.emitido && !d.nota) { erro_geral = `parou no pedido ${ped.numero}: ${d.erro || 'sem detalhe'}`; break; }
       if (e.status >= 500 && !d.decisao) { erro_geral = `parou no pedido ${ped.numero}: ${d.erro || e.status}`; break; }
     }
   }

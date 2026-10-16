@@ -69,6 +69,65 @@ export function decidir(pedido, order, notasCliente = []) {
   return { emitir: motivos.length === 0, motivos };
 }
 
+// ── NCM pelo nome da peça ───────────────────────────────────────────────────
+// Tabela fechada com ela em 14/10/2026 (tudo malha, cap. 61; viscolycra e viscose são fibra
+// artificial, moletom e camiseta são algodão, canelado e sherpa são poliéster; conjunto de
+// tecidos misturados fica com a fibra que predomina, 6104.22.00). É a mesma regra que gravou
+// o NCM nos produtos; aqui ela cobre o item que chega sem produto ligado no Bling (variação
+// nova criada pela Shopify, ex. Macacão Amplo Marsala G no #9349, 16/10/2026).
+// null = não sei o tecido: a nota NÃO sai, alguém decide.
+const semAcento = s => String(s || '').normalize('NFKD').replace(/[̀-ͯ]/g, '').toLowerCase();
+
+export function ncmPorNome(nome) {
+  const n = semAcento(nome);
+  const tem = (...ws) => ws.some(w => n.includes(w));
+  if (tem('embalagem', 'reenvio', 'reembolso', 'bojo')) return null;
+  if (tem('coturno', 'bota', 'sandalia', 'flat')) return null;
+  if (tem('top ') || n.startsWith('top')) return null;
+  if (tem('wide', 'conjunto longo', 'conjunto amplo longo', 'vestido midi', 'vestido aiga', 'forrado', 'xadrez', 'cropped frente unica', 'cropped meia manga')) return null;
+  let conj = n.startsWith('conjunto') || n.includes(' + ') || (n.includes(' com ') && tem('saia', 'cropped', 'moletom', 'blusa') && !n.startsWith('blusa'));
+  if (n.startsWith('blusa com punho') || n.startsWith('blusa gola')) conj = false;
+  if (conj) {
+    if (tem('peace', 'boho')) return '6104.29.00';
+    const algodao = tem('moletom', 'moletinho', 'jogger', 'cozy', 'dream', 'lazy', 'mood', 'chill', 'canguru', 'oversized', 'camiseta', 'regata', 'bolso frontal', 'pantalona com blusa', 'pantalona + blusa', 'cropped vermelho');
+    const canelado = tem('canelad', 'flare', 'mini saia', 'saia midi', 'gola efeito', 'punho dedinho');
+    if (algodao) return '6104.22.00';
+    if (canelado && !tem('pantalona')) return '6104.23.00';
+    return null;
+  }
+  if (tem('macacao', 'macaquinho amplo')) return '6114.30.00';
+  if (tem('macaquinho ruel')) return '6114.20.00';
+  if (tem('vestido amplo', 'vestido frente unica')) return '6104.44.00';
+  if (tem('saia')) return '6104.53.00';
+  if (tem('flare')) return '6104.63.00';
+  if (tem('moletom', 'bolso frontal', 'saruel', 'short')) {
+    if (tem('calca', 'pantalona', 'short', 'saruel')) return '6104.62.00';
+    return '6110.20.00';
+  }
+  if (tem('canguru')) return '6110.20.00';
+  if (tem('peace') && tem('calca')) return '6104.69.00';
+  if (tem('pantalona')) return '6104.69.00';
+  if (tem('blusa', 'cropped canelado')) return '6106.20.00';
+  if (tem('carneirinho', 'sherpa', 'casaco bear', 'pelego')) {
+    if (tem('pelego') && tem('moletom')) return '6110.20.00';
+    return '6102.30.00';
+  }
+  if (tem('oversized', 'camiseta', 'regata')) return '6109.10.00';
+  return null;
+}
+
+// Itens da nota sem NCM recebem o da tabela. Devolve { itens, faltando } sem mexer no original.
+export function completarNcmItens(itens) {
+  const faltando = [];
+  const novos = (itens || []).map(it => {
+    if (it.classificacaoFiscal) return it;
+    const ncm = ncmPorNome(it.descricao);
+    if (!ncm) { faltando.push(it.descricao); return it; }
+    return { ...it, classificacaoFiscal: ncm };
+  });
+  return { itens: novos, faltando };
+}
+
 // O Bling às vezes responde { data: { id } }, às vezes { data: [{ id }] }.
 export function idDaResposta(r) {
   const d = r && r.data;
