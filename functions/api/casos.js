@@ -20,7 +20,7 @@ import {
   soLeitura, MODELO, DOC_LOG, TEMPLATE_CONTINUIDADE, TEMPLATE_ALERTA, CATEGORIAS_DINHEIRO,
   SISTEMA, FERRAMENTAS, FERRAMENTAS_SERVIDOR, problemasDoTexto, prometeDinheiro, janelaAberta,
   semResposta, numerosDePedido, prazoDoPedido, logVazio, podeFechar, aprovacaoLiberada, novoId,
-  primeiroNome, finalTel, resumoDoCaso, conversaParaAssistente, hojeTexto,
+  primeiroNome, finalTel, resumoDoCaso, conversaParaAssistente, hojeTexto, brt,
 } from '../_casos.js';
 
 const SB_URL = 'https://hckzsblwyabmhzbjdjgx.supabase.co';
@@ -167,7 +167,7 @@ async function pendenciasDoDia(env, agora = Date.now()) {
     } catch (_) {}
   }
   return {
-    hoje: hojeTexto(agora),
+    hoje: hojeTexto(agora), agora_brt: brt(agora),
     casos_abertos: casos.map(c => resumoDoCaso(c, agora)),
     sem_resposta: esperando.slice(0, 40).map(e => ({ ...e, cliente: primeiroNome(nomes[e.wa_id] && nomes[e.wa_id].nome),
       final_tel: finalTel(e.wa_id), tem_caso_aberto: comCaso.has(e.wa_id), status_wati: (nomes[e.wa_id] || {}).status || null })),
@@ -195,7 +195,7 @@ async function abrirCaso(env, { caso_id, wa_id, pedido }, agora = Date.now()) {
   const log = await lerLog(env);
   const id = caso && caso.id;
   return {
-    hoje: hojeTexto(agora),
+    hoje: hojeTexto(agora), agora_brt: brt(agora),
     caso: caso ? { ...resumoDoCaso(caso, agora), resumo: String(caso.resumo || '').slice(0, 1500) } : null,
     aviso_caso: caso ? null : 'sem caso no CRM para este contato; se a Marcelly agir, o painel abre um',
     wa_id: wa || null, final_tel: finalTel(wa),

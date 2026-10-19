@@ -66,8 +66,8 @@ export function janelaAberta(msgs, agora = Date.now()) {
   if (!ult) return { aberta: false, ultima_cliente: null, fecha_em: null };
   return {
     aberta: agora - ult < JANELA_MS,
-    ultima_cliente: new Date(ult).toISOString(),
-    fecha_em: new Date(ult + JANELA_MS).toISOString(),
+    ultima_cliente: new Date(ult).toISOString(), ultima_cliente_brt: brt(ult),
+    fecha_em: new Date(ult + JANELA_MS).toISOString(), fecha_em_brt: brt(ult + JANELA_MS),
   };
 }
 
@@ -79,24 +79,52 @@ export function ehSoAgradecimento(texto) {
   return !limpo || AGRADECIMENTO.test(limpo);
 }
 
+// Horário de Brasília legível ("19/10 13:24"). O banco guarda em UTC, e o assistente chegou a
+// tratar 16:24 UTC como horário local; toda data que vai para ele sai daqui.
+export function brt(iso) {
+  const t = typeof iso === 'number' ? iso : Date.parse(iso);
+  if (isNaN(t)) return null;
+  const s = new Date(t - 3 * 3600e3).toISOString();
+  return `${s.slice(8, 10)}/${s.slice(5, 7)} ${s.slice(11, 16)}`;
+}
+
 // Clientes cuja ÚLTIMA mensagem é dela e está sem resposta há mais de `minutos`.
 // `msgs` vem das últimas horas, ordem qualquer. Agradecimento solto não conta como pendência.
+// Junto vai quem da loja falou antes dela e quando: em 19/10/2026 a Karina (#8893) apareceu como
+// "sem resposta há 3h" quando a Marcelly tinha falado com ela 30 segundos antes. Nesse caso a
+// conversa está EM ANDAMENTO, e a pendência é o que a equipe combinou (ali, pedir brinde).
+const MIN_EM_ANDAMENTO = 60;
 export function semResposta(msgs, { agora = Date.now(), minutos = SEM_RESPOSTA_MIN } = {}) {
-  const ultima = new Map();
+  const ultima = new Map(), daLoja = new Map(), equipeHoje = new Set();
   for (const m of msgs || []) {
     if (!m || !m.wa_id) continue;
     if (m.role === 'assistant' && String(m.texto || '').startsWith('[contexto interno')) continue;
     const t = Date.parse(m.created_at);
     if (isNaN(t)) continue;
+    const reg = { t, role: m.role, texto: m.texto || '' };
     const atual = ultima.get(m.wa_id);
-    if (!atual || t > atual.t) ultima.set(m.wa_id, { t, role: m.role, texto: m.texto || '' });
+    if (!atual || t > atual.t) ultima.set(m.wa_id, reg);
+    if (m.role !== 'user') {
+      const l = daLoja.get(m.wa_id);
+      if (!l || t > l.t) daLoja.set(m.wa_id, reg);
+      if (m.role === 'operador' && agora - t < 24 * 3600e3) equipeHoje.add(m.wa_id);
+    }
   }
   const out = [];
   for (const [wa_id, u] of ultima) {
     if (u.role !== 'user') continue;
     if (agora - u.t < minutos * 60e3) continue;
     if (ehSoAgradecimento(u.texto)) continue;
-    out.push({ wa_id, ultima_em: new Date(u.t).toISOString(), horas_esperando: Math.round((agora - u.t) / 36e5), texto: u.texto.slice(0, 200) });
+    const l = daLoja.get(wa_id);
+    const minAntes = l ? Math.round((u.t - l.t) / 60e3) : null;
+    out.push({
+      wa_id, ultima_em: new Date(u.t).toISOString(), ultima_cliente_brt: brt(u.t),
+      horas_desde_a_ultima_dela: Math.round((agora - u.t) / 36e5), texto: u.texto.slice(0, 200),
+      situacao: l && minAntes <= MIN_EM_ANDAMENTO ? 'conversa em andamento (a loja tinha acabado de falar)' : 'sem resposta da loja',
+      loja_falou_antes: l ? { quem: l.role === 'operador' ? 'equipe (atendente humana)' : 'Vi (IA)', em_brt: brt(l.t),
+        minutos_antes_da_cliente: minAntes, texto: l.texto.slice(0, 160) } : null,
+      equipe_falou_nas_ultimas_24h: equipeHoje.has(wa_id),
+    });
   }
   return out.sort((a, b) => a.ultima_em.localeCompare(b.ultima_em));
 }
@@ -183,7 +211,7 @@ export function conversaParaAssistente(msgs, limite = 40) {
     .filter(m => !(m.role === 'assistant' && String(m.texto || '').startsWith(MARCA_INTERNA)))
     .slice(-limite)
     .map(m => ({ quem: m.role === 'user' ? 'cliente' : m.role === 'operador' ? 'equipe' : 'loja (Vi)',
-      em: m.created_at, texto: String(m.texto || '').slice(0, 500) }));
+      em_brt: brt(m.created_at), texto: String(m.texto || '').slice(0, 500) }));
 }
 
 export const hojeTexto = (agora = Date.now()) => new Date(agora - FUSO_MS).toISOString().slice(0, 10);
@@ -199,6 +227,9 @@ Como trabalhar
 - O prazo da loja é de 10 dias úteis contados do pagamento. Só trate como atraso se passou disso (campo dias_uteis_desde_pagamento).
 - O estoque da Shopify é fictício. Para saber se a peça está pronta ou em produção use situacao_producao.
 - Se o caso tem mais de um pedido ou a conversa não bate com o caso, diga isso e pergunte à Marcelly antes de seguir.
+- Horários: use sempre os campos _brt (horário de Brasília). Nunca converta nem cite horário de campo ISO.
+- Cliente sem resposta: olhe situacao e loja_falou_antes. Se a equipe ou a Vi tinham acabado de falar com ela, não diga que ela está sem resposta; diga que a conversa está em andamento, quem falou e a que horas, e qual é a pendência que ficou.
+- Promessa da equipe é pendência. Se na conversa a equipe disse que vai pedir, ver, verificar ou retornar algo, trate como tarefa aberta e proponha a ação que cumpre a promessa (por exemplo, brinde ou desconto prometido vira pedir_aprovacao para a Bárbara).
 
 O que a Marcelly resolve sozinha (proponha como ação com botão)
 - mensagem: texto para a cliente no WhatsApp.

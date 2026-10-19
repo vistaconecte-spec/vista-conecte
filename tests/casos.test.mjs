@@ -57,6 +57,18 @@ const msgs = [
   { wa_id: '6', role: 'user', texto: '❤️', created_at: h(9) },
 ];
 ok('só quem espera de verdade', C.semResposta(msgs, { agora }).map(x => x.wa_id), ['1', '5']);
+// Caso real de 19/10/2026 (Karina, #8893): a Marcelly respondeu e a cliente mandou mais uma 30 s depois.
+const karina = [
+  { wa_id: 'k', role: 'user', texto: 'Tô merecendo brindes viu???', created_at: '2026-10-19T16:23:44Z' },
+  { wa_id: 'k', role: 'operador', texto: 'pode deixar que vou pedir rs', created_at: '2026-10-19T16:24:07Z' },
+  { wa_id: 'k', role: 'user', texto: 'pra não ficar com avaliação negativa no Reclame aqui!', created_at: '2026-10-19T16:24:35Z' },
+];
+const kk = C.semResposta(karina, { agora: Date.parse('2026-10-19T19:30:00Z') })[0];
+ok('Karina aparece como conversa em andamento, não sem resposta', kk.situacao.startsWith('conversa em andamento'), true);
+ok('diz que foi a equipe e a hora em Brasília', [kk.loja_falou_antes.quem, kk.loja_falou_antes.em_brt, kk.ultima_cliente_brt, kk.equipe_falou_nas_ultimas_24h], ['equipe (atendente humana)', '19/10 13:24', '19/10 13:24', true]);
+ok('sem fala da loja continua sem resposta', C.semResposta([{ wa_id: 'z', role: 'user', texto: 'cadê?', created_at: h(5) }], { agora })[0].situacao, 'sem resposta da loja');
+ok('conversa vai em horário de Brasília', C.conversaParaAssistente(karina)[1], { quem: 'equipe', em_brt: '19/10 13:24', texto: 'pode deixar que vou pedir rs' });
+ok('instrução manda tratar promessa da equipe como pendência', /Promessa da equipe é pendência/.test(C.SISTEMA), true);
 ok('agradecimento não é pendência', [C.ehSoAgradecimento('ok obrigada!'), C.ehSoAgradecimento('🙏🏻'), C.ehSoAgradecimento('Eu que agradeço'), C.ehSoAgradecimento('Sim, pode ser o M'), C.ehSoAgradecimento('obrigada, e o rastreio?')], [true, true, true, false, false]);
 
 console.log('\n3) Pedidos citados e prazo de 10 dias úteis');
