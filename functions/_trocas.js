@@ -89,11 +89,26 @@ const valorDe = li => {
   return Number.isFinite(v) ? Math.round(v * 100) / 100 : 0;
 };
 
+// Unidades que já estão numa devolução aberta pela conta da cliente na Shopify (o caminho
+// antigo, que continua existindo): sem isto ela pediria a mesma peça pelos dois lados.
+export function jaDevolvidoNaShopify(order) {
+  const m = {};
+  for (const r of (order.returns && order.returns.nodes) || []) {
+    if (!r || r.status === 'CANCELED' || r.status === 'DECLINED') continue;
+    for (const li of (r.returnLineItems && r.returnLineItems.nodes) || []) {
+      const id = li && li.fulfillmentLineItem && li.fulfillmentLineItem.lineItem && li.fulfillmentLineItem.lineItem.id;
+      if (id) m[id] = (m[id] || 0) + (Number(li.quantity) || 0);
+    }
+  }
+  return m;
+}
+
 // O que a página pode ver do pedido. Nada de endereço, telefone, CPF ou e-mail: quem acertou
 // número + e-mail só enxerga as peças, o preço pago e o prazo.
 export function pedidoPublico(order, docs, agora = new Date()) {
   const p = prazos(order, agora);
   const ja = jaSolicitadoPorLinha(docs);
+  const naShopify = jaDevolvidoNaShopify(order);
   const itens = ((order.lineItems && order.lineItems.nodes) || [])
     .filter(li => (li.currentQuantity ?? li.quantity) > 0)
     .map(li => {
@@ -109,7 +124,7 @@ export function pedidoPublico(order, docs, agora = new Date()) {
         imagem: (li.image && li.image.url) || '',
         valor_unit: valorDe(li),
         qtd,
-        qtd_disponivel: Math.max(0, qtd - (ja[li.id] || 0)),
+        qtd_disponivel: Math.max(0, qtd - (ja[li.id] || 0) - (naShopify[li.id] || 0)),
         opcoes_troca: opcoes,
       };
     });

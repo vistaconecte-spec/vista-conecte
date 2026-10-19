@@ -33,6 +33,12 @@ const QUERY = `query($q: String!) {
       customer { firstName }
       shippingAddress { firstName name }
       fulfillments(first: 10) { createdAt deliveredAt status }
+      returns(first: 10) {
+        nodes {
+          status
+          returnLineItems(first: 30) { nodes { ... on ReturnLineItem { quantity fulfillmentLineItem { lineItem { id } } } } }
+        }
+      }
       lineItems(first: 30) {
         nodes {
           id title variantTitle quantity currentQuantity

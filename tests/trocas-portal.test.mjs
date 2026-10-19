@@ -74,6 +74,12 @@ console.log('\n2) O que a página vê do pedido');
   ok('sem e-mail, endereço nem nome completo', [pub.email, pub.shippingAddress, pub.primeiro_nome], [undefined, undefined, 'Lais']);
   const ja = T.pedidoPublico(pedido(), [{ itens: [{ line_id: 'gid://shopify/LineItem/2', qtd: 1 }] }], dias(3));
   ok('unidade já pedida no portal sai da conta', ja.itens[1].qtd_disponivel, 1);
+  const comRet = pedido({ returns: { nodes: [
+    { status: 'REQUESTED', returnLineItems: { nodes: [{ quantity: 1, fulfillmentLineItem: { lineItem: { id: 'gid://shopify/LineItem/1' } } }] } },
+    { status: 'DECLINED', returnLineItems: { nodes: [{ quantity: 1, fulfillmentLineItem: { lineItem: { id: 'gid://shopify/LineItem/2' } } }] } },
+  ] } });
+  const pr = T.pedidoPublico(comRet, [], dias(3));
+  ok('devolução já pedida pela Shopify sai da conta (recusada não)', [pr.itens[0].qtd_disponivel, pr.itens[1].qtd_disponivel], [0, 2]);
 }
 
 console.log('\n3) Conferência do envio');
