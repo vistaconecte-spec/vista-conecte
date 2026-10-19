@@ -57,7 +57,7 @@ const msgs = [
   { wa_id: '6', role: 'user', texto: '❤️', created_at: h(9) },
 ];
 ok('só quem espera de verdade', C.semResposta(msgs, { agora }).map(x => x.wa_id), ['1', '5']);
-ok('agradecimento não é pendência', [C.ehSoAgradecimento('ok obrigada!'), C.ehSoAgradecimento('🙏🏻'), C.ehSoAgradecimento('Sim, pode ser o M')], [true, true, false]);
+ok('agradecimento não é pendência', [C.ehSoAgradecimento('ok obrigada!'), C.ehSoAgradecimento('🙏🏻'), C.ehSoAgradecimento('Eu que agradeço'), C.ehSoAgradecimento('Sim, pode ser o M'), C.ehSoAgradecimento('obrigada, e o rastreio?')], [true, true, true, false, false]);
 
 console.log('\n3) Pedidos citados e prazo de 10 dias úteis');
 ok('campo pedido solto + # no resumo', C.numerosDePedido('9142', 'cliente cita #9186 e pedido 9201'), ['9142', '9186', '9201']);

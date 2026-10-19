@@ -71,7 +71,7 @@ export function janelaAberta(msgs, agora = Date.now()) {
 
 // Agradecimento, ok ou só emoji não é pendência: a conversa já terminou do lado dela.
 // "sim" fica de fora: costuma ser resposta a uma pergunta da loja, e aí a cliente espera o próximo passo.
-const AGRADECIMENTO = /^(?:(?:muito|ok+|okay|obg|obrigad[oa]s?|brigad[oa]|valeu|blz|beleza|show|perfeito|t[aá]|bom|certo|combinado|amei|top|maravilha|[oó]timo|entendi|viu|demais|mesmo|pela|pelo|ajuda|retorno|aten[cç][aã]o|de|novo)\s?)+$/i;
+const AGRADECIMENTO = /^(?:(?:muito|ok+|okay|obg|obrigad[oa]s?|brigad[oa]|valeu|blz|beleza|show|perfeito|t[aá]|bom|certo|combinado|amei|top|maravilha|[oó]timo|entendi|viu|demais|mesmo|pela|pelo|ajuda|retorno|aten[cç][aã]o|de|novo|eu|que|n[oó]s|agrade[cç]\w*|agradecid[ao]s?|vc|voc[eê])\s?)+$/i;
 export function ehSoAgradecimento(texto) {
   const limpo = String(texto || '').toLowerCase().replace(/[^\p{L}\p{N} ]/gu, ' ').replace(/\s+/g, ' ').trim();
   return !limpo || AGRADECIMENTO.test(limpo);
