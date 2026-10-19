@@ -140,6 +140,23 @@ export function semResposta(msgs, { agora = Date.now(), minutos = SEM_RESPOSTA_M
   return out.sort((a, b) => a.ultima_em.localeCompare(b.ultima_em));
 }
 
+// Promessas da equipe na conversa ("vou pedir", "vou ver", "te aviso"...), com o que a cliente tinha
+// pedido logo antes. Em 19/10/2026 a Marcelly disse "pode deixar que vou pedir" quando a Karina
+// pediu brinde, e o assistente só às vezes ligava uma coisa à outra; achado aqui, ele não perde.
+const PROMESSA = /\b(vou|vamos|irei|iremos)\s+(pedir|ver|verificar|conferir|checar|confirmar|retornar|te retornar|mandar|enviar|resolver|providenciar|solicitar|falar)|\bte (aviso|retorno|mando|envio|passo)\b|\bj[aá] (pedi|solicitei)\b|\bpode deixar\b/i;
+export function promessasDaEquipe(msgs, { agora = Date.now(), dias = 7 } = {}) {
+  const lista = (msgs || []).slice().sort((a, b) => String(a.created_at).localeCompare(String(b.created_at)));
+  const out = [];
+  lista.forEach((m, i) => {
+    if (m.role !== 'operador' || !PROMESSA.test(m.texto || '')) return;
+    if (agora - Date.parse(m.created_at) > dias * 86400e3) return;
+    const antes = lista.slice(0, i).reverse().find(x => x.role === 'user');
+    out.push({ em_brt: brt(m.created_at), equipe_disse: String(m.texto).slice(0, 200),
+      cliente_tinha_pedido: antes ? String(antes.texto || '').slice(0, 200) : null });
+  });
+  return out.slice(-5);
+}
+
 // Números de pedido citados. O campo `pedido` do caso aceita o número solto ("9142");
 // no resto (resumo, mensagens) só vale com "#" ou "pedido" na frente, senão CEP e valor viram pedido.
 export function numerosDePedido(campoPedido, ...textos) {
@@ -240,7 +257,7 @@ Como trabalhar
 - Se o caso tem mais de um pedido ou a conversa não bate com o caso, diga isso e pergunte à Marcelly antes de seguir.
 - Horários: use sempre os campos _brt (horário de Brasília). Nunca converta nem cite horário de campo ISO.
 - Cliente sem resposta: olhe situacao e loja_falou_antes. Se a equipe ou a Vi tinham acabado de falar com ela, não diga que ela está sem resposta; diga que a conversa está em andamento, quem falou e a que horas, e qual é a pendência que ficou.
-- Promessa da equipe é pendência. Se na conversa a equipe disse que vai pedir, ver, verificar ou retornar algo, trate como tarefa aberta e proponha a ação que cumpre a promessa (por exemplo, brinde ou desconto prometido vira pedir_aprovacao para a Bárbara).
+- Promessa da equipe é pendência. O campo promessas_da_equipe já traz o que a equipe disse que ia fazer e o que a cliente tinha pedido antes; cada uma precisa aparecer na resposta com a ação que a cumpre. Se na conversa a equipe disse que vai pedir, ver, verificar ou retornar algo, trate como tarefa aberta e proponha a ação que cumpre a promessa (por exemplo, brinde ou desconto prometido vira pedir_aprovacao para a Bárbara).
 
 O que a Marcelly resolve sozinha (proponha como ação com botão)
 - mensagem: texto para a cliente no WhatsApp.

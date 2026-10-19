@@ -19,7 +19,7 @@
 import {
   soLeitura, MODELO, DOC_LOG, TEMPLATE_CONTINUIDADE, TEMPLATE_ALERTA, CATEGORIAS_DINHEIRO,
   SISTEMA, FERRAMENTAS, FERRAMENTAS_SERVIDOR, problemasDoTexto, prometeDinheiro, janelaAberta, revisarResposta,
-  semResposta, numerosDePedido, prazoDoPedido, logVazio, podeFechar, aprovacaoLiberada, novoId,
+  semResposta, promessasDaEquipe, numerosDePedido, prazoDoPedido, logVazio, podeFechar, aprovacaoLiberada, novoId,
   primeiroNome, finalTel, resumoDoCaso, conversaParaAssistente, hojeTexto, brt,
 } from '../_casos.js';
 
@@ -168,9 +168,12 @@ async function pendenciasDoDia(env, agora = Date.now()) {
   }
   return {
     hoje: hojeTexto(agora), agora_brt: brt(agora),
-    casos_abertos: casos.map(c => resumoDoCaso(c, agora)),
+    casos_abertos: casos.map(c => {
+      const p = promessasDaEquipe(msgs.filter(m => m.wa_id === c.wa_id), { agora });
+      return p.length ? { ...resumoDoCaso(c, agora), promessas_da_equipe: p } : resumoDoCaso(c, agora);
+    }),
     sem_resposta: esperando.slice(0, 40).map(e => ({ ...e, cliente: primeiroNome(nomes[e.wa_id] && nomes[e.wa_id].nome),
-      final_tel: finalTel(e.wa_id), tem_caso_aberto: comCaso.has(e.wa_id), status_wati: (nomes[e.wa_id] || {}).status || null })),
+      final_tel: finalTel(e.wa_id), tem_caso_aberto: comCaso.has(e.wa_id), promessas_da_equipe: promessasDaEquipe(msgs.filter(m => m.wa_id === e.wa_id), { agora }), status_wati: (nomes[e.wa_id] || {}).status || null })),
     aguardando_barbara: log.aprovacoes.filter(a => a.status === 'pendente' || a.status === 'aprovado')
       .map(a => ({ id: a.id, caso_id: a.caso_id, cliente: a.cliente, pedido: a.pedido, categoria: a.categoria, valor: a.valor, status: a.status })),
   };
@@ -201,6 +204,7 @@ async function abrirCaso(env, { caso_id, wa_id, pedido }, agora = Date.now()) {
     wa_id: wa || null, final_tel: finalTel(wa),
     janela_24h: janelaAberta(msgs, agora),
     conversa: conversaParaAssistente(msgs),
+    promessas_da_equipe: promessasDaEquipe(msgs, { agora }),
     pedidos,
     feito_pelo_painel: id ? log.acoes.filter(a => Number(a.caso_id) === Number(id)).map(a => ({ tipo: a.tipo, em: a.em, texto: String(a.texto || '').slice(0, 200) })) : [],
     aprovacoes: id ? log.aprovacoes.filter(a => Number(a.caso_id) === Number(id)).map(a => ({ categoria: a.categoria, valor: a.valor, status: a.status, nota: a.nota || null })) : [],

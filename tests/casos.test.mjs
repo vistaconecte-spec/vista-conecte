@@ -68,6 +68,10 @@ ok('Karina aparece como conversa em andamento, não sem resposta', kk.situacao.s
 ok('diz que foi a equipe e a hora em Brasília', [kk.loja_falou_antes.quem, kk.loja_falou_antes.em_brt, kk.ultima_cliente_brt, kk.equipe_falou_nas_ultimas_24h], ['equipe (atendente humana)', '19/10 13:24', '19/10 13:24', true]);
 ok('sem fala da loja continua sem resposta', C.semResposta([{ wa_id: 'z', role: 'user', texto: 'cadê?', created_at: h(5) }], { agora })[0].situacao, 'sem resposta da loja');
 ok('conversa vai em horário de Brasília', C.conversaParaAssistente(karina)[1], { quem: 'equipe', em_brt: '19/10 13:24', texto: 'pode deixar que vou pedir rs' });
+ok('promessa da Marcelly à Karina é achada com o pedido dela', C.promessasDaEquipe(karina, { agora: Date.parse('2026-10-19T19:30:00Z') }),
+  [{ em_brt: '19/10 13:24', equipe_disse: 'pode deixar que vou pedir rs', cliente_tinha_pedido: 'Tô merecendo brindes viu???' }]);
+ok('fala da Vi não conta como promessa da equipe', C.promessasDaEquipe([{ role: 'assistant', texto: 'vou verificar', created_at: '2026-10-19T16:00:00Z' }], { agora: Date.parse('2026-10-19T19:30:00Z') }), []);
+ok('promessa velha (mais de 7 dias) sai', C.promessasDaEquipe([{ role: 'operador', texto: 'vou ver', created_at: '2026-10-01T16:00:00Z' }], { agora: Date.parse('2026-10-19T19:30:00Z') }), []);
 const respKarina = [{ type: 'tool_use', name: 'responder', id: 't1', input: { texto: 'x', acoes: [
   { tipo: 'pedir_aprovacao', texto: 'brinde: pedido' },
   { tipo: 'mensagem', texto: 'Karina, entendo a sua frustração, o pedido está como prioridade' }] } }];
