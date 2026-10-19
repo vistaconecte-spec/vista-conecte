@@ -32,7 +32,9 @@ const RENOVA_QUANDO_FALTAR_MS = 6 * 3600e3;
 //                          nem telefone, e relê tudo da Shopify antes de gravar.
 const PUBLICO = new Set(['/api/login', '/api/logout', '/api/sessao', '/api/shopify-callback',
   '/api/webhook-shopify-pedido', '/api/webhook-pagarme', '/api/webhook-mp', '/api/cartao-barrado',
-  '/api/previsao-pedido', '/api/bling-callback', '/api/trocas-portal']);
+  '/api/previsao-pedido', '/api/bling-callback', '/api/trocas-portal',
+  // Webhook do WhatsApp oficial direto da Meta (19/10/2026); confere ?k=WEBHOOK_KEY sozinho.
+  '/api/webhook-whatsapp']);
 
 // Os perfis de oficina ('corte' e 'costura') abrem UMA aba cada — CORTE e COSTURA —,
 // montadas com o que já veio do Supabase. O que eles alcançam é uma ALLOWLIST, e não uma
