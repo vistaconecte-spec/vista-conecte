@@ -247,7 +247,7 @@ function nomeCliente(order) {
 async function fetchAllOrders(store, token) {
   const orders = [];
   // total_price: sem ele o valor do pedido chegava sempre 0 e o card PEDIDOS GRANDES não mostrava
-  const fields = 'id,name,created_at,financial_status,fulfillment_status,line_items,shipping_address,total_price';
+  const fields = 'id,name,created_at,financial_status,fulfillment_status,line_items,shipping_address,total_price,tags';
   // fulfillment_status=unfulfilled → pedidos NÃO enviados (null) OU PARCIALMENTE enviados (partial).
   // (a Shopify não aceita lista "unshipped,partial" — ela tratava só como unshipped, perdendo os parciais)
   // status=open  → pedidos ativos | status=closed → pedidos ARQUIVADOS (que ainda têm itens pendentes,
@@ -643,6 +643,9 @@ export async function onRequest(context) {
           parcial: order.fulfillment_status === 'partial',
           // Valor do pedido: o card PEDIDOS GRANDES mostra quanto a cliente confiou à loja
           valor:   Number(order.total_price) || 0,
+          // Pedido de troca de R$ 0 que nasceu antes da peça antiga voltar (19/10/2026): entra na
+          // produção, mas não sai até o "conferido" da aba TROCAS (ver functions/_pedido-troca.js)
+          aguarda_troca: String(order.tags || '').split(',').map(t => t.trim()).includes('troca-aguardando'),
         });
       }
     }

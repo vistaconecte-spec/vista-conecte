@@ -1719,7 +1719,18 @@ function trcCartaoHtml(t, etapa) {
     acao = `<div class="trc-cod">reversa <b>${esc(t.codigo_logistica_reversa)}</b></div>` + btn(`trcChegou('${t.id}')`, 'ti-package-import', 'chegou');
   } else if (etapa === 'chegou') {
     const quando = t.data_chegada_reversa ? t.data_chegada_reversa.split('-').reverse().join('/') : '';
-    acao = `<div class="trc-cod">chegou ${esc(quando)}</div>` + inp('codigo_reenvio', 'código do reenvio da peça nova');
+    acao = `<div class="trc-cod">chegou ${esc(quando)}</div>`;
+    if (t.pedido_troca_id && !t.conferido_em && !t.recusada_em) {
+      acao += `<div class="trc-dica">abra o pacote: sem uso e com etiqueta?</div>`
+        + btn(`trcConferido('${t.id}', this)`, 'ti-circle-check', 'conferido')
+        + `<button class="trc-btn trc-btn-sec" onclick="trcRecusar('${t.id}')"><i class="ti ti-circle-x"></i> recusar</button>`;
+    } else if (t.recusada_em) {
+      acao += `<div class="trc-aviso" style="color:#dc2626">peça recusada: a Marcelly fala com a cliente</div>`
+        + `<button class="trc-btn trc-btn-sec" onclick="trcDesfazerRecusa('${t.id}')"><i class="ti ti-arrow-back-up"></i> desfazer</button>`;
+    } else {
+      acao += (t.conferido_em ? `<div class="trc-dica">conferida, ${esc(t.pedido_troca || 'pedido de troca')} liberado para envio</div>` : '')
+        + inp('codigo_reenvio', 'código do reenvio da peça nova');
+    }
   } else {
     acao = (t.codigo_reenvio ? `<div class="trc-cod">reenvio <b>${esc(t.codigo_reenvio)}</b></div>` : '')
       + (fechada ? `<div class="trc-dica">concluída ${t.resolvido_em ? new Date(t.resolvido_em).toLocaleDateString('pt-BR') : ''}</div>` : btn(`retToggle('${t.id}')`, 'ti-check', 'concluir'));
@@ -1728,6 +1739,8 @@ function trcCartaoHtml(t, etapa) {
     <div class="trc-topo"><b title="${esc(t.cliente)}">${esc(t.cliente) || '(sem nome)'}</b>${selo}</div>
     <div class="trc-ped">${esc(t.pedido || '')}${t.obs ? ` · troca por <b>${esc(t.obs)}</b>` : ''}${t.portal_id ? ' · <span class="trc-tag">portal</span>' : ''}</div>
     <div class="trc-prod" title="${esc(t.produtos)}">${esc(t.produtos)}</div>
+    ${t.pedido_troca ? `<div class="trc-pt"><i class="ti ${t.conferido_em ? 'ti-lock-open' : 'ti-lock'}"></i> peça nova no pedido <b>${esc(t.pedido_troca)}</b>${t.conferido_em ? ' (liberado)' : ' (travado)'}</div>` : ''}
+    ${!t.pedido_troca && t.erro_pedido_troca ? `<div class="trc-pt" style="color:#dc2626" title="${esc(t.erro_pedido_troca)}"><i class="ti ti-alert-triangle"></i> pedido de troca não foi criado ${btn(`trcCriarPedido('${t.id}', this)`, 'ti-plus', 'criar agora')}</div>` : ''}
     <div class="trc-acao">${acao}</div>
   </div>`;
 }
@@ -1756,6 +1769,37 @@ function trcCampo(id, campo, valor) {
   atdSyncViews();
 }
 function trcPedirReversa(id) { revPedir('retorno', id); }
+// "conferido": solta o pedido de troca na Shopify (sai da espera e perde a tag troca-aguardando)
+async function trcConferido(id, btn) {
+  const t = retGetConfig().itens.find(x => x.id === id); if (!t || !t.pedido_troca_id) return;
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="ti ti-loader"></i> liberando...'; }
+  try {
+    const r = await fetch('/api/troca-pedido', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ acao: 'liberar', order_id: t.pedido_troca_id }) });
+    const j = await r.json();
+    if (!r.ok || !j.ok) throw new Error(j.erro || 'HTTP ' + r.status);
+    const cfg = retGetConfig(); const x = cfg.itens.find(i => i.id === id);
+    if (x) { carimbarItem(x); x.conferido_em = new Date().toISOString(); retSalvar(cfg); }
+    atdSyncViews();
+    try { carregarPedidosShopify(); } catch (e) {} // o card PRONTOS PARA ENVIO já mostra o pedido
+  } catch (e) { alert('Não consegui liberar o pedido de troca: ' + e.message); atdSyncViews(); }
+}
+function trcRecusar(id) {
+  if (!confirm('Recusar a peça devolvida? O pedido de troca continua travado e o caso fica para a Marcelly falar com a cliente.')) return;
+  retEdit(id, 'recusada_em', new Date().toISOString()); atdSyncViews();
+}
+function trcDesfazerRecusa(id) { retEdit(id, 'recusada_em', ''); atdSyncViews(); }
+async function trcCriarPedido(id, btn) {
+  const t = retGetConfig().itens.find(x => x.id === id); if (!t || !t.portal_id) return;
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="ti ti-loader"></i> criando...'; }
+  try {
+    const r = await fetch('/api/troca-pedido', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ acao: 'criar', doc_id: t.portal_id }) });
+    const j = await r.json();
+    if (!r.ok || !j.ok) throw new Error(j.erro || 'HTTP ' + r.status);
+    const cfg = retGetConfig(); const x = cfg.itens.find(i => i.id === id);
+    if (x) { carimbarItem(x); x.pedido_troca = j.pedido_troca.name; x.pedido_troca_id = j.pedido_troca.id; x.erro_pedido_troca = ''; retSalvar(cfg); }
+    atdSyncViews();
+  } catch (e) { alert('Não consegui criar o pedido de troca: ' + e.message); atdSyncViews(); }
+}
 function trcChegou(id) {
   const hoje = new Date();
   const iso = `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, '0')}-${String(hoje.getDate()).padStart(2, '0')}`;
@@ -3309,6 +3353,7 @@ function portalParaListas(docs) {
         const tam = String(it.nova_variante || '').split('/').pop().trim();
         ret.push({
           ...base,
+          ...portalPedidoTroca(doc),
           pedido: doc.pedido || '',
           produtos: `${peca} → troca por ${it.nova_variante} · motivo: ${motivo}`,
           obs: RET_TAMANHOS.includes(tam) ? tam : '',
@@ -3329,6 +3374,28 @@ function portalParaListas(docs) {
   });
   return { ret, est };
 }
+// Pedido de troca de R$ 0 que o portal criou na Shopify (ou o erro, se ela falhou na hora)
+function portalPedidoTroca(doc) {
+  const pt = doc && doc.pedido_troca;
+  return {
+    pedido_troca: pt && pt.name ? pt.name : '',
+    pedido_troca_id: pt && pt.id ? pt.id : '',
+    erro_pedido_troca: !pt && doc && doc.erro_pedido_troca ? doc.erro_pedido_troca : '',
+  };
+}
+// Linha já importada recebe o pedido de troca que nasceu depois (o "criar" da aba TROCAS)
+function portalAtualizarPedidoTroca(cfg, novos) {
+  const porId = new Map(novos.map(it => [it.id, it]));
+  let n = 0;
+  (cfg.itens || []).forEach(t => {
+    const novo = porId.get(t.id);
+    if (!novo || !novo.pedido_troca_id || t.pedido_troca_id) return;
+    t.pedido_troca = novo.pedido_troca; t.pedido_troca_id = novo.pedido_troca_id; t.erro_pedido_troca = '';
+    t.atualizado_em = new Date().toISOString();
+    n++;
+  });
+  return n;
+}
 // Acrescenta só o que ainda não está na lista nem foi excluído. Devolve quantos entraram.
 function portalAcrescentar(cfg, novos) {
   const tem = new Set([...(cfg.itens || []).map(t => t.id), ...(cfg.removidos || []).map(r => r && r.id)]);
@@ -3341,12 +3408,13 @@ function atdImportarPortal() {
   if (_portalImportando) return _portalImportando;
   _portalImportando = (async () => {
     const url = `${SUPABASE_URL}/rest/v1/vc_modelos?id=like.${encodeURIComponent(PORTAL_PREFIXO + '*')}&select=dados&order=updated_at.desc&limit=300`;
+    // (o pedido de troca é gravado na mesma linha logo depois do envio; por isso a ordem é por updated_at)
     const res = await fetch(url, { headers: { apikey: SUPABASE_KEY, Authorization: 'Bearer ' + SUPABASE_KEY }, cache: 'no-store' });
     if (!res.ok) return 0;
     const docs = (await res.json()).map(r => r.dados);
     const { ret, est } = portalParaListas(docs);
     const cfgRet = retGetConfig(), cfgEst = estGetConfig();
-    const nRet = portalAcrescentar(cfgRet, ret), nEst = portalAcrescentar(cfgEst, est);
+    const nRet = portalAcrescentar(cfgRet, ret) + portalAtualizarPedidoTroca(cfgRet, ret), nEst = portalAcrescentar(cfgEst, est);
     if (nRet) { retSalvar(cfgRet); retRender(); }
     if (nEst) { estSalvar(cfgEst); estRender(); }
     try { const d = await carregarNuvem('reversas-resultado'); if (d) saveLocal('vc:reversas-resultado', d); revAplicarCodigos(); } catch (e) {}
@@ -10121,6 +10189,7 @@ function renderProntosParaEnvio() {
 
   const prontos = [];
   const pendentes = []; // pagos que NÃO podem sair ainda — alimentam o card PEDIDOS PARADOS
+  const aguardandoTroca = []; // pedido de troca com a peça separada, esperando a antiga chegar
   for (const ped of detalhados) {
     let reqs = [];
     for (const item of ped.itens) reqs = reqs.concat(reqsDoItem(item));
@@ -10139,6 +10208,9 @@ function renderProntosParaEnvio() {
     }
 
     reqs.forEach(r => estDec(r.key, r.cor, r.tam, r.qtd));
+    // Pedido de troca de R$ 0 (19/10/2026): a peça fica separada para ele, mas só sai depois do
+    // "conferido" da aba TROCAS. Fora da lista, a janela GERAR ETIQUETAS nem oferece.
+    if (ped.aguarda_troca) { aguardandoTroca.push(ped); continue; }
     prontos.push({
       id:      ped.id,
       numero:  ped.numero,
@@ -10178,12 +10250,17 @@ function renderProntosParaEnvio() {
   if (totEl) totEl.textContent = prontos.length > 0
     ? `${prontos.length} pedido${prontos.length > 1 ? 's' : ''}` : '';
 
+  const notaTroca = aguardandoTroca.length
+    ? `<div style="font-size:11.5px;background:rgba(138,99,210,.10);border:1px solid rgba(138,99,210,.25);border-radius:8px;padding:7px 10px;margin-bottom:8px">
+        <i class="ti ti-lock"></i> <b>${aguardandoTroca.length} pedido${aguardandoTroca.length > 1 ? 's' : ''} de troca com a peça separada, aguardando a peça antiga</b>
+        (${aguardandoTroca.map(p => esc(p.numero) + ' ' + esc(p.cliente || '')).join(', ')}). Sai depois do "conferido" na aba TROCAS.
+      </div>` : '';
   if (prontos.length === 0) {
-    el.innerHTML = '<div style="font-size:12px;color:var(--text-ter);padding:8px 0">Nenhum pedido pronto para envio com o estoque atual.</div>';
+    el.innerHTML = notaTroca + '<div style="font-size:12px;color:var(--text-ter);padding:8px 0">Nenhum pedido pronto para envio com o estoque atual.</div>';
     return;
   }
 
-  el.innerHTML = `
+  el.innerHTML = notaTroca + `
     <table>
       <thead><tr>
         <th style="text-align:left;width:24px"></th>

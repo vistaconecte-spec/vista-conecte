@@ -138,13 +138,15 @@ export function normalizar(o) {
         preco: num(n.discountedUnitPriceAfterAllDiscountsSet && n.discountedUnitPriceAfterAllDiscountsSet.shopMoney && n.discountedUnitPriceAfterAllDiscountsSet.shopMoney.amount),
       })),
     enviado: o.displayFulfillmentStatus === 'FULFILLED',
+    // Pedido de troca esperando a peça antiga (19/10/2026): o robô não monta etiqueta dele
+    travado_troca: (o.tags || []).includes('troca-aguardando'),
   };
 }
 
 const QUERY = `query($q: String) {
   orders(first: 50, query: $q) {
     edges { node {
-      name legacyResourceId email phone cancelledAt displayFinancialStatus displayFulfillmentStatus
+      name legacyResourceId email phone cancelledAt displayFinancialStatus displayFulfillmentStatus tags
       totalWeight currentSubtotalLineItemsQuantity
       currentTotalPriceSet { shopMoney { amount } }
       shippingLine { title discountedPriceSet { shopMoney { amount } } }

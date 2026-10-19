@@ -20,6 +20,7 @@
  * pelo número do pedido na Shopify quando for mandar o código.
  */
 import { normalizarPedido, normalizarEmail, pedidoPublico, validarSolicitacao, idDoc, protocolo, PREFIXO_DOC, MOTIVOS } from '../_trocas.js';
+import { criarPedidoTroca, gqlDe } from '../_pedido-troca.js';
 
 const API_VERSION = '2026-04';
 const SB_URL = 'https://hckzsblwyabmhzbjdjgx.supabase.co';
@@ -115,6 +116,23 @@ export async function onRequestPost(context) {
         body: JSON.stringify({ id, dados: doc }),
       });
       if (!r.ok) throw new Error('Supabase ' + r.status);
+      // Troca por outro tamanho/cor: o pedido de R$ 0 da peça nova nasce JÁ, travado até a
+      // antiga chegar (fluxo validado em 19/10/2026). Se a Shopify falhar, a solicitação já
+      // está gravada: o erro fica na linha e a aba TROCAS mostra "criar pedido de troca".
+      if (v.itens.some(i => i.tipo === 'troca')) {
+        let extra;
+        try {
+          const pt = await criarPedidoTroca(gqlDe(env), { numeroOriginal: numero, itens: v.itens, protocolo: doc.protocolo });
+          extra = pt ? { pedido_troca: { id: pt.id, name: pt.name, travado: pt.travado !== false, criado_em: new Date().toISOString() } } : {};
+        } catch (e) {
+          console.error('[trocas-portal] pedido de troca', e && e.message);
+          extra = { erro_pedido_troca: String((e && e.message) || e).slice(0, 300) };
+        }
+        await fetch(`${SB_URL}/rest/v1/vc_modelos?id=eq.${encodeURIComponent(id)}`, {
+          method: 'PATCH', headers: sbHeaders(env, { Prefer: 'return=minimal' }),
+          body: JSON.stringify({ dados: { ...doc, ...extra } }),
+        }).catch(() => {});
+      }
       return json({ ok: true, protocolo: doc.protocolo, itens: v.itens.map(i => ({ titulo: i.titulo, tipo: i.tipo, nova_variante: i.nova_variante })) });
     }
     return json({ erro: 'Ação desconhecida.' }, 400);
