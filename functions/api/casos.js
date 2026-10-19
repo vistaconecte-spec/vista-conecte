@@ -18,7 +18,7 @@
 // SUPABASE_SERVICE_ROLE_KEY, SHOPIFY_STORE_DOMAIN, SHOPIFY_ADMIN_TOKEN, MP_ACCESS_TOKEN, WATI_TOKEN.
 import {
   soLeitura, MODELO, DOC_LOG, TEMPLATE_CONTINUIDADE, TEMPLATE_ALERTA, CATEGORIAS_DINHEIRO,
-  SISTEMA, FERRAMENTAS, FERRAMENTAS_SERVIDOR, problemasDoTexto, prometeDinheiro, janelaAberta,
+  SISTEMA, FERRAMENTAS, FERRAMENTAS_SERVIDOR, problemasDoTexto, prometeDinheiro, janelaAberta, revisarResposta,
   semResposta, numerosDePedido, prazoDoPedido, logVazio, podeFechar, aprovacaoLiberada, novoId,
   primeiroNome, finalTel, resumoDoCaso, conversaParaAssistente, hojeTexto, brt,
 } from '../_casos.js';
@@ -231,7 +231,7 @@ async function assistente(env, messages) {
   });
   const corpo = await r.json().catch(() => null);
   if (!r.ok) return J({ erro: 'Anthropic ' + r.status + ': ' + ((corpo && corpo.error && corpo.error.message) || '') }, 502);
-  return J({ content: corpo.content, stop_reason: corpo.stop_reason, usage: corpo.usage });
+  return J({ content: corpo.content, stop_reason: corpo.stop_reason, usage: corpo.usage, revisao: revisarResposta(corpo.content) });
 }
 
 // ── Wati ────────────────────────────────────────────────────────────────────────

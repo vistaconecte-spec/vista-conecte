@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Bodoni+Moda:ital,opsz,wght@0,6..96,700;0,6..96,900&family=Bebas+Neue&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css">
-<link rel="stylesheet" href="style.css?v=2026100802">
+<link rel="stylesheet" href="style.css?v=2026101901">
 </head>
 <body>
 
@@ -1111,10 +1111,10 @@
                 </div>
               </div>
               <div style="overflow-x:auto">
-              <table style="width:100%;font-size:12px;min-width:700px;table-layout:fixed">
+              <table class="est-tab">
                 <!-- Larguras fixas por coluna: sem isso o navegador dimensiona pela largura
                      dos inputs (que era em px) e o conteúdo não bate com o cabeçalho. -->
-                <colgroup><col style="width:17%"><col style="width:27%"><col style="width:10%"><col style="width:15%"><col style="width:11%"><col style="width:20%"><col style="width:28px"></colgroup>
+                <colgroup><col style="width:16%"><col style="width:30%"><col style="width:8%"><col style="width:13%"><col style="width:14%"><col style="width:19%"><col style="width:32px"></colgroup>
                 <thead><tr style="color:var(--gold-dark);font-size:11px;text-transform:uppercase;background:rgba(184,134,11,.10)"><th data-sort="cliente" onclick="estOrdenar('cliente')" title="Clique para ordenar" style="text-align:left;padding:4px;cursor:pointer;user-select:none">Cliente <span class="est-arrow"></span></th><th data-sort="pecas" onclick="estOrdenar('pecas')" title="Clique para ordenar" style="text-align:left;padding:4px;cursor:pointer;user-select:none">Peças <span class="est-arrow"></span></th><th data-sort="valor" onclick="estOrdenar('valor')" title="Clique para ordenar" style="text-align:right;padding:4px;cursor:pointer;user-select:none">Valor R$ <span class="est-arrow"></span></th><th data-sort="codigo_devolucao" onclick="estOrdenar('codigo_devolucao')" title="Clique para ordenar" style="text-align:left;padding:4px;cursor:pointer;user-select:none">Cód. devolução <span class="est-arrow"></span></th><th data-sort="data" onclick="estOrdenar('data')" title="Clique para ordenar" style="text-align:left;padding:4px;cursor:pointer;user-select:none">Data <span class="est-arrow"></span></th><th data-sort="motivo" onclick="estOrdenar('motivo')" title="Clique para ordenar" style="text-align:left;padding:4px;cursor:pointer;user-select:none">Motivo <span class="est-arrow"></span></th><th style="width:28px"></th></tr></thead>
                 <tbody id="atd-est-tbody"></tbody>
               </table>
@@ -1160,7 +1160,7 @@
   </div>
 </div>
 <script src="data.js?v=2026100701"></script>
-<script src="main.js?v=2026101904"></script>
+<script src="main.js?v=2026101906"></script>
 <script async src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js" onload="initSupabase()"></script>
 </body>
 </html>

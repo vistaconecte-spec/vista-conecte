@@ -51,6 +51,17 @@ export function problemasDoTexto(texto) {
   return p;
 }
 
+// Confere as mensagens que o assistente propôs ANTES de a Marcelly ver. Se alguma quebra o tom,
+// a tela devolve ao assistente para reescrever (uma vez) e ela já recebe o texto limpo.
+// Visto em 19/10/2026: "Entendo a sua frustração" saiu na mensagem pronta para a Karina.
+export function revisarResposta(content) {
+  const resp = (content || []).find(b => b.type === 'tool_use' && b.name === 'responder');
+  if (!resp) return [];
+  return ((resp.input && resp.input.acoes) || [])
+    .map((a, indice) => ({ indice, problemas: a.tipo === 'mensagem' ? problemasDoTexto(a.texto) : [] }))
+    .filter(r => r.problemas.length);
+}
+
 // Texto que promete dinheiro à cliente só sai se a Bárbara já aprovou algo neste caso.
 export function prometeDinheiro(texto) {
   return /estorn|reembols|desconto|cupom|brinde|frete gr[aá]tis|frete por nossa conta|devolv\w* (o|seu) valor|de volta o valor|cr[eé]dito de r\$/i

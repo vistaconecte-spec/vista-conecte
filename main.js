@@ -1897,7 +1897,7 @@ function csCartaoAcao(a) {
     ${a.tipo === 'mensagem' ? `<div style="font-size:11px;color:var(--text-ter);margin-top:4px">Se a janela de 24h tiver fechado, vai o template de continuidade com este assunto <input data-c="assunto" value="${csEsc(a.assunto || '')}" style="width:220px;max-width:100%;padding:3px 6px;border:1px solid var(--border);border-radius:6px;font-size:12px"></div>` : ''}
     <div style="display:flex;align-items:center;gap:10px;margin-top:8px;flex-wrap:wrap">
       <button class="btn-primary" style="font-size:12px;padding:6px 14px">${csEstado && csEstado.so_leitura ? 'Simular (só leitura)' : 'Confirmar'}</button>
-      <span data-c="res" style="font-size:12px"></span>
+      <span data-c="res" style="font-size:12px;color:#b45309">${a._avisos ? 'Ajuste antes de enviar, o texto ' + csEsc(a._avisos.join(', ')) : ''}</span>
     </div>`;
   box.querySelector('button').onclick = () => csExecutar(box, a);
   return box;
@@ -1991,6 +1991,7 @@ async function csRodar() {
   csOcupado = true;
   csStatus('pensando...');
   try {
+    let revisou = false;
     for (let volta = 0; volta < 8; volta++) {
       const r = await fetch('/api/casos', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ acao: 'assistente', messages: csMsgs }) });
       if (r.status === 401 || r.status === 403) { sessaoExpirou(); return; }
@@ -2014,10 +2015,22 @@ async function csRodar() {
           resultados.push({ type: 'tool_result', tool_use_id: u.id, content: 'erro: ' + e.message, is_error: true });
         }
       }
+      // Mensagem à cliente fora do tom volta UMA vez para o assistente reescrever, antes de
+      // a Marcelly ver (o servidor confere com as mesmas regras que barram o envio).
+      if (resposta && (d.revisao || []).length && !revisou) {
+        revisou = true;
+        const quais = d.revisao.map(r => `ação ${r.indice + 1} (${r.problemas.join(', ')})`).join('; ');
+        csMsgs.push({ role: 'user', content: [...resultados, { type: 'tool_result', tool_use_id: resposta.id, is_error: true,
+          content: `Ainda não mostrei. A mensagem para a cliente quebra as regras de tom em ${quais}. Reescreva só essas mensagens e chame responder de novo com o resto igual.` }] });
+        csStatus('ajustando o texto da mensagem...');
+        continue;
+      }
       if (resposta) {
         csPendentes = [...resultados, { type: 'tool_result', tool_use_id: resposta.id, content: 'mostrado à Marcelly' }];
         const inp = resposta.input || {};
-        csBolha('assistente', inp.texto || textos || '', inp.acoes || []);
+        const avisos = {};
+        (d.revisao || []).forEach(r => { avisos[r.indice] = r.problemas; });
+        csBolha('assistente', inp.texto || textos || '', (inp.acoes || []).map((a, i) => avisos[i] ? { ...a, _avisos: avisos[i] } : a));
         return;
       }
       csMsgs.push({ role: 'user', content: resultados });
@@ -2854,17 +2867,22 @@ function estDiasNaFila(t) {
 function estRowHtml(t, bg, bold, dias) {
   const esc = v => (v || '').replace(/"/g, '&quot;');
   const concl = estConcluida(t);
-  const badge = (!concl && dias >= 2) ? `<div><span style="display:inline-block;margin-top:2px;font-size:10px;font-weight:700;color:#fff;background:${retBucket(dias).bar};border-radius:4px;padding:1px 5px">${dias} dias na fila</span></div>` : '';
+  // O selo de fila fica na coluna DATA, ao lado da data: embaixo do nome ele deixava a
+  // linha com duas alturas e os campos das outras colunas desencontrados.
+  const badge = (!concl && dias >= 2) ? `<span class="est-fila" style="background:${retBucket(dias).bar}">${dias} dias</span>` : '';
+  // "10/07" (lançada à mão) e "19/10/2026" (Shopify) aparecem no mesmo formato.
+  const ms = estDataMs(t.data);
+  const dataTxt = (ms !== null && !isNaN(ms)) ? new Date(ms).toLocaleDateString('pt-BR') : (t.data || '');
   const trStyle = concl ? 'opacity:0.5' : (bg ? `background:${bg};${bold ? 'font-weight:600;' : ''}` : '');
   return `
     <tr style="${trStyle}">
-      <td style="padding:4px"><input value="${esc(t.cliente)}" oninput="estEdit('${t.id}','cliente',this.value)" style="width:100%;font-size:12px;padding:4px 6px;border:1px solid var(--border);border-radius:5px">${badge}</td>
-      <td style="padding:4px"><input value="${esc(t.pecas)}" oninput="estEdit('${t.id}','pecas',this.value)" style="width:100%;font-size:12px;padding:4px 6px;border:1px solid var(--border);border-radius:5px"></td>
-      <td style="padding:4px"><input type="number" step="0.01" value="${t.valor}" oninput="estEdit('${t.id}','valor',this.value)" style="width:100%;text-align:right;font-size:12px;font-weight:700;color:var(--gold-dark);padding:4px 6px;border:1px solid var(--border);border-radius:5px"></td>
-      <td style="padding:4px"><input value="${esc(t.codigo_devolucao)}" oninput="estEdit('${t.id}','codigo_devolucao',this.value)" style="width:100%;font-size:12px;padding:4px 6px;border:1px solid var(--border);border-radius:5px"></td>
-      <td style="padding:4px;white-space:nowrap">${t.data || ''}</td>
-      <td style="padding:4px"><input value="${esc(t.motivo)}" oninput="estEdit('${t.id}','motivo',this.value)" style="width:100%;font-size:12px;padding:4px 6px;border:1px solid var(--border);border-radius:5px"></td>
-      <td style="padding:4px;text-align:center"><button onclick="estDel('${t.id}')" title="excluir" style="background:none;border:none;cursor:pointer;color:var(--text-ter);font-size:15px">×</button></td>
+      <td><input value="${esc(t.cliente)}" oninput="estEdit('${t.id}','cliente',this.value)"></td>
+      <td><input value="${esc(t.pecas)}" title="${esc(t.pecas)}" oninput="estEdit('${t.id}','pecas',this.value)"></td>
+      <td><input class="est-valor" type="number" step="0.01" value="${t.valor}" oninput="estEdit('${t.id}','valor',this.value)"></td>
+      <td><input value="${esc(t.codigo_devolucao)}" oninput="estEdit('${t.id}','codigo_devolucao',this.value)"></td>
+      <td><div class="est-data"><span>${esc(dataTxt)}</span>${badge}</div></td>
+      <td><input value="${esc(t.motivo)}" title="${esc(t.motivo)}" oninput="estEdit('${t.id}','motivo',this.value)"></td>
+      <td class="est-acao"><button onclick="estDel('${t.id}')" title="excluir">×</button></td>
     </tr>`;
 }
 // Ordenação por coluna (clique no cabeçalho): 1º clique asc, 2º desc, 3º volta à visão padrão (fila).

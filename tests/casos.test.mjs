@@ -68,6 +68,12 @@ ok('Karina aparece como conversa em andamento, não sem resposta', kk.situacao.s
 ok('diz que foi a equipe e a hora em Brasília', [kk.loja_falou_antes.quem, kk.loja_falou_antes.em_brt, kk.ultima_cliente_brt, kk.equipe_falou_nas_ultimas_24h], ['equipe (atendente humana)', '19/10 13:24', '19/10 13:24', true]);
 ok('sem fala da loja continua sem resposta', C.semResposta([{ wa_id: 'z', role: 'user', texto: 'cadê?', created_at: h(5) }], { agora })[0].situacao, 'sem resposta da loja');
 ok('conversa vai em horário de Brasília', C.conversaParaAssistente(karina)[1], { quem: 'equipe', em_brt: '19/10 13:24', texto: 'pode deixar que vou pedir rs' });
+const respKarina = [{ type: 'tool_use', name: 'responder', id: 't1', input: { texto: 'x', acoes: [
+  { tipo: 'pedir_aprovacao', texto: 'brinde: pedido' },
+  { tipo: 'mensagem', texto: 'Karina, entendo a sua frustração, o pedido está como prioridade' }] } }];
+ok('mensagem com frase de robô volta para revisão antes da tela', C.revisarResposta(respKarina), [{ indice: 1, problemas: ['frase de robô'] }]);
+ok('só a mensagem à cliente é revisada', C.revisarResposta([{ type: 'tool_use', name: 'responder', id: 't', input: { texto: 'x', acoes: [{ tipo: 'anotar', texto: 'nota: x' }] } }]), []);
+ok('tela devolve uma vez e depois mostra o aviso', main.includes('&& !revisou') && main.includes('Ajuste antes de enviar, o texto'), true);
 ok('instrução manda tratar promessa da equipe como pendência', /Promessa da equipe é pendência/.test(C.SISTEMA), true);
 ok('agradecimento não é pendência', [C.ehSoAgradecimento('ok obrigada!'), C.ehSoAgradecimento('🙏🏻'), C.ehSoAgradecimento('Eu que agradeço'), C.ehSoAgradecimento('Sim, pode ser o M'), C.ehSoAgradecimento('obrigada, e o rastreio?')], [true, true, true, false, false]);
 
