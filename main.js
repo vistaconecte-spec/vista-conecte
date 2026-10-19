@@ -3076,6 +3076,67 @@ function revAplicarCodigos() {
   return nRet + nEst;
 }
 
+// ── Vale-troca: crédito na loja (19/10/2026) ──────────────────────────────────
+// Quem escolheu crédito na loja cai na DEVOLUÇÃO. Regras da Bárbara: o vale sai quando a peça
+// CHEGA, vale 90 dias, é no valor pago e a Marcelly manda no WhatsApp. A linha anda por
+// botões, um de cada vez: chegou → gerar vale (cupom na Shopify, /api/vale-troca) →
+// copiar mensagem → enviado (fecha a linha). Dinheiro de volta segue como antes.
+function valeEhCredito(t) { return t.forma === 'credito' || /^cr[ée]dito na loja/i.test(String(t.motivo || '')); }
+function valeEtapa(t) {
+  if (t.vale_enviado_em) return 'enviado';
+  if (t.vale_codigo) return 'gerado';
+  if (t.chegou_em) return 'chegou';
+  return 'esperando';
+}
+function valeAcaoHtml(t) {
+  if (!valeEhCredito(t)) return '';
+  const e = valeEtapa(t);
+  const css = 'flex:0 0 auto;white-space:nowrap;font-size:11px;font-weight:600;background:#fff;border:1px solid var(--border);border-radius:5px;cursor:pointer;color:var(--gold-dark);padding:0 7px;height:28px';
+  const b = (fn, ico, txt, tit) => `<button onclick="${fn}('${t.id}', this)" title="${tit}" style="${css}"><i class="ti ${ico}"></i> ${txt}</button>`;
+  const reais = v => 'R$ ' + (Number(v) || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 });
+  if (e === 'esperando') return b('valeChegou', 'ti-package-import', 'chegou', 'A peça chegou aqui: libera o vale');
+  if (e === 'chegou') return b('valeGerar', 'ti-ticket', 'gerar vale', `Cria na Shopify o cupom de ${reais(t.valor)}: 90 dias, uso único, só para esta cliente`);
+  if (e === 'gerado') return b('valeCopiar', 'ti-copy', 'copiar msg', `Copia a mensagem com o vale ${t.vale_codigo} para mandar no WhatsApp`)
+    + b('valeEnviado', 'ti-check', 'enviado', 'Marcar que o vale já foi mandado para a cliente');
+  const ate = t.vale_ate ? new Date(t.vale_ate).toLocaleDateString('pt-BR') : '';
+  return `<span title="vale enviado em ${new Date(t.vale_enviado_em).toLocaleDateString('pt-BR')}, válido até ${ate}" style="flex:0 0 auto;font-size:11px;font-weight:600;color:#3aa76d;white-space:nowrap"><i class="ti ti-ticket"></i> ${t.vale_codigo}</span>`;
+}
+function valeAlterar(id, fn) {
+  const cfg = estGetConfig();
+  const t = cfg.itens.find(x => x.id === id); if (!t) return null;
+  carimbarItem(t);
+  fn(t);
+  estSalvar(cfg);
+  atdSyncViews();
+  return t;
+}
+function valeChegou(id) {
+  valeAlterar(id, t => { t.chegou_em = new Date().toISOString(); if (!t.etapa || t.etapa === 'novo') { t.etapa = 'andamento'; t.etapa_em = t.chegou_em; } });
+}
+async function valeGerar(id, btn) {
+  const t = estGetConfig().itens.find(x => x.id === id); if (!t) return;
+  const pedido = revNumeroPedido('estorno', t);
+  if (!pedido) { alert('Esta linha não tem número de pedido: o vale precisa do pedido para saber quem é a cliente.'); return; }
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="ti ti-loader"></i> gerando...'; }
+  try {
+    const r = await fetch('/api/vale-troca', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pedido, item_id: id, valor: t.valor, cliente: t.cliente }) });
+    const j = await r.json();
+    if (!r.ok || !j.ok) throw new Error(j.erro || 'HTTP ' + r.status);
+    valeAlterar(id, x => { Object.assign(x, { vale_codigo: j.codigo, vale_valor: j.valor, vale_ate: j.ate, vale_msg: j.mensagem, vale_gerado_em: new Date().toISOString() }); });
+  } catch (e) {
+    alert('Não consegui gerar o vale: ' + e.message);
+    atdSyncViews();
+  }
+}
+async function valeCopiar(id, btn) {
+  const t = estGetConfig().itens.find(x => x.id === id); if (!t || !t.vale_msg) return;
+  try { await navigator.clipboard.writeText(t.vale_msg); if (btn) btn.innerHTML = '<i class="ti ti-check"></i> copiada'; }
+  catch (e) { prompt('Copie a mensagem:', t.vale_msg); }
+}
+function valeEnviado(id) {
+  valeAlterar(id, t => { t.vale_enviado_em = new Date().toISOString(); t.etapa = 'concluido'; t.etapa_em = t.vale_enviado_em; });
+}
+
 // ── Portal de trocas da cliente (/trocas, 19/10/2026) ─────────────────────────
 // A cliente pede sozinha, sem login, e cada pedido vira uma linha `troca-portal:<pedido>-<ts>`
 // no vc_modelos (quem grava é /api/trocas-portal). Aqui essas linhas viram itens das listas:
@@ -3183,7 +3244,7 @@ function estRowHtml(t, bg, bold, dias) {
       <td><input class="est-valor" type="number" step="0.01" value="${t.valor}" oninput="estEdit('${t.id}','valor',this.value)"></td>
       <td>${revCampoHtml('estorno', t, `<input value="${esc(t.codigo_devolucao)}" oninput="estEdit('${t.id}','codigo_devolucao',this.value)" placeholder="${esc(revStatus('estorno', t).txt)}" title="${esc(revStatus('estorno', t).txt)}">`)}</td>
       <td><div class="est-data"><span>${esc(dataTxt)}</span>${badge}</div></td>
-      <td><input value="${esc(t.motivo)}" title="${esc(t.motivo)}" oninput="estEdit('${t.id}','motivo',this.value)"></td>
+      <td><div style="display:flex;align-items:center;gap:4px"><input value="${esc(t.motivo)}" title="${esc(t.motivo)}" oninput="estEdit('${t.id}','motivo',this.value)">${valeAcaoHtml(t)}</div></td>
       <td class="est-acao"><button onclick="estDel('${t.id}')" title="excluir">×</button></td>
     </tr>`;
 }
