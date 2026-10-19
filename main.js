@@ -152,6 +152,7 @@ async function appSair() {
 // Declarado aqui em cima, e não junto de checarVersaoNova lá embaixo, porque a baixa de
 // estoque consulta esta trava e roda antes daquele trecho do arquivo.
 let _versaoAvisada = false;
+let _versaoChecadaEm = 0; // última conferência de versão (checarVersaoNova), para a baixa saber se o aparelho dormiu
 
 function ehChaveHistorico(key) {
   return String(key || '').startsWith(HIST_PREFIXO);
@@ -288,7 +289,12 @@ async function restaurarVersao(i, btn) {
   // banco (trg_vc_modelos_grade_velha) recusa a grade antiga como se fosse tela velha.
   const agoraIso = new Date().toISOString();
   ['est_at', 'prod_at', 'prod2_at'].forEach(c => { if (ver.d && c in ver.d) ver.d[c] = agoraIso; });
-  if (ver.d && typeof ver.d === 'object' && MODELOS[key]) ver.d.updated_at = agoraIso;
+  if (ver.d && typeof ver.d === 'object' && MODELOS[key]) {
+    ver.d.updated_at = agoraIso;
+    // Restaurar é decisão dela sobre a linha de AGORA: prova que leu a linha atual, senão a
+    // trava (v4) trataria a versão antiga como tela velha e recusaria.
+    declararLeitura(ver.d, await carregarNuvem(key));
+  }
   saveLocal('vc:' + key, ver.d);
   await salvarNuvem(key, ver.d); // entra no histórico como versão nova: nada se perde
   fecharHistorico();
@@ -303,7 +309,26 @@ async function restaurarVersao(i, btn) {
 async function carregarNuvem(key) {
   const rows = await lerModelosNuvem({ id: key });
   if (rows === undefined) return undefined;
-  return rows[0]?.dados || null;
+  const row = rows[0];
+  if (!row || !row.dados) return null;
+  // O updated_at da LINHA (carimbo do servidor) vai junto, escondido: é a prova de qual versão
+  // foi lida. Quem grava em cima desta leitura manda essa prova (ver lidoEmDe), e a gravação só
+  // vale se a linha ainda for essa. Não enumerável: não sobe no JSON nem passa no `{ ...nuvem }`.
+  if (row.updated_at && typeof row.dados === 'object') {
+    Object.defineProperty(row.dados, '_lidoEm', { value: row.updated_at, enumerable: false, configurable: true });
+  }
+  return row.dados;
+}
+function lidoEmDe(dados) { return (dados && typeof dados === 'object' && dados._lidoEm) || null; }
+
+// Carimba no objeto que vai subir QUAL versão da linha ele partiu (`lido_at`). A trava do banco
+// (sql/trava-escrita-atrasada-v4.sql) deixa passar tudo de quem prova ter lido a linha atual e
+// aperta quem não prova: aba velha, script, ou leitura que já mudou na nuvem. O banco tira o
+// campo antes de gravar. Sem prova, sai sem o campo (um lido_at antigo guardado não vale nada).
+function declararLeitura(dados, nuvem) {
+  const lido = lidoEmDe(nuvem);
+  if (lido) dados.lido_at = lido; else delete dados.lido_at;
+  return dados;
 }
 
 // ─── LEITURA DA NUVEM COM CAMINHO RESERVA ────────────────────────────────────
@@ -455,7 +480,9 @@ async function salvarNuvemREST(key, dados, opts = {}) {
         if (corpo && corpo.code === '23514') {
           if (souOAtual()) _gravacoesPendentes.delete(key);
           console.warn('[nuvem] gravação recusada pela trava', key, corpo.message);
-          await trazerVersaoRecusada(key);
+          // Quem vai refazer sobre uma leitura nova (gravarModeloNaNuvem, subirModeloMesclado)
+          // cuida sozinho; o aviso fica para quando não há o que refazer.
+          if (!opts.vaiRefazer) await trazerVersaoRecusada(key);
           return 'recusada';
         }
       }
@@ -701,18 +728,25 @@ async function reenviarPendentes() {
 // que já estava em baixarEstoqueDoPedido desde 11/08). Agora: lê a nuvem, aplica a
 // mudança, grava. Sem leitura, sem gravação: `mutar` devolvendo false também não grava.
 async function gravarModeloNaNuvem(key, mutar, opts = {}) {
-  const nuvem = await carregarNuvemComRetry(key);
-  if (nuvem === undefined) {
-    if (!opts.silencioso) alert('Não deu para ler a nuvem agora, então nada foi gravado (gravar às cegas era o que apagava o trabalho dos outros aparelhos). Tente de novo em instantes.');
-    return null;
+  // Duas voltas: se a trava recusar (outro aparelho gravou entre a leitura e a gravação),
+  // lê de novo e aplica a mesma mudança em cima do que chegou.
+  for (let volta = 0; volta < 2; volta++) {
+    const nuvem = await carregarNuvemComRetry(key);
+    if (nuvem === undefined) {
+      if (!opts.silencioso) alert('Não deu para ler a nuvem agora, então nada foi gravado (gravar às cegas era o que apagava o trabalho dos outros aparelhos). Tente de novo em instantes.');
+      return null;
+    }
+    const saved = nuvem || loadLocal('vc:' + key) || {};
+    if (mutar(saved) === false) return null;
+    saved.updated_at = new Date().toISOString();
+    declararLeitura(saved, nuvem);
+    saveLocal('vc:' + key, saved);
+    _ultimoSaveTs = Date.now();
+    const r = await salvarNuvem(key, saved, { vaiRefazer: volta === 0 && !!nuvem });
+    if (r === 'recusada' && volta === 0 && nuvem) continue;
+    return r === 'recusada' ? null : saved;
   }
-  const saved = nuvem || loadLocal('vc:' + key) || {};
-  if (mutar(saved) === false) return null;
-  saved.updated_at = new Date().toISOString();
-  saveLocal('vc:' + key, saved);
-  _ultimoSaveTs = Date.now();
-  await salvarNuvem(key, saved);
-  return saved;
+  return null;
 }
 
 // Salva estado atual no localStorage IMEDIATAMENTE (sem esperar o debounce)
@@ -942,9 +976,18 @@ async function subirModeloMesclado(key, dom, tocado, desde) {
     return nuvem;
   }
   if (!nuvem) { await salvarNuvem(key, dom); return dom; } // linha não existe ainda: modelo novo
-  const final = mesclarModelo(nuvem, dom, tocado);
+  let final = declararLeitura(mesclarModelo(nuvem, dom, tocado), nuvem);
   saveLocal('vc:' + key, final);
-  await salvarNuvem(key, final);
+  // Recusa da trava = outro aparelho gravou entre a leitura e a gravação: mescla de novo o que
+  // foi tocado aqui em cima da versão que chegou, uma vez.
+  if (await salvarNuvem(key, final, { vaiRefazer: true }) === 'recusada') {
+    const nova = await carregarNuvemComRetry(key);
+    if (nova) {
+      final = declararLeitura(mesclarModelo(nova, dom, tocado), nova);
+      saveLocal('vc:' + key, final);
+      await salvarNuvem(key, final);
+    } else await trazerVersaoRecusada(key);
+  }
   if (modeloAtual === key) renderModeloSeOcioso(); // a tela recebe o que veio da nuvem
   return final;
 }
@@ -12264,10 +12307,24 @@ async function baixarEstoqueDoPedido(itens) {
 //
 // Recusa da trava = o que foi lido era velho. Em 29/09, 07/10 e 08/10/2026 a baixa de um
 // aparelho gravou o Macacão Amplo com a leva de 29/09 junto: a trava barrou, mas a peça
-// entrava no registro como baixada. Agora lê de novo e refaz uma vez; se for recusada de
-// novo, não conta (fica no estoque, que é o lado que se corrige contando a arara).
+// entrava no registro como baixada. Agora lê de novo e refaz; se não passar, não conta
+// (fica no estoque, que é o lado que se corrige contando a arara).
+//
+// GRAVAÇÃO CONDICIONAL (19/10/2026). Em 16/10/2026 às 18:15 UTC um aparelho com a tela aberta
+// desde 14/10 acordou, aplicou 5 envios atrasados e mandou, junto com cada peça, o Macacão
+// Amplo, a Pantalona Viscolycra, o Cropped Canelado e a Bolso Frontal INTEIROS como estavam
+// no dia 14: a leva 2 em corte sumiu (prod2/status2 apagados, leva2=false), a leva 1 perdeu
+// o "Em corte" e o estoque voltou para antes do "Tudo para o estoque" das 11h41. O `hist:` dos
+// modelos mostra a assinatura: cada gravação das 18:15 é o retrato de 14/10 com uma peça a
+// menos e carimbo novo. Ou seja, a leitura "da nuvem" daquele aparelho devolveu a versão
+// velha (mesmo padrão de 29/09, 07/10 e 08/10, causa no aparelho nunca achada) e a baixa,
+// que manda o documento inteiro, subiu tudo o que veio nela.
+// Por isso a baixa não confia mais na leitura: grava com `updated_at=eq.<o que foi lido>`.
+// Se a linha não é mais aquela (leitura velha, ou outro aparelho gravou no meio), nada é
+// gravado e ela lê de novo. O que sobe é a linha atual com UMA célula de `est` a menos:
+// leva, status e o resto do estoque vão exatamente como estão na nuvem.
 async function baixarUmaPeca(r, i) {
-  for (let tentativa = 0; tentativa < 2; tentativa++) {
+  for (let tentativa = 0; tentativa < 3; tentativa++) {
     // Sempre da NUVEM. Ler o local e devolver o objeto inteiro para a nuvem faz este
     // aparelho gravar por cima do que os outros mexeram: em 11/08/2026 isso apagou as
     // contagens de estoque de uma tarde inteira e ressuscitou uma leva já concluída.
@@ -12276,17 +12333,62 @@ async function baixarUmaPeca(r, i) {
     // Sem estoque cadastrado para esta cor não há o que baixar (e criar entrada
     // zerada aqui inventaria linha de estoque que a dona nunca lançou).
     if (!saved || !saved.est || !saved.est[r.cor]) return 0;
+    // Sem o carimbo do servidor não há como provar que a leitura é a linha atual: não grava.
+    const lidoEm = lidoEmDe(saved);
+    if (!lidoEm) return 0;
     const antes = saved.est[r.cor][i] || 0;
     if (antes <= 0) return 0;
     const tirar = Math.min(antes, r.qtd);
-    saved.est[r.cor][i] = antes - tirar;
+    saved.est[r.cor][i] = antes - tirar; // a ÚNICA mudança no documento
     saved.est_at = saved.updated_at = new Date().toISOString();
-    saveLocal('vc:' + r.key, saved);
+    declararLeitura(saved, saved);
     // Com await: duas peças do mesmo modelo no pedido leem a nuvem uma depois da outra.
-    if (await salvarNuvem(r.key, saved) === 'recusada') continue;
-    return tirar;
+    const g = await gravarSeNaoMudou(r.key, saved, lidoEm);
+    if (g === true) {
+      saveLocal('vc:' + r.key, saved);
+      registrarVersao(r.key, saved);
+      return tirar;
+    }
+    if (g === false) {
+      // Rede caiu no meio: não se sabe se chegou. Confere; NUNCA tenta de novo às cegas,
+      // senão uma gravação que chegou viraria duas peças baixadas.
+      const depois = await carregarNuvem(r.key);
+      if (depois && depois.updated_at === saved.updated_at) { saveLocal('vc:' + r.key, depois); return tirar; }
+      return 0;
+    }
+    // 'mudou' (a linha não é mais a lida) ou 'recusada' (trava): lê de novo e refaz
+    console.warn('[baixa] ' + r.key + ': leitura não era a linha atual (' + g + '), lendo de novo');
   }
   return 0;
+}
+
+// PATCH só se a linha ainda for a que foi lida (updated_at do servidor igual ao da leitura).
+// Devolve true (gravou), 'mudou' (a linha mudou desde a leitura: nada foi gravado),
+// 'recusada' (trava do banco, 23514) ou false (rede: não se sabe se gravou).
+async function gravarSeNaoMudou(key, dados, lidoEm) {
+  try {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/vc_modelos?id=eq.${encodeURIComponent(key)}`
+      + `&updated_at=eq.${encodeURIComponent(lidoEm)}&select=id`, {
+      method: 'PATCH',
+      headers: {
+        'apikey': SUPABASE_KEY,
+        'Authorization': 'Bearer ' + SUPABASE_KEY,
+        'Content-Type': 'application/json',
+        'Prefer': 'return=representation'
+      },
+      body: JSON.stringify({ dados })
+    });
+    if (res.ok) {
+      const rows = await res.json().catch(() => null);
+      if (!Array.isArray(rows)) return false;
+      return rows.length ? true : 'mudou';
+    }
+    if (res.status === 400) {
+      const corpo = await res.json().catch(() => null);
+      if (corpo && corpo.code === '23514') return 'recusada';
+    }
+  } catch (e) {}
+  return false;
 }
 
 let _ultimaBaixaAuto = null; // { quando, pedidos:[], pecas:[] } — alimenta o aviso do dashboard
@@ -12300,6 +12402,13 @@ async function baixaImediataDeProcessados() {
   if (_baixaRodando) return; // duas rodadas ao mesmo tempo baixariam a mesma remessa duas vezes
   _baixaRodando = true;
   try {
+    // Aparelho que acabou de acordar confere a versão ANTES de baixar. Em 16/10/2026 o celular
+    // com a tela de 14/10 acordou e o ciclo de 1 minuto da baixa disparou antes do de versão:
+    // as baixas atrasadas rodaram com o código velho antes de a faixa aparecer.
+    if (Date.now() - _versaoChecadaEm > 2 * 60 * 1000) {
+      await checarVersaoNova();
+      if (_versaoAvisada) return;
+    }
     await _baixaImediataDeProcessados();
   } finally {
     _baixaRodando = false;
@@ -13760,6 +13869,7 @@ async function checarVersaoNova() {
   try {
     const res = await fetch('/?_v=' + Date.now(), { cache: 'no-store' });
     if (!res.ok) return;
+    _versaoChecadaEm = Date.now();
     const m = (await res.text()).match(/main\.js\?v=(\d+)/);
     if (m && m[1] !== APP_VERSAO) { _versaoAvisada = true; mostrarFaixaVersaoNova(m[1]); }
   } catch (_) {}

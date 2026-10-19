@@ -14,21 +14,31 @@ const fonte = [
   pedaco('async function baixarEstoqueDoPedido', 'let _ultimaBaixaAuto'),
 ].join('\n');
 
-// Nuvem falsa com a trava: recusa gravação cujo prod_at volta no tempo.
+// Nuvem falsa com a trava: recusa gravação cujo prod_at volta no tempo. Como o PostgREST,
+// cada linha tem o updated_at do servidor (aqui um relógio que só anda), e o PATCH com
+// `updated_at=eq.` só grava se a linha ainda for a lida (é por onde a baixa grava desde 19/10).
 const nuvem = {}; const posts = []; const historico = []; const avisos = [];
+const servidorEm = {}; let relogio = 0; const carimbar = id => { servidorEm[id] = '2026-10-08T19:00:' + String(++relogio).padStart(2, '0') + '.000000+00:00'; };
 let leituraVelha = 0; // quantas leituras ainda devolvem a versão velha (o aparelho que leu errado)
 const velho = { est: { Preto: [0, 0, 1, 0, 0] }, status: 'Comprando tecido', prod_at: '2026-09-28T21:42:38.271Z' };
+const VELHO_EM = '2026-09-29T00:00:00.000000+00:00';
 const fetchFalso = async (url, opt = {}) => {
   if ((opt.method || 'GET') === 'POST') {
     const b = JSON.parse(opt.body); posts.push(b);
     const atual = nuvem[b.id];
     if (atual && b.dados.prod_at && atual.prod_at && b.dados.prod_at < atual.prod_at)
       return { ok: false, status: 400, json: async () => ({ code: '23514', message: 'escrita recusada' }) };
-    nuvem[b.id] = b.dados; return { ok: true, status: 201 };
+    nuvem[b.id] = b.dados; carimbar(b.id); return { ok: true, status: 201 };
   }
-  const id = decodeURIComponent(/id=eq\.([^&]+)/.exec(url)[1]);
-  if (leituraVelha > 0 && id === 'macacao') { leituraVelha--; return { ok: true, status: 200, json: async () => [{ dados: JSON.parse(JSON.stringify(velho)) }] }; }
-  return { ok: true, status: 200, json: async () => (nuvem[id] ? [{ dados: JSON.parse(JSON.stringify(nuvem[id])) }] : []) };
+  const id = decodeURIComponent(/id=eq.([^&]+)/.exec(url)[1]);
+  if (opt.method === 'PATCH') {
+    const b = JSON.parse(opt.body); posts.push({ id, dados: b.dados });
+    const lido = decodeURIComponent(/updated_at=eq.([^&]+)/.exec(url)[1]);
+    if (!nuvem[id] || servidorEm[id] !== lido) return { ok: true, status: 200, json: async () => [] };
+    nuvem[id] = b.dados; carimbar(id); return { ok: true, status: 200, json: async () => [{ id }] };
+  }
+  if (leituraVelha > 0 && id === 'macacao') { leituraVelha--; return { ok: true, status: 200, json: async () => [{ dados: JSON.parse(JSON.stringify(velho)), updated_at: VELHO_EM }] }; }
+  return { ok: true, status: 200, json: async () => (nuvem[id] ? [{ dados: JSON.parse(JSON.stringify(nuvem[id])), updated_at: servidorEm[id] }] : []) };
 };
 const store = new Map();
 const ctx = { SUPABASE_URL: 'https://x', SUPABASE_KEY: 'k', fetch: fetchFalso,
@@ -64,14 +74,14 @@ await api.reenviarPendentes();
 ok('nenhum POST novo', posts.length, antes);
 
 console.log('3) baixa que leu a versão velha uma vez');
-nuvem.macacao = { est: { Preto: [0, 0, 2, 0, 0] }, status: 'Em corte', prod_at: '2026-10-06T11:42:17.774Z' };
+nuvem.macacao = { est: { Preto: [0, 0, 2, 0, 0] }, status: 'Em corte', prod_at: '2026-10-06T11:42:17.774Z' }; carimbar('macacao');
 leituraVelha = 1; posts.length = 0;
 const b1 = await api.baixarEstoqueDoPedido([{ modelKey: 'macacao', cor: 'Preto', tam: 2, qtd: 1 }]);
 ok('lê de novo e baixa em cima do dado certo', nuvem.macacao.est.Preto, [0, 0, 1, 0, 0]);
 ok('a leva não voltou', nuvem.macacao.status, 'Em corte');
 ok('a peça conta como baixada', b1.map(x => x.qtd), [1]);
 
-console.log('4) baixa que lê velho nas duas tentativas');
+console.log('4) baixa que lê velho em todas as tentativas');
 leituraVelha = 99; // fonte que continua velha em toda leitura
 const b2 = await api.baixarEstoqueDoPedido([{ modelKey: 'macacao', cor: 'Preto', tam: 2, qtd: 1 }]);
 ok('nada é gravado por cima', nuvem.macacao.est.Preto, [0, 0, 1, 0, 0]);

@@ -152,7 +152,7 @@ ok('e a fila de pendentes tenta a mesclagem de novo', /for \(const \[key, m\] of
 ok('os botoes que mexem no modelo fora da tela leem a nuvem antes de gravar',
    ['mandarTudoParaCorte', 'mandarUrgentesParaProducao', 'mandarTudoParaEstoque', 'transferirParaEstoque', 'transferirParaEstoque2', 'adicionarLeva2', 'removerLeva2', 'transferirTamanhoEstoque']
      .every(f => { const i = main.indexOf('function ' + f + '('); const corpo = main.slice(i, main.indexOf('\n}', i)); return /gravarModeloNaNuvem\(/.test(corpo) && !/loadLocal\('vc:' \+ (key|l\.key|modeloAtual)\) \|\| \{\};\s*\r?\n[\s\S]*?await salvarNuvem\(/.test(corpo); }), true);
-ok('e o helper nao grava sem ler', /async function gravarModeloNaNuvem\(key, mutar, opts = \{\}\) \{\s*\r?\n\s*const nuvem = await carregarNuvemComRetry\(key\);\s*\r?\n\s*if \(nuvem === undefined\) \{[\s\S]*?return null;/.test(main), true);
+ok('e o helper nao grava sem ler', /async function gravarModeloNaNuvem\(key, mutar, opts = \{\}\) \{(?:(?!salvarNuvem)[\s\S]){0,400}?const nuvem = await carregarNuvemComRetry\(key\);\s*\r?\n\s*if \(nuvem === undefined\) \{[\s\S]*?return null;/.test(main), true);
 ok('mexer nas etiquetas de cor e o unico jeito de a lista da tela mandar',
    ['function fixarCor', 'function addCor', 'function removerCor'].every(f => { const i = main.indexOf(f); return /coresTocadas = true; cfgEditado = true;/.test(main.slice(i, main.indexOf('\n}', i))); }), true);
 
