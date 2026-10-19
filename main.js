@@ -1898,7 +1898,7 @@ function frtLock() {
 // Alterna entre as 4 sub-seções (pílulas) dentro do painel Atendimento
 function atdShowSub(sub) {
   if (sub === 'retorno') { abrirTrocas(null); return; } // a troca mora na aba TROCAS desde 19/10/2026
-  ['kanban', 'sac', 'estorno', 'vendas', 'casos'].forEach(s => {
+  ['kanban', 'sac', 'estorno', 'vendas', 'casos', 'whats'].forEach(s => {
     const el = document.getElementById('atd-sub-' + s);
     if (el) el.style.display = (s === sub) ? '' : 'none';
     const pill = document.getElementById('atd-pill-' + s);
@@ -1909,6 +1909,12 @@ function atdShowSub(sub) {
   else if (sub === 'kanban') kbAbrir();
   else if (sub === 'vendas') vndCarregar();
   else if (sub === 'casos') csAbrir();
+  else if (sub === 'whats') {
+    // Caixa do WhatsApp oficial (/whatsapp.html). Carrega uma vez só; depois ela se atualiza
+    // sozinha, e para de buscar enquanto a pílula está escondida.
+    const f = document.getElementById('whats-frame');
+    if (f && !f.getAttribute('src')) f.setAttribute('src', '/whatsapp.html?embed=1&v=2026101917');
+  }
 }
 
 // ── CASOS — assistente da Marcelly ───────────────────────────────────────────

@@ -148,3 +148,146 @@ export async function gravarStatus(env, s) {
     body: JSON.stringify([{ wamid: s.wamid, telefone: s.telefone, direcao: 'saida', ...campos, enviada_em: s.status_em, bruto: s.bruto }]),
   }), 'wa_mensagens status novo');
 }
+
+// ── Etapa 2: caixa de entrada da equipe (sub-aba WhatsApp do ATENDIMENTO) ────
+//
+// Enquanto o Wati estiver ligado, a conversa vem de DUAS fontes: wa_mensagens (o que chega
+// direto da Meta e o que a equipe manda por aqui) e wati_ia_mensagens (o histórico da Vi:
+// cliente, Vi e equipe pelo Wati). A mesma cliente pode estar com e sem o 9.
+
+const GRAPH = 'https://graph.facebook.com/v23.0';
+export const JANELA_MS = 24 * 3600e3;
+export const PAUSA_VI_MS = 24 * 3600e3; // igual ao PAUSA_HUMANO_MS do worker da Vi
+
+// Mesma regra da wa_chave() do banco (sql/wa-conversas.sql).
+export function chave(t) {
+  t = String(t || '').replace(/\D/g, '');
+  return (t.length === 13 && t.startsWith('55') && t[4] === '9') ? t.slice(0, 4) + t.slice(5) : t;
+}
+// As duas grafias do mesmo celular brasileiro (sem e com o 9).
+export function variantes(t) {
+  const c = chave(t);
+  return (c.length === 12 && c.startsWith('55') && /[6-9]/.test(c[4])) ? [c, c.slice(0, 4) + '9' + c.slice(4)] : [c];
+}
+
+const norm = s => String(s || '').replace(/\s+/g, ' ').trim().toLowerCase();
+
+// Junta as duas fontes numa conversa só, sem repetir o que veio pelas duas.
+//  wa: linhas de wa_mensagens   vi: linhas de wati_ia_mensagens
+export function mesclar(wa, vi) {
+  const out = [];
+  const entradas = [];
+  const nossos = new Set();
+  for (const m of wa || []) {
+    const quando = m.enviada_em || m.recebida_em;
+    if (m.direcao === 'entrada') {
+      entradas.push({ t: Date.parse(quando), texto: norm(m.texto), midia: !!m.midia_id });
+      out.push({ id: m.wamid, quando, lado: 'cliente', texto: m.texto, tipo: m.tipo, midia_id: m.midia_id, mime: m.midia_mime, resposta_a: m.resposta_a });
+    } else if (m.texto) {
+      nossos.add('op_' + m.wamid);
+      out.push({ id: m.wamid, quando, lado: 'equipe', texto: m.texto, tipo: m.tipo, status: m.status, erro: m.erro });
+    }
+  }
+  for (const m of vi || []) {
+    if (nossos.has(m.msg_id)) continue;
+    const texto = m.texto || '';
+    if (m.role === 'user') {
+      const t = Date.parse(m.created_at);
+      const repetida = entradas.some(e => Math.abs(e.t - t) < 120e3 && (e.texto === norm(texto) || (e.midia && texto.startsWith('['))));
+      if (repetida) continue;
+      out.push({ id: m.msg_id, quando: m.created_at, lado: 'cliente', texto, tipo: 'text' });
+    } else if (m.role === 'operador') {
+      out.push({ id: m.msg_id, quando: m.created_at, lado: 'equipe', texto, tipo: 'text' });
+    } else {
+      out.push({ id: m.msg_id, quando: m.created_at, lado: texto.startsWith('[contexto interno') ? 'auto' : 'vi', texto, tipo: 'text' });
+    }
+  }
+  return out.sort((a, b) => Date.parse(a.quando) - Date.parse(b.quando));
+}
+
+export function janelaAberta(ultimaEntrada, agora = Date.now()) {
+  return !!ultimaEntrada && agora - Date.parse(ultimaEntrada) < JANELA_MS;
+}
+
+async function sbGet(env, caminho) {
+  const r = await ok(await fetch(`${SB_URL}/rest/v1/${caminho}`, { headers: sb(env) }), caminho.split('?')[0]);
+  return r.json();
+}
+
+export async function listarConversas(env, { desde, busca, limite = 60 } = {}) {
+  const p = new URLSearchParams({ select: 'chave,telefone,ultima_em,ultima_direcao,ultimo_texto,ultimo_tipo,nome,pausada_ate,ultima_entrada_em', order: 'ultima_em.desc', limit: String(Math.min(Number(limite) || 60, 200)) });
+  if (desde) p.set('ultima_em', 'gt.' + desde);
+  const b = String(busca || '').trim();
+  if (b) {
+    const dig = b.replace(/\D/g, '');
+    if (dig.length >= 4) p.set('chave', 'like.*' + chave(dig).slice(-8) + '*');
+    else p.set('nome', 'ilike.*' + b.replace(/[*,()]/g, ' ') + '*');
+  }
+  return sbGet(env, 'wa_conversas?' + p);
+}
+
+export async function lerConversa(env, tel, { desde, limite = 200 } = {}) {
+  const vs = variantes(tel).join(',');
+  const lim = String(Math.min(Number(limite) || 200, 500));
+  const pWa = new URLSearchParams({ select: 'wamid,telefone,direcao,tipo,texto,midia_id,midia_mime,resposta_a,status,erro,enviada_em,recebida_em', telefone: `in.(${vs})`, order: 'recebida_em.desc', limit: lim });
+  const pVi = new URLSearchParams({ select: 'msg_id,role,texto,created_at', wa_id: `in.(${vs})`, order: 'created_at.desc', limit: lim });
+  if (desde) { pWa.set('or', `(recebida_em.gt.${desde},status_em.gt.${desde})`); pVi.set('created_at', 'gt.' + desde); }
+  const [wa, vi, conv] = await Promise.all([
+    sbGet(env, 'wa_mensagens?' + pWa),
+    sbGet(env, 'wati_ia_mensagens?' + pVi),
+    sbGet(env, `wa_conversas?chave=eq.${chave(tel)}&select=chave,telefone,nome,pausada_ate,ultima_entrada_em`),
+  ]);
+  return { conversa: conv[0] || null, mensagens: mesclar(wa, vi) };
+}
+
+// Envia texto pela Cloud API, grava, e faz a Vi parar 24 h nesta conversa (o mesmo que acontece
+// quando alguém da equipe responde pelo Wati: handleOperatorMsg do worker).
+export async function enviarTexto(env, tel, texto, agora = Date.now()) {
+  texto = String(texto || '').trim();
+  if (!texto) return { status: 400, erro: 'mensagem vazia' };
+  if (texto.length > 4000) return { status: 400, erro: 'mensagem com mais de 4000 caracteres' };
+  const token = env.WA_TOKEN || env.META_ACCESS_TOKEN;
+  if (!token) return { status: 500, erro: 'META_ACCESS_TOKEN ausente' };
+  const conv = (await sbGet(env, `wa_conversas?chave=eq.${chave(tel)}&select=telefone,ultima_entrada_em`))[0];
+  if (!conv) return { status: 404, erro: 'conversa não encontrada' };
+  if (!janelaAberta(conv.ultima_entrada_em, agora)) return { status: 409, erro: 'janela', detalhe: 'A cliente não escreve há mais de 24 horas. Pela regra do WhatsApp, só dá para mandar um template aprovado.' };
+
+  const r = await fetch(`${GRAPH}/${PHONE_NUMBER_ID}/messages`, {
+    method: 'POST', headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ messaging_product: 'whatsapp', recipient_type: 'individual', to: conv.telefone, type: 'text', text: { preview_url: true, body: texto } }),
+  });
+  const d = await r.json().catch(() => ({}));
+  const wamid = d.messages && d.messages[0] && d.messages[0].id;
+  if (!r.ok || !wamid) return { status: 502, erro: 'a Meta recusou', detalhe: (d.error && (d.error.error_user_msg || d.error.message)) || ('HTTP ' + r.status) };
+
+  const quando = new Date(agora).toISOString();
+  await gravarMensagens(env, [{ wamid, telefone: conv.telefone, direcao: 'saida', tipo: 'text', texto, enviada_em: quando, bruto: { origem: 'painel' } }]);
+
+  // A Vi conhece a cliente pelo wa_id do Wati, que pode ser a outra grafia: pausa as que ela
+  // tem e grava a fala no histórico dela na grafia que ela já usa.
+  const vs = variantes(conv.telefone);
+  const sess = await sbGet(env, `wati_ia_sessions?wa_id=in.(${vs.join(',')})&select=wa_id&order=updated_at.desc.nullslast`);
+  const waVi = (sess[0] && sess[0].wa_id) || conv.telefone;
+  const ate = new Date(agora + PAUSA_VI_MS).toISOString();
+  await ok(await fetch(`${SB_URL}/rest/v1/wati_ia_sessions?on_conflict=wa_id`, {
+    method: 'POST', headers: sb(env, { Prefer: 'resolution=merge-duplicates,return=minimal' }),
+    body: JSON.stringify([...new Set([waVi, ...sess.map(s => s.wa_id)])].map(w => ({ wa_id: w, pausada_ate: ate, updated_at: quando }))),
+  }), 'pausa da Vi');
+  await ok(await fetch(`${SB_URL}/rest/v1/wati_ia_mensagens?on_conflict=msg_id`, {
+    method: 'POST', headers: sb(env, { Prefer: 'resolution=ignore-duplicates,return=minimal' }),
+    body: JSON.stringify({ msg_id: 'op_' + wamid, wa_id: waVi, role: 'operador', texto }),
+  }), 'histórico da Vi');
+  return { status: 200, ok: true, wamid, vi_pausada_ate: ate };
+}
+
+// Foto, áudio ou documento da cliente: a URL da Meta pede o token, então o painel busca por aqui.
+export async function baixarMidia(env, id) {
+  const token = env.WA_TOKEN || env.META_ACCESS_TOKEN;
+  if (!/^\d{5,25}$/.test(String(id || ''))) return json({ erro: 'id inválido' }, 400);
+  const info = await fetch(`${GRAPH}/${id}?phone_number_id=${PHONE_NUMBER_ID}`, { headers: { Authorization: 'Bearer ' + token } });
+  const meta = await info.json().catch(() => ({}));
+  if (!info.ok || !meta.url) return json({ erro: 'mídia indisponível', detalhe: meta.error && meta.error.message }, 404);
+  const arq = await fetch(meta.url, { headers: { Authorization: 'Bearer ' + token } });
+  if (!arq.ok) return json({ erro: 'mídia indisponível' }, 404);
+  return new Response(arq.body, { headers: { 'Content-Type': meta.mime_type || arq.headers.get('Content-Type') || 'application/octet-stream', 'Cache-Control': 'private, max-age=86400' } });
+}

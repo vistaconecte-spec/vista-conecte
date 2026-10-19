@@ -96,5 +96,93 @@ globalThis.fetch = async () => new Response('fora', { status: 503 });
 r = await req(`${base}?k=chave`, { method: 'POST', body: txt });
 ok('banco fora devolve 500 pra Meta reenviar', r.status, 500);
 
+console.log('\n3) Caixa de entrada: telefone, junção e janela');
+ok('chave tira o 9 do celular', W.chave('5562993161442'), '556293161442');
+ok('chave mantém número de 12', W.chave('553598000816'), '553598000816');
+ok('variantes com e sem o 9', W.variantes('5562993161442'), ['556293161442', '5562993161442']);
+ok('fixo não ganha 9', W.variantes('554833334444'), ['554833334444']);
+
+const wa = [
+  { wamid: 'w1', direcao: 'entrada', tipo: 'text', texto: 'Oi, cadê meu pedido?', enviada_em: '2026-10-19T21:16:40Z' },
+  { wamid: 'w2', direcao: 'entrada', tipo: 'image', texto: null, midia_id: '123456', midia_mime: 'image/jpeg', enviada_em: '2026-10-19T21:17:00Z' },
+  { wamid: 'w3', direcao: 'saida', tipo: 'text', texto: 'Já vejo pra você', status: 'read', enviada_em: '2026-10-19T21:20:00Z' },
+  { wamid: 'w4', direcao: 'saida', tipo: null, texto: null, status: 'delivered', enviada_em: '2026-10-19T21:18:00Z' },
+];
+const vi = [
+  { msg_id: 'a', role: 'user', texto: 'oi,  cadê meu pedido?', created_at: '2026-10-19T21:16:43Z' },
+  { msg_id: 'b', role: 'user', texto: '[imagem]', created_at: '2026-10-19T21:17:02Z' },
+  { msg_id: 'c', role: 'assistant', texto: 'Oi! Sou a Vi', created_at: '2026-10-19T21:16:57Z' },
+  { msg_id: 'op_w3', role: 'operador', texto: 'Já vejo pra você', created_at: '2026-10-19T21:20:01Z' },
+  { msg_id: 'd', role: 'assistant', texto: '[contexto interno: Pix pendente]', created_at: '2026-10-19T10:00:00Z' },
+  { msg_id: 'e', role: 'user', texto: 'mensagem antiga', created_at: '2026-10-18T10:00:00Z' },
+  { msg_id: 'f', role: 'operador', texto: 'respondi pelo Wati', created_at: '2026-10-18T11:00:00Z' },
+];
+const conv = W.mesclar(wa, vi);
+ok('mesma fala pelas duas fontes aparece uma vez', conv.filter(m => /cadê meu pedido/i.test(m.texto || '')).length, 1);
+ok('foto da Meta substitui o [imagem] do Wati', conv.filter(m => m.lado === 'cliente' && m.quando.startsWith('2026-10-19T21:17')).map(m => m.id), ['w2']);
+ok('envio do painel não duplica com o histórico da Vi', conv.filter(m => m.texto === 'Já vejo pra você').map(m => m.id), ['w3']);
+ok('status sem texto (Wati) fica de fora', conv.some(m => m.id === 'w4'), false);
+ok('lados', conv.map(m => m.lado), ['cliente', 'equipe', 'auto', 'cliente', 'vi', 'cliente', 'equipe']);
+ok('ordem por hora', conv.map(m => m.id), ['e', 'f', 'd', 'w1', 'c', 'w2', 'w3']);
+const agoraT = Date.parse('2026-10-20T21:00:00Z');
+ok('janela aberta com 23h', W.janelaAberta('2026-10-19T22:00:00Z', agoraT), true);
+ok('janela fechada com 25h', W.janelaAberta('2026-10-19T20:00:00Z', agoraT), false);
+ok('sem mensagem dela, janela fechada', W.janelaAberta(null, agoraT), false);
+
+console.log('\n4) Envio');
+const API = await import(pathToFileURL(join(raiz, 'functions', 'api', 'whatsapp.js')).href);
+let feitas = [];
+let convResp = [{ telefone: '556293161442', ultima_entrada_em: new Date(Date.now() - 3600e3).toISOString() }];
+let metaResp = { status: 200, corpo: { messages: [{ id: 'wamid.NOVO' }] } };
+globalThis.fetch = async (u, o = {}) => {
+  u = String(u);
+  feitas.push({ u, m: o.method || 'GET', b: o.body ? JSON.parse(o.body) : null, h: o.headers });
+  if (u.includes('graph.facebook.com')) return new Response(JSON.stringify(metaResp.corpo), { status: metaResp.status });
+  if (u.includes('/wa_conversas?')) return new Response(JSON.stringify(convResp), { status: 200 });
+  if (u.includes('/wati_ia_sessions?wa_id=')) return new Response(JSON.stringify([{ wa_id: '5562993161442' }]), { status: 200 });
+  return new Response('', { status: 201 });
+};
+const envE = { SUPABASE_SERVICE_ROLE_KEY: 'srv', META_ACCESS_TOKEN: 'tok' };
+const post = corpo => API.onRequest({ request: new Request('https://x/api/whatsapp', { method: 'POST', body: JSON.stringify(corpo) }), env: envE });
+
+r = await post({ acao: 'enviar', tel: '5562993161442', texto: '  Oi, vou ver seu pedido agora  ' });
+let d = await r.json();
+ok('envio ok', [r.status, d.ok, d.wamid], [200, true, 'wamid.NOVO']);
+const meta = feitas.find(f => f.u.includes('graph.facebook.com'));
+ok('manda pro telefone que a Meta usa, texto aparado', [meta.b.to, meta.b.text.body, meta.h.Authorization], ['556293161442', 'Oi, vou ver seu pedido agora', 'Bearer tok']);
+const gw = feitas.find(f => f.u.includes('/wa_mensagens?') && f.m === 'POST');
+ok('grava a saída', [gw.b[0].wamid, gw.b[0].direcao, gw.b[0].texto], ['wamid.NOVO', 'saida', 'Oi, vou ver seu pedido agora']);
+const pausa = feitas.find(f => f.u.includes('/wati_ia_sessions?on_conflict'));
+ok('pausa a Vi na grafia que ela usa', pausa.b.map(s => s.wa_id), ['5562993161442']);
+ok('pausa de 24h', Math.round((Date.parse(pausa.b[0].pausada_ate) - Date.now()) / 3600e3), 24);
+const hist = feitas.find(f => f.u.includes('/wati_ia_mensagens'));
+ok('fala entra no histórico da Vi como operador', [hist.b.msg_id, hist.b.wa_id, hist.b.role], ['op_wamid.NOVO', '5562993161442', 'operador']);
+
+feitas = [];
+convResp = [{ telefone: '556293161442', ultima_entrada_em: new Date(Date.now() - 25 * 3600e3).toISOString() }];
+r = await post({ acao: 'enviar', tel: '556293161442', texto: 'oi' });
+d = await r.json();
+ok('janela fechada não envia', [r.status, d.erro, feitas.some(f => f.u.includes('graph.facebook.com'))], [409, 'janela', false]);
+
+feitas = [];
+convResp = [{ telefone: '556293161442', ultima_entrada_em: new Date().toISOString() }];
+metaResp = { status: 400, corpo: { error: { message: 'Recipient not in allowed list' } } };
+r = await post({ acao: 'enviar', tel: '556293161442', texto: 'oi' });
+d = await r.json();
+ok('Meta recusou: não grava nem pausa', [r.status, feitas.some(f => f.u.includes('wati_ia_sessions'))], [502, false]);
+r = await post({ acao: 'enviar', tel: '556293161442', texto: '   ' });
+ok('texto vazio', r.status, 400);
+
+r = await API.onRequest({ request: new Request('https://x/api/whatsapp?acao=midia&id=../x'), env: envE });
+ok('id de mídia inválido', r.status, 400);
+ok('rota da caixa NÃO é pública', mid.includes("'/api/whatsapp'"), false);
+
+const html = readFileSync(join(raiz, 'whatsapp.html'), 'utf8');
+ok('tela sem travessão', /—/.test(html.replace(/<!--[\s\S]*?-->/g, '')), false);
+const idx = readFileSync(join(raiz, 'index.html'), 'utf8');
+const mainJs = readFileSync(join(raiz, 'main.js'), 'utf8');
+ok('pílula WhatsApp no ATENDIMENTO', idx.includes("atdShowSub('whats')") && idx.includes('id="atd-sub-whats"'), true);
+ok('atdShowSub conhece a pílula', mainJs.includes("'casos', 'whats']"), true);
+
 console.log(`\n${total - falhas}/${total} ok`);
 if (falhas) process.exit(1);
