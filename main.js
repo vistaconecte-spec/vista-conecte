@@ -1747,7 +1747,7 @@ function frtLock() {
 
 // Alterna entre as 4 sub-seções (pílulas) dentro do painel Atendimento
 function atdShowSub(sub) {
-  ['kanban', 'sac', 'retorno', 'estorno', 'vendas'].forEach(s => {
+  ['kanban', 'sac', 'retorno', 'estorno', 'vendas', 'casos'].forEach(s => {
     const el = document.getElementById('atd-sub-' + s);
     if (el) el.style.display = (s === sub) ? '' : 'none';
     const pill = document.getElementById('atd-pill-' + s);
@@ -1758,6 +1758,311 @@ function atdShowSub(sub) {
   else if (sub === 'estorno') { estRender(); estSincronizarShopify(); }
   else if (sub === 'kanban') kbAbrir();
   else if (sub === 'vendas') vndCarregar();
+  else if (sub === 'casos') csAbrir();
+}
+
+// ── CASOS — assistente da Marcelly ───────────────────────────────────────────
+// Pedido da Bárbara em 19/10/2026: a Marcelly resolve os casos do Wati conversando com um
+// assistente, e só o que é dinheiro passa por ela (regras e porquê em functions/_casos.js).
+// A tela abre VAZIA de propósito: nada é lido nem resumido ao entrar, quem começa é a
+// Marcelly. O laço do assistente roda aqui: cada ida ao servidor faz UMA chamada à IA ou UMA
+// ferramenta (limite de CPU da Cloudflare), e a ferramenta de produção usa o estoque real que
+// esta tela já carregou (_prontosEnvio / _pedidosPendentes).
+let csMsgs = [];       // conversa no formato da API (blocos de pensamento e ferramenta vão de volta SEM editar)
+let csPendentes = [];  // tool_result do "responder", que segue junto da próxima pergunta
+let csNotas = [];      // o que os botões fizeram, para o assistente saber na próxima volta
+let csOcupado = false;
+let csEstado = null;
+let csCartao = 0;
+
+const CS_ROTULO = {
+  pendencias_do_dia: 'levantando as pendências do dia...',
+  abrir_caso: 'abrindo o caso...',
+  buscar_pedido: 'buscando o pedido...',
+  situacao_producao: 'olhando o estoque e a produção...',
+};
+const csEsc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+async function csAbrir() {
+  // Só o estado barato (modo e contador da fila), sem IA nenhuma.
+  try {
+    const r = await fetch('/api/casos?estado=1');
+    if (r.status === 401 || r.status === 403) { sessaoExpirou(); return; }
+    csEstado = await r.json();
+  } catch (e) { csEstado = null; }
+  csRenderTopo();
+  const chat = document.getElementById('cs-chat');
+  if (chat && !chat.children.length) csVazio();
+}
+
+function csRenderTopo() {
+  const modo = document.getElementById('cs-modo');
+  const aviso = document.getElementById('cs-aviso');
+  const btn = document.getElementById('cs-btn-apv');
+  const e = csEstado || {};
+  if (modo) {
+    modo.hidden = !e.so_leitura;
+    modo.textContent = 'MODO SÓ LEITURA, os botões só simulam';
+    modo.style.cssText += ';background:rgba(180,83,9,.12);color:#b45309';
+  }
+  if (aviso) {
+    aviso.hidden = e.tem_chave !== false;
+    aviso.textContent = 'Falta a chave da API do assistente no Cloudflare (ANTHROPIC_API_KEY). Sem ela o assistente não responde.';
+  }
+  if (btn) {
+    const n = (e.aprovacoes_pendentes || 0), f = (e.aprovadas_a_fazer || 0);
+    btn.innerHTML = `<i class="ti ti-hourglass"></i> Aguardando Bárbara${n ? ` <b style="color:#dc2626">(${n})</b>` : ''}${f ? ` · ${f} aprovada${f > 1 ? 's' : ''} a fazer` : ''}`;
+  }
+}
+
+function csVazio() {
+  const chat = document.getElementById('cs-chat');
+  chat.innerHTML = `<div id="cs-vazio" style="margin:auto;text-align:center;color:var(--text-ter);font-size:13px;max-width:420px;line-height:1.5">
+    Comece perguntando. O assistente só vai buscar caso, conversa, pedido e estoque quando você pedir.<br>
+    Mensagem, anotação, urgente e fechar caso você confirma no botão. Dinheiro vai para a Bárbara.</div>`;
+}
+
+function csNovaConversa() {
+  if (csOcupado) return;
+  csMsgs = []; csPendentes = []; csNotas = [];
+  csVazio();
+  document.getElementById('cs-apv').hidden = true;
+}
+
+function csStatus(t) { const el = document.getElementById('cs-status'); if (el) el.textContent = t || ''; }
+
+function csRolar() { const c = document.getElementById('cs-chat'); if (c) c.scrollTop = c.scrollHeight; }
+
+function csBolha(quem, texto, acoes) {
+  const chat = document.getElementById('cs-chat');
+  const v = document.getElementById('cs-vazio'); if (v) v.remove();
+  const div = document.createElement('div');
+  const estilo = {
+    marcelly: 'align-self:flex-end;background:#1E1B2B;color:#fff',
+    assistente: 'align-self:flex-start;background:rgba(255,255,255,.75);border:1px solid var(--border)',
+    erro: 'align-self:flex-start;background:rgba(220,38,38,.08);color:#b91c1c;border:1px solid rgba(220,38,38,.25)',
+  }[quem];
+  div.style.cssText = `max-width:88%;padding:10px 13px;border-radius:14px;font-size:13.5px;line-height:1.5;white-space:pre-wrap;word-break:break-word;${estilo}`;
+  div.innerHTML = csEsc(texto);
+  (acoes || []).forEach(a => div.appendChild(csCartaoAcao(a)));
+  chat.appendChild(div);
+  csRolar();
+}
+
+const CS_TITULO = {
+  mensagem: 'Mensagem para a cliente',
+  anotar: 'Anotar no caso e no pedido',
+  urgente: 'Marcar urgente no SAC',
+  fechar: 'Fechar o caso',
+  pedir_aprovacao: 'Pedir à Bárbara',
+};
+
+function csCartaoAcao(a) {
+  const id = 'csa' + (++csCartao);
+  const box = document.createElement('div');
+  box.id = id;
+  box.style.cssText = 'white-space:normal;margin-top:10px;padding:10px 12px;border-radius:10px;background:rgba(30,27,43,.04);border:1px solid var(--border)';
+  const ref = [a.caso_id ? 'caso ' + a.caso_id : '', a.pedido ? 'pedido #' + String(a.pedido).replace(/\D/g, '') : ''].filter(Boolean).join(' · ');
+  const din = a.tipo === 'pedir_aprovacao'
+    ? `${csEsc(a.categoria || 'outro')} <input data-c="valor" type="number" step="0.01" value="${a.valor ?? ''}" placeholder="valor R$" style="width:110px;padding:4px 6px;border:1px solid var(--border);border-radius:6px;font-size:12px">` : '';
+  const comTexto = a.tipo !== 'fechar';
+  box.innerHTML = `
+    <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;color:var(--text-sec);margin-bottom:6px">${CS_TITULO[a.tipo] || csEsc(a.tipo)}${ref ? ' · ' + csEsc(ref) : ''} ${din}</div>
+    ${comTexto ? `<textarea data-c="texto" rows="${a.tipo === 'mensagem' ? 4 : 2}" style="width:100%;box-sizing:border-box;padding:8px;border:1px solid var(--border);border-radius:8px;font-size:13px;font-family:inherit">${csEsc(a.texto)}</textarea>` : `<div style="font-size:12.5px">${csEsc(a.texto)}</div>`}
+    ${a.tipo === 'mensagem' ? `<div style="font-size:11px;color:var(--text-ter);margin-top:4px">Se a janela de 24h tiver fechado, vai o template de continuidade com este assunto <input data-c="assunto" value="${csEsc(a.assunto || '')}" style="width:220px;max-width:100%;padding:3px 6px;border:1px solid var(--border);border-radius:6px;font-size:12px"></div>` : ''}
+    <div style="display:flex;align-items:center;gap:10px;margin-top:8px;flex-wrap:wrap">
+      <button class="btn-primary" style="font-size:12px;padding:6px 14px">${csEstado && csEstado.so_leitura ? 'Simular (só leitura)' : 'Confirmar'}</button>
+      <span data-c="res" style="font-size:12px"></span>
+    </div>`;
+  box.querySelector('button').onclick = () => csExecutar(box, a);
+  return box;
+}
+
+async function csExecutar(box, a) {
+  const btn = box.querySelector('button');
+  const res = box.querySelector('[data-c="res"]');
+  const campo = c => { const el = box.querySelector(`[data-c="${c}"]`); return el ? el.value : undefined; };
+  const corpo = {
+    acao: 'executar', tipo: a.tipo, caso_id: a.caso_id, wa_id: a.wa_id, pedido: a.pedido,
+    texto: campo('texto') ?? a.texto, assunto: campo('assunto') ?? a.assunto,
+    categoria: a.categoria, valor: campo('valor') ?? a.valor,
+  };
+  if (a.tipo === 'mensagem' && !(csEstado && csEstado.so_leitura) && !confirm('Enviar esta mensagem para a cliente no WhatsApp?')) return;
+  btn.disabled = true; res.style.color = 'var(--text-sec)'; res.textContent = 'enviando...';
+  try {
+    const r = await fetch('/api/casos', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(corpo) });
+    if (r.status === 401 || r.status === 403) { sessaoExpirou(); return; }
+    const d = await r.json().catch(() => ({ erro: 'resposta inválida do servidor' }));
+    if (d.ok) {
+      res.style.color = '#16a34a'; res.textContent = '✓ ' + (d.feito || 'feito');
+      csNotas.push(`${CS_TITULO[a.tipo] || a.tipo}${a.caso_id ? ' no caso ' + a.caso_id : ''} confirmado pela Marcelly: ${d.feito || 'feito'}`);
+      csAbrir();
+      return;
+    }
+    btn.disabled = false;
+    if (d.so_leitura) {
+      res.style.color = '#b45309';
+      res.textContent = 'Modo só leitura, nada foi enviado nem gravado. Na versão liberada ' + (d.simulacao || '') + '.';
+      if (d.aviso) res.textContent += ' Aviso que a Bárbara receberia: ' + d.aviso;
+      return;
+    }
+    res.style.color = '#b91c1c'; res.textContent = d.erro || 'não deu certo';
+  } catch (e) {
+    btn.disabled = false; res.style.color = '#b91c1c'; res.textContent = 'falhou: ' + e.message;
+  }
+}
+
+async function csEnviar() {
+  if (csOcupado) return;
+  const el = document.getElementById('cs-input');
+  const texto = (el.value || '').trim();
+  if (!texto) return;
+  el.value = '';
+  const conteudo = csPendentes.slice();
+  csPendentes = [];
+  const partes = [];
+  if (!csMsgs.length) partes.push(`(hoje é ${new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric' })})`);
+  if (csNotas.length) { partes.push('(no painel: ' + csNotas.join('; ') + ')'); csNotas = []; }
+  partes.push(texto);
+  conteudo.push({ type: 'text', text: partes.join('\n') });
+  csMsgs.push({ role: 'user', content: conteudo });
+  csBolha('marcelly', texto);
+  await csRodar();
+}
+
+async function csFerramentaServidor(nome, input) {
+  const r = await fetch('/api/casos', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ acao: 'ferramenta', nome, input }) });
+  if (r.status === 401 || r.status === 403) { sessaoExpirou(); throw new Error('sessão vencida'); }
+  const d = await r.json().catch(() => ({ erro: 'resposta inválida' }));
+  if (!r.ok || d.erro) throw new Error(d.erro || ('erro ' + r.status));
+  return d.resultado;
+}
+
+// Ferramenta que roda NA TELA: o estoque real e a fila de prioridade já estão aqui.
+function csSituacaoProducao(numero) {
+  const n = String(numero || '').replace(/\D/g, '');
+  const igual = p => String(p.numero || '').replace(/\D/g, '') === n;
+  const sac = (sacGetConfig().tickets || []).find(t => String(t.pedido || '').replace(/\D/g, '') === n && t.status !== 'resolvido');
+  const noSac = sac ? { no_sac: true, urgente_no_sac: !!sac.urgente } : { no_sac: false };
+  if (!window._prontosEnvio && !window._pedidosPendentes)
+    return { numero: n, aviso: 'os pedidos da Shopify ainda não carregaram nesta tela, tente de novo em um minuto' };
+  if ((window._prontosEnvio || []).find(igual))
+    return { numero: n, situacao: 'pronto para envio', detalhe: 'as peças deste pedido já estão garantidas no estoque pela fila de prioridade', ...noSac };
+  const pend = (window._pedidosPendentes || []).find(igual);
+  if (pend) {
+    const faltas = (pend.faltas || []).map(f => {
+      const def = MODELOS[f.key] || {};
+      const pr = producaoDaPeca(f.key, f.cor, f.tam);
+      const tam = def.tamanhoUnico ? 'Único' : (tamanhosDe(def)[f.tam] || '?');
+      return { peca: `${def.nome || f.key} ${f.cor} ${tam}`, faltam: f.falta, em_producao: pr.qtd > 0, etapa_interna: pr.etapa, qtd_em_producao: pr.qtd };
+    });
+    return { numero: n, situacao: 'esperando peça', faltas, dias_corridos_desde_o_pedido: diasDesde(pend.data),
+      lembrete: 'etapa_interna é só para a Marcelly, não vai na mensagem à cliente', ...noSac };
+  }
+  return { numero: n, situacao: 'não está entre os pedidos pagos ainda não enviados (já enviado, não pago ou cancelado); use buscar_pedido', ...noSac };
+}
+
+async function csRodar() {
+  csOcupado = true;
+  csStatus('pensando...');
+  try {
+    for (let volta = 0; volta < 8; volta++) {
+      const r = await fetch('/api/casos', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ acao: 'assistente', messages: csMsgs }) });
+      if (r.status === 401 || r.status === 403) { sessaoExpirou(); return; }
+      const d = await r.json().catch(() => ({ erro: 'resposta inválida do servidor' }));
+      if (!r.ok || d.erro) { csBolha('erro', d.erro || ('erro ' + r.status)); return; }
+      csMsgs.push({ role: 'assistant', content: d.content });
+      const blocos = d.content || [];
+      const textos = blocos.filter(b => b.type === 'text').map(b => b.text).join('\n').trim();
+      if (d.stop_reason === 'refusal') { csBolha('erro', 'O assistente não respondeu essa. Tente perguntar de outro jeito.'); return; }
+      const usos = blocos.filter(b => b.type === 'tool_use');
+      if (!usos.length) { if (textos) csBolha('assistente', textos); return; }
+      const resultados = [];
+      let resposta = null;
+      for (const u of usos) {
+        if (u.name === 'responder') { resposta = u; continue; }
+        csStatus(CS_ROTULO[u.name] || 'buscando...');
+        try {
+          const out = u.name === 'situacao_producao' ? csSituacaoProducao((u.input || {}).numero) : await csFerramentaServidor(u.name, u.input);
+          resultados.push({ type: 'tool_result', tool_use_id: u.id, content: JSON.stringify(out) });
+        } catch (e) {
+          resultados.push({ type: 'tool_result', tool_use_id: u.id, content: 'erro: ' + e.message, is_error: true });
+        }
+      }
+      if (resposta) {
+        csPendentes = [...resultados, { type: 'tool_result', tool_use_id: resposta.id, content: 'mostrado à Marcelly' }];
+        const inp = resposta.input || {};
+        csBolha('assistente', inp.texto || textos || '', inp.acoes || []);
+        return;
+      }
+      csMsgs.push({ role: 'user', content: resultados });
+      csStatus('pensando...');
+    }
+    csBolha('erro', 'O assistente deu voltas demais sem responder. Pergunte de novo, mais direto.');
+  } catch (e) {
+    csBolha('erro', 'falhou: ' + e.message);
+  } finally {
+    csOcupado = false;
+    csStatus('');
+  }
+}
+
+// Fila "Aguardando Bárbara": ela aprova ou recusa; aprovado volta para a Marcelly fazer e marcar feito.
+async function csAbrirAprovacoes() {
+  const box = document.getElementById('cs-apv');
+  if (!box.hidden) { box.hidden = true; return; }
+  box.hidden = false;
+  box.innerHTML = '<div style="font-size:12px;color:var(--text-sec)">carregando...</div>';
+  try {
+    const r = await fetch('/api/casos?aprovacoes=1');
+    if (r.status === 401 || r.status === 403) { sessaoExpirou(); return; }
+    const d = await r.json();
+    const lista = (d.aprovacoes || []).filter(a => a.status !== 'feito' && a.status !== 'recusado')
+      .concat((d.aprovacoes || []).filter(a => a.status === 'feito' || a.status === 'recusado').slice(0, 8));
+    if (!lista.length) { box.innerHTML = '<div style="font-size:12px;color:var(--text-ter)">Nada esperando a Bárbara.</div>'; return; }
+    const cor = { pendente: '#dc2626', aprovado: '#0891b2', recusado: 'var(--text-ter)', feito: '#16a34a' };
+    box.innerHTML = lista.map(a => `
+      <div style="padding:10px 12px;border:1px solid var(--border);border-radius:10px;margin-bottom:8px;font-size:12.5px;background:rgba(255,255,255,.6)">
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:baseline">
+          <b>${csEsc(a.categoria)}${a.valor != null ? ' R$ ' + Number(a.valor).toFixed(2).replace('.', ',') : ''}</b>
+          <span>${csEsc(a.cliente || '')}${a.pedido ? ' · #' + csEsc(a.pedido) : ''}${a.caso_id ? ' · caso ' + a.caso_id : ''}</span>
+          <span style="color:${cor[a.status] || 'inherit'};font-weight:700">${csEsc(a.status)}</span>
+          <span style="color:var(--text-ter)">${csEsc((a.criado_em || '').slice(0, 10))}</span>
+        </div>
+        <div style="margin-top:4px">${csEsc(a.motivo)}</div>
+        ${a.nota ? `<div style="margin-top:4px;color:var(--text-sec)">Bárbara: ${csEsc(a.nota)}</div>` : ''}
+        ${a.status === 'pendente' ? `<div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap">
+          <input id="nota-${a.id}" placeholder="nota (opcional)" style="flex:1;min-width:140px;padding:4px 8px;border:1px solid var(--border);border-radius:6px;font-size:12px">
+          <button class="btn-primary" style="font-size:11px;padding:4px 12px" onclick="csDecidir('${a.id}','aprovado')">Aprovar</button>
+          <button class="btn-outline" style="font-size:11px;padding:4px 12px" onclick="csDecidir('${a.id}','recusado')">Recusar</button></div>` : ''}
+        ${a.status === 'aprovado' ? `<div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap">
+          <input id="nota-${a.id}" placeholder="o que foi feito (ex. estorno no MP)" style="flex:1;min-width:140px;padding:4px 8px;border:1px solid var(--border);border-radius:6px;font-size:12px">
+          <button class="btn-primary" style="font-size:11px;padding:4px 12px" onclick="csMarcarFeito('${a.id}')">Marcar como feito</button></div>` : ''}
+      </div>`).join('');
+  } catch (e) { box.innerHTML = `<div style="font-size:12px;color:#b91c1c">falhou: ${csEsc(e.message)}</div>`; }
+}
+
+async function csPostAprovacao(corpo) {
+  const r = await fetch('/api/casos', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(corpo) });
+  if (r.status === 401 || r.status === 403) { sessaoExpirou(); return; }
+  const d = await r.json().catch(() => ({}));
+  if (d.so_leitura) alert('Modo só leitura: nada foi gravado. Na versão liberada ' + (d.simulacao || '') + '.');
+  else if (!d.ok) alert(d.erro || 'não deu certo');
+  document.getElementById('cs-apv').hidden = true;
+  await csAbrir();
+  csAbrirAprovacoes();
+}
+
+function csDecidir(id, decisao) {
+  if (!confirm(decisao === 'aprovado' ? 'Aprovar este pedido?' : 'Recusar este pedido?')) return;
+  const nota = (document.getElementById('nota-' + id) || {}).value || '';
+  csPostAprovacao({ acao: 'decidir', id, decisao, nota });
+}
+
+function csMarcarFeito(id) {
+  const nota = (document.getElementById('nota-' + id) || {}).value || '';
+  if (!nota.trim()) { alert('Escreva o que foi feito (ex. estorno no Mercado Pago de R$ 120).'); return; }
+  csPostAprovacao({ acao: 'feito', id, nota });
 }
 
 // ── SAC ──────────────────────────────────────────────────────────────────────
