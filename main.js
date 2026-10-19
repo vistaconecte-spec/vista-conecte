@@ -1955,6 +1955,33 @@ async function csEnviar() {
   await csRodar();
 }
 
+// Status da peça em uma linha, para a lista do dia (pedido da Bárbara, 19/10/2026: o assistente
+// listava "pedido atrasado" sem dizer se a peça estava pronta, em produção ou sem produção).
+function csProducaoCurta(numero) {
+  const s = csSituacaoProducao(numero);
+  if (!s.situacao) return s.aviso || null;
+  if (s.situacao === 'pronto para envio') return 'pronto para envio';
+  if (s.faltas) {
+    const falta = 'falta ' + s.faltas.map(x => `${x.peca} (${x.etapa_interna})`).join('; ');
+    return s.troca_de_etiqueta ? `sai hoje trocando a etiqueta (${s.troca_de_etiqueta.o_que_fazer.join('; ')}); ${falta}` : falta;
+  }
+  return 'não está nos pagos em aberto (enviado, não pago ou cancelado)';
+}
+
+// As ferramentas do servidor não enxergam o estoque real; a tela junta o status da peça
+// antes de devolver ao assistente. Sem chamada a mais à IA.
+function csEnriquecer(nome, out) {
+  try {
+    const num = v => (String(v || '').match(/\d{4,5}/) || [])[0];
+    if (nome === 'pendencias_do_dia' && out && out.casos_abertos)
+      out.casos_abertos.forEach(c => { const n = num(c.pedido); if (n) c.producao = csProducaoCurta(n); });
+    if (nome === 'abrir_caso' && out && out.pedidos)
+      out.pedidos.forEach(p => { const n = num(p.numero); if (p.encontrado && n) p.producao = csSituacaoProducao(n); });
+    if (nome === 'buscar_pedido' && out && out.encontrado) { const n = num(out.numero); if (n) out.producao = csSituacaoProducao(n); }
+  } catch (_) {}
+  return out;
+}
+
 async function csFerramentaServidor(nome, input) {
   const r = await fetch('/api/casos', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ acao: 'ferramenta', nome, input }) });
   if (r.status === 401 || r.status === 403) { sessaoExpirou(); throw new Error('sessão vencida'); }
@@ -1975,14 +2002,32 @@ function csSituacaoProducao(numero) {
     return { numero: n, situacao: 'pronto para envio', detalhe: 'as peças deste pedido já estão garantidas no estoque pela fila de prioridade', ...noSac };
   const pend = (window._pedidosPendentes || []).find(igual);
   if (pend) {
+    const nomeTam = (key, i) => { const def = MODELOS[key] || {}; return def.tamanhoUnico ? 'Único' : (tamanhosDe(def)[i] || '?'); };
     const faltas = (pend.faltas || []).map(f => {
       const def = MODELOS[f.key] || {};
       const pr = producaoDaPeca(f.key, f.cor, f.tam);
-      const tam = def.tamanhoUnico ? 'Único' : (tamanhosDe(def)[f.tam] || '?');
-      return { peca: `${def.nome || f.key} ${f.cor} ${tam}`, faltam: f.falta, em_producao: pr.qtd > 0, etapa_interna: pr.etapa, qtd_em_producao: pr.qtd };
+      return { peca: `${def.nome || f.key} ${f.cor} ${nomeTam(f.key, f.tam)}`, faltam: f.falta,
+        em_producao: pr.qtd > 0, etapa_interna: pr.qtd > 0 ? pr.etapa : 'NÃO ESTÁ NA PRODUÇÃO', qtd_em_producao: pr.qtd };
     });
-    return { numero: n, situacao: 'esperando peça', faltas, dias_corridos_desde_o_pedido: diasDesde(pend.data),
-      lembrete: 'etapa_interna é só para a Marcelly, não vai na mensagem à cliente', ...noSac };
+    // Peça de tamanho VIZINHO sem dono na arara: o mesmo cálculo do card LIBERAR TROCANDO A
+    // ETIQUETA (só ±1, nunca Macaquinho Amplo, só se resolve o pedido inteiro, sem prometer a
+    // mesma peça a dois). Pedido da Bárbara em 19/10/2026: o assistente sugerir a troca.
+    let troca = null;
+    try {
+      const plano = planejarTrocaEtiqueta(window._pedidosPendentes || [], window._estoqueLivre || {}, MODELOS,
+        SEM_TROCA_ETIQUETA, diasDesde, window._estoqueBruto || {});
+      const lib = (plano.liberaveis || []).find(igual);
+      if (lib) troca = {
+        da_para_liberar: true,
+        o_que_fazer: lib.planos.flatMap(pl => pl.trocas.map(t =>
+          `${(MODELOS[pl.key] || {}).nome || pl.key} ${pl.cor}, pegar ${t.qtd} peça${t.qtd > 1 ? 's' : ''} do ${nomeTam(pl.key, t.de)} e trocar a etiqueta para ${nomeTam(pl.key, t.para)}`)),
+        disputa_com_pedidos: lib.simultaneo ? [] : (lib.disputaCom || []),
+        como_registrar: 'a expedição confere a peça na arara, troca a etiqueta e clica em "já troquei" no card LIBERAR TROCANDO A ETIQUETA do painel; aí o pedido vai para PRONTOS PARA ENVIO',
+      };
+    } catch (_) {}
+    return { numero: n, situacao: troca ? 'esperando peça, mas sai hoje trocando a etiqueta' : 'esperando peça', faltas,
+      troca_de_etiqueta: troca, dias_corridos_desde_o_pedido: diasDesde(pend.data),
+      lembrete: 'etapa_interna e troca de etiqueta são só para a Marcelly e a expedição, não vão na mensagem à cliente', ...noSac };
   }
   return { numero: n, situacao: 'não está entre os pedidos pagos ainda não enviados (já enviado, não pago ou cancelado); use buscar_pedido', ...noSac };
 }
@@ -2009,7 +2054,8 @@ async function csRodar() {
         if (u.name === 'responder') { resposta = u; continue; }
         csStatus(CS_ROTULO[u.name] || 'buscando...');
         try {
-          const out = u.name === 'situacao_producao' ? csSituacaoProducao((u.input || {}).numero) : await csFerramentaServidor(u.name, u.input);
+          const out = u.name === 'situacao_producao' ? csSituacaoProducao((u.input || {}).numero)
+            : csEnriquecer(u.name, await csFerramentaServidor(u.name, u.input));
           resultados.push({ type: 'tool_result', tool_use_id: u.id, content: JSON.stringify(out) });
         } catch (e) {
           resultados.push({ type: 'tool_result', tool_use_id: u.id, content: 'erro: ' + e.message, is_error: true });

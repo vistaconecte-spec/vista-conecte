@@ -192,6 +192,36 @@ ok('passos numerados viram lista', /<ol[^>]*><li[^>]*>abrir<\/li><li[^>]*>mandar
 ok('texto da cliente não vira HTML', csMd('- <img src=x onerror=alert(1)> **oi**').includes('<img'), false);
 ok('bolha do assistente usa a formatação', main.includes("div.innerHTML = csMd(texto)"), true);
 ok('instrução pede tópicos e próximo passo', /sempre em tópicos/.test(C.SISTEMA) && /próximo passo concreto/.test(C.SISTEMA), true);
+console.log('\n8) Status da peça e troca de etiqueta (mesmo cálculo do card LIBERAR TROCANDO A ETIQUETA)');
+const fn = nome => { const i = main.indexOf(`function ${nome}(`); return main.slice(i, main.indexOf('\n}\n', i) + 2); };
+const fabrica = new Function('window', 'MODELOS', 'sacGetConfig', 'producaoDaPeca', 'tamanhosDe', 'diasDesde', 'SEM_TROCA_ETIQUETA',
+  ['modeloAceitaTrocaEtiqueta', 'planejarTrocaEtiqueta', 'csSituacaoProducao', 'csProducaoCurta', 'csEnriquecer'].map(fn).join('\n')
+  + '\nreturn { csSituacaoProducao, csProducaoCurta, csEnriquecer };');
+const MOD = { 'vestido-amplo': { nome: 'Vestido Amplo', tamanhos: ['PP', 'P', 'M', 'G', 'GG'], aberto: { Marrom: [0, 0, 1, 0, 0] } },
+  'macaquinho-amplo': { nome: 'Macaquinho Amplo', tamanhos: ['PP', 'P', 'M', 'G', 'GG'], aberto: { Preto: [0, 1, 0, 0, 0] } } };
+const ped = (numero, key, cor, tam) => ({ numero, data: '2026-10-01', faltas: [{ key, cor, tam, qtd: 1, falta: 1 }], reqs: [{ key, cor, tam, qtd: 1 }] });
+const win = {
+  _prontosEnvio: [{ numero: '#9300' }],
+  _pedidosPendentes: [ped('#9210', 'vestido-amplo', 'Marrom', 2), ped('#9194', 'macaquinho-amplo', 'Preto', 1)],
+  _estoqueLivre: { 'vestido-amplo': { Marrom: [0, 0, 0, 1, 0] }, 'macaquinho-amplo': { Preto: [0, 0, 1, 0, 0] } },
+  _estoqueBruto: { 'vestido-amplo': { Marrom: [0, 0, 0, 1, 0] }, 'macaquinho-amplo': { Preto: [0, 0, 1, 0, 0] } },
+};
+const T = fabrica(win, MOD, () => ({ tickets: [{ pedido: '9210', status: 'pendente', urgente: false }] }),
+  (key) => key === 'vestido-amplo' ? { qtd: 2, etapa: 'Em costura' } : { qtd: 0, etapa: null },
+  def => def.tamanhos, () => 18, new Set(['macaquinho-amplo']));
+const s9210 = T.csSituacaoProducao('9210');
+ok('falta M e sobra G sem dono: sai trocando a etiqueta', [s9210.situacao, s9210.troca_de_etiqueta && s9210.troca_de_etiqueta.o_que_fazer],
+  ['esperando peça, mas sai hoje trocando a etiqueta', ['Vestido Amplo Marrom, pegar 1 peça do G e trocar a etiqueta para M']]);
+ok('diz a etapa da peça que falta', s9210.faltas[0].etapa_interna, 'Em costura');
+ok('já sabe que está no SAC sem urgente', [s9210.no_sac, s9210.urgente_no_sac], [true, false]);
+const s9194 = T.csSituacaoProducao('9194');
+ok('Macaquinho Amplo nunca troca etiqueta', [s9194.troca_de_etiqueta, s9194.faltas[0].etapa_interna], [null, 'NÃO ESTÁ NA PRODUÇÃO']);
+ok('linha curta da lista do dia', [T.csProducaoCurta('9300'), T.csProducaoCurta('9194'), T.csProducaoCurta('9999')],
+  ['pronto para envio', 'falta Macaquinho Amplo Preto P (NÃO ESTÁ NA PRODUÇÃO)', 'não está nos pagos em aberto (enviado, não pago ou cancelado)']);
+const lista = T.csEnriquecer('pendencias_do_dia', { casos_abertos: [{ caso_id: 725, pedido: '#9210' }, { caso_id: 1, pedido: null }] });
+ok('lista do dia chega ao assistente com o status da peça', [/^sai hoje trocando a etiqueta/.test(lista.casos_abertos[0].producao), lista.casos_abertos[1].producao], [true, undefined]);
+ok('instrução manda sugerir a troca e dizer o status', /Troca de etiqueta/.test(C.SISTEMA) && /Em todo pedido atrasado ou cobrado diga o status/.test(C.SISTEMA), true);
+
 ok('rota fora do PUBLICO (exige sessão)', /PUBLICO = new Set\([^)]*casos/.test(mid), false);
 
 console.log(`\n${total - falhas}/${total} passaram`);
