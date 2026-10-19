@@ -159,20 +159,57 @@ function ehChaveHistorico(key) {
 }
 
 // Nunca deixa o histórico atrapalhar o salvamento de verdade: roda solto e engole erro.
+// A lista só é regravada se a linha ainda for a que foi lida (PATCH com updated_at=eq.<lido>,
+// o mesmo da baixa). Em 16/10/2026 o aparelho com a tela de 14/10 lia a lista velha e o upsert
+// a trocava inteira: o hist: do Macacão Amplo e da Pantalona Viscolycra perdeu as versões de
+// 13 a 16/10, justo a trilha para entender e desfazer aquele estrago. Se a linha mudou, lê de
+// novo e refaz; leitura que continua velha depois de 3 voltas perde ESTA versão, não a lista.
 async function registrarVersao(key, dados) {
   if (ehChaveHistorico(key)) return;
   try {
     const hk = HIST_PREFIXO + key;
-    const atual = await carregarNuvem(hk);
-    // Leitura falhou (undefined): NÃO grava. Gravar aqui trocaria a lista inteira por
-    // uma versão só — foi o que apagou 9 versões do Macacão Amplo em 11/08/2026.
-    if (atual === undefined) return;
-    const v = (atual && Array.isArray(atual.v)) ? atual.v : [];
     const novo = JSON.stringify(dados);
-    if (v.length && JSON.stringify(v[0].d) === novo) return; // nada mudou
-    v.unshift({ t: new Date().toISOString(), d: JSON.parse(novo) });
-    await salvarNuvemREST(hk, { v: v.slice(0, HIST_MAX) }, { silencioso: true }); // histórico nunca é aviso de tela
+    for (let volta = 0; volta < 3; volta++) {
+      const atual = await carregarNuvem(hk);
+      // Leitura falhou (undefined): NÃO grava. Gravar aqui trocaria a lista inteira por
+      // uma versão só — foi o que apagou 9 versões do Macacão Amplo em 11/08/2026.
+      if (atual === undefined) return;
+      const v = (atual && Array.isArray(atual.v)) ? atual.v : [];
+      if (v.length && JSON.stringify(v[0].d) === novo) return; // nada mudou
+      v.unshift({ t: new Date().toISOString(), d: JSON.parse(novo) });
+      const lista = { v: v.slice(0, HIST_MAX) };
+      let g;
+      if (atual === null) {
+        g = await criarLinhaNova(hk, lista); // primeira versão desta chave
+      } else {
+        const lidoEm = lidoEmDe(atual);
+        if (!lidoEm) return; // sem o carimbo do servidor não há como provar a leitura
+        g = await gravarSeNaoMudou(hk, lista, lidoEm);
+      }
+      if (g !== 'mudou') return; // gravou, ou rede/trava: histórico não insiste
+      console.warn('[hist] ' + hk + ': a lista mudou desde a leitura, lendo de novo');
+    }
   } catch (_) {}
+}
+
+// POST que só cria (sem merge-duplicates): se a linha apareceu entre a leitura e a gravação,
+// o PostgREST responde 409 e nada é trocado. Devolve true, 'mudou' (já existe) ou false.
+async function criarLinhaNova(key, dados) {
+  try {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/vc_modelos`, {
+      method: 'POST',
+      headers: {
+        'apikey': SUPABASE_KEY,
+        'Authorization': 'Bearer ' + SUPABASE_KEY,
+        'Content-Type': 'application/json',
+        'Prefer': 'return=minimal'
+      },
+      body: JSON.stringify({ id: key, dados })
+    });
+    if (res.ok) return true;
+    if (res.status === 409) return 'mudou';
+  } catch (e) {}
+  return false;
 }
 
 async function salvarNuvem(key, dados, opts) {

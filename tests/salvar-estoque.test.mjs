@@ -46,8 +46,16 @@ for (const alvo of ['CORTE_PRIO_KEY, novo', 'CST_FAT_KEY, novo', 'CRT_FAT_KEY, n
   const trecho = alvo + ', { silencioso: true }';
   ok(`${alvo.split(',')[0]} grava em silencio`, main.includes(trecho), true);
 }
-ok('o historico nunca acende o aviso',
-   /salvarNuvemREST\(hk, \{ v: v\.slice\(0, HIST_MAX\) \}, \{ silencioso: true \}\)/.test(main), true);
+// Desde 19/10/2026 o historico grava por PATCH condicional (gravarSeNaoMudou) ou POST que so
+// cria (criarLinhaNova), sem passar por salvarNuvemREST; nenhum dos tres mexe no aviso.
+{
+  const corpo = (ini, fim) => main.slice(main.indexOf(ini), main.indexOf(fim, main.indexOf(ini)));
+  const reg = corpo('async function registrarVersao', '\nasync function salvarNuvem(');
+  const gsm = corpo('async function gravarSeNaoMudou', 'let _ultimaBaixaAuto');
+  ok('o historico nunca acende o aviso',
+     reg.includes('gravarSeNaoMudou(hk') && reg.includes('criarLinhaNova(hk')
+     && !/salvarNuvemREST\(|showCloud|limparErroNuvem/.test(reg + gsm), true);
+}
 
 console.log('\n' + '4) O erro continua aparecendo, silencioso ou nao');
 ok('showCloudError segue avisando em qualquer gravacao', main.includes('  showCloudError();'), true);
