@@ -623,7 +623,7 @@ async function sincronizarNuvem() {
       if (atual !== novo) {
         saveLocal('vc:' + row.id, row.dados); mudou = true;
         if (row.id === 'reversas-resultado' || row.id === 'reversas-pedido') {
-          try { revAplicarCodigos(); if (document.getElementById('atd-est-tbody')) { retRender(); estRender(); } } catch (e) {}
+          try { revAplicarCodigos(); atdSyncViews(); } catch (e) {}
         }
       }
     });
@@ -1290,6 +1290,13 @@ function buildSidebar() {
   atdItem.onclick = () => abrirAtendimento(atdItem);
   nav.appendChild(atdItem);
 
+  // Botão Trocas — quadro por etapa da troca (19/10/2026, mesma senha do Atendimento)
+  const trcItem = document.createElement('div');
+  trcItem.className = 'nav-item nav-dashboard' + (modeloAtual === '__trocas__' ? ' active' : '');
+  trcItem.innerHTML = '<i class="ti ti-replace"></i> TROCAS';
+  trcItem.onclick = () => abrirTrocas(trcItem);
+  nav.appendChild(trcItem);
+
   // Botão Frete — consulta, cobrado x custo real, regras vigentes (mesma senha do Financeiro)
   const frtItem = document.createElement('div');
   frtItem.className = 'nav-item nav-dashboard' + (modeloAtual === '__frete__' ? ' active' : '');
@@ -1627,7 +1634,7 @@ function notasCarregarFrame(recarregar) {
 function abrirNotas(item) {
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   if (item) item.classList.add('active');
-  if (!['__dashboard__', '__financeiro__', '__precos__', '__trafego__', '__fluxo__', '__atendimento__', '__frete__', '__notas__'].includes(modeloAtual) && (estEditado || prodEditado || cfgEditado)) {
+  if (!['__dashboard__', '__financeiro__', '__precos__', '__trafego__', '__fluxo__', '__atendimento__', '__trocas__', '__frete__', '__notas__'].includes(modeloAtual) && (estEditado || prodEditado || cfgEditado)) {
     clearTimeout(saveTimer); salvarModelo();
   }
   estEditado = false; prodEditado = false; cfgEditado = false; esconderBtnSalvar();
@@ -1665,11 +1672,149 @@ function notasLock() {
   document.getElementById('nfe-content').style.display = 'none';
 }
 
+// ── Trocas — aba própria com o quadro por etapa (19/10/2026, pedido da Bárbara) ──
+// A etapa NÃO é arrastada: sai dos dados da própria troca (código da reversa, chegada,
+// reenvio), então o quadro nunca diz uma coisa e a lista outra. Cada cartão mostra só o
+// próximo passo. A lista completa e o formulário de sempre ficam embaixo.
+const TRC_ETAPAS = [
+  ['pedido',    'Pedido feito',      'pedir a reversa',             '#5b8def'],
+  ['pagar',     'Reversa pra pagar', 'pagar no carrinho da Frenet', '#e0892b'],
+  ['esperando', 'Esperando a peça',  'cliente posta com o código',  '#8a63d2'],
+  ['chegou',    'Chegou',            'mandar a peça nova',          '#c99a3c'],
+  ['enviada',   'Peça nova enviada', 'concluir',                    '#3aa76d'],
+];
+const TRC_CONCLUIDA_DIAS = 15; // concluída some do quadro depois disso (continua na lista)
+function trcEtapa(t) {
+  if (t.status === 'resolvido' || String(t.codigo_reenvio || '').trim()) return 'enviada';
+  if (t.chegou_reversa || t.data_chegada_reversa) return 'chegou';
+  if (revCodigoAtual('retorno', t)) return 'esperando';
+  const st = revStatus('retorno', t);
+  if (st.txt && !st.pode) return 'pagar'; // no carrinho ou na fila do robô
+  return 'pedido';
+}
+function trcNoQuadro(t) {
+  if (t.status !== 'resolvido') return true;
+  const em = new Date(t.resolvido_em || t.atualizado_em || 0).getTime();
+  return Date.now() - em < TRC_CONCLUIDA_DIAS * 86400000;
+}
+function trcCartaoHtml(t, etapa) {
+  const esc = v => String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+  const dias = retDiasNaFila(t);
+  const bucket = retBucket(dias);
+  const fechada = t.status === 'resolvido';
+  const selo = (!fechada && dias >= 2) ? `<span class="trc-dias" style="background:${bucket.bar}">${dias}d</span>` : '';
+  const st = revStatus('retorno', t);
+  const inp = (campo, ph) => `<input class="trc-inp" placeholder="${ph}" onchange="trcCampo('${t.id}','${campo}',this.value)">`;
+  const btn = (fn, ico, txt) => `<button class="trc-btn" onclick="${fn}"><i class="ti ${ico}"></i> ${txt}</button>`;
+  let acao = '';
+  if (etapa === 'pedido') {
+    acao = (st.txt ? `<div class="trc-aviso" style="color:${st.cor || 'var(--text-ter)'}">${esc(st.txt)}</div>` : '')
+      + (revNumeroPedido('retorno', t) ? btn(`trcPedirReversa('${t.id}')`, 'ti-truck-return', 'pedir reversa') : '<div class="trc-aviso">sem número de pedido</div>')
+      + inp('codigo_logistica_reversa', 'ou cole o código da reversa');
+  } else if (etapa === 'pagar') {
+    acao = `<div class="trc-aviso" style="color:${st.cor || 'var(--text-ter)'}">${esc(st.txt)}</div>`
+      + `<a class="trc-link" href="https://painel.frenet.com.br/shoppingcart/index" target="_blank" rel="noopener"><i class="ti ti-external-link"></i> abrir carrinho da Frenet</a>`
+      + `<div class="trc-dica">depois de pago, o código aparece aqui sozinho</div>`;
+  } else if (etapa === 'esperando') {
+    acao = `<div class="trc-cod">reversa <b>${esc(t.codigo_logistica_reversa)}</b></div>` + btn(`trcChegou('${t.id}')`, 'ti-package-import', 'chegou');
+  } else if (etapa === 'chegou') {
+    const quando = t.data_chegada_reversa ? t.data_chegada_reversa.split('-').reverse().join('/') : '';
+    acao = `<div class="trc-cod">chegou ${esc(quando)}</div>` + inp('codigo_reenvio', 'código do reenvio da peça nova');
+  } else {
+    acao = (t.codigo_reenvio ? `<div class="trc-cod">reenvio <b>${esc(t.codigo_reenvio)}</b></div>` : '')
+      + (fechada ? `<div class="trc-dica">concluída ${t.resolvido_em ? new Date(t.resolvido_em).toLocaleDateString('pt-BR') : ''}</div>` : btn(`retToggle('${t.id}')`, 'ti-check', 'concluir'));
+  }
+  return `<div class="trc-card${fechada ? ' trc-fechada' : ''}" style="border-left-color:${bucket.bar}">
+    <div class="trc-topo"><b title="${esc(t.cliente)}">${esc(t.cliente) || '(sem nome)'}</b>${selo}</div>
+    <div class="trc-ped">${esc(t.pedido || '')}${t.obs ? ` · troca por <b>${esc(t.obs)}</b>` : ''}${t.portal_id ? ' · <span class="trc-tag">portal</span>' : ''}</div>
+    <div class="trc-prod" title="${esc(t.produtos)}">${esc(t.produtos)}</div>
+    <div class="trc-acao">${acao}</div>
+  </div>`;
+}
+function trcRender() {
+  const board = document.getElementById('trc-board');
+  if (!board) return;
+  const itens = retGetConfig().itens.filter(trcNoQuadro).map(t => ({ t, etapa: trcEtapa(t), dias: retDiasNaFila(t) }));
+  const cols = TRC_ETAPAS.map(([k, rotulo, passo, cor]) => {
+    const da = itens.filter(x => x.etapa === k).sort((a, b) => (a.t.status === 'resolvido') - (b.t.status === 'resolvido') || b.dias - a.dias);
+    return `<div class="trc-col">
+      <div class="trc-col-topo" style="border-top-color:${cor}"><span>${rotulo}</span><b>${da.length}</b></div>
+      <div class="trc-col-passo">${passo}</div>
+      ${da.map(x => trcCartaoHtml(x.t, k)).join('') || '<div class="trc-vazio">nada aqui</div>'}
+    </div>`;
+  }).join('');
+  board.innerHTML = cols;
+  const abertas = itens.filter(x => x.t.status !== 'resolvido');
+  const pagar = abertas.filter(x => x.etapa === 'pagar').length, chegou = abertas.filter(x => x.etapa === 'chegou').length;
+  const el = document.getElementById('trc-resumo');
+  if (el) el.textContent = `${abertas.length} em aberto` + (pagar ? ` · ${pagar} reversa${pagar > 1 ? 's' : ''} pra pagar` : '') + (chegou ? ` · ${chegou} esperando a peça nova` : '');
+}
+function trcCampo(id, campo, valor) {
+  const v = String(valor || '').trim();
+  if (!v) return;
+  retEdit(id, campo, v);
+  atdSyncViews();
+}
+function trcPedirReversa(id) { revPedir('retorno', id); }
+function trcChegou(id) {
+  const hoje = new Date();
+  const iso = `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, '0')}-${String(hoje.getDate()).padStart(2, '0')}`;
+  retDataReversa(id, iso);
+}
+async function trcAtualizar() {
+  trcRender(); retRender();
+  const st = document.getElementById('trc-sync');
+  if (st) st.textContent = 'buscando pedidos novos...';
+  try { await retSincronizarShopify(); } catch (e) {}
+  trcRender();
+  if (st) st.textContent = 'atualizado ' + new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+}
+function abrirTrocas(item) {
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  if (item) item.classList.add('active');
+  if (!['__dashboard__', '__financeiro__', '__precos__', '__trafego__', '__fluxo__', '__atendimento__', '__trocas__', '__frete__', '__notas__'].includes(modeloAtual) && (estEditado || prodEditado || cfgEditado)) {
+    clearTimeout(saveTimer); salvarModelo();
+  }
+  estEditado = false; prodEditado = false; cfgEditado = false; esconderBtnSalvar();
+  modeloAtual = '__trocas__';
+  location.hash = 'trocas';
+  document.getElementById('model-title').innerHTML = '<span style="font-family:\'Bebas Neue\',\'Arial Narrow\',sans-serif;font-weight:400;font-size:26px;letter-spacing:0.1em">TROCAS</span>';
+  document.getElementById('model-sub').textContent = '';
+  document.getElementById('topbar-actions').style.display = 'none';
+  document.getElementById('tabs-modelo').style.display = 'none';
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  document.getElementById('panel-trocas').classList.add('active');
+  document.body.classList.add('precos-mode');
+  const ok = sessionStorage.getItem('fin-ok') === '1';
+  document.getElementById('trc-gate').style.display = ok ? 'none' : '';
+  document.getElementById('trc-content').style.display = ok ? '' : 'none';
+  if (ok) trcAtualizar(); else setTimeout(() => document.getElementById('trc-senha')?.focus(), 60);
+  closeSidebar();
+}
+function trcLock() {
+  sessionStorage.removeItem('fin-ok');
+  document.getElementById('trc-gate').style.display = '';
+  document.getElementById('trc-content').style.display = 'none';
+}
+async function trcUnlock() {
+  const v = document.getElementById('trc-senha').value;
+  if (await conferirSenha(v) === 'dona') {
+    sessionStorage.setItem('fin-ok', '1');
+    document.getElementById('trc-erro').textContent = '';
+    document.getElementById('trc-senha').value = '';
+    document.getElementById('trc-gate').style.display = 'none';
+    document.getElementById('trc-content').style.display = '';
+    trcAtualizar();
+  } else {
+    document.getElementById('trc-erro').textContent = 'Senha incorreta';
+  }
+}
+
 // ── Atendimento — SAC / Troca / Devolução / Vendas (mesma senha do Financeiro) ──
 function abrirAtendimento(item) {
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   if (item) item.classList.add('active');
-  if (!['__dashboard__', '__financeiro__', '__precos__', '__trafego__', '__fluxo__', '__atendimento__', '__frete__', '__notas__'].includes(modeloAtual) && (estEditado || prodEditado || cfgEditado)) {
+  if (!['__dashboard__', '__financeiro__', '__precos__', '__trafego__', '__fluxo__', '__atendimento__', '__trocas__', '__frete__', '__notas__'].includes(modeloAtual) && (estEditado || prodEditado || cfgEditado)) {
     clearTimeout(saveTimer); salvarModelo();
   }
   estEditado = false; prodEditado = false; cfgEditado = false; esconderBtnSalvar();
@@ -1712,7 +1857,7 @@ function atdLock() {
 function abrirFrete(item) {
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   if (item) item.classList.add('active');
-  if (!['__dashboard__', '__financeiro__', '__precos__', '__trafego__', '__fluxo__', '__atendimento__', '__frete__', '__notas__'].includes(modeloAtual) && (estEditado || prodEditado || cfgEditado)) {
+  if (!['__dashboard__', '__financeiro__', '__precos__', '__trafego__', '__fluxo__', '__atendimento__', '__trocas__', '__frete__', '__notas__'].includes(modeloAtual) && (estEditado || prodEditado || cfgEditado)) {
     clearTimeout(saveTimer); salvarModelo();
   }
   estEditado = false; prodEditado = false; cfgEditado = false; esconderBtnSalvar();
@@ -1752,14 +1897,14 @@ function frtLock() {
 
 // Alterna entre as 4 sub-seções (pílulas) dentro do painel Atendimento
 function atdShowSub(sub) {
-  ['kanban', 'sac', 'retorno', 'estorno', 'vendas', 'casos'].forEach(s => {
+  if (sub === 'retorno') { abrirTrocas(null); return; } // a troca mora na aba TROCAS desde 19/10/2026
+  ['kanban', 'sac', 'estorno', 'vendas', 'casos'].forEach(s => {
     const el = document.getElementById('atd-sub-' + s);
     if (el) el.style.display = (s === sub) ? '' : 'none';
     const pill = document.getElementById('atd-pill-' + s);
     if (pill) pill.classList.toggle('active', s === sub);
   });
   if (sub === 'sac') sacRender();
-  else if (sub === 'retorno') { retRender(); retSincronizarShopify(); }
   else if (sub === 'estorno') { estRender(); estSincronizarShopify(); }
   else if (sub === 'kanban') kbAbrir();
   else if (sub === 'vendas') vndCarregar();
@@ -3053,7 +3198,7 @@ async function revPedir(lista, itemId) {
   cfg.itens = (cfg.itens || []).filter(x => x.id !== id);
   cfg.itens.push({ id, lista, item_id: itemId, numero, pecas: revPecas(lista, t), servico: REV_SERVICO_PADRAO, pedido_em: agora, atualizado_em: agora });
   saveLocal('vc:reversas-pedido', cfg);
-  if (lista === 'retorno') retRender(); else estRender();
+  atdSyncViews();
   try { await salvarListaCompartilhada('reversas-pedido', 'itens', cfg); } catch (e) {}
 }
 // Código que o robô trouxe entra no campo da linha (só se o campo ainda não tiver código dos Correios)
@@ -3487,6 +3632,7 @@ function kbSetEtapa(tipo, id, etapa) {
 function atdSyncViews() {
   try { if (document.getElementById('sac-tbody')) sacRender(); } catch (e) {}
   try { if (document.getElementById('ret-tbody')) retRender(); } catch (e) {}
+  try { if (document.getElementById('trc-board')) trcRender(); } catch (e) {}
   try { if (document.getElementById('atd-est-tbody')) estRender(); } catch (e) {}
   try { if (document.getElementById('kb-board')) kbRender(); } catch (e) {}
 }
@@ -3929,7 +4075,7 @@ function flxPopularMeses() {
 function abrirFluxo(item) {
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   if (item) item.classList.add('active');
-  if (!['__dashboard__', '__financeiro__', '__precos__', '__trafego__', '__fluxo__', '__atendimento__', '__frete__', '__notas__'].includes(modeloAtual) && (estEditado || prodEditado || cfgEditado)) {
+  if (!['__dashboard__', '__financeiro__', '__precos__', '__trafego__', '__fluxo__', '__atendimento__', '__trocas__', '__frete__', '__notas__'].includes(modeloAtual) && (estEditado || prodEditado || cfgEditado)) {
     clearTimeout(saveTimer); salvarModelo();
   }
   estEditado = false; prodEditado = false; cfgEditado = false; esconderBtnSalvar();
@@ -14458,7 +14604,7 @@ function iniciarApp() {
   _appIniciado = true;
 
 const _hashKey = location.hash.replace('#', '');
-const _ESPECIAIS = { confeccao: '__confeccao__', precos: '__precos__', financeiro: '__financeiro__', trafego: '__trafego__', notas: '__notas__', fluxo: '__fluxo__', atendimento: '__atendimento__', frete: '__frete__', modelagem: '__modelagem__', corte: '__corte__', costura: '__costura__' };
+const _ESPECIAIS = { confeccao: '__confeccao__', precos: '__precos__', financeiro: '__financeiro__', trafego: '__trafego__', notas: '__notas__', fluxo: '__fluxo__', atendimento: '__atendimento__', trocas: '__trocas__', frete: '__frete__', modelagem: '__modelagem__', corte: '__corte__', costura: '__costura__' };
 modeloAtual = _ESPECIAIS[_hashKey] || ((_hashKey && MODELOS[_hashKey]) ? _hashKey : '__dashboard__');
 // Perfis de oficina não escolhem tela: entram direto na aba deles e ficam nela
 if (ehPerfilCorte())     modeloAtual = '__corte__';
@@ -14486,6 +14632,8 @@ if (modeloAtual === '__confeccao__') {
   abrirFluxo(null); // restaura a aba Fluxo de Caixa após F5
 } else if (modeloAtual === '__atendimento__') {
   abrirAtendimento(null); // restaura a aba Atendimento após F5
+} else if (modeloAtual === '__trocas__') {
+  abrirTrocas(null); // restaura a aba Trocas após F5
 } else if (modeloAtual === '__frete__') {
   abrirFrete(null); // restaura a aba Frete após F5
 } else if (modeloAtual === '__modelagem__') {
@@ -14510,6 +14658,7 @@ const _renderInicial = () => {
   else if (modeloAtual === '__notas__') { if (sessionStorage.getItem('fin-ok') === '1') notasCarregarFrame(); }
   else if (modeloAtual === '__fluxo__') { if (sessionStorage.getItem('fin-ok') === '1') renderFluxo(); }
   else if (modeloAtual === '__atendimento__') { if (sessionStorage.getItem('fin-ok') === '1') atdShowSub('sac'); }
+  else if (modeloAtual === '__trocas__') { if (sessionStorage.getItem('fin-ok') === '1') trcAtualizar(); }
   else if (modeloAtual === '__frete__') { if (sessionStorage.getItem('fin-ok') === '1') frtCarregarMes(); }
   else if (modeloAtual === '__modelagem__') { if (sessionStorage.getItem('mdl-ok') === '1') mdlCarregarLista(); }
   else renderModelo(modeloAtual);

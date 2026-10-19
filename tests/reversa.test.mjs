@@ -40,8 +40,10 @@ const lab = new Function('mem', `
   const salvarListaCompartilhada = async () => {};
   const alert = () => {};
   const estConcluida = t => t.status === 'resolvido' || t.etapa === 'concluido';
+  const atdSyncViews = () => {};
   ${main.slice(a, b)}
-  return { revNumeroPedido, revCodigoAtual, revPecas, revStatus, revAplicarCodigos, revPedir, salvos };
+  ${main.slice(main.indexOf('const TRC_ETAPAS'), main.indexOf('function trcCartaoHtml'))}
+  return { revNumeroPedido, revCodigoAtual, revPecas, revStatus, revAplicarCodigos, revPedir, trcEtapa, trcNoQuadro, salvos };
 `);
 
 console.log('\n1) Número do pedido e peças');
@@ -113,6 +115,24 @@ console.log('\n5) Pedir reversa grava na fila');
   ok('item na fila com pedido, peças e PAC Reverso', [it.id, it.numero, it.servico, it.pecas[0].preco], ['estorno:e1', '#9250', '03301', 135.95]);
   await L.revPedir('estorno', 'e1');
   ok('pedir de novo não duplica', mem['vc:reversas-pedido'].itens.length, 1);
+}
+
+console.log('\n6) Etapa no quadro da aba TROCAS');
+{
+  const agora = new Date().toISOString();
+  const L = lab({
+    'vc:reversas-pedido': { itens: [{ id: 'retorno:q', pedido_em: agora }] },
+    'vc:reversas-resultado': { itens: { 'retorno:c': { status: 'carrinho', servico: 'PAC Reverso', preco: 24.97, em: agora } } },
+  });
+  ok('sem nada: pedido feito', L.trcEtapa({ id: 'n', pedido: '#1' }), 'pedido');
+  ok('na fila do robô: pra pagar', L.trcEtapa({ id: 'q', pedido: '#1' }), 'pagar');
+  ok('no carrinho: pra pagar', L.trcEtapa({ id: 'c', pedido: '#1' }), 'pagar');
+  ok('com código: esperando a peça', L.trcEtapa({ id: 'x', pedido: '#1', codigo_logistica_reversa: 'AP337664240BR' }), 'esperando');
+  ok('chegou', L.trcEtapa({ id: 'x', pedido: '#1', codigo_logistica_reversa: 'AP1', data_chegada_reversa: '2026-09-04', chegou_reversa: true }), 'chegou');
+  ok('com reenvio: enviada', L.trcEtapa({ id: 'x', data_chegada_reversa: '2026-09-04', codigo_reenvio: 'AD1' }), 'enviada');
+  ok('resolvida: enviada', L.trcEtapa({ id: 'x', status: 'resolvido' }), 'enviada');
+  ok('resolvida há 20 dias sai do quadro', L.trcNoQuadro({ status: 'resolvido', resolvido_em: new Date(Date.now() - 20 * 864e5).toISOString() }), false);
+  ok('aberta fica no quadro', L.trcNoQuadro({ status: 'pendente' }), true);
 }
 
 console.log(falhas ? `\n✗ ${falhas} de ${total} falharam` : `\n✓ TODOS OS TESTES PASSARAM — ${total}/${total}`);

@@ -1453,3 +1453,27 @@ table.est-tab td.est-acao button { background: none; border: none; cursor: point
 /* Campo de código + botão "pedir reversa" lado a lado (19/10/2026): sem o min-width o input
    não encolhe dentro do flex e empurra o botão para fora da coluna. */
 table.est-tab td > div > input { min-width: 0; flex: 1 1 auto; }
+
+/* Aba TROCAS (19/10/2026): quadro por etapa. Rola de lado no celular; cada coluna tem largura
+   fixa para o cartão não espremer o nome da cliente. */
+.trc-board { display: grid; grid-template-columns: repeat(5, minmax(220px, 1fr)); gap: 12px; overflow-x: auto; padding-bottom: 6px; align-items: start; }
+.trc-col { background: rgba(255,255,255,.45); border: 1px solid var(--border); border-radius: 14px; padding: 10px; min-height: 120px; }
+.trc-col-topo { display: flex; justify-content: space-between; align-items: center; border-top: 3px solid; padding-top: 7px; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; color: var(--text); }
+.trc-col-topo b { font-size: 13px; background: var(--bg); border-radius: 999px; padding: 1px 9px; }
+.trc-col-passo { font-size: 11px; color: var(--text-ter); margin: 2px 0 10px; }
+.trc-card { background: #fff; border: 1px solid var(--border); border-left: 4px solid; border-radius: 10px; padding: 9px 10px; margin-bottom: 8px; font-size: 12px; }
+.trc-card.trc-fechada { opacity: .55; }
+.trc-topo { display: flex; justify-content: space-between; gap: 6px; align-items: center; }
+.trc-topo b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+.trc-dias { flex: 0 0 auto; font-size: 10px; font-weight: 700; color: #fff; border-radius: 4px; padding: 1px 5px; }
+.trc-ped { font-size: 11px; color: var(--text-sec); margin-top: 1px; }
+.trc-tag { font-size: 10px; font-weight: 700; color: #0b6e6e; background: rgba(14,138,138,.1); border-radius: 4px; padding: 0 5px; }
+.trc-prod { margin: 5px 0 7px; color: var(--text); line-height: 1.35; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.trc-acao { display: flex; flex-direction: column; gap: 5px; border-top: 1px dashed var(--border); padding-top: 7px; }
+.trc-btn { align-self: flex-start; font-size: 11px; font-weight: 700; background: #1E1B2B; color: #fff; border: 0; border-radius: 6px; padding: 5px 10px; cursor: pointer; }
+.trc-inp { width: 100%; box-sizing: border-box; font-size: 11px; padding: 5px 7px; border: 1px solid var(--border); border-radius: 6px; }
+.trc-aviso { font-size: 11px; font-weight: 600; }
+.trc-dica { font-size: 10.5px; color: var(--text-ter); }
+.trc-cod { font-size: 11px; color: var(--text-sec); }
+.trc-link { font-size: 11px; font-weight: 700; color: var(--gold-dark); text-decoration: none; }
+.trc-vazio { font-size: 11px; color: var(--text-ter); text-align: center; padding: 14px 0; }
