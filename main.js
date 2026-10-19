@@ -2765,6 +2765,7 @@ function retDel(id) {
 // Puxa da Shopify as trocas solicitadas (devolução com exchangeLineItems — cliente pediu
 // outra peça em vez do dinheiro) e adiciona as que ainda não estão na lista.
 async function retSincronizarShopify() {
+  await atdImportarPortal();
   const statusEl = document.getElementById('atd-ret-sync-status');
   if (statusEl) statusEl.textContent = 'buscando trocas na Shopify...';
   try {
@@ -2936,6 +2937,7 @@ function estDel(id) {
 // Puxa da Shopify as devoluções solicitadas (ainda não processadas) e adiciona as que
 // ainda não estão na lista (não sobrescreve o que já foi editado manualmente).
 async function estSincronizarShopify() {
+  await atdImportarPortal();
   const statusEl = document.getElementById('atd-est-sync-status');
   if (statusEl) statusEl.textContent = 'buscando devoluções na Shopify...';
   try {
@@ -2965,6 +2967,71 @@ async function estSincronizarShopify() {
   } catch (e) {
     if (statusEl) statusEl.textContent = 'erro ao buscar devoluções da Shopify';
   }
+}
+// ── Portal de trocas da cliente (/trocas, 19/10/2026) ─────────────────────────
+// A cliente pede sozinha, sem login, e cada pedido vira uma linha `troca-portal:<pedido>-<ts>`
+// no vc_modelos (quem grava é /api/trocas-portal). Aqui essas linhas viram itens das listas:
+// troca por tamanho/cor → TROCA; crédito na loja e dinheiro de volta → DEVOLUÇÃO.
+// O id do item é derivado da linha (portal-<pedido>-<ts>-<n>), então importar de novo não
+// duplica, e o que a equipe excluir fica nos `removidos` e não volta.
+const PORTAL_PREFIXO = 'troca-portal:';
+function portalParaListas(docs) {
+  const ret = [], est = [];
+  const dataBR = iso => { const d = new Date(iso); return isNaN(d) ? '' : d.toLocaleDateString('pt-BR'); };
+  (docs || []).forEach(doc => {
+    if (!doc || !doc.id || !String(doc.id).startsWith(PORTAL_PREFIXO)) return;
+    (doc.itens || []).forEach((it, n) => {
+      const id = 'portal-' + doc.id.slice(PORTAL_PREFIXO.length) + '-' + n;
+      const peca = `${it.qtd}× ${it.titulo}${it.variante ? ' (' + it.variante + ')' : ''}`;
+      const motivo = it.motivo + (it.obs ? ' · ' + it.obs : '');
+      const base = { id, portal_id: doc.id, protocolo: doc.protocolo || '', cliente: doc.cliente || '', data: dataBR(doc.criado_em), criado_em: doc.criado_em };
+      if (it.tipo === 'troca') {
+        const tam = String(it.nova_variante || '').split('/').pop().trim();
+        ret.push({
+          ...base,
+          pedido: doc.pedido || '',
+          produtos: `${peca} → troca por ${it.nova_variante} · motivo: ${motivo}`,
+          obs: RET_TAMANHOS.includes(tam) ? tam : '',
+          codigo_reenvio: '', codigo_logistica_reversa: '', chegou_reversa: false, data_chegada_reversa: '',
+          status: 'pendente',
+        });
+      } else {
+        est.push({
+          ...base,
+          forma: it.tipo, // 'credito' | 'devolucao'
+          pecas: `${peca} — pedido ${doc.pedido || ''}`,
+          valor: Math.round((Number(it.valor_unit) || 0) * (Number(it.qtd) || 1) * 100) / 100,
+          codigo_devolucao: '',
+          motivo: (it.tipo === 'credito' ? 'Crédito na loja' : 'Dinheiro de volta') + ' · ' + motivo,
+        });
+      }
+    });
+  });
+  return { ret, est };
+}
+// Acrescenta só o que ainda não está na lista nem foi excluído. Devolve quantos entraram.
+function portalAcrescentar(cfg, novos) {
+  const tem = new Set([...(cfg.itens || []).map(t => t.id), ...(cfg.removidos || []).map(r => r && r.id)]);
+  let n = 0;
+  novos.forEach(it => { if (!tem.has(it.id)) { cfg.itens.push(it); n++; } });
+  return n;
+}
+let _portalImportando = null;
+function atdImportarPortal() {
+  if (_portalImportando) return _portalImportando;
+  _portalImportando = (async () => {
+    const url = `${SUPABASE_URL}/rest/v1/vc_modelos?id=like.${encodeURIComponent(PORTAL_PREFIXO + '*')}&select=dados&order=updated_at.desc&limit=300`;
+    const res = await fetch(url, { headers: { apikey: SUPABASE_KEY, Authorization: 'Bearer ' + SUPABASE_KEY }, cache: 'no-store' });
+    if (!res.ok) return 0;
+    const docs = (await res.json()).map(r => r.dados);
+    const { ret, est } = portalParaListas(docs);
+    const cfgRet = retGetConfig(), cfgEst = estGetConfig();
+    const nRet = portalAcrescentar(cfgRet, ret), nEst = portalAcrescentar(cfgEst, est);
+    if (nRet) { retSalvar(cfgRet); retRender(); }
+    if (nEst) { estSalvar(cfgEst); estRender(); }
+    return nRet + nEst;
+  })().catch(() => 0).finally(() => { _portalImportando = null; });
+  return _portalImportando;
 }
 function estConcluida(t) { return t.status === 'resolvido' || t.etapa === 'concluido'; }
 // Tempo na fila da DEVOLUÇÃO: usa a data real da solicitação (campo `data`, DD/MM/YYYY) —
@@ -3059,7 +3126,8 @@ function estRender() {
     // mais antiga. A cor de urgência e o selo "N dias na fila" continuam por linha, então
     // dá para ver o que está crítico sem depender do agrupamento por tempo de fila.
     const grupos = [
-      { label: 'Inseridas manualmente', itens: pendentes.filter(x => !x.t.shopify_id) },
+      { label: 'Pelo portal de trocas', itens: pendentes.filter(x => x.t.portal_id) },
+      { label: 'Inseridas manualmente', itens: pendentes.filter(x => !x.t.shopify_id && !x.t.portal_id) },
       { label: 'Importadas da Shopify', itens: pendentes.filter(x =>  x.t.shopify_id) },
     ];
     grupos.forEach(g => {

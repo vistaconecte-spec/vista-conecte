@@ -1,0 +1,320 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Trocas e devoluções · Vista Conecte</title>
+<meta name="description" content="Troque ou devolva sua peça da Vista Conecte sem login: só o número do pedido e o e-mail da compra.">
+<meta name="robots" content="noindex">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&display=swap" rel="stylesheet">
+<!-- Página da CLIENTE (19/10/2026): portal de trocas sem login. Fala com /api/trocas-portal.
+     Cores e fontes são as da loja (roxo #3A0559 do rodapé, Montserrat no texto, serifa nos
+     títulos). Texto sem travessão e sem emoji, no tom da loja. -->
+<style>
+  :root {
+    --roxo: #3A0559;
+    --roxo-claro: #F1EAF6;
+    --texto: #1A1A1A;
+    --suave: #6E6A66;
+    --linha: #E4E0E8;
+    --fundo: #FAF8FC;
+    --branco: #FFFFFF;
+    --erro: #B42318;
+    --ok: #1E7A46;
+    --serifa: "New York", "Iowan Old Style", "Apple Garamond", Baskerville, "Times New Roman", "Droid Serif", Times, "Source Serif Pro", serif;
+    color-scheme: light;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    background: var(--fundo);
+    color: var(--texto);
+    font: 15px/1.55 Montserrat, -apple-system, "Segoe UI", Roboto, sans-serif;
+    padding: env(safe-area-inset-top, 0px) 16px calc(40px + env(safe-area-inset-bottom, 0px));
+  }
+  .topo { text-align: center; padding: 28px 0 8px; }
+  .topo img { width: 132px; height: auto; }
+  main { max-width: 560px; margin: 0 auto; }
+  h1 { font-family: var(--serifa); font-weight: 700; font-size: 30px; line-height: 1.15; margin: 18px 0 8px; text-align: center; color: var(--roxo); }
+  .sub { text-align: center; color: var(--suave); margin: 0 auto 26px; max-width: 440px; }
+  .selos { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin: 0 0 26px; padding: 0; list-style: none; }
+  .selos li { font-size: 12px; font-weight: 600; letter-spacing: .02em; color: var(--roxo); background: var(--roxo-claro); border-radius: 999px; padding: 6px 12px; }
+  .caixa { background: var(--branco); border: 1px solid var(--linha); border-radius: 14px; padding: 22px 20px; }
+  label.campo { display: block; font-size: 13px; font-weight: 600; margin: 0 0 6px; }
+  .campo + input, input.txt, select, textarea {
+    width: 100%; font: inherit; font-size: 16px; color: var(--texto);
+    background: var(--branco); border: 1px solid #CFC8D6; border-radius: 10px; padding: 12px 14px;
+  }
+  textarea { min-height: 72px; resize: vertical; font-size: 15px; }
+  input:focus, select:focus, textarea:focus { outline: 2px solid var(--roxo); outline-offset: 1px; border-color: var(--roxo); }
+  .grupo { margin-bottom: 16px; }
+  .dica { font-size: 12.5px; color: var(--suave); margin-top: 6px; }
+  .btn {
+    display: block; width: 100%; border: 0; border-radius: 10px; cursor: pointer;
+    background: var(--roxo); color: #fff; font: inherit; font-weight: 700; font-size: 15px;
+    letter-spacing: .03em; padding: 15px 18px; margin-top: 8px;
+  }
+  .btn:disabled { opacity: .55; cursor: wait; }
+  .btn.sec { background: transparent; color: var(--roxo); border: 1px solid var(--roxo); }
+  .erro { color: var(--erro); background: #FEF3F2; border: 1px solid #FECDCA; border-radius: 10px; padding: 11px 14px; font-size: 14px; margin: 14px 0 0; }
+  .ola { font-family: var(--serifa); font-size: 22px; margin: 0 0 4px; color: var(--roxo); }
+  .prazo { font-size: 13.5px; color: var(--suave); margin: 0 0 18px; }
+  .prazo b { color: var(--texto); }
+  .peca { border: 1px solid var(--linha); border-radius: 12px; padding: 14px; margin-bottom: 12px; background: var(--branco); }
+  .peca.sel { border-color: var(--roxo); box-shadow: 0 0 0 1px var(--roxo) inset; }
+  .peca-topo { display: flex; gap: 14px; align-items: center; }
+  .peca-topo img { width: 64px; height: 86px; object-fit: cover; border-radius: 8px; background: var(--roxo-claro); flex: 0 0 auto; }
+  .peca-info { flex: 1; min-width: 0; }
+  .peca-nome { font-weight: 600; font-size: 14.5px; line-height: 1.35; }
+  .peca-var { font-size: 13px; color: var(--suave); }
+  .peca-valor { font-size: 13px; font-weight: 600; margin-top: 2px; }
+  .marcar { display: flex; align-items: center; gap: 10px; margin-top: 12px; font-weight: 600; font-size: 14px; cursor: pointer; }
+  .marcar input { width: 20px; height: 20px; accent-color: var(--roxo); margin: 0; }
+  .ja { font-size: 13px; color: var(--ok); font-weight: 600; margin-top: 10px; }
+  .opcoes { margin-top: 14px; padding-top: 14px; border-top: 1px dashed var(--linha); }
+  .opcoes[hidden] { display: none; }
+  .titulo-op { font-size: 13px; font-weight: 700; margin: 0 0 8px; }
+  .escolha { display: flex; gap: 10px; align-items: flex-start; border: 1px solid var(--linha); border-radius: 10px; padding: 11px 12px; margin-bottom: 8px; cursor: pointer; }
+  .escolha input { margin: 3px 0 0; width: 18px; height: 18px; accent-color: var(--roxo); flex: 0 0 auto; }
+  .escolha b { display: block; font-size: 14px; }
+  .escolha span { font-size: 12.5px; color: var(--suave); }
+  .escolha.off { opacity: .5; cursor: not-allowed; }
+  .escolha:has(input:checked) { border-color: var(--roxo); background: var(--roxo-claro); }
+  .sub-op { margin: 4px 0 10px 28px; }
+  .sub-op[hidden] { display: none; }
+  .regras { font-size: 12.5px; color: var(--suave); margin: 18px 2px 0; }
+  .regras li { margin-bottom: 4px; }
+  .pronto { text-align: center; }
+  .pronto .check { width: 56px; height: 56px; border-radius: 50%; background: var(--roxo-claro); color: var(--roxo); display: grid; place-items: center; margin: 0 auto 12px; }
+  .protocolo { display: inline-block; font-weight: 700; letter-spacing: .06em; background: var(--roxo-claro); color: var(--roxo); border-radius: 8px; padding: 6px 12px; margin: 6px 0 14px; }
+  .passos { text-align: left; margin: 14px 0 0; padding-left: 20px; }
+  .passos li { margin-bottom: 8px; }
+  .ajuda { text-align: center; font-size: 13px; color: var(--suave); margin-top: 22px; }
+  .ajuda a { color: var(--roxo); font-weight: 600; }
+  .voltar { display: inline-block; margin-top: 18px; color: var(--roxo); font-weight: 600; font-size: 14px; }
+</style>
+</head>
+<body>
+<header class="topo">
+  <a href="https://www.vistaconecte.com.br/" aria-label="Voltar para a loja"><img src="https://vistaconecte.com.br/cdn/shop/files/logo-conecte-transparente-v2.png?v=1783096819&width=264" alt="Conecte" width="132"></a>
+</header>
+<main>
+  <h1>Trocas e devoluções</h1>
+  <p class="sub">Sem login e sem complicação. Você só precisa do número do pedido e do e-mail usado na compra.</p>
+  <ul class="selos">
+    <li>Troca grátis</li>
+    <li>Até 30 dias para trocar</li>
+    <li>Código dos Correios sem custo</li>
+  </ul>
+
+  <!-- 1. Achar o pedido -->
+  <section id="passo-busca" class="caixa">
+    <form id="form-busca" novalidate>
+      <div class="grupo">
+        <label class="campo" for="pedido">Número do pedido</label>
+        <input id="pedido" class="txt" inputmode="numeric" autocomplete="off" placeholder="Ex.: 9250" required>
+        <div class="dica">Está no e-mail de confirmação da compra, depois do #.</div>
+      </div>
+      <div class="grupo">
+        <label class="campo" for="email">E-mail da compra</label>
+        <input id="email" class="txt" type="email" inputmode="email" autocomplete="email" placeholder="seuemail@exemplo.com" required>
+      </div>
+      <button class="btn" id="btn-buscar" type="submit">Buscar meu pedido</button>
+      <div id="erro-busca" class="erro" hidden></div>
+    </form>
+  </section>
+
+  <!-- 2. Escolher as peças -->
+  <section id="passo-pecas" hidden>
+    <div class="caixa">
+      <p class="ola" id="ola"></p>
+      <p class="prazo" id="prazo"></p>
+      <div id="lista-pecas"></div>
+      <button class="btn" id="btn-enviar" type="button">Enviar solicitação</button>
+      <div id="erro-envio" class="erro" hidden></div>
+      <ul class="regras">
+        <li>A peça precisa voltar sem uso, sem lavagem e com a etiqueta.</li>
+        <li>Na troca, se o tamanho ou a cor que você escolheu estiver em falta, a gente te avisa antes e você decide entre outra opção ou crédito.</li>
+        <li>O crédito na loja fica com o valor que você pagou na peça e é liberado assim que ela chegar aqui.</li>
+      </ul>
+    </div>
+    <a href="#" class="voltar" id="btn-outro">Buscar outro pedido</a>
+  </section>
+
+  <!-- 3. Pronto -->
+  <section id="passo-pronto" class="caixa pronto" hidden>
+    <div class="check" aria-hidden="true"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></div>
+    <p class="ola">Recebemos sua solicitação</p>
+    <div>Protocolo</div>
+    <div class="protocolo" id="protocolo"></div>
+    <ol class="passos">
+      <li>Em até 1 dia útil você recebe, no WhatsApp do pedido, o <b>código dos Correios</b> para postar a peça. Não precisa imprimir etiqueta nem pagar frete.</li>
+      <li>Leve a peça bem embalada a uma agência dos Correios e informe o código.</li>
+      <li id="passo-final">Quando a peça chegar aqui, a gente segue com o que você escolheu.</li>
+    </ol>
+  </section>
+
+  <p class="ajuda">Alguma dúvida? Fale com a gente no <a href="https://wa.me/554874002390" target="_blank" rel="noopener">WhatsApp (48) 7400-2390</a>.</p>
+</main>
+
+<script>
+(function () {
+  var API = '/api/trocas-portal';
+  var estado = { pedido: '', email: '', dados: null };
+  var $ = function (id) { return document.getElementById(id); };
+  var esc = function (s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); };
+  var brl = function (v) { return Number(v || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }); };
+  var dia = function (iso) { return new Date(iso).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit' }); };
+
+  function mostrarErro(el, msg) { el.textContent = msg; el.hidden = !msg; }
+
+  async function chamar(corpo) {
+    var r = await fetch(API, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(corpo) });
+    var j = {};
+    try { j = await r.json(); } catch (e) {}
+    if (!r.ok || j.erro) throw new Error(j.erro || 'Não conseguimos falar com a loja agora. Tente de novo em alguns minutos.');
+    return j;
+  }
+
+  // Pedido vindo no link (ex.: /trocas?pedido=9250, mandado pelo WhatsApp) já entra preenchido
+  try {
+    var q = new URLSearchParams(location.search);
+    if (q.get('pedido')) $('pedido').value = q.get('pedido').replace(/\D/g, '');
+  } catch (e) {}
+
+  $('form-busca').addEventListener('submit', async function (ev) {
+    ev.preventDefault();
+    var pedido = $('pedido').value.replace(/\D/g, '');
+    var email = $('email').value.trim();
+    mostrarErro($('erro-busca'), '');
+    if (!pedido || !email) { mostrarErro($('erro-busca'), 'Preencha o número do pedido e o e-mail da compra.'); return; }
+    var b = $('btn-buscar'); b.disabled = true; b.textContent = 'Buscando...';
+    try {
+      var d = await chamar({ acao: 'consultar', pedido: pedido, email: email });
+      estado = { pedido: pedido, email: email, dados: d };
+      renderPecas();
+    } catch (e) {
+      mostrarErro($('erro-busca'), e.message);
+    } finally {
+      b.disabled = false; b.textContent = 'Buscar meu pedido';
+    }
+  });
+
+  function renderPecas() {
+    var d = estado.dados;
+    $('passo-busca').hidden = true;
+    $('passo-pecas').hidden = false;
+    $('ola').textContent = (d.primeiro_nome ? 'Oi, ' + d.primeiro_nome + '!' : 'Oi!') + ' Pedido ' + d.pedido;
+    var btn = $('btn-enviar');
+    btn.hidden = false;
+    if (d.cancelado) {
+      $('prazo').innerHTML = 'Este pedido foi cancelado. Se precisar de ajuda, fale com a gente pelo WhatsApp.';
+      $('lista-pecas').innerHTML = ''; btn.hidden = true; return;
+    }
+    if (!d.enviado) {
+      $('prazo').innerHTML = 'Este pedido ainda não foi enviado, então ainda não dá para pedir troca. Se quiser mudar alguma coisa nele, fale com a gente pelo WhatsApp.';
+      $('lista-pecas').innerHTML = ''; btn.hidden = true; return;
+    }
+    if (!d.pode_trocar) {
+      $('prazo').innerHTML = 'O prazo de 30 dias para troca deste pedido terminou em <b>' + dia(d.troca_ate) + '</b>. Fale com a gente pelo WhatsApp que a gente vê o que dá para fazer.';
+      $('lista-pecas').innerHTML = ''; btn.hidden = true; return;
+    }
+    $('prazo').innerHTML = 'Você pode trocar ou pedir crédito até <b>' + dia(d.troca_ate) + '</b>.' +
+      (d.pode_devolver ? ' Dinheiro de volta, até <b>' + dia(d.devolucao_ate) + '</b>.' : '') +
+      '<br>Marque as peças que vão voltar:';
+    var motivos = (d.motivos || []).map(function (m) { return '<option>' + esc(m) + '</option>'; }).join('');
+    $('lista-pecas').innerHTML = d.itens.map(function (it, i) {
+      var img = it.imagem ? '<img src="' + esc(it.imagem) + '" alt="" loading="lazy">' : '<img alt="">';
+      var topo = '<div class="peca-topo">' + img + '<div class="peca-info"><div class="peca-nome">' + esc(it.titulo) + '</div>' +
+        '<div class="peca-var">' + esc(it.variante) + (it.qtd > 1 ? ' · ' + it.qtd + ' unidades' : '') + '</div>' +
+        '<div class="peca-valor">Você pagou ' + brl(it.valor_unit) + (it.qtd > 1 ? ' cada' : '') + '</div></div></div>';
+      if (it.qtd_disponivel < 1) return '<div class="peca">' + topo + '<div class="ja">Troca desta peça já solicitada.</div></div>';
+      var qtdSel = it.qtd_disponivel > 1
+        ? '<div class="grupo"><label class="campo" for="q' + i + '">Quantas unidades?</label><select id="q' + i + '">' +
+          Array.from({ length: it.qtd_disponivel }, function (_, k) { return '<option>' + (k + 1) + '</option>'; }).join('') + '</select></div>'
+        : '';
+      var opcoesTroca = it.opcoes_troca.map(function (o) { return '<option value="' + esc(o.id) + '">' + esc(o.titulo) + '</option>'; }).join('');
+      var semTroca = !it.opcoes_troca.length;
+      return '<div class="peca" id="p' + i + '">' + topo +
+        '<label class="marcar"><input type="checkbox" data-i="' + i + '" class="js-marcar"> Quero trocar ou devolver esta peça</label>' +
+        '<div class="opcoes" id="o' + i + '" hidden>' + qtdSel +
+          '<p class="titulo-op">O que você prefere?</p>' +
+          '<label class="escolha' + (semTroca ? ' off' : '') + '"><input type="radio" name="t' + i + '" value="troca"' + (semTroca ? ' disabled' : '') + '><div><b>Trocar por outro tamanho ou cor</b><span>' + (semTroca ? 'Este modelo não tem outra opção para troca.' : 'Mandamos a peça nova assim que a sua chegar.') + '</span></div></label>' +
+          '<div class="sub-op" id="s' + i + '" hidden><select id="v' + i + '"><option value="">Escolha o novo tamanho e cor</option>' + opcoesTroca + '</select></div>' +
+          '<label class="escolha"><input type="radio" name="t' + i + '" value="credito"><div><b>Crédito na loja</b><span>' + brl(it.valor_unit) + ' por peça para usar na próxima compra, quando quiser.</span></div></label>' +
+          '<label class="escolha' + (d.pode_devolver ? '' : ' off') + '"><input type="radio" name="t' + i + '" value="devolucao"' + (d.pode_devolver ? '' : ' disabled') + '><div><b>Dinheiro de volta</b><span>' + (d.pode_devolver ? 'Estorno na forma de pagamento da compra.' : 'Só nos primeiros 7 dias depois de receber (terminou em ' + dia(d.devolucao_ate) + ').') + '</span></div></label>' +
+          '<div class="grupo" style="margin-top:12px"><label class="campo" for="m' + i + '">Motivo</label><select id="m' + i + '"><option value="">Escolha o motivo</option>' + motivos + '</select></div>' +
+          '<div class="grupo"><label class="campo" for="ob' + i + '">Quer contar mais alguma coisa? (opcional)</label><textarea id="ob' + i + '" maxlength="300" placeholder="Ex.: ficou curta no comprimento"></textarea></div>' +
+        '</div></div>';
+    }).join('');
+
+    document.querySelectorAll('.js-marcar').forEach(function (cb) {
+      cb.addEventListener('change', function () {
+        var i = cb.dataset.i;
+        $('o' + i).hidden = !cb.checked;
+        $('p' + i).classList.toggle('sel', cb.checked);
+      });
+    });
+    d.itens.forEach(function (it, i) {
+      document.querySelectorAll('input[name="t' + i + '"]').forEach(function (r) {
+        r.addEventListener('change', function () { var s = $('s' + i); if (s) s.hidden = r.value !== 'troca'; });
+      });
+    });
+    var pendentes = d.itens.filter(function (it) { return it.qtd_disponivel > 0; }).length;
+    btn.hidden = pendentes === 0;
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  $('btn-enviar').addEventListener('click', async function () {
+    var d = estado.dados;
+    var itens = [];
+    var erro = '';
+    d.itens.forEach(function (it, i) {
+      if (erro) return;
+      var cb = document.querySelector('.js-marcar[data-i="' + i + '"]');
+      if (!cb || !cb.checked) return;
+      var t = document.querySelector('input[name="t' + i + '"]:checked');
+      if (!t) { erro = 'Escolha o que você prefere para ' + it.titulo + '.'; return; }
+      var nova = t.value === 'troca' ? $('v' + i).value : null;
+      if (t.value === 'troca' && !nova) { erro = 'Escolha o novo tamanho e cor de ' + it.titulo + '.'; return; }
+      var motivo = $('m' + i).value;
+      if (!motivo) { erro = 'Escolha o motivo de ' + it.titulo + '.'; return; }
+      itens.push({ line_id: it.id, tipo: t.value, nova_variante_id: nova, motivo: motivo, obs: $('ob' + i).value, qtd: $('q' + i) ? Number($('q' + i).value) : 1 });
+    });
+    if (!erro && !itens.length) erro = 'Marque pelo menos uma peça.';
+    mostrarErro($('erro-envio'), erro);
+    if (erro) return;
+    var b = $('btn-enviar'); b.disabled = true; b.textContent = 'Enviando...';
+    try {
+      var r = await chamar({ acao: 'enviar', pedido: estado.pedido, email: estado.email, itens: itens });
+      $('protocolo').textContent = r.protocolo;
+      var tipos = (r.itens || []).map(function (i) { return i.tipo; });
+      var fim = [];
+      if (tipos.indexOf('troca') >= 0) fim.push('a peça nova sai para você');
+      if (tipos.indexOf('credito') >= 0) fim.push('o crédito é liberado na sua conta da loja, com este mesmo e-mail');
+      if (tipos.indexOf('devolucao') >= 0) fim.push('o estorno é feito na forma de pagamento da compra');
+      $('passo-final').textContent = 'Quando a peça chegar aqui, ' + (fim.length ? fim.join(', e ') : 'a gente segue com o que você escolheu') + '.';
+      $('passo-pecas').hidden = true;
+      $('passo-pronto').hidden = false;
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    } catch (e) {
+      mostrarErro($('erro-envio'), e.message);
+    } finally {
+      b.disabled = false; b.textContent = 'Enviar solicitação';
+    }
+  });
+
+  $('btn-outro').addEventListener('click', function (ev) {
+    ev.preventDefault();
+    estado = { pedido: '', email: '', dados: null };
+    $('passo-pecas').hidden = true;
+    $('passo-busca').hidden = false;
+    $('pedido').value = ''; $('email').value = '';
+    $('pedido').focus();
+  });
+})();
+</script>
+</body>
+</html>
