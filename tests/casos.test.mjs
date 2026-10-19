@@ -90,6 +90,14 @@ ok('passou do prazo', p.passou_do_prazo, true);
 const e = C.prazoDoPedido('2026-09-22T17:25:37-03:00', Date.now(), '2026-10-02T10:00:00-03:00');
 ok('enviado conta até a etiqueta', [e.dias_uteis_ate_envio, e.saiu_no_prazo], [8, true]);
 
+console.log('\n3b) Voucher no valor pago (regra da Bárbara, 19/10/2026)');
+ok('desconto rateado na linha sai do valor (pedido #9250 real)', C.pagoPorItem({ title: 'Calça Pantalona', variant_title: 'Uva / G', price: '169.00', quantity: 1, discount_allocations: [{ amount: '33.05' }] }),
+  { item: '1x Calça Pantalona (Uva / G)', preco_cheio: 169, desconto: 33.05, pago: 135.95, pago_por_peca: 135.95 });
+ok('duas unidades dividem o pago por peça', C.pagoPorItem({ title: 'Top', price: '59.90', quantity: 2, discount_allocations: [{ amount: '10.00' }, { amount: '1.80' }] }).pago_por_peca, 54);
+ok('sem desconto paga o cheio', C.pagoPorItem({ title: 'Saia', price: '159.00', quantity: 1 }).pago, 159);
+ok('instrução manda voucher no valor pago', /Voucher de troca ou devolução é sempre no valor que a cliente PAGOU/.test(C.SISTEMA), true);
+ok('instrução manda anotar e fechar o que foi resolvido por fora', /Resolvido por fora/.test(C.SISTEMA), true);
+
 console.log('\n4) Só fecha com ação feita, e dinheiro espera a Bárbara');
 const log = { acoes: [], aprovacoes: [] };
 ok('sem ação não fecha', C.podeFechar(652, log).ok, false);

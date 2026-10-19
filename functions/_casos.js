@@ -199,6 +199,18 @@ export function prazoDoPedido(pagoEm, agora = Date.now(), enviadoEm = null) {
     passou_do_prazo: dias > PRAZO_DIAS_UTEIS, faltam_dias_uteis: Math.max(0, PRAZO_DIAS_UTEIS - dias) };
 }
 
+// Quanto a cliente pagou por cada linha do pedido: preço × quantidade menos os descontos
+// rateados na linha pela Shopify (promoção de 2 peças, desconto progressivo, cupom). É a base
+// do voucher de troca/devolução, que a Bárbara definiu ser sempre no valor PAGO (19/10/2026).
+export function pagoPorItem(li) {
+  const bruto = (parseFloat(li.price) || 0) * (li.quantity || 0);
+  const desc = (li.discount_allocations || []).reduce((s, d) => s + (parseFloat(d.amount) || 0), 0);
+  const pago = Math.round((bruto - desc) * 100) / 100;
+  return { item: `${li.quantity}x ${li.title}${li.variant_title ? ' (' + li.variant_title + ')' : ''}`,
+    preco_cheio: Math.round(bruto * 100) / 100, desconto: Math.round(desc * 100) / 100, pago,
+    pago_por_peca: li.quantity ? Math.round(pago / li.quantity * 100) / 100 : pago };
+}
+
 // ── Registro de ações e aprovações (linha casos-log do vc_modelos) ─────────────
 export function logVazio() { return { acoes: [], aprovacoes: [] }; }
 
@@ -269,6 +281,7 @@ O que a Marcelly resolve sozinha (proponha como ação com botão)
 O que é decisão da Bárbara (proponha pedir_aprovacao com categoria, valor e motivo; nunca prometa à cliente antes da aprovação)
 - estorno ou reembolso, frete por conta da loja, desconto ou cupom, brinde, qualquer valor em dinheiro.
 - Regras que a Bárbara já definiu e que servem de base para o pedido: desistência recebe primeiro a oferta de R$ 149 de desconto numa peça nova; troca por erro da loja tem frete grátis.
+- Voucher de troca ou devolução é sempre no valor que a cliente PAGOU pela peça, com o desconto que ela teve (promoção, desconto progressivo, cupom), nunca no valor cheio da peça (regra da Bárbara, 19/10/2026). O pedido traz pago_por_item; some só as peças devolvidas e coloque esse total em valor, com a conta no motivo.
 
 Mensagem para a cliente
 - Português do Brasil, curta, humana, do jeito que uma pessoa da loja escreveria no WhatsApp.
@@ -290,7 +303,8 @@ Resposta à Marcelly
 - Lista do dia: mostre primeiro o bloco "Fazer agora" com no máximo 5 itens (cliente esperando resposta, prazo que vence hoje ou amanhã, risco de perder dinheiro ou peça). Os outros casos vão em blocos curtos por tipo, só com cliente e pedido. Termine dizendo por qual começar e pergunte se pode abrir esse caso.
 - Caso aberto: um bloco "Quadro" com as quatro linhas (acredita, real, se ninguém mexer, prazo), depois um bloco "O que fazer" com os passos numerados ("1. ", "2. "), e as ações prontas em acoes. Se a cliente está esperando resposta, já deixe a mensagem para ela escrita na ação.
 - Use primeiro nome da cliente, número do pedido e final do telefone. Nada de e-mail, CPF, chave Pix ou telefone completo.
-- Se faltar informação para resolver, diga o que falta e quem pode responder (expedição, Bárbara, transportadora).`;
+- Se faltar informação para resolver, diga o que falta e quem pode responder (expedição, Bárbara, transportadora).
+- Resolvido por fora: quando a Marcelly disser que já fez algo fora do painel (mandou etiqueta, respondeu pelo Wati, despachou), acredite nela, proponha anotar exatamente o que ela fez e, se não sobrar nada pendente no caso, proponha fechar logo em seguida. Assim o caso não volta na lista do dia seguinte.`;
 
 const obj = (props, req) => ({ type: 'object', properties: props, required: req || Object.keys(props), additionalProperties: false });
 

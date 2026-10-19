@@ -19,7 +19,7 @@
 import {
   soLeitura, MODELO, DOC_LOG, TEMPLATE_CONTINUIDADE, TEMPLATE_ALERTA, CATEGORIAS_DINHEIRO,
   SISTEMA, FERRAMENTAS, FERRAMENTAS_SERVIDOR, problemasDoTexto, prometeDinheiro, janelaAberta, revisarResposta,
-  semResposta, promessasDaEquipe, numerosDePedido, prazoDoPedido, logVazio, podeFechar, aprovacaoLiberada, novoId,
+  semResposta, promessasDaEquipe, pagoPorItem, numerosDePedido, prazoDoPedido, logVazio, podeFechar, aprovacaoLiberada, novoId,
   primeiroNome, finalTel, resumoDoCaso, conversaParaAssistente, hojeTexto, brt,
 } from '../_casos.js';
 
@@ -136,6 +136,7 @@ async function buscarPedido(env, numero, agora = Date.now()) {
     pagamento: o.financial_status, meio: (o.payment_gateway_names || []).join(', ') || null,
     cancelado_em: o.cancelled_at, total: o.total_price, pecas: o.subtotal_price,
     itens: (o.line_items || []).map(i => `${i.quantity}x ${i.title}${i.variant_title ? ' (' + i.variant_title + ')' : ''}`),
+    pago_por_item: (o.line_items || []).map(pagoPorItem),
     frete: (o.shipping_lines || []).map(s => `${s.title} R$ ${s.price}`),
     envio: o.fulfillment_status || 'não enviado',
     etiquetas: (o.fulfillments || []).map(f => ({ em: f.created_at, transportadora: f.tracking_company, rastreio: f.tracking_number })),
