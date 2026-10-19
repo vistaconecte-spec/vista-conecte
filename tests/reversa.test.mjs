@@ -39,6 +39,7 @@ const lab = new Function('mem', `
   const retRender = () => {}, estRender = () => {};
   const salvarListaCompartilhada = async () => {};
   const alert = () => {};
+  const estConcluida = t => t.status === 'resolvido' || t.etapa === 'concluido';
   ${main.slice(a, b)}
   return { revNumeroPedido, revCodigoAtual, revPecas, revStatus, revAplicarCodigos, revPedir, salvos };
 `);
@@ -60,6 +61,9 @@ console.log('\n2) Código atual');
   ok('AP...BR é', L.revCodigoAtual('estorno', { codigo_devolucao: 'AP096592174BR' }), 'AP096592174BR');
   ok('com código, nada de botão', L.revStatus('retorno', { id: 'r1', pedido: '#1', codigo_logistica_reversa: '4665143571' }).pode, false);
   ok('sem código e com pedido, botão', L.revStatus('retorno', { id: 'r1', pedido: '#1' }).pode, true);
+  ok('peça que já chegou dos Correios: sem botão', L.revStatus('retorno', { id: 'r1', pedido: '#8672', data_chegada_reversa: '2026-09-04', chegou_reversa: true }).pode, false);
+  ok('troca resolvida: sem botão', L.revStatus('retorno', { id: 'r1', pedido: '#1', status: 'resolvido' }).pode, false);
+  ok('devolução concluída: sem botão', L.revStatus('estorno', { id: 'e1', pecas: 'x — pedido #1', etapa: 'concluido' }).pode, false);
 }
 
 console.log('\n3) Status vindo do robô');

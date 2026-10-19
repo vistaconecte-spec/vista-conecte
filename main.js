@@ -3021,6 +3021,9 @@ function revPecas(lista, t) {
 }
 function revStatus(lista, t) {
   if (!revNumeroPedido(lista, t) || revCodigoAtual(lista, t)) return { txt: '', pode: false };
+  // Peça que já voltou ou caso resolvido não precisa de reversa: o botão ali faria a equipe pagar
+  // uma reversa à toa (visto no print de 19/10/2026: Aline #8672 com "chegou" 04/09 e o caminhão).
+  if (t.chegou_reversa || t.data_chegada_reversa || t.status === 'resolvido' || (lista === 'estorno' && estConcluida(t))) return { txt: '', pode: false };
   const id = lista + ':' + t.id;
   const res = loadLocal('vc:reversas-resultado') || {};
   const r = (res.itens || {})[id];
