@@ -256,7 +256,7 @@ ok('pendentes já guardados ficam como estão', sanear(interrompida, [{ type: 't
 console.log('\n8) Status da peça e troca de etiqueta (mesmo cálculo do card LIBERAR TROCANDO A ETIQUETA)');
 const fn = nome => { const i = main.indexOf(`function ${nome}(`); return main.slice(i, main.indexOf('\n}\n', i) + 2); };
 const fabrica = new Function('window', 'MODELOS', 'sacGetConfig', 'producaoDaPeca', 'tamanhosDe', 'diasDesde', 'SEM_TROCA_ETIQUETA',
-  ['modeloAceitaTrocaEtiqueta', 'planejarTrocaEtiqueta', 'csSituacaoProducao', 'csProducaoCurta', 'csEnriquecer'].map(fn).join('\n')
+  ['modeloAceitaTrocaEtiqueta', 'planejarTrocaEtiqueta', 'csOutrasCores', 'csSituacaoProducao', 'csProducaoCurta', 'csEnriquecer'].map(fn).join('\n')
   + '\nreturn { csSituacaoProducao, csProducaoCurta, csEnriquecer };');
 const MOD = { 'vestido-amplo': { nome: 'Vestido Amplo', tamanhos: ['PP', 'P', 'M', 'G', 'GG'], aberto: { Marrom: [0, 0, 1, 0, 0] } },
   'macaquinho-amplo': { nome: 'Macaquinho Amplo', tamanhos: ['PP', 'P', 'M', 'G', 'GG'], aberto: { Preto: [0, 1, 0, 0, 0] } } };
@@ -281,6 +281,23 @@ ok('linha curta da lista do dia', [T.csProducaoCurta('9300'), T.csProducaoCurta(
   ['pronto para envio', 'falta Macaquinho Amplo Preto P (NÃO ESTÁ NA PRODUÇÃO)', 'não está nos pagos em aberto (enviado, não pago ou cancelado)']);
 const lista = T.csEnriquecer('pendencias_do_dia', { casos_abertos: [{ caso_id: 725, pedido: '#9210' }, { caso_id: 1, pedido: null }] });
 ok('lista do dia chega ao assistente com o status da peça', [/^sai hoje trocando a etiqueta/.test(lista.casos_abertos[0].producao), lista.casos_abertos[1].producao], [true, undefined]);
+// Ida (#9243): Carneirinho Cropped Preto M fora da produção, Off White M sem dono na arara.
+const MOD2 = { 'carneirinho-cropped': { nome: 'Carneirinho Cropped', tamanhos: ['PP', 'P', 'M', 'G', 'GG'],
+  aberto: { Preto: [0, 0, 1, 0, 0], 'Off White': [0, 0, 1, 0, 0], Bege: [0, 0, 0, 0, 0] } } };
+const win2 = {
+  _prontosEnvio: [], _pedidosPendentes: [ped('#9243', 'carneirinho-cropped', 'Preto', 2)],
+  _estoqueLivre: { 'carneirinho-cropped': { Preto: [0, 0, 0, 0, 0], 'Off White': [0, 0, 3, 0, 0], Bege: [0, 0, 0, 1, 0] } },
+  _estoqueBruto: { 'carneirinho-cropped': { Preto: [0, 0, 0, 0, 0], 'Off White': [0, 0, 3, 0, 0], Bege: [0, 0, 0, 1, 0] } },
+};
+const T2 = fabrica(win2, MOD2, () => ({ tickets: [] }), () => ({ qtd: 0, etapa: null }), def => def.tamanhos, () => 12, new Set());
+const s9243 = T2.csSituacaoProducao('9243');
+ok('Ida: Preto M fora da produção e Off White M sem dono (3 menos 1 em aberto)', [s9243.faltas[0].etapa_interna, s9243.faltas[0].alternativas_em_estoque],
+  ['NÃO ESTÁ NA PRODUÇÃO', [{ cor: 'Off White', sem_dono: 2 }]]);
+ok('cor com estoque só em outro tamanho não entra', s9243.faltas[0].alternativas_em_estoque.some(a => a.cor === 'Bege'), false);
+ok('linha da lista do dia já diz a cor em estoque', /tem em estoque na cor Off White/.test(T2.csProducaoCurta('9243')), true);
+ok('fora da produção não manda avisar a Bárbara, oferece outra cor', /não mande avisar a Bárbara/.test(C.SISTEMA) && /alternativas_em_estoque/.test(C.SISTEMA) && !/para a Marcelly avisar a Bárbara/.test(C.SISTEMA), true);
+ok('brinde é da equipe e não vai para aprovação', [C.CATEGORIAS_DINHEIRO.includes('brinde'), C.prometeDinheiro('vou mandar um brinde no seu pacote'), /autonomia para mandar brinde/.test(C.SISTEMA)], [false, false, true]);
+ok('lista do dia: todo pedido sai com o status da peça (print da Bárbara, 19/10/2026)', /SEMPRE o status da peça tirado do campo producao/.test(C.SISTEMA) && !/só com cliente e pedido/.test(C.SISTEMA), true);
 ok('instrução manda sugerir a troca e dizer o status', /Troca de etiqueta/.test(C.SISTEMA) && /Em todo pedido atrasado ou cobrado diga o status/.test(C.SISTEMA), true);
 
 ok('rota fora do PUBLICO (exige sessão)', /PUBLICO = new Set\([^)]*casos/.test(mid), false);

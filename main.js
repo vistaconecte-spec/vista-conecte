@@ -2041,7 +2041,8 @@ function csProducaoCurta(numero) {
   if (!s.situacao) return s.aviso || null;
   if (s.situacao === 'pronto para envio') return 'pronto para envio';
   if (s.faltas) {
-    const falta = 'falta ' + s.faltas.map(x => `${x.peca} (${x.etapa_interna})`).join('; ');
+    const falta = 'falta ' + s.faltas.map(x => `${x.peca} (${x.etapa_interna})`
+      + (x.alternativas_em_estoque && x.alternativas_em_estoque.length ? `, tem em estoque na cor ${x.alternativas_em_estoque.map(a => a.cor).join(' ou ')}` : '')).join('; ');
     return s.troca_de_etiqueta ? `sai hoje trocando a etiqueta (${s.troca_de_etiqueta.o_que_fazer.join('; ')}); ${falta}` : falta;
   }
   return 'não está nos pagos em aberto (enviado, não pago ou cancelado)';
@@ -2069,6 +2070,26 @@ async function csFerramentaServidor(nome, input) {
   return d.resultado;
 }
 
+// Outra cor do MESMO modelo e tamanho que sai na hora, para oferecer à cliente quando a dela
+// não está na produção. Pedido da Bárbara em 19/10/2026 (Ida #9243, Carneirinho Cropped Preto M
+// fora da produção: oferecer o Off White que tem em estoque). Só conta peça sem dono: o que
+// sobrou depois dos prontos, limitado a ESTOQUE − PEDIDOS EM ABERTO daquela cor/tamanho, a mesma
+// trava do card de troca de etiqueta.
+function csOutrasCores(f) {
+  const def = MODELOS[f.key] || {};
+  const i = def.tamanhoUnico ? 0 : f.tam;
+  const livre = (window._estoqueLivre || {})[f.key] || {};
+  const bruto = (window._estoqueBruto || {})[f.key] || {};
+  const aberto = def.aberto || {};
+  const out = [];
+  for (const cor of Object.keys(livre)) {
+    if (cor === f.cor) continue;
+    const disp = Math.min((livre[cor] || [])[i] || 0, ((bruto[cor] || [])[i] || 0) - ((aberto[cor] || [])[i] || 0));
+    if (disp >= (f.falta || 1)) out.push({ cor, sem_dono: disp });
+  }
+  return out.sort((a, b) => b.sem_dono - a.sem_dono).slice(0, 4);
+}
+
 // Ferramenta que roda NA TELA: o estoque real e a fila de prioridade já estão aqui.
 function csSituacaoProducao(numero) {
   const n = String(numero || '').replace(/\D/g, '');
@@ -2086,7 +2107,8 @@ function csSituacaoProducao(numero) {
       const def = MODELOS[f.key] || {};
       const pr = producaoDaPeca(f.key, f.cor, f.tam);
       return { peca: `${def.nome || f.key} ${f.cor} ${nomeTam(f.key, f.tam)}`, faltam: f.falta,
-        em_producao: pr.qtd > 0, etapa_interna: pr.qtd > 0 ? pr.etapa : 'NÃO ESTÁ NA PRODUÇÃO', qtd_em_producao: pr.qtd };
+        em_producao: pr.qtd > 0, etapa_interna: pr.qtd > 0 ? pr.etapa : 'NÃO ESTÁ NA PRODUÇÃO', qtd_em_producao: pr.qtd,
+        alternativas_em_estoque: csOutrasCores(f) };
     });
     // Peça de tamanho VIZINHO sem dono na arara: o mesmo cálculo do card LIBERAR TROCANDO A
     // ETIQUETA (só ±1, nunca Macaquinho Amplo, só se resolve o pedido inteiro, sem prometer a
