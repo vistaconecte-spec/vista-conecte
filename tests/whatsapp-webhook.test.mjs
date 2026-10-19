@@ -168,9 +168,14 @@ globalThis.fetch = async (u, o = {}) => {
   if (u.includes('/wati_ia_sessions?wa_id=')) return new Response(JSON.stringify([{ wa_id: '5562993161442' }]), { status: 200 });
   return new Response('', { status: 201 });
 };
-const envE = { SUPABASE_SERVICE_ROLE_KEY: 'srv', META_ACCESS_TOKEN: 'tok' };
+const envE = { SUPABASE_SERVICE_ROLE_KEY: 'srv', META_ACCESS_TOKEN: 'tok', WA_ENVIO_PAINEL: '1' };
 const post = corpo => API.onRequest({ request: new Request('https://x/api/whatsapp', { method: 'POST', body: JSON.stringify(corpo) }), env: envE });
 
+// Envio desligado (padrão desde 19/10/2026, a Meta não estava entregando): nada sai, nada pausa.
+r = await API.onRequest({ request: new Request('https://x/api/whatsapp', { method: 'POST', body: JSON.stringify({ acao: 'enviar', tel: '556293161442', texto: 'oi' }) }), env: { ...envE, WA_ENVIO_PAINEL: undefined } });
+ok('sem WA_ENVIO_PAINEL o envio fica desligado', [r.status, (await r.json()).erro, feitas.length], [503, 'envio desligado', 0]);
+r = await API.onRequest({ request: new Request('https://x/api/whatsapp?acao=conversas'), env: { ...envE, WA_ENVIO_PAINEL: undefined } });
+ok('a lista avisa a tela que o envio está desligado', (await r.json()).envio, false);
 r = await post({ acao: 'enviar', tel: '5562993161442', texto: '  Oi, vou ver seu pedido agora  ' });
 let d = await r.json();
 ok('envio ok', [r.status, d.ok, d.wamid], [200, true, 'wamid.NOVO']);

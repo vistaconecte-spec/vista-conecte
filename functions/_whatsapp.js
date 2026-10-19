@@ -253,7 +253,14 @@ export async function lerConversa(env, tel, { desde, limite = 200 } = {}) {
 
 // Envia texto pela Cloud API, grava, e faz a Vi parar 24 h nesta conversa (o mesmo que acontece
 // quando alguém da equipe responde pelo Wati: handleOperatorMsg do worker).
+// Envio pelo painel só com WA_ENVIO_PAINEL=1 no Cloudflare. Desligado em 19/10/2026: no teste a Meta aceitou os
+// envios do nosso app (200 + wamid) mas não entregou nenhum e não mandou status; resposta da equipe por aqui
+// sumiria sem ninguém saber. Ligar de novo só depois de um teste que chegue no celular.
+export const envioLiberado = env => env.WA_ENVIO_PAINEL === '1';
+export const AVISO_ENVIO = 'O envio direto pela Meta ainda está em teste e não está chegando nas clientes. Por enquanto, responda pelo Wati.';
+
 export async function enviarTexto(env, tel, texto, agora = Date.now()) {
+  if (!envioLiberado(env)) return { status: 503, erro: 'envio desligado', detalhe: AVISO_ENVIO };
   texto = String(texto || '').trim();
   if (!texto) return { status: 400, erro: 'mensagem vazia' };
   if (texto.length > 4000) return { status: 400, erro: 'mensagem com mais de 4000 caracteres' };

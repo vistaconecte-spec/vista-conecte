@@ -12,7 +12,7 @@
  * Env: SUPABASE_SERVICE_ROLE_KEY, META_ACCESS_TOKEN (System User api-vista, tem
  * whatsapp_business_messaging) ou WA_TOKEN.
  */
-import { json, listarConversas, lerConversa, enviarTexto, baixarMidia } from '../_whatsapp.js';
+import { json, listarConversas, lerConversa, enviarTexto, baixarMidia, envioLiberado, AVISO_ENVIO } from '../_whatsapp.js';
 
 const ISO = /^\d{4}-\d{2}-\d{2}T[\d:.]+(Z|[+-]\d{2}:?\d{2})$/;
 
@@ -25,7 +25,7 @@ export async function onRequest(context) {
   try {
     if (request.method === 'GET') {
       const acao = q.get('acao');
-      if (acao === 'conversas') return json({ conversas: await listarConversas(env, { desde, busca: q.get('busca'), filtro: q.get('filtro'), limite: q.get('limite') }), agora: new Date().toISOString() });
+      if (acao === 'conversas') return json({ conversas: await listarConversas(env, { desde, busca: q.get('busca'), filtro: q.get('filtro'), limite: q.get('limite') }), agora: new Date().toISOString(), envio: envioLiberado(env), aviso_envio: envioLiberado(env) ? null : AVISO_ENVIO });
       if (acao === 'conversa') {
         if (!q.get('tel')) return json({ erro: 'sem telefone' }, 400);
         return json({ ...(await lerConversa(env, q.get('tel'), { desde })), agora: new Date().toISOString() });

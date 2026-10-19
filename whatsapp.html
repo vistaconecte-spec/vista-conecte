@@ -118,7 +118,7 @@
   <aside class="lista">
     <div class="lista-topo">
       <h1 class="titulo">Vi - atendimento</h1>
-      <div class="aviso-teste">Fase de teste: o Wati continua ligado. O que você mandar daqui sai pelo número oficial e pausa a Vi por 24 horas nessa conversa, mas não aparece no Wati.</div>
+      <div class="aviso-teste">Fase de teste: o Wati continua ligado. Aqui você acompanha as conversas; para responder, use o Wati por enquanto.</div>
       <label class="busca"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg><input id="busca" type="search" placeholder="Pesquisar nome ou telefone" autocomplete="off"></label>
       <div class="filtros" id="filtros">
         <button class="filtro ativo" data-f="">Tudo</button>
@@ -139,7 +139,7 @@
 
 <script>
 const API = '/api/whatsapp';
-const est = { conversas: new Map(), desdeLista: null, aberta: null, msgs: new Map(), desdeConversa: null, enviando: false, filtro: '' };
+const est = { conversas: new Map(), desdeLista: null, aberta: null, msgs: new Map(), desdeConversa: null, enviando: false, filtro: '', envio: false, avisoEnvio: '' };
 const $ = id => document.getElementById(id);
 const TZ = 'America/Sao_Paulo';
 const AVATAR = '<svg viewBox="0 0 212 212"><path fill="currentColor" d="M106 45c-24 0-43 19-43 43s19 43 43 43 43-19 43-43-19-43-43-43zm0 98c-38 0-70 19-81 46 20 14 49 23 81 23s61-9 81-23c-11-27-43-46-81-46z"/></svg>';
@@ -204,6 +204,9 @@ async function carregarLista(completa) {
   if (incremental) p.desde = est.desdeLista;
   try {
     const d = await api(p);
+    // o servidor diz se o envio pelo painel está ligado (WA_ENVIO_PAINEL); desligado, a caixa vira só leitura
+    est.envio = !!d.envio;
+    est.avisoEnvio = d.aviso_envio || '';
     if (!incremental) est.conversas.clear();
     for (const c of d.conversas) est.conversas.set(c.chave, c);
     if (!buscaAtual && !est.filtro) {
@@ -297,9 +300,12 @@ function desenharTopo() {
   const vi = pausada(c) ? `Vi pausada até ${ate} às ${horaBR(c.pausada_ate)}` : 'Vi atendendo';
   $('c-status').textContent = (c.nome ? telBonito(c.telefone) + ' · ' : '') + vi;
   const aberta = janelaAberta();
-  $('c-janela').innerHTML = aberta ? '' : '<div class="fechada">A cliente não escreve há mais de 24 horas. Pela regra do WhatsApp, só dá para mandar um template aprovado (ainda não disponível nesta tela).</div>';
-  $('txt').disabled = !aberta || est.enviando;
-  $('btn').disabled = !aberta || est.enviando;
+  $('c-janela').innerHTML = !est.envio ? `<div class="fechada">${esc(est.avisoEnvio || 'Envio pelo painel desligado.')}</div>`
+    : aberta ? '' : '<div class="fechada">A cliente não escreve há mais de 24 horas. Pela regra do WhatsApp, só dá para mandar um template aprovado (ainda não disponível nesta tela).</div>';
+  const pode = est.envio && aberta && !est.enviando;
+  $('txt').disabled = !pode;
+  $('btn').disabled = !pode;
+  $('nota').hidden = !est.envio;
 }
 async function carregarConversa() {
   const c = est.aberta;
