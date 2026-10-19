@@ -181,7 +181,9 @@ const html = readFileSync(join(raiz, 'whatsapp.html'), 'utf8');
 ok('tela sem travessão', /—/.test(html.replace(/<!--[\s\S]*?-->/g, '')), false);
 const idx = readFileSync(join(raiz, 'index.html'), 'utf8');
 const mainJs = readFileSync(join(raiz, 'main.js'), 'utf8');
-ok('pílula WhatsApp no ATENDIMENTO', idx.includes("atdShowSub('whats')") && idx.includes('id="atd-sub-whats"'), true);
+ok('pílula Vi - atendimento no ATENDIMENTO', idx.includes("atdShowSub('whats')\"><i class=\"ti ti-brand-whatsapp\"></i> Vi - atendimento<") && idx.includes('id="atd-sub-whats"'), true);
+ok('pílula em primeiro (pedido da Bárbara)', idx.indexOf('id="atd-pill-whats"') < idx.indexOf('id="atd-pill-kanban"'), true);
+ok('lista pede os pendentes', readFileSync(join(raiz, 'functions', '_whatsapp.js'), 'utf8').includes('ultima_entrada_em,pendentes'), true);
 ok('atdShowSub conhece a pílula', mainJs.includes("'casos', 'whats']"), true);
 
 console.log(`\n${total - falhas}/${total} ok`);

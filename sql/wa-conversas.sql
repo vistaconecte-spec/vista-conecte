@@ -31,8 +31,15 @@ with msgs as (
          row_number() over (partition by chave order by em desc) as n,
          max(em) filter (where direcao = 'entrada') over (partition by chave) as ultima_entrada_em,
          first_value(telefone) over (partition by chave order by (direcao = 'entrada') desc, em desc) as tel_cliente,
-         first_value(nome) over (partition by chave order by (nome is not null) desc, em desc) as nome_perfil
+         first_value(nome) over (partition by chave order by (nome is not null) desc, em desc) as nome_perfil,
+         max(em) filter (where direcao = 'saida') over (partition by chave) as ultima_saida_em
     from msgs m
+), contado as (
+  -- quantas mensagens dela chegaram depois da última resposta da loja (a bolinha verde da lista)
+  select k.*,
+         count(*) filter (where direcao = 'entrada' and (ultima_saida_em is null or em > ultima_saida_em))
+           over (partition by chave) as pendentes
+    from marcado k
 ), sess as (
   select distinct on (public.wa_chave(wa_id)) public.wa_chave(wa_id) as chave, nome, pausada_ate
     from public.wati_ia_sessions order by public.wa_chave(wa_id), updated_at desc nulls last
@@ -45,8 +52,9 @@ select k.chave,
        k.tipo               as ultimo_tipo,
        coalesce(k.nome_perfil, s.nome) as nome,
        s.pausada_ate,
-       k.ultima_entrada_em
-  from marcado k
+       k.ultima_entrada_em,
+       k.pendentes
+  from contado k
   left join sess s on s.chave = k.chave
  where k.n = 1;
 

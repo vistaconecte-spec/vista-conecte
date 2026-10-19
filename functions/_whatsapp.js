@@ -214,9 +214,11 @@ async function sbGet(env, caminho) {
   return r.json();
 }
 
-export async function listarConversas(env, { desde, busca, limite = 60 } = {}) {
-  const p = new URLSearchParams({ select: 'chave,telefone,ultima_em,ultima_direcao,ultimo_texto,ultimo_tipo,nome,pausada_ate,ultima_entrada_em', order: 'ultima_em.desc', limit: String(Math.min(Number(limite) || 60, 200)) });
+export async function listarConversas(env, { desde, busca, filtro, limite = 60 } = {}) {
+  const p = new URLSearchParams({ select: 'chave,telefone,ultima_em,ultima_direcao,ultimo_texto,ultimo_tipo,nome,pausada_ate,ultima_entrada_em,pendentes', order: 'ultima_em.desc', limit: String(Math.min(Number(limite) || 60, 200)) });
   if (desde) p.set('ultima_em', 'gt.' + desde);
+  if (filtro === 'aguardando') p.set('ultima_direcao', 'eq.entrada');
+  else if (filtro === 'pausada') p.set('pausada_ate', 'gt.' + new Date().toISOString());
   const b = String(busca || '').trim();
   if (b) {
     const dig = b.replace(/\D/g, '');

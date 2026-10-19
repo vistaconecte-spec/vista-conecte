@@ -936,18 +936,18 @@
             <button class="btn-outline" style="margin-left:auto;font-size:11px;padding:5px 10px" onclick="atdLock()"><i class="ti ti-lock"></i> Sair</button>
           </div>
           <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">
+            <div id="atd-pill-whats" class="atd-pill" onclick="atdShowSub('whats')"><i class="ti ti-brand-whatsapp"></i> Vi - atendimento</div>
             <div id="atd-pill-kanban" class="atd-pill" onclick="atdShowSub('kanban')"><i class="ti ti-layout-kanban"></i> CRM</div>
             <div id="atd-pill-sac" class="atd-pill" onclick="atdShowSub('sac')"><i class="ti ti-headset"></i> SAC</div>
             <div id="atd-pill-estorno" class="atd-pill" onclick="atdShowSub('estorno')"><i class="ti ti-receipt-refund"></i> Devolução</div>
             <div id="atd-pill-vendas" class="atd-pill" onclick="atdShowSub('vendas')"><i class="ti ti-cash"></i> Vendas</div>
             <div id="atd-pill-casos" class="atd-pill" onclick="atdShowSub('casos')"><i class="ti ti-message-chatbot"></i> Assistente</div>
-            <div id="atd-pill-whats" class="atd-pill" onclick="atdShowSub('whats')"><i class="ti ti-brand-whatsapp"></i> WhatsApp</div>
           </div>
 
-          <!-- WHATSAPP — caixa de entrada do número oficial direto na Meta (/whatsapp.html, 19/10/2026).
+          <!-- VI - ATENDIMENTO — caixa de entrada do número oficial direto na Meta (/whatsapp.html, 19/10/2026).
                O iframe só carrega na primeira vez que a pílula é aberta (atdShowSub). -->
           <div id="atd-sub-whats" style="display:none">
-            <iframe id="whats-frame" title="WhatsApp" style="width:100%;height:calc(100vh - 210px);min-height:520px;border:0;display:block"></iframe>
+            <iframe id="whats-frame" title="Vi - atendimento" style="width:100%;height:calc(100vh - 210px);min-height:520px;border:0;display:block"></iframe>
           </div>
 
           <!-- CASOS — assistente da Marcelly (functions/_casos.js). Abre VAZIO: quem começa é ela. -->
