@@ -12,13 +12,15 @@
 //   - mensagem, anotação, urgente no SAC e fechar caso: a Marcelly faz sozinha.
 //   - estorno, frete por conta da loja, desconto, brinde, qualquer dinheiro: fila "Aguardando
 //     Bárbara", com aviso no WhatsApp dela (template alerta_interno_vi).
-//   - primeiro dia em SO_LEITURA: os botões só simulam (validam o texto, dizem se iria por
-//     sessão ou template) e nada é gravado nem enviado. Liberar = trocar para false e publicar.
+//   - SO_LEITURA: os botões só simulam (validam o texto, dizem se iria por sessão ou template)
+//     e nada é gravado nem enviado. Ficou ligado no teste de 19/10/2026 e a Bárbara liberou no
+//     mesmo dia. Trava de emergência sem mexer em código: variável CASOS_SO_LEITURA=1 no Cloudflare.
 //
 // Este arquivo tem só o que é puro (regras, prompt, ferramentas), para os testes alcançarem
 // sem rede. O que fala com Supabase/Shopify/Wati/Mercado Pago/Anthropic fica em api/casos.js.
 
-export const SO_LEITURA = true;
+export const SO_LEITURA = false;
+export const soLeitura = env => SO_LEITURA || /^(1|true|sim)$/i.test(String((env && env.CASOS_SO_LEITURA) || '').trim());
 
 export const MODELO = 'claude-haiku-5-5';
 export const DOC_LOG = 'casos-log';          // linha do vc_modelos com ações e aprovações

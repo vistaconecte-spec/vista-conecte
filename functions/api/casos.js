@@ -10,14 +10,14 @@
 //   GET  /api/casos?aprovacoes=1    → lista de aprovações (fila da Bárbara)
 //   POST { acao:'assistente', messages }        → resposta do modelo (content, stop_reason)
 //   POST { acao:'ferramenta', nome, input }     → resultado de uma ferramenta do servidor
-//   POST { acao:'executar', tipo, ... }         → botão confirmado (em SO_LEITURA só simula)
+//   POST { acao:'executar', tipo, ... }         → botão confirmado (em só leitura só simula)
 //   POST { acao:'decidir', id, decisao, nota }  → Bárbara aprova/recusa
 //   POST { acao:'feito', id, nota }             → aprovação cumprida (conta como ação do caso)
 //
-// Secrets: ANTHROPIC_API_KEY (novo), CASOS_AVISO_WA (número da Bárbara para o aviso, novo),
+// Secrets: ANTHROPIC_API_KEY, CASOS_AVISO_WA (número da Bárbara para o aviso), CASOS_SO_LEITURA (=1 trava os botões),
 // SUPABASE_SERVICE_ROLE_KEY, SHOPIFY_STORE_DOMAIN, SHOPIFY_ADMIN_TOKEN, MP_ACCESS_TOKEN, WATI_TOKEN.
 import {
-  SO_LEITURA, MODELO, DOC_LOG, TEMPLATE_CONTINUIDADE, TEMPLATE_ALERTA, CATEGORIAS_DINHEIRO,
+  soLeitura, MODELO, DOC_LOG, TEMPLATE_CONTINUIDADE, TEMPLATE_ALERTA, CATEGORIAS_DINHEIRO,
   SISTEMA, FERRAMENTAS, FERRAMENTAS_SERVIDOR, problemasDoTexto, prometeDinheiro, janelaAberta,
   semResposta, numerosDePedido, prazoDoPedido, logVazio, podeFechar, aprovacaoLiberada, novoId,
   primeiroNome, finalTel, resumoDoCaso, conversaParaAssistente, hojeTexto,
@@ -278,7 +278,7 @@ async function executar(env, b, agora = Date.now()) {
     const assunto = String(b.assunto || '').trim();
     if (!jan.aberta && !assunto) return { ok: false, erro: 'A janela de 24h fechou. Precisa de um assunto curto para o template de continuidade.' };
     simulacao = jan.aberta ? 'iria como mensagem normal (janela de 24h aberta)' : `iria pelo template de continuidade com o assunto "${assunto}" (janela fechada)`;
-    if (SO_LEITURA) return { ok: false, so_leitura: true, simulacao };
+    if (soLeitura(env)) return { ok: false, so_leitura: true, simulacao };
     let gravado = texto;
     if (jan.aberta) await watiSessao(env, wa, texto);
     else {
@@ -298,7 +298,7 @@ async function executar(env, b, agora = Date.now()) {
     if (!texto) return { ok: false, erro: 'nota vazia' };
     if (!casoId && !pedido) return { ok: false, erro: 'diga o caso ou o pedido' };
     simulacao = `iria no topo ${casoId ? 'do caso ' + casoId : ''}${casoId && pedido ? ' e ' : ''}${pedido ? 'da observação do pedido #' + pedido : ''}`;
-    if (SO_LEITURA) return { ok: false, so_leitura: true, simulacao };
+    if (soLeitura(env)) return { ok: false, so_leitura: true, simulacao };
     const dia = new Date(agora - 3 * 3600e3).toISOString().slice(8, 10) + '/' + new Date(agora - 3 * 3600e3).toISOString().slice(5, 7);
     // A nota vai no TOPO: quem abre lê primeiro a instrução nova, não a velha da Vi.
     // O resumo do caso é reescrito pela Vi a cada 6h; a nota fica guardada no casos-log também.
@@ -316,7 +316,7 @@ async function executar(env, b, agora = Date.now()) {
   if (tipo === 'urgente') {
     if (!pedido) return { ok: false, erro: 'precisa do número do pedido' };
     simulacao = `o pedido #${pedido} iria para a PRIORIDADE DE LIBERAÇÃO do SAC`;
-    if (SO_LEITURA) return { ok: false, so_leitura: true, simulacao };
+    if (soLeitura(env)) return { ok: false, so_leitura: true, simulacao };
     const agoraIso = new Date(agora).toISOString();
     await mudarDoc(env, 'sac', d => {
       d.tickets = d.tickets || [];
@@ -335,7 +335,7 @@ async function executar(env, b, agora = Date.now()) {
     const pode = podeFechar(casoId, log);
     if (!pode.ok) return { ok: false, erro: 'Ainda não dá para fechar: ' + pode.motivo };
     simulacao = 'o caso ' + casoId + ' seria fechado';
-    if (SO_LEITURA) return { ok: false, so_leitura: true, simulacao };
+    if (soLeitura(env)) return { ok: false, so_leitura: true, simulacao };
     await db.send('PATCH', `wati_sac_casos?id=eq.${casoId}`, { status: 'resolvido', atualizado_at: new Date(agora).toISOString() }, 'return=minimal');
     await registrar(env, { caso_id: casoId, tipo: 'fechar', texto, em: new Date(agora).toISOString() });
     return { ok: true, feito: 'caso fechado' };
@@ -348,7 +348,7 @@ async function executar(env, b, agora = Date.now()) {
     const cliente = primeiroNome(caso && caso.nome);
     const aviso = `Caso ${casoId || 'sem número'}, ${cliente}${pedido ? ', pedido #' + pedido : ''}. Pede ${cat}${valor !== null ? ' de R$ ' + valor.toFixed(2).replace('.', ',') : ''}. Motivo ${texto.slice(0, 400)}. Para decidir abra o painel em Atendimento, Casos.`;
     simulacao = 'iria para a fila Aguardando Bárbara, com aviso no WhatsApp dela';
-    if (SO_LEITURA) return { ok: false, so_leitura: true, simulacao, aviso };
+    if (soLeitura(env)) return { ok: false, so_leitura: true, simulacao, aviso };
     const id = novoId('apv_');
     await mudarDoc(env, DOC_LOG, d => {
       d.aprovacoes = d.aprovacoes || [];
@@ -381,7 +381,7 @@ async function abrirCasoNovo(db, wa, texto) {
 
 async function decidir(env, { id, decisao, nota }, agora = Date.now()) {
   if (!['aprovado', 'recusado'].includes(decisao)) return { ok: false, erro: 'decisão inválida' };
-  if (SO_LEITURA) return { ok: false, so_leitura: true, simulacao: 'a aprovação ficaria ' + decisao };
+  if (soLeitura(env)) return { ok: false, so_leitura: true, simulacao: 'a aprovação ficaria ' + decisao };
   let achou = false;
   await mudarDoc(env, DOC_LOG, d => {
     const a = (d.aprovacoes || []).find(x => x.id === id);
@@ -391,7 +391,7 @@ async function decidir(env, { id, decisao, nota }, agora = Date.now()) {
 }
 
 async function marcarFeito(env, { id, nota }, agora = Date.now()) {
-  if (SO_LEITURA) return { ok: false, so_leitura: true, simulacao: 'ficaria marcado como feito' };
+  if (soLeitura(env)) return { ok: false, so_leitura: true, simulacao: 'ficaria marcado como feito' };
   let a = null;
   await mudarDoc(env, DOC_LOG, d => {
     a = (d.aprovacoes || []).find(x => x.id === id && x.status === 'aprovado');
@@ -411,9 +411,9 @@ export async function onRequestGet({ request, env }) {
     const log = await lerLog(env);
     const abertas = log.aprovacoes.filter(a => a.status === 'pendente' || a.status === 'aprovado');
     if (u.searchParams.get('aprovacoes')) {
-      return J({ so_leitura: SO_LEITURA, aprovacoes: log.aprovacoes.slice(-60).reverse() });
+      return J({ so_leitura: soLeitura(env), aprovacoes: log.aprovacoes.slice(-60).reverse() });
     }
-    return J({ so_leitura: SO_LEITURA, tem_chave: !!env.ANTHROPIC_API_KEY,
+    return J({ so_leitura: soLeitura(env), tem_chave: !!env.ANTHROPIC_API_KEY,
       aprovacoes_pendentes: abertas.filter(a => a.status === 'pendente').length, aprovadas_a_fazer: abertas.filter(a => a.status === 'aprovado').length });
   } catch (e) { return J({ erro: e.message }, 500); }
 }

@@ -95,7 +95,8 @@ ok('modelo escolhido pela Bárbara', C.MODELO, 'claude-haiku-5-5');
 ok('prompt sem frase pronta para a cliente', /Oi,? [A-Z]|Olá,? [A-Z]/.test(C.SISTEMA), false);
 
 console.log('\n6) Modo só leitura não envia nem grava nada');
-ok('primeiro dia em só leitura', C.SO_LEITURA, true);
+ok('botões liberados pela Bárbara em 19/10/2026', C.SO_LEITURA, false);
+ok('trava de emergência pela variável CASOS_SO_LEITURA', [C.soLeitura({ CASOS_SO_LEITURA: '1' }), C.soLeitura({ CASOS_SO_LEITURA: 'sim' }), C.soLeitura({}), C.soLeitura(undefined)], [true, true, false, false]);
 const chamadas = [];
 globalThis.fetch = async (url, init = {}) => {
   const m = (init.method || 'GET').toUpperCase();
@@ -106,7 +107,7 @@ globalThis.fetch = async (url, init = {}) => {
   if (/vc_modelos/.test(url)) return j([{ dados: { acoes: [{ caso_id: 658, tipo: 'mensagem' }], aprovacoes: [] }, updated_at: '2026-10-19T10:00:00Z' }]);
   return j({});
 };
-const env = { SUPABASE_SERVICE_ROLE_KEY: 'x', WATI_TOKEN: 'x', SHOPIFY_STORE_DOMAIN: 'x', SHOPIFY_ADMIN_TOKEN: 'x', CASOS_AVISO_WA: '5548000000000' };
+const env = { SUPABASE_SERVICE_ROLE_KEY: 'x', WATI_TOKEN: 'x', SHOPIFY_STORE_DOMAIN: 'x', SHOPIFY_ADMIN_TOKEN: 'x', CASOS_AVISO_WA: '5548000000000', CASOS_SO_LEITURA: '1' };
 const r1 = await api._interno.executar(env, { tipo: 'mensagem', caso_id: 658, texto: 'Oi Priscilla, seu pedido já saiu e te mando o rastreio' });
 ok('mensagem só simula', [r1.ok, r1.so_leitura, /janela de 24h aberta/.test(r1.simulacao)], [false, true, true]);
 const r2 = await api._interno.executar(env, { tipo: 'mensagem', caso_id: 658, texto: 'Pedimos desculpas: vamos cancelar' });
@@ -121,6 +122,39 @@ ok('aviso à Bárbara sem dois-pontos', r5.aviso.includes(':'), false);
 await api._interno.executar(env, { tipo: 'urgente', caso_id: 658, pedido: '9142' });
 await api._interno.executar(env, { tipo: 'anotar', caso_id: 658, pedido: '9142', texto: 'NÃO ESTORNAR' });
 ok('nenhuma escrita saiu em só leitura', chamadas.filter(c => !c.startsWith('GET')), []);
+
+console.log('\n6b) Liberado: cada botão faz só o que diz');
+const vivas = [];
+let logAtual = { acoes: [], aprovacoes: [] };
+globalThis.fetch = async (url, init = {}) => {
+  const m = (init.method || 'GET').toUpperCase(), u = String(url);
+  vivas.push(m + ' ' + u.split('?')[0].replace(/^https:\/\/[^/]+/, '') + (/vc_modelos|wati_sac_casos/.test(u) && m !== 'GET' ? ' ' + String(init.body || '').slice(0, 60) : ''));
+  const j = o => new Response(JSON.stringify(o), { status: 200, headers: { 'Content-Type': 'application/json' } });
+  if (/sendSessionMessage|sendTemplateMessage/.test(u)) return j({ result: true });
+  if (/wati_sac_casos/.test(u) && m === 'GET') return j([{ id: 658, wa_id: '5511999990000', nome: 'Priscilla C', pedido: '9142', resumo: 'x', status: 'aberto' }]);
+  if (/wati_ia_mensagens/.test(u) && m === 'GET') return j([{ role: 'user', created_at: new Date(Date.now() - 3600e3).toISOString() }]);
+  if (/vc_modelos/.test(u) && m === 'GET') return j([{ dados: JSON.parse(JSON.stringify(logAtual)), updated_at: '2026-10-19T10:00:00Z' }]);
+  if (/vc_modelos/.test(u) && m === 'PATCH') { logAtual = JSON.parse(init.body).dados; return j([{ id: 'casos-log' }]); }
+  return new Response('', { status: 201 });
+};
+const envVivo = { ...env, CASOS_SO_LEITURA: '' };
+const f0 = await api._interno.executar(envVivo, { tipo: 'fechar', caso_id: 658 });
+ok('fechar sem ação continua barrado', [f0.ok, vivas.some(c => !c.startsWith('GET'))], [false, false]);
+vivas.length = 0;
+const v1 = await api._interno.executar(envVivo, { tipo: 'mensagem', caso_id: 658, texto: 'Oi Priscilla, seu pedido já saiu e te mando o rastreio' });
+ok('mensagem enviada na janela aberta', [v1.ok, v1.feito], [true, 'mensagem enviada']);
+ok('envio, histórico da Vi e registro, nessa ordem', vivas.filter(c => !c.startsWith('GET')).map(c => c.split(' ').slice(0, 2).join(' ')),
+  ['POST /1061955/api/v1/sendSessionMessage/5511999990000', 'POST /rest/v1/wati_ia_mensagens', 'PATCH /rest/v1/vc_modelos']);
+ok('registro guarda a mensagem do caso', logAtual.acoes.map(a => [a.caso_id, a.tipo, a.via]), [[658, 'mensagem', 'sessao']]);
+vivas.length = 0;
+const v2 = await api._interno.executar(envVivo, { tipo: 'fechar', caso_id: 658 });
+ok('com a mensagem registrada o caso fecha', v2.ok, true);
+ok('fechar grava status resolvido', vivas.some(c => c.startsWith('PATCH /rest/v1/wati_sac_casos {"status":"resolvido"')), true);
+vivas.length = 0;
+const v3 = await api._interno.executar(envVivo, { tipo: 'pedir_aprovacao', caso_id: 658, categoria: 'estorno', valor: 303.99, texto: 'cliente desistiu' });
+ok('pedido de dinheiro entra na fila', [v3.ok, logAtual.aprovacoes.length, logAtual.aprovacoes[0] && logAtual.aprovacoes[0].status], [true, 1, 'pendente']);
+ok('e avisa a Bárbara pelo template', vivas.some(c => c.startsWith('POST /1061955/api/v1/sendTemplateMessage')), true);
+ok('com dinheiro pendente o caso não fecha', (await api._interno.executar(envVivo, { tipo: 'fechar', caso_id: 658 })).ok, false);
 
 console.log('\n7) Tela abre vazia e a rota nasce protegida');
 ok('pílula Casos no Atendimento', html.includes(`atdShowSub('casos')`) && html.includes('id="atd-sub-casos"'), true);
