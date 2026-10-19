@@ -1833,6 +1833,30 @@ function csStatus(t) { const el = document.getElementById('cs-status'); if (el) 
 
 function csRolar() { const c = document.getElementById('cs-chat'); if (c) c.scrollTop = c.scrollHeight; }
 
+// O assistente escreve em tópicos com **negrito**; sem isto a Marcelly via os asteriscos
+// e um paredão de texto (print dela, 19/10/2026). Escapa ANTES de formatar: nada do que vem
+// da conversa da cliente vira HTML.
+function csMd(t) {
+  const inl = s => s.replace(/\*\*(.+?)\*\*/g, '<b>$1</b>');
+  const out = [];
+  let tipo = null, itens = [];
+  const fecha = () => {
+    if (itens.length) out.push(`<${tipo} style="margin:2px 0 8px;padding-left:20px">${itens.map(i => `<li style="margin:3px 0">${i}</li>`).join('')}</${tipo}>`);
+    itens = []; tipo = null;
+  };
+  for (const l of csEsc(t).split('\n')) {
+    let m;
+    if ((m = l.match(/^\s*[-•*]\s+(.*)$/))) { if (tipo !== 'ul') fecha(); tipo = 'ul'; itens.push(inl(m[1])); continue; }
+    if ((m = l.match(/^\s*\d+[.)]\s+(.*)$/))) { if (tipo !== 'ol') fecha(); tipo = 'ol'; itens.push(inl(m[1])); continue; }
+    fecha();
+    if ((m = l.match(/^#{1,4}\s+(.*)$/))) { out.push(`<div style="font-weight:700;margin:10px 0 4px">${inl(m[1])}</div>`); continue; }
+    if (!l.trim()) { out.push('<div style="height:6px"></div>'); continue; }
+    out.push(`<div>${inl(l)}</div>`);
+  }
+  fecha();
+  return out.join('');
+}
+
 function csBolha(quem, texto, acoes) {
   const chat = document.getElementById('cs-chat');
   const v = document.getElementById('cs-vazio'); if (v) v.remove();
@@ -1843,7 +1867,8 @@ function csBolha(quem, texto, acoes) {
     erro: 'align-self:flex-start;background:rgba(220,38,38,.08);color:#b91c1c;border:1px solid rgba(220,38,38,.25)',
   }[quem];
   div.style.cssText = `max-width:88%;padding:10px 13px;border-radius:14px;font-size:13.5px;line-height:1.5;white-space:pre-wrap;word-break:break-word;${estilo}`;
-  div.innerHTML = csEsc(texto);
+  if (quem === 'assistente') { div.style.whiteSpace = 'normal'; div.innerHTML = csMd(texto); }
+  else div.innerHTML = csEsc(texto);
   (acoes || []).forEach(a => div.appendChild(csCartaoAcao(a)));
   chat.appendChild(div);
   csRolar();

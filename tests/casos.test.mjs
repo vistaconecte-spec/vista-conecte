@@ -162,6 +162,14 @@ const abrir = main.slice(main.indexOf('async function csAbrir'), main.indexOf('f
 ok('abrir a aba não chama a IA', /assistente|ferramenta/.test(abrir.replace(/\/\/.*$/gm, '')), false);
 ok('abrir a aba só pede o estado', abrir.includes("/api/casos?estado=1"), true);
 ok('blocos da IA voltam sem edição', main.includes("csMsgs.push({ role: 'assistant', content: d.content })"), true);
+const csEsc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const csMd = new Function('csEsc', main.slice(main.indexOf('function csMd'), main.indexOf('function csBolha')) + '; return csMd;')(csEsc);
+ok('negrito e tópicos viram formatação', csMd('**Fazer agora**\n- **Karina**, #8893 parado\n- outra'),
+  '<div><b>Fazer agora</b></div><ul style="margin:2px 0 8px;padding-left:20px"><li style="margin:3px 0"><b>Karina</b>, #8893 parado</li><li style="margin:3px 0">outra</li></ul>');
+ok('passos numerados viram lista', /<ol[^>]*><li[^>]*>abrir<\/li><li[^>]*>mandar<\/li><\/ol>/.test(csMd('1. abrir\n2. mandar')), true);
+ok('texto da cliente não vira HTML', csMd('- <img src=x onerror=alert(1)> **oi**').includes('<img'), false);
+ok('bolha do assistente usa a formatação', main.includes("div.innerHTML = csMd(texto)"), true);
+ok('instrução pede tópicos e próximo passo', /sempre em tópicos/.test(C.SISTEMA) && /próximo passo concreto/.test(C.SISTEMA), true);
 ok('rota fora do PUBLICO (exige sessão)', /PUBLICO = new Set\([^)]*casos/.test(mid), false);
 
 console.log(`\n${total - falhas}/${total} passaram`);

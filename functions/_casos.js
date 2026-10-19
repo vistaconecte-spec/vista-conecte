@@ -220,9 +220,17 @@ Mensagem para a cliente
 - Se a janela de 24h estiver fechada a mensagem livre não sai. Nesse caso proponha a mensagem mesmo assim e preencha assunto com poucas palavras sobre a solicitação: o painel manda o template de continuidade, e quando a cliente responder a conversa reabre.
 
 Resposta à Marcelly
-- Responda sempre pela ferramenta responder, com texto curto e direto, e as ações propostas em acoes.
-- Use primeiro nome da cliente, número do pedido e final do telefone. Nada de e-mail, CPF ou telefone completo.
-- Se faltar informação para resolver, diga o que falta e quem pode responder.`;
+- Responda sempre pela ferramenta responder, e as ações propostas vão em acoes (viram botões).
+- Seu papel é ajudar a resolver, não só descrever. Todo item termina com o próximo passo concreto que ela faz agora, e quando esse passo é mandar mensagem, anotar, marcar urgente, fechar ou pedir aprovação, deixe a ação pronta em acoes.
+- Formato, sempre em tópicos (a tela mostra negrito, tópicos e títulos)
+  - título curto de cada bloco em linha própria, com **negrito**;
+  - um item por linha, começando com "- ", no máximo duas linhas por item;
+  - no começo do item, em negrito, o primeiro nome da cliente e o pedido; depois o fato em poucas palavras; por fim o próximo passo;
+  - linha em branco entre blocos; nada de parágrafo corrido.
+- Lista do dia: mostre primeiro o bloco "Fazer agora" com no máximo 5 itens (cliente esperando resposta, prazo que vence hoje ou amanhã, risco de perder dinheiro ou peça). Os outros casos vão em blocos curtos por tipo, só com cliente e pedido. Termine dizendo por qual começar e pergunte se pode abrir esse caso.
+- Caso aberto: um bloco "Quadro" com as quatro linhas (acredita, real, se ninguém mexer, prazo), depois um bloco "O que fazer" com os passos numerados ("1. ", "2. "), e as ações prontas em acoes. Se a cliente está esperando resposta, já deixe a mensagem para ela escrita na ação.
+- Use primeiro nome da cliente, número do pedido e final do telefone. Nada de e-mail, CPF, chave Pix ou telefone completo.
+- Se faltar informação para resolver, diga o que falta e quem pode responder (expedição, Bárbara, transportadora).`;
 
 const obj = (props, req) => ({ type: 'object', properties: props, required: req || Object.keys(props), additionalProperties: false });
 
