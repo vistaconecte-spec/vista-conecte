@@ -1720,7 +1720,7 @@ function trcCartaoHtml(t, etapa) {
   } else if (etapa === 'chegou') {
     const quando = t.data_chegada_reversa ? t.data_chegada_reversa.split('-').reverse().join('/') : '';
     acao = `<div class="trc-cod">chegou ${esc(quando)}</div>`;
-    if (t.pedido_troca_id && !t.conferido_em && !t.recusada_em) {
+    if (t.pedido_troca_id && !t.pedido_troca_manual && !t.conferido_em && !t.recusada_em) {
       acao += `<div class="trc-dica">abra o pacote: sem uso e com etiqueta?</div>`
         + btn(`trcConferido('${t.id}', this)`, 'ti-circle-check', 'conferido')
         + `<button class="trc-btn trc-btn-sec" onclick="trcRecusar('${t.id}')"><i class="ti ti-circle-x"></i> recusar</button>`;
@@ -1736,10 +1736,12 @@ function trcCartaoHtml(t, etapa) {
       + (fechada ? `<div class="trc-dica">concluída ${t.resolvido_em ? new Date(t.resolvido_em).toLocaleDateString('pt-BR') : ''}</div>` : btn(`retToggle('${t.id}')`, 'ti-check', 'concluir'));
   }
   return `<div class="trc-card${fechada ? ' trc-fechada' : ''}" style="border-left-color:${bucket.bar}">
-    <div class="trc-topo"><b title="${esc(t.cliente)}">${esc(t.cliente) || '(sem nome)'}</b>${selo}</div>
+    <div class="trc-topo"><b title="${esc(t.cliente)}">${esc(t.cliente) || '(sem nome)'}</b>${selo}<button class="trc-x" title="excluir esta troca" onclick="retDel('${t.id}')">×</button></div>
     <div class="trc-ped">${esc(t.pedido || '')}${t.obs ? ` · troca por <b>${esc(t.obs)}</b>` : ''}${t.portal_id ? ' · <span class="trc-tag">portal</span>' : ''}</div>
     <div class="trc-prod" title="${esc(t.produtos)}">${esc(t.produtos)}</div>
-    ${t.pedido_troca ? `<div class="trc-pt"><i class="ti ${t.conferido_em ? 'ti-lock-open' : 'ti-lock'}"></i> peça nova no pedido <b>${esc(t.pedido_troca)}</b>${t.conferido_em ? ' (liberado)' : ' (travado)'}</div>` : ''}
+    ${t.pedido_troca && !t.pedido_troca_manual ? `<div class="trc-pt"><i class="ti ${t.conferido_em ? 'ti-lock-open' : 'ti-lock'}"></i> peça nova no pedido <b>${esc(t.pedido_troca)}</b>${t.conferido_em ? ' (liberado)' : ' (travado)'}</div>` : ''}
+    ${t.pedido_troca_manual ? `<div class="trc-pt" style="color:${t.pedido_troca_enviado ? '#3aa76d' : '#5a3e9e'}"><i class="ti ti-file-check"></i> pedido de troca <b>${esc(t.pedido_troca)}</b> ${t.pedido_troca_enviado ? 'enviado' : 'criado, ainda não enviado'}</div>` : ''}
+    ${!t.portal_id && t.pedido_troca_ausente && !t.pedido_troca ? `<div class="trc-pt" style="color:#dc2626"><i class="ti ti-alert-triangle"></i> sem pedido de troca na Shopify: a Marcelly precisa criar</div>` : ''}
     ${!t.pedido_troca && t.erro_pedido_troca ? `<div class="trc-pt" style="color:#dc2626" title="${esc(t.erro_pedido_troca)}"><i class="ti ti-alert-triangle"></i> pedido de troca não foi criado ${btn(`trcCriarPedido('${t.id}', this)`, 'ti-plus', 'criar agora')}</div>` : ''}
     <div class="trc-acao">${acao}</div>
   </div>`;
@@ -1805,11 +1807,49 @@ function trcChegou(id) {
   const iso = `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, '0')}-${String(hoje.getDate()).padStart(2, '0')}`;
   retDataReversa(id, iso);
 }
+// Troca lançada à mão: confere na Shopify se a Marcelly já criou o pedido de troca (rascunho de
+// R$ 0 ou com "troca" na nota, da mesma cliente, depois do pedido original). Pedido de troca já
+// enviado põe o rastreio no reenvio e FECHA a troca (regra dela: fecha quando a peça nova é
+// despachada). Sem pedido, o cartão avisa em vermelho.
+async function trcConferirShopify() {
+  const cfg = retGetConfig();
+  const alvo = cfg.itens.filter(t => t.status !== 'resolvido' && !t.portal_id && String(t.pedido || '').replace(/\D/g, '') && !(t.pedido_troca_manual && t.pedido_troca_enviado));
+  if (!alvo.length) return 0;
+  const achados = {};
+  for (let i = 0; i < alvo.length; i += 50) {
+    const r = await fetch('/api/troca-busca', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pedidos: alvo.slice(i, i + 50).map(t => t.pedido) }) });
+    const j = await r.json();
+    if (!r.ok || j.erro) throw new Error(j.erro || 'HTTP ' + r.status);
+    Object.assign(achados, j.pedidos || {});
+  }
+  const agora = new Date().toISOString();
+  let n = 0;
+  for (const t of alvo) {
+    const num = '#' + String(t.pedido).replace(/\D/g, '');
+    if (!(num in achados)) continue;
+    const pt = achados[num];
+    const antes = JSON.stringify([t.pedido_troca, t.pedido_troca_enviado, t.pedido_troca_ausente, t.codigo_reenvio, t.status]);
+    if (pt) {
+      Object.assign(t, { pedido_troca: pt.name, pedido_troca_id: pt.id, pedido_troca_manual: true, pedido_troca_enviado: !!pt.enviado, pedido_troca_ausente: false });
+      if (pt.enviado) {
+        if (!String(t.codigo_reenvio || '').trim() && pt.rastreio) t.codigo_reenvio = pt.rastreio;
+        t.status = 'resolvido'; t.resolvido_em = agora; t.etapa = 'concluido';
+      }
+    } else {
+      t.pedido_troca_ausente = true;
+    }
+    if (JSON.stringify([t.pedido_troca, t.pedido_troca_enviado, t.pedido_troca_ausente, t.codigo_reenvio, t.status]) !== antes) { carimbarItem(t); n++; }
+  }
+  if (n) { retSalvar(cfg); atdSyncViews(); }
+  return n;
+}
 async function trcAtualizar() {
   trcRender(); retRender();
   const st = document.getElementById('trc-sync');
   if (st) st.textContent = 'buscando pedidos novos...';
   try { await retSincronizarShopify(); } catch (e) {}
+  if (st) st.textContent = 'conferindo os pedidos de troca na Shopify...';
+  try { await trcConferirShopify(); } catch (e) { console.warn('[trocas] conferência na Shopify falhou', e); }
   trcRender();
   if (st) st.textContent = 'atualizado ' + new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 }
@@ -3071,6 +3111,7 @@ function retRowHtml(t, esc, bg, bold, dias) {
     </tr>`;
 }
 function retRender() {
+  if (!document.getElementById('ret-tbody')) return; // a lista saiu da aba TROCAS em 19/10/2026 (o quadro mostra tudo)
   const cfg = retGetConfig();
   const mostrarResolvidos = document.getElementById('ret-mostrar-resolvidos')?.checked;
   const esc = v => (v || '').replace(/"/g, '&quot;');

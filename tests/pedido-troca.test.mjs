@@ -17,6 +17,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { montarRascunho, criarPedidoTroca, liberarPedidoTroca, TAG_AGUARDANDO } from '../functions/_pedido-troca.js';
+import { casarPedidosDeTroca } from '../functions/api/troca-busca.js';
 
 const raiz = join(dirname(fileURLToPath(import.meta.url)), '..');
 let falhas = 0, total = 0;
@@ -109,6 +110,27 @@ console.log('\n4) Trava vista pelo painel e pelas etiquetas');
   ok('ou o erro, se a Shopify falhou', portalPedidoTroca({ erro_pedido_troca: 'falhou' }).erro_pedido_troca, 'falhou');
   const cfg = { itens: [{ id: 'x', pedido_troca_id: '' }] };
   ok('linha já importada recebe o pedido criado depois', [portalAtualizarPedidoTroca(cfg, [{ id: 'x', pedido_troca: '#9401', pedido_troca_id: 'g1' }]), cfg.itens[0].pedido_troca], [1, '#9401']);
+}
+
+console.log('\n5) Pedido de troca feito à mão (casos reais de 19/10/2026)');
+{
+  const cli = id => ({ id: 'gid://shopify/Customer/' + id });
+  const originais = [
+    { name: '#8672', createdAt: '2026-07-29T14:46:27Z', email: 'aline@x.com', customer: cli(1) },
+    { name: '#8560', createdAt: '2026-07-17T14:16:13Z', email: 'lis@x.com', customer: cli(2) },
+    { name: '#8705', createdAt: '2026-08-03T00:40:48Z', email: 'ludi@x.com', customer: cli(3) },
+  ];
+  const r = (o) => ({ cancelledAt: null, tags: [], fulfillments: [], displayFulfillmentStatus: 'UNFULFILLED', ...o });
+  const rascunhos = [
+    r({ name: '#9196', id: 'g9196', createdAt: '2026-09-30T16:41:38Z', customer: cli(1), note: 'Troca', currentTotalPriceSet: { shopMoney: { amount: '0.0' } }, displayFulfillmentStatus: 'FULFILLED', fulfillments: [{ createdAt: '2026-10-16T18:30:29Z', trackingInfo: [{ number: 'DZ6GH63P' }] }] }),
+    r({ name: '#9175', id: 'g9175', createdAt: '2026-09-28T12:09:17Z', customer: cli(2), note: 'TROCA', currentTotalPriceSet: { shopMoney: { amount: '150.0' } } }),
+    r({ name: '#9300', id: 'g9300', createdAt: '2026-10-10T00:00:00Z', customer: cli(3), note: 'PAGO PELO PIX', currentTotalPriceSet: { shopMoney: { amount: '201.33' } } }),
+    r({ name: '#8000', id: 'g8000', createdAt: '2026-07-01T00:00:00Z', customer: cli(1), note: 'Troca', currentTotalPriceSet: { shopMoney: { amount: '0.0' } } }),
+  ];
+  const m = casarPedidosDeTroca(originais, rascunhos);
+  ok('R$ 0 da mesma cliente depois do original, enviado com rastreio', [m['#8672'].name, m['#8672'].enviado, m['#8672'].rastreio], ['#9196', true, 'DZ6GH63P']);
+  ok('TROCA com diferença paga (R$ 150) também conta', m['#8560'].name, '#9175');
+  ok('venda comum por rascunho (Pix) não é pedido de troca', m['#8705'], null);
 }
 
 console.log(falhas ? `\n✗ ${falhas} de ${total} falharam` : `\n✓ TODOS OS TESTES PASSARAM — ${total}/${total}`);

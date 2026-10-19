@@ -1479,3 +1479,5 @@ table.est-tab td > div > input { min-width: 0; flex: 1 1 auto; }
 .trc-vazio { font-size: 11px; color: var(--text-ter); text-align: center; padding: 14px 0; }
 .trc-pt { font-size: 11px; color: #5a3e9e; margin: -2px 0 6px; }
 .trc-btn-sec { background: #fff; color: var(--text); border: 1px solid var(--border); }
+.trc-x { margin-left: auto; flex: 0 0 auto; background: none; border: 0; color: var(--text-ter); font-size: 15px; line-height: 1; cursor: pointer; padding: 0 2px; }
+.trc-x:hover { color: #dc2626; }
