@@ -620,7 +620,12 @@ async function sincronizarNuvem() {
       if (row.updated_at && (!maisNova || row.updated_at > maisNova)) maisNova = row.updated_at;
       const atual = JSON.stringify(loadLocal('vc:' + row.id));
       const novo  = JSON.stringify(row.dados);
-      if (atual !== novo) { saveLocal('vc:' + row.id, row.dados); mudou = true; }
+      if (atual !== novo) {
+        saveLocal('vc:' + row.id, row.dados); mudou = true;
+        if (row.id === 'reversas-resultado' || row.id === 'reversas-pedido') {
+          try { revAplicarCodigos(); if (document.getElementById('atd-est-tbody')) { retRender(); estRender(); } } catch (e) {}
+        }
+      }
     });
     // Se alguma linha ficou de fora por proteção, a marca d'água não avança: ela volta no
     // próximo ciclo (payload pequeno) e é aplicada quando a proteção acabar.
@@ -2861,7 +2866,7 @@ function retRowHtml(t, esc, bg, bold, dias) {
         ${obsCustom}
         ${obsOptions}
       </select></td>
-      <td style="padding:4px;vertical-align:middle"><input value="${esc(t.codigo_logistica_reversa)}" oninput="retEdit('${t.id}','codigo_logistica_reversa',this.value)" style="width:100%;font-size:12px;padding:4px 6px;border:1px solid var(--border);border-radius:5px"></td>
+      <td style="padding:4px;vertical-align:middle">${revCampoHtml('retorno', t, `<input value="${esc(t.codigo_logistica_reversa)}" oninput="retEdit('${t.id}','codigo_logistica_reversa',this.value)" placeholder="${esc(revStatus('retorno', t).txt)}" title="${esc(revStatus('retorno', t).txt)}" style="width:100%;min-width:0;font-size:12px;padding:4px 6px;border:1px solid var(--border);border-radius:5px">`)}</td>
       <td style="padding:4px;text-align:center;vertical-align:middle"><input type="date" value="${t.data_chegada_reversa || ''}" onchange="retDataReversa('${t.id}',this.value)" onclick="try{this.showPicker()}catch(e){}" title="clique para abrir o calendário — data em que a peça chegou dos Correios (logística reversa)" style="cursor:pointer;font-size:12px;padding:4px 6px;border:1px solid var(--border);border-radius:5px;${t.chegou_reversa ? 'background:rgba(52,199,89,.12)' : ''}"></td>
       <td style="padding:4px;vertical-align:middle"><input value="${esc(t.codigo_reenvio)}" oninput="retEdit('${t.id}','codigo_reenvio',this.value)" style="width:100%;font-size:12px;padding:4px 6px;border:1px solid var(--border);border-radius:5px"></td>
       <td style="padding:4px;text-align:center;vertical-align:middle"><button onclick="retDel('${t.id}')" title="excluir" style="background:none;border:none;cursor:pointer;color:var(--text-ter);font-size:15px">×</button></td>
@@ -2990,6 +2995,84 @@ async function estSincronizarShopify() {
     if (statusEl) statusEl.textContent = 'erro ao buscar devoluções da Shopify';
   }
 }
+// ── Reversa pela Frenet (robô do notebook, 19/10/2026) ────────────────────────
+// "pedir reversa" grava o item em `reversas-pedido`; o robô (frete-frenet/robo-etiquetas.mjs) monta
+// a reversa a partir da etiqueta de ida e deixa no carrinho da Frenet (NÃO paga). Depois que a
+// equipe paga, o robô gera o código (os Correios mandam o e-mail à cliente) e grava em
+// `reversas-resultado`; aqui o código entra sozinho no campo da linha.
+// Código que começa com # é o nome da devolução na Shopify (#9250-R1), não código dos Correios.
+const REV_SERVICO_PADRAO = '03301'; // PAC Reverso
+function revNumeroPedido(lista, t) {
+  if (lista === 'retorno') return String(t.pedido || '').trim();
+  const m = /pedido\s+(#?\d+)/i.exec(t.pecas || '');
+  return m ? m[1] : '';
+}
+function revCodigoAtual(lista, t) {
+  const c = String((lista === 'retorno' ? t.codigo_logistica_reversa : t.codigo_devolucao) || '').trim();
+  return c && !c.startsWith('#') ? c : '';
+}
+function revPecas(lista, t) {
+  const txt = String((lista === 'retorno' ? t.produtos : t.pecas) || '').split(/ → | — /)[0];
+  return txt.split(/,\s*(?=\d+×)/).map(x => {
+    const m = /^(\d+)×\s*(.+)$/.exec(x.trim());
+    const qtd = m ? +m[1] : 1;
+    return { nome: (m ? m[2] : x).trim().slice(0, 60), qtd, preco: lista === 'estorno' && t.valor ? Math.round(t.valor / qtd * 100) / 100 : null };
+  }).filter(x => x.nome);
+}
+function revStatus(lista, t) {
+  if (!revNumeroPedido(lista, t) || revCodigoAtual(lista, t)) return { txt: '', pode: false };
+  const id = lista + ':' + t.id;
+  const res = loadLocal('vc:reversas-resultado') || {};
+  const r = (res.itens || {})[id];
+  const ped = ((loadLocal('vc:reversas-pedido') || {}).itens || []).find(x => x.id === id);
+  const reais = v => 'R$ ' + (Number(v) || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 });
+  if (r && r.status === 'carrinho') return { txt: `${r.servico || 'reversa'} ${reais(r.preco)} no carrinho da Frenet: falta pagar`, pode: false, cor: '#b45309' };
+  if (r && r.status === 'erro' && !(ped && String(ped.pedido_em) > String(r.em))) return { txt: 'robô: ' + r.erro, pode: true, cor: '#dc2626' };
+  if (ped && Date.now() - new Date(ped.pedido_em).getTime() < 72 * 3600000) return { txt: res.aviso ? 'robô: ' + res.aviso : 'reversa na fila do robô', pode: false, cor: 'var(--text-ter)' };
+  return { txt: '', pode: true };
+}
+function revCampoHtml(lista, t, inputHtml) {
+  const st = revStatus(lista, t);
+  const botao = st.pode
+    ? `<button onclick="revPedir('${lista}','${t.id}')" title="Pedir reversa na Frenet: o robô monta a reversa a partir da etiqueta de envio e deixa no carrinho para pagar" style="flex:0 0 auto;background:none;border:1px solid var(--border);border-radius:5px;cursor:pointer;color:var(--gold-dark);padding:0 6px;height:28px"><i class="ti ti-truck-return"></i></button>`
+    : '';
+  const marca = st.cor ? `<i class="ti ti-point-filled" title="${(st.txt || '').replace(/"/g, '&quot;')}" style="color:${st.cor};flex:0 0 auto"></i>` : '';
+  return `<div style="display:flex;align-items:center;gap:4px">${inputHtml}${marca}${botao}</div>`;
+}
+async function revPedir(lista, itemId) {
+  const t = (lista === 'retorno' ? retGetConfig() : estGetConfig()).itens.find(x => x.id === itemId);
+  if (!t) return;
+  const numero = revNumeroPedido(lista, t);
+  if (!numero) { alert('Esta linha não tem número de pedido.'); return; }
+  const agora = new Date().toISOString();
+  const cfg = loadLocal('vc:reversas-pedido') || { itens: [], removidos: [] };
+  const id = lista + ':' + itemId;
+  cfg.itens = (cfg.itens || []).filter(x => x.id !== id);
+  cfg.itens.push({ id, lista, item_id: itemId, numero, pecas: revPecas(lista, t), servico: REV_SERVICO_PADRAO, pedido_em: agora, atualizado_em: agora });
+  saveLocal('vc:reversas-pedido', cfg);
+  if (lista === 'retorno') retRender(); else estRender();
+  try { await salvarListaCompartilhada('reversas-pedido', 'itens', cfg); } catch (e) {}
+}
+// Código que o robô trouxe entra no campo da linha (só se o campo ainda não tiver código dos Correios)
+function revAplicarCodigos() {
+  const itens = (loadLocal('vc:reversas-resultado') || {}).itens || {};
+  const prontos = Object.entries(itens).filter(([, r]) => r && r.status === 'codigo' && r.codigo);
+  if (!prontos.length) return 0;
+  const cfgRet = retGetConfig(), cfgEst = estGetConfig();
+  let nRet = 0, nEst = 0;
+  prontos.forEach(([id, r]) => {
+    const lista = id.slice(0, id.indexOf(':')), itemId = id.slice(id.indexOf(':') + 1);
+    const cfg = lista === 'retorno' ? cfgRet : lista === 'estorno' ? cfgEst : null;
+    const t = cfg && cfg.itens.find(x => x.id === itemId);
+    if (!t || revCodigoAtual(lista, t)) return;
+    carimbarItem(t);
+    if (lista === 'retorno') { t.codigo_logistica_reversa = r.codigo; nRet++; } else { t.codigo_devolucao = r.codigo; nEst++; }
+  });
+  if (nRet) { retSalvar(cfgRet); retRender(); }
+  if (nEst) { estSalvar(cfgEst); estRender(); }
+  return nRet + nEst;
+}
+
 // ── Portal de trocas da cliente (/trocas, 19/10/2026) ─────────────────────────
 // A cliente pede sozinha, sem login, e cada pedido vira uma linha `troca-portal:<pedido>-<ts>`
 // no vc_modelos (quem grava é /api/trocas-portal). Aqui essas linhas viram itens das listas:
@@ -3051,6 +3134,7 @@ function atdImportarPortal() {
     const nRet = portalAcrescentar(cfgRet, ret), nEst = portalAcrescentar(cfgEst, est);
     if (nRet) { retSalvar(cfgRet); retRender(); }
     if (nEst) { estSalvar(cfgEst); estRender(); }
+    try { const d = await carregarNuvem('reversas-resultado'); if (d) saveLocal('vc:reversas-resultado', d); revAplicarCodigos(); } catch (e) {}
     return nRet + nEst;
   })().catch(() => 0).finally(() => { _portalImportando = null; });
   return _portalImportando;
@@ -3094,7 +3178,7 @@ function estRowHtml(t, bg, bold, dias) {
       <td><input value="${esc(t.cliente)}" oninput="estEdit('${t.id}','cliente',this.value)"></td>
       <td><input value="${esc(t.pecas)}" title="${esc(t.pecas)}" oninput="estEdit('${t.id}','pecas',this.value)"></td>
       <td><input class="est-valor" type="number" step="0.01" value="${t.valor}" oninput="estEdit('${t.id}','valor',this.value)"></td>
-      <td><input value="${esc(t.codigo_devolucao)}" oninput="estEdit('${t.id}','codigo_devolucao',this.value)"></td>
+      <td>${revCampoHtml('estorno', t, `<input value="${esc(t.codigo_devolucao)}" oninput="estEdit('${t.id}','codigo_devolucao',this.value)" placeholder="${esc(revStatus('estorno', t).txt)}" title="${esc(revStatus('estorno', t).txt)}">`)}</td>
       <td><div class="est-data"><span>${esc(dataTxt)}</span>${badge}</div></td>
       <td><input value="${esc(t.motivo)}" title="${esc(t.motivo)}" oninput="estEdit('${t.id}','motivo',this.value)"></td>
       <td class="est-acao"><button onclick="estDel('${t.id}')" title="excluir">×</button></td>
