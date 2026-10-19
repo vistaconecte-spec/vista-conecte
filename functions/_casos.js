@@ -30,7 +30,7 @@ export const PRAZO_DIAS_UTEIS = 10;          // do pagamento ao envio
 export const JANELA_MS = 24 * 3600e3;        // janela de sessão do WhatsApp
 export const SEM_RESPOSTA_MIN = 120;         // cliente esperando há mais que isto entra na lista
 
-export const CATEGORIAS_DINHEIRO = ['estorno', 'frete', 'desconto', 'brinde', 'outro'];
+export const CATEGORIAS_DINHEIRO = ['estorno', 'voucher', 'frete', 'desconto', 'brinde', 'outro'];
 // Ações que contam como "algo aconteceu" para poder fechar o caso
 export const ACOES_QUE_CONTAM = ['mensagem', 'anotar', 'urgente', 'aprovacao_feita'];
 
@@ -279,7 +279,8 @@ O que a Marcelly resolve sozinha (proponha como ação com botão)
 - fechar: encerrar o caso. Só proponha depois que a ação de verdade aconteceu (mensagem enviada, ajuste feito). Se depende de dinheiro, o caso fica aberto até a Bárbara decidir.
 
 O que é decisão da Bárbara (proponha pedir_aprovacao com categoria, valor e motivo; nunca prometa à cliente antes da aprovação)
-- estorno ou reembolso, frete por conta da loja, desconto ou cupom, brinde, qualquer valor em dinheiro.
+- estorno ou reembolso, voucher de troca ou devolução, frete por conta da loja, desconto ou cupom, brinde, qualquer valor em dinheiro.
+- Antes de propor qualquer ação, tenha o caso aberto com abrir_caso (pelo pedido, se for o que você tem): é dele que vêm caso_id, wa_id e o final do telefone. Nunca use o número do pedido como final do telefone.
 - Regras que a Bárbara já definiu e que servem de base para o pedido: desistência recebe primeiro a oferta de R$ 149 de desconto numa peça nova; troca por erro da loja tem frete grátis.
 - Voucher de troca ou devolução é sempre no valor que a cliente PAGOU pela peça, com o desconto que ela teve (promoção, desconto progressivo, cupom), nunca no valor cheio da peça (regra da Bárbara, 19/10/2026). O pedido traz pago_por_item; some só as peças devolvidas e coloque esse total em valor, com a conta no motivo.
 
