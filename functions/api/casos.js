@@ -346,7 +346,7 @@ async function executar(env, b, agora = Date.now()) {
     if (!texto) return { ok: false, erro: 'escreva o motivo' };
     const valor = ehNum(b.valor) ? Number(b.valor) : null;
     const cliente = primeiroNome(caso && caso.nome);
-    const aviso = `Caso ${casoId || 'sem número'}, ${cliente}${pedido ? ', pedido #' + pedido : ''}. Pede ${cat}${valor !== null ? ' de R$ ' + valor.toFixed(2).replace('.', ',') : ''}. Motivo ${texto.slice(0, 400)}. Para decidir abra o painel em Atendimento, Casos.`;
+    const aviso = `Caso ${casoId || 'sem número'}, ${cliente}${pedido ? ', pedido #' + pedido : ''}. Pede ${cat}${valor !== null ? ' de R$ ' + valor.toFixed(2).replace('.', ',') : ''}. Motivo ${texto.slice(0, 400)}. Para decidir abra o painel em Atendimento, Assistente.`;
     simulacao = 'iria para a fila Aguardando Bárbara, com aviso no WhatsApp dela';
     if (soLeitura(env)) return { ok: false, so_leitura: true, simulacao, aviso };
     const id = novoId('apv_');
