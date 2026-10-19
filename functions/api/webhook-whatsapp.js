@@ -12,6 +12,19 @@
  */
 import { igual, json, extrair, assinaturaValida, gravarEvento, gravarMensagens, gravarStatus } from '../_whatsapp.js';
 
+export async function repassarParaVi(env, mensagens) {
+  try {
+    const r = await fetch(env.VI_META_URL, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mensagens: mensagens.map(m => ({ wamid: m.wamid, telefone: m.telefone, nome_contato: m.nome_contato, bruto: m.bruto })) }),
+    });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+  } catch (e) {
+    // fica no wa_eventos para dar para achar e reprocessar
+    try { await gravarEvento(env, { erro_repasse_vi: String(e.message || e), wamids: mensagens.map(m => m.wamid) }); } catch (e2) {}
+  }
+}
+
 export async function onRequest(context) {
   const { request, env } = context;
   const url = new URL(request.url);
@@ -44,5 +57,9 @@ export async function onRequest(context) {
   } catch (e) {
     return json({ erro: String(e.message || e) }, 500);
   }
+  // Etapa 3: a mensagem da cliente segue para a Vi (vista-wati-ia /webhook/meta). Quem decide se ela responde por
+  // este caminho ou pelo Wati é a própria Vi (wati_ia_config.canal_whatsapp). Depois de gravar, para a Meta já
+  // ter o 200 garantido; repetida não é problema, a Vi descarta pelo wamid.
+  if (env.VI_META_URL && mensagens.length && context.waitUntil) context.waitUntil(repassarParaVi(env, mensagens));
   return json({ ok: true, mensagens: mensagens.length, status: status.length });
 }

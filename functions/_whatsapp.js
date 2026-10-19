@@ -177,6 +177,8 @@ const norm = s => String(s || '').replace(/\s+/g, ' ').trim().toLowerCase();
 export function mesclar(wa, vi) {
   const out = [];
   const entradas = [];
+  const daVi = [];       // o que a Vi mandou direto pela Meta (etapa 3): o histórico dela tem o mesmo texto
+  const templates = [];  // templates que saíram pela Meta: a nota "[contexto interno" do mesmo envio fica escondida
   const nossos = new Set();
   for (const m of wa || []) {
     const quando = m.enviada_em || m.recebida_em;
@@ -185,21 +187,28 @@ export function mesclar(wa, vi) {
       out.push({ id: m.wamid, quando, lado: 'cliente', texto: m.texto, tipo: m.tipo, midia_id: m.midia_id, mime: m.midia_mime, resposta_a: m.resposta_a });
     } else if (m.texto) {
       nossos.add('op_' + m.wamid);
-      out.push({ id: m.wamid, quando, lado: 'equipe', texto: m.texto, tipo: m.tipo, status: m.status, erro: m.erro });
+      const lado = m.origem === 'vi' ? 'vi' : m.origem === 'template' ? 'auto' : 'equipe';
+      if (lado === 'vi') daVi.push({ t: Date.parse(quando), texto: norm(m.texto) });
+      if (lado === 'auto') templates.push(Date.parse(quando));
+      out.push({ id: m.wamid, quando, lado, texto: m.texto, tipo: m.tipo, status: m.status, erro: m.erro });
     }
   }
   for (const m of vi || []) {
     if (nossos.has(m.msg_id)) continue;
     const texto = m.texto || '';
+    const t = Date.parse(m.created_at);
     if (m.role === 'user') {
-      const t = Date.parse(m.created_at);
       const repetida = entradas.some(e => Math.abs(e.t - t) < 120e3 && (e.texto === norm(texto) || (e.midia && texto.startsWith('['))));
       if (repetida) continue;
       out.push({ id: m.msg_id, quando: m.created_at, lado: 'cliente', texto, tipo: 'text' });
     } else if (m.role === 'operador') {
       out.push({ id: m.msg_id, quando: m.created_at, lado: 'equipe', texto, tipo: 'text' });
+    } else if (texto.startsWith('[contexto interno')) {
+      if (templates.some(x => Math.abs(x - t) < 10 * 60e3)) continue;
+      out.push({ id: m.msg_id, quando: m.created_at, lado: 'auto', texto, tipo: 'text' });
     } else {
-      out.push({ id: m.msg_id, quando: m.created_at, lado: texto.startsWith('[contexto interno') ? 'auto' : 'vi', texto, tipo: 'text' });
+      if (daVi.some(e => Math.abs(e.t - t) < 120e3 && e.texto === norm(texto))) continue;
+      out.push({ id: m.msg_id, quando: m.created_at, lado: 'vi', texto, tipo: 'text' });
     }
   }
   return out.sort((a, b) => Date.parse(a.quando) - Date.parse(b.quando));
@@ -231,7 +240,7 @@ export async function listarConversas(env, { desde, busca, filtro, limite = 60 }
 export async function lerConversa(env, tel, { desde, limite = 200 } = {}) {
   const vs = variantes(tel).join(',');
   const lim = String(Math.min(Number(limite) || 200, 500));
-  const pWa = new URLSearchParams({ select: 'wamid,telefone,direcao,tipo,texto,midia_id,midia_mime,resposta_a,status,erro,enviada_em,recebida_em', telefone: `in.(${vs})`, order: 'recebida_em.desc', limit: lim });
+  const pWa = new URLSearchParams({ select: 'wamid,telefone,direcao,tipo,texto,midia_id,midia_mime,resposta_a,status,erro,enviada_em,recebida_em,origem', telefone: `in.(${vs})`, order: 'recebida_em.desc', limit: lim });
   const pVi = new URLSearchParams({ select: 'msg_id,role,texto,created_at', wa_id: `in.(${vs})`, order: 'created_at.desc', limit: lim });
   if (desde) { pWa.set('or', `(recebida_em.gt.${desde},status_em.gt.${desde})`); pVi.set('created_at', 'gt.' + desde); }
   const [wa, vi, conv] = await Promise.all([
@@ -263,7 +272,11 @@ export async function enviarTexto(env, tel, texto, agora = Date.now()) {
   if (!r.ok || !wamid) return { status: 502, erro: 'a Meta recusou', detalhe: (d.error && (d.error.error_user_msg || d.error.message)) || ('HTTP ' + r.status) };
 
   const quando = new Date(agora).toISOString();
-  await gravarMensagens(env, [{ wamid, telefone: conv.telefone, direcao: 'saida', tipo: 'text', texto, enviada_em: quando, bruto: { origem: 'painel' } }]);
+  // merge (e não ignore): o status da Meta pode chegar antes e já ter criado a linha sem texto
+  await ok(await fetch(`${SB_URL}/rest/v1/wa_mensagens?on_conflict=wamid`, {
+    method: 'POST', headers: sb(env, { Prefer: 'resolution=merge-duplicates,return=minimal' }),
+    body: JSON.stringify([{ wamid, telefone: conv.telefone, direcao: 'saida', tipo: 'text', texto, origem: 'painel', enviada_em: quando }]),
+  }), 'wa_mensagens envio');
 
   // A Vi conhece a cliente pelo wa_id do Wati, que pode ser a outra grafia: pausa as que ela
   // tem e grava a fala no histórico dela na grafia que ela já usa.

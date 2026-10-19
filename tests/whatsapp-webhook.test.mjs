@@ -92,6 +92,19 @@ ok('assinatura errada com segredo configurado', r.status, 401);
 r = await api.onRequest({ request: new Request(`${base}?k=chave`, { method: 'POST', body: txt, headers: { 'X-Hub-Signature-256': sig } }), env: envSeg });
 ok('assinatura certa passa', r.status, 200);
 
+// Etapa 3: depois de gravar, a mensagem da cliente segue para a Vi.
+chamadas.length = 0;
+const tarefas = [];
+r = await api.onRequest({ request: new Request(`${base}?k=chave`, { method: 'POST', body: txt }), env: { ...env, VI_META_URL: 'https://vi/webhook/meta?key=z' }, waitUntil: p => tarefas.push(p) });
+await Promise.all(tarefas);
+const rep = chamadas.find(c => c.u.startsWith('https://vi/'));
+ok('repassa para a Vi depois de gravar', [r.status, !!rep, rep && JSON.parse(rep.b).mensagens.map(m => [m.wamid, m.telefone, !!m.bruto])], [200, true, [['wamid.1', '5548999990000', true]]]);
+ok('repasse vem depois da gravação', chamadas.findIndex(c => c.u.startsWith('https://vi/')) > chamadas.findIndex(c => c.u.includes('wa_mensagens')), true);
+chamadas.length = 0;
+const so_status = JSON.stringify(corpo({ statuses: [{ id: 'wamid.S', status: 'read', timestamp: '2', recipient_id: '55' }] }));
+await api.onRequest({ request: new Request(`${base}?k=chave`, { method: 'POST', body: so_status }), env: { ...env, VI_META_URL: 'https://vi/x' }, waitUntil: p => tarefas.push(p) });
+ok('status não vai para a Vi', chamadas.some(c => c.u.startsWith('https://vi/')), false);
+
 globalThis.fetch = async () => new Response('fora', { status: 503 });
 r = await req(`${base}?k=chave`, { method: 'POST', body: txt });
 ok('banco fora devolve 500 pra Meta reenviar', r.status, 500);
@@ -124,6 +137,19 @@ ok('envio do painel não duplica com o histórico da Vi', conv.filter(m => m.tex
 ok('status sem texto (Wati) fica de fora', conv.some(m => m.id === 'w4'), false);
 ok('lados', conv.map(m => m.lado), ['cliente', 'equipe', 'auto', 'cliente', 'vi', 'cliente', 'equipe']);
 ok('ordem por hora', conv.map(m => m.id), ['e', 'f', 'd', 'w1', 'c', 'w2', 'w3']);
+// Etapa 3: o que a Vi e os templates mandam pela Meta também está em wa_mensagens (com origem).
+const conv3 = W.mesclar([
+  { wamid: 'v1', direcao: 'saida', tipo: 'text', texto: 'Oi! Sou a Vi', origem: 'vi', status: 'read', enviada_em: '2026-10-20T10:00:00Z' },
+  { wamid: 't1', direcao: 'saida', tipo: 'template', texto: 'Oi Ana! Pedido nº 9300 confirmado.', origem: 'template', enviada_em: '2026-10-20T09:00:00Z' },
+], [
+  { msg_id: 'bot_fila_1', role: 'assistant', texto: 'Oi!  Sou a Vi', created_at: '2026-10-20T10:00:01Z' },
+  { msg_id: 'pedido_conf_1', role: 'assistant', texto: '[contexto interno: enviei a confirmação]', created_at: '2026-10-20T09:00:00Z' },
+  { msg_id: 'bot_fila_2', role: 'assistant', texto: 'Outra fala da Vi', created_at: '2026-10-20T11:00:00Z' },
+]);
+ok('fala da Vi pela Meta aparece uma vez, como Vi e com tique', conv3.filter(m => /Sou a Vi/.test(m.texto)).map(m => [m.id, m.lado, m.status]), [['v1', 'vi', 'read']]);
+ok('template aparece com o texto que a cliente viu e esconde a nota interna', conv3.filter(m => m.lado === 'auto').map(m => m.id), ['t1']);
+ok('fala da Vi sem par na Meta continua', conv3.some(m => m.id === 'bot_fila_2' && m.lado === 'vi'), true);
+
 const agoraT = Date.parse('2026-10-20T21:00:00Z');
 ok('janela aberta com 23h', W.janelaAberta('2026-10-19T22:00:00Z', agoraT), true);
 ok('janela fechada com 25h', W.janelaAberta('2026-10-19T20:00:00Z', agoraT), false);
