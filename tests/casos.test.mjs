@@ -192,6 +192,18 @@ ok('passos numerados viram lista', /<ol[^>]*><li[^>]*>abrir<\/li><li[^>]*>mandar
 ok('texto da cliente não vira HTML', csMd('- <img src=x onerror=alert(1)> **oi**').includes('<img'), false);
 ok('bolha do assistente usa a formatação', main.includes("div.innerHTML = csMd(texto)"), true);
 ok('instrução pede tópicos e próximo passo', /sempre em tópicos/.test(C.SISTEMA) && /próximo passo concreto/.test(C.SISTEMA), true);
+console.log('\n7b) Conversa não some quando a página recarrega');
+ok('abrir a aba redesenha a conversa salva antes de mostrar vazio', main.includes("!chat.children.length && !csRestaurar()"), true);
+ok('cada fala e cada botão salvam no aparelho', main.includes('csSalvar();\n}\n\n// Guarda o resultado de um botão') && main.includes('guardar(true)'), true);
+ok('vale para o dia (no seguinte começa limpa)', main.includes("g.dia !== csHoje()"), true);
+ok('Nova conversa apaga o que estava salvo', /csBolhas = \[\];\n  try \{ localStorage\.removeItem\(CS_GUARDA\)/.test(main), true);
+const sanear = new Function('msgs', 'pend', `let csMsgs = msgs, csPendentes = pend;\n${main.slice(main.indexOf('function csSanear()'), main.indexOf('function csRestaurar()'))}\ncsSanear(); return csPendentes;`);
+const interrompida = [{ role: 'user', content: [{ type: 'text', text: 'oi' }] }, { role: 'assistant', content: [
+  { type: 'thinking', thinking: '' }, { type: 'tool_use', id: 'a', name: 'abrir_caso', input: {} }, { type: 'tool_use', id: 'b', name: 'responder', input: {} }] }];
+ok('recarga no meio da volta fecha os pedidos de ferramenta', sanear(interrompida, []).map(r => [r.tool_use_id, !!r.is_error]), [['a', true], ['b', false]]);
+ok('conversa em ordem não é mexida', sanear([{ role: 'user', content: [] }], []), []);
+ok('pendentes já guardados ficam como estão', sanear(interrompida, [{ type: 'tool_result', tool_use_id: 'b', content: 'mostrado à Marcelly' }]).length, 1);
+
 console.log('\n8) Status da peça e troca de etiqueta (mesmo cálculo do card LIBERAR TROCANDO A ETIQUETA)');
 const fn = nome => { const i = main.indexOf(`function ${nome}(`); return main.slice(i, main.indexOf('\n}\n', i) + 2); };
 const fabrica = new Function('window', 'MODELOS', 'sacGetConfig', 'producaoDaPeca', 'tamanhosDe', 'diasDesde', 'SEM_TROCA_ETIQUETA',

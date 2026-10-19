@@ -1774,6 +1774,46 @@ let csNotas = [];      // o que os botões fizeram, para o assistente saber na p
 let csOcupado = false;
 let csEstado = null;
 let csCartao = 0;
+let csBolhas = [];     // o que está na tela (falas e botões), para redesenhar depois de recarregar
+
+// A conversa fica guardada NESTE aparelho até o fim do dia. Antes ela só vivia na memória da
+// página e sumia a cada recarga, e a faixa "versão nova" recarrega a página sempre que sai uma
+// publicação (print da Bárbara em 19/10/2026, "a conversa fica sumindo"). No dia seguinte
+// começa limpa: a rotina é diária, e conversa comprida encarece cada pergunta.
+const CS_GUARDA = 'vc:cs-conversa';
+const csHoje = () => new Date(Date.now() - 3 * 3600e3).toISOString().slice(0, 10);
+
+function csSalvar() {
+  const tudo = { dia: csHoje(), msgs: csMsgs, pendentes: csPendentes, notas: csNotas, bolhas: csBolhas };
+  try { localStorage.setItem(CS_GUARDA, JSON.stringify(tudo)); }
+  catch (e) {
+    // Sem espaço no aparelho: guarda só o que aparece na tela; o assistente recomeça o contexto.
+    try { localStorage.setItem(CS_GUARDA, JSON.stringify({ ...tudo, msgs: [], pendentes: [], notas: [] })); } catch (_) {}
+  }
+}
+
+// A página recarregou no meio de uma volta: a última fala do assistente pode ter pedido uma
+// ferramenta que não chegou a responder, e a API recusa a conversa assim. Fecha cada pedido
+// pendente (o responder como mostrado, o resto como interrompido).
+function csSanear() {
+  const ult = csMsgs[csMsgs.length - 1];
+  if (!ult || ult.role !== 'assistant' || csPendentes.length) return;
+  csPendentes = (ult.content || []).filter(b => b.type === 'tool_use').map(u => u.name === 'responder'
+    ? { type: 'tool_result', tool_use_id: u.id, content: 'mostrado à Marcelly' }
+    : { type: 'tool_result', tool_use_id: u.id, content: 'a tela recarregou antes desta busca terminar; busque de novo se precisar', is_error: true });
+}
+
+function csRestaurar() {
+  let g = null;
+  try { g = JSON.parse(localStorage.getItem(CS_GUARDA) || 'null'); } catch (_) {}
+  if (!g || g.dia !== csHoje() || !(g.bolhas || []).length) return false;
+  csMsgs = g.msgs || []; csPendentes = g.pendentes || []; csNotas = g.notas || [];
+  csSanear();
+  csBolhas = [];
+  document.getElementById('cs-chat').innerHTML = '';
+  g.bolhas.forEach(b => csBolha(b.quem, b.texto, b.acoes, b.res));
+  return true;
+}
 
 const CS_ROTULO = {
   pendencias_do_dia: 'levantando as pendências do dia...',
@@ -1792,7 +1832,7 @@ async function csAbrir() {
   } catch (e) { csEstado = null; }
   csRenderTopo();
   const chat = document.getElementById('cs-chat');
-  if (chat && !chat.children.length) csVazio();
+  if (chat && !chat.children.length && !csRestaurar()) csVazio();
 }
 
 function csRenderTopo() {
@@ -1824,7 +1864,8 @@ function csVazio() {
 
 function csNovaConversa() {
   if (csOcupado) return;
-  csMsgs = []; csPendentes = []; csNotas = [];
+  csMsgs = []; csPendentes = []; csNotas = []; csBolhas = [];
+  try { localStorage.removeItem(CS_GUARDA); } catch (_) {}
   csVazio();
   document.getElementById('cs-apv').hidden = true;
 }
@@ -1857,7 +1898,10 @@ function csMd(t) {
   return out.join('');
 }
 
-function csBolha(quem, texto, acoes) {
+// `res` = o que cada botão desta fala já fez (vem do aparelho quando a conversa é redesenhada).
+function csBolha(quem, texto, acoes, res) {
+  const bi = csBolhas.length;
+  csBolhas.push({ quem, texto, acoes: acoes || [], res: res || {} });
   const chat = document.getElementById('cs-chat');
   const v = document.getElementById('cs-vazio'); if (v) v.remove();
   const div = document.createElement('div');
@@ -1869,9 +1913,28 @@ function csBolha(quem, texto, acoes) {
   div.style.cssText = `max-width:88%;padding:10px 13px;border-radius:14px;font-size:13.5px;line-height:1.5;white-space:pre-wrap;word-break:break-word;${estilo}`;
   if (quem === 'assistente') { div.style.whiteSpace = 'normal'; div.innerHTML = csMd(texto); }
   else div.innerHTML = csEsc(texto);
-  (acoes || []).forEach(a => div.appendChild(csCartaoAcao(a)));
+  (acoes || []).forEach((a, ai) => {
+    const box = csCartaoAcao(a, bi, ai);
+    const r = (res || {})[ai];
+    if (r) {
+      const span = box.querySelector('[data-c="res"]');
+      span.style.color = r.cor; span.textContent = r.texto;
+      const ta = box.querySelector('[data-c="texto"]'); if (ta && r.texto_usado != null) ta.value = r.texto_usado;
+      if (r.ok) box.querySelector('button').disabled = true;
+    }
+    div.appendChild(box);
+  });
   chat.appendChild(div);
   csRolar();
+  csSalvar();
+}
+
+// Guarda o resultado de um botão, para ele continuar marcado como feito depois de recarregar.
+function csGuardarRes(bi, ai, r) {
+  const b = csBolhas[bi]; if (!b) return;
+  b.res = b.res || {};
+  b.res[ai] = r;
+  csSalvar();
 }
 
 const CS_TITULO = {
@@ -1882,7 +1945,7 @@ const CS_TITULO = {
   pedir_aprovacao: 'Pedir à Bárbara',
 };
 
-function csCartaoAcao(a) {
+function csCartaoAcao(a, bi, ai) {
   const id = 'csa' + (++csCartao);
   const box = document.createElement('div');
   box.id = id;
@@ -1899,11 +1962,11 @@ function csCartaoAcao(a) {
       <button class="btn-primary" style="font-size:12px;padding:6px 14px">${csEstado && csEstado.so_leitura ? 'Simular (só leitura)' : 'Confirmar'}</button>
       <span data-c="res" style="font-size:12px;color:#b45309">${a._avisos ? 'Ajuste antes de enviar, o texto ' + csEsc(a._avisos.join(', ')) : ''}</span>
     </div>`;
-  box.querySelector('button').onclick = () => csExecutar(box, a);
+  box.querySelector('button').onclick = () => csExecutar(box, a, bi, ai);
   return box;
 }
 
-async function csExecutar(box, a) {
+async function csExecutar(box, a, bi, ai) {
   const btn = box.querySelector('button');
   const res = box.querySelector('[data-c="res"]');
   const campo = c => { const el = box.querySelector(`[data-c="${c}"]`); return el ? el.value : undefined; };
@@ -1918,9 +1981,11 @@ async function csExecutar(box, a) {
     const r = await fetch('/api/casos', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(corpo) });
     if (r.status === 401 || r.status === 403) { sessaoExpirou(); return; }
     const d = await r.json().catch(() => ({ erro: 'resposta inválida do servidor' }));
+    const guardar = ok => csGuardarRes(bi, ai, { ok, cor: res.style.color, texto: res.textContent, texto_usado: corpo.texto });
     if (d.ok) {
       res.style.color = '#16a34a'; res.textContent = '✓ ' + (d.feito || 'feito');
       csNotas.push(`${CS_TITULO[a.tipo] || a.tipo}${a.caso_id ? ' no caso ' + a.caso_id : ''} confirmado pela Marcelly: ${d.feito || 'feito'}`);
+      guardar(true);
       csAbrir();
       return;
     }
@@ -1929,9 +1994,11 @@ async function csExecutar(box, a) {
       res.style.color = '#b45309';
       res.textContent = 'Modo só leitura, nada foi enviado nem gravado. Na versão liberada ' + (d.simulacao || '') + '.';
       if (d.aviso) res.textContent += ' Aviso que a Bárbara receberia: ' + d.aviso;
+      guardar(false);
       return;
     }
     res.style.color = '#b91c1c'; res.textContent = d.erro || 'não deu certo';
+    guardar(false);
   } catch (e) {
     btn.disabled = false; res.style.color = '#b91c1c'; res.textContent = 'falhou: ' + e.message;
   }
@@ -2088,6 +2155,7 @@ async function csRodar() {
   } finally {
     csOcupado = false;
     csStatus('');
+    csSalvar();
   }
 }
 
