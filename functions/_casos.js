@@ -63,9 +63,12 @@ export function revisarResposta(content) {
 }
 
 // Texto que promete dinheiro à cliente só sai se a Bárbara já aprovou algo neste caso.
+// Voucher no valor pago é da Marcelly (Bárbara, 19/10/2026): a mensagem que fala de voucher pode
+// citar o desconto que a cliente teve sem cair aqui. Estorno, brinde e frete continuam travados.
 export function prometeDinheiro(texto) {
-  return /estorn|reembols|desconto|cupom|brinde|frete gr[aá]tis|frete por nossa conta|devolv\w* (o|seu) valor|de volta o valor|cr[eé]dito de r\$/i
-    .test(String(texto || ''));
+  const t = String(texto || '');
+  if (/estorn|reembols|brinde|frete gr[aá]tis|frete por nossa conta|devolv\w* (o|seu) valor|de volta o valor/i.test(t)) return true;
+  return /desconto|cupom|cr[eé]dito de r\$/i.test(t) && !/voucher|vale[- ]troca/i.test(t);
 }
 
 // ── Conversa ───────────────────────────────────────────────────────────────────
@@ -88,6 +91,28 @@ const AGRADECIMENTO = /^(?:(?:muito|ok+|okay|obg|obrigad[oa]s?|brigad[oa]|valeu|
 export function ehSoAgradecimento(texto) {
   const limpo = String(texto || '').toLowerCase().replace(/[^\p{L}\p{N} ]/gu, ' ').replace(/\s+/g, ' ').trim();
   return !limpo || AGRADECIMENTO.test(limpo);
+}
+
+// Uma mensagem do getMessages da Wati no formato que o resto usa ({ role, texto, created_at }).
+// A conversa vem da WATI, e não só do histórico da Vi (wati_ia_mensagens), porque o histórico
+// guarda só texto: em 19/10/2026 a etiqueta em PDF que a Marcelly mandou para a Luiza (#9123)
+// não estava lá, e o assistente não sabia que ela já tinha sido enviada.
+// Quem mandou: owner false = cliente; owner true por "API Token" = Vi (ou o painel); owner true
+// pela caixa da Wati = equipe.
+export function watiParaMsg(m) {
+  if (!m || m.eventType === 'ticket' || !m.created) return null;
+  const loja = m.owner === true;
+  const tipo = String(m.type || '').toLowerCase();
+  const legenda = m.text && !/^\/?data\//.test(m.text) ? String(m.text) : '';
+  const MIDIA = { image: 'uma imagem', document: 'um documento (PDF, etiqueta, comprovante)', audio: 'um áudio',
+    voice: 'um áudio', video: 'um vídeo', sticker: 'uma figurinha' };
+  let texto;
+  if (MIDIA[tipo]) texto = `[${loja ? 'a loja' : 'a cliente'} enviou ${MIDIA[tipo]}]${legenda ? ' ' + legenda : ''}`;
+  else texto = legenda || String(m.finalText || '');
+  if (!texto && /broadcast|template/i.test(String(m.eventType) + tipo)) texto = '[a loja enviou um template automático]';
+  if (!texto) return null;
+  const role = !loja ? 'user' : (/^API Token/i.test(String(m.operatorName || '')) ? 'assistant' : 'operador');
+  return { role, texto, created_at: m.created };
 }
 
 // Horário de Brasília legível ("19/10 13:24"). O banco guarda em UTC, e o assistente chegou a
@@ -279,10 +304,11 @@ O que a Marcelly resolve sozinha (proponha como ação com botão)
 - fechar: encerrar o caso. Só proponha depois que a ação de verdade aconteceu (mensagem enviada, ajuste feito). Se depende de dinheiro, o caso fica aberto até a Bárbara decidir.
 
 O que é decisão da Bárbara (proponha pedir_aprovacao com categoria, valor e motivo; nunca prometa à cliente antes da aprovação)
-- estorno ou reembolso, voucher de troca ou devolução, frete por conta da loja, desconto ou cupom, brinde, qualquer valor em dinheiro.
+- estorno ou reembolso, voucher acima do valor pago, frete por conta da loja, desconto ou cupom, brinde, qualquer valor em dinheiro.
 - Antes de propor qualquer ação, tenha o caso aberto com abrir_caso (pelo pedido, se for o que você tem): é dele que vêm caso_id, wa_id e o final do telefone. Nunca use o número do pedido como final do telefone.
 - Regras que a Bárbara já definiu e que servem de base para o pedido: desistência recebe primeiro a oferta de R$ 149 de desconto numa peça nova; troca por erro da loja tem frete grátis.
-- Voucher de troca ou devolução é sempre no valor que a cliente PAGOU pela peça, com o desconto que ela teve (promoção, desconto progressivo, cupom), nunca no valor cheio da peça (regra da Bárbara, 19/10/2026). O pedido traz pago_por_item; some só as peças devolvidas e coloque esse total em valor, com a conta no motivo.
+- Voucher de troca ou devolução é sempre no valor que a cliente PAGOU pela peça, com o desconto que ela teve (promoção, desconto progressivo, cupom), nunca no valor cheio da peça (regra da Bárbara, 19/10/2026). O pedido traz pago_por_item; some só as peças devolvidas.
+- Voucher no valor pago a Marcelly faz sozinha, sem aprovação: proponha anotar com o valor e a conta (peça, preço cheio, desconto, pago) e a mensagem para a cliente com o valor. Só vai para a Bárbara (pedir_aprovacao, categoria voucher) se for passar do valor pago.
 
 Mensagem para a cliente
 - Português do Brasil, curta, humana, do jeito que uma pessoa da loja escreveria no WhatsApp.

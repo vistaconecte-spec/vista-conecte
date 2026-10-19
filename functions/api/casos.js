@@ -20,7 +20,7 @@ import {
   soLeitura, MODELO, DOC_LOG, TEMPLATE_CONTINUIDADE, TEMPLATE_ALERTA, CATEGORIAS_DINHEIRO,
   SISTEMA, FERRAMENTAS, FERRAMENTAS_SERVIDOR, problemasDoTexto, prometeDinheiro, janelaAberta, revisarResposta,
   semResposta, promessasDaEquipe, pagoPorItem, numerosDePedido, prazoDoPedido, logVazio, podeFechar, aprovacaoLiberada, novoId,
-  primeiroNome, finalTel, resumoDoCaso, conversaParaAssistente, hojeTexto, brt,
+  primeiroNome, finalTel, resumoDoCaso, conversaParaAssistente, hojeTexto, brt, watiParaMsg,
 } from '../_casos.js';
 
 const SB_URL = 'https://hckzsblwyabmhzbjdjgx.supabase.co';
@@ -158,7 +158,15 @@ async function pendenciasDoDia(env, agora = Date.now()) {
     lerLog(env),
   ]);
   const comCaso = new Set(casos.map(c => c.wa_id));
-  const esperando = semResposta(msgs, { agora });
+  // Confere na Wati quem parece sem resposta: o histórico da Vi não tem documento nem imagem que
+  // a equipe mandou, e a cliente apareceria esperando quando a etiqueta já tinha ido.
+  const candidatos = semResposta(msgs, { agora }).slice(0, 12);
+  const conferidos = await Promise.all(candidatos.map(async e => {
+    const w = await conversaWati(env, e.wa_id, 10);
+    if (!w) return e;
+    return semResposta(w.map(m => ({ ...m, wa_id: e.wa_id })), { agora })[0] || null;
+  }));
+  const esperando = conferidos.filter(Boolean);
   let nomes = {};
   if (esperando.length) {
     const lista = esperando.slice(0, 40).map(e => e.wa_id).join(',');
@@ -191,7 +199,9 @@ async function abrirCaso(env, { caso_id, wa_id, pedido }, agora = Date.now()) {
   }
   const wa = (caso && caso.wa_id) || String(wa_id || '').replace(/\D/g, '');
   if (!caso && !wa && !pedido) return { encontrado: false, motivo: 'nada para buscar' };
-  const msgs = wa ? (await db.get(`wati_ia_mensagens?wa_id=eq.${wa}&order=created_at.desc&limit=60&select=role,texto,created_at`)).reverse() : [];
+  // Conversa da WATI (tem documento, foto, áudio e template); o histórico da Vi só entra se a Wati falhar.
+  const daWati = wa ? await conversaWati(env, wa, 60) : null;
+  const msgs = daWati || (wa ? (await db.get(`wati_ia_mensagens?wa_id=eq.${wa}&order=created_at.desc&limit=60&select=role,texto,created_at`)).reverse() : []);
   const daCliente = msgs.filter(m => m.role === 'user').map(m => m.texto).join('\n');
   const numeros = numerosDePedido(pedido || (caso && caso.pedido), caso && caso.resumo, daCliente).slice(0, 2);
   const pedidos = [];
@@ -204,6 +214,7 @@ async function abrirCaso(env, { caso_id, wa_id, pedido }, agora = Date.now()) {
     aviso_caso: caso ? null : 'sem caso no CRM para este contato; se a Marcelly agir, o painel abre um',
     wa_id: wa || null, final_tel: finalTel(wa),
     janela_24h: janelaAberta(msgs, agora),
+    conversa_fonte: daWati ? 'Wati (completa, com documentos e imagens)' : 'histórico da Vi (só texto; documento e imagem enviados podem faltar)',
     conversa: conversaParaAssistente(msgs),
     promessas_da_equipe: promessasDaEquipe(msgs, { agora }),
     pedidos,
@@ -240,6 +251,16 @@ async function assistente(env, messages) {
 }
 
 // ── Wati ────────────────────────────────────────────────────────────────────────
+async function conversaWati(env, wa, limite) {
+  if (!env.WATI_TOKEN || !/^\d+$/.test(String(wa || ''))) return null;
+  try {
+    const r = await fetch(`${WATI_V1}/getMessages/${wa}?pageSize=${limite}&pageNumber=1`, { headers: { Authorization: 'Bearer ' + env.WATI_TOKEN } });
+    if (!r.ok) return null;
+    const itens = ((await r.json()).messages || {}).items || [];
+    return itens.map(watiParaMsg).filter(Boolean).reverse();
+  } catch (_) { return null; }
+}
+
 async function watiSessao(env, wa, texto) {
   const r = await fetch(`${WATI_V1}/sendSessionMessage/${wa}?messageText=${encodeURIComponent(texto)}`,
     { method: 'POST', headers: { Authorization: 'Bearer ' + env.WATI_TOKEN }, body: '' });

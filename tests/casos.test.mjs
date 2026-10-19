@@ -79,6 +79,19 @@ ok('mensagem com frase de robô volta para revisão antes da tela', C.revisarRes
 ok('só a mensagem à cliente é revisada', C.revisarResposta([{ type: 'tool_use', name: 'responder', id: 't', input: { texto: 'x', acoes: [{ tipo: 'anotar', texto: 'nota: x' }] } }]), []);
 ok('tela devolve uma vez e depois mostra o aviso', main.includes('&& !revisou') && main.includes('Ajuste antes de enviar, o texto'), true);
 ok('instrução manda tratar promessa da equipe como pendência', /Promessa da equipe é pendência/.test(C.SISTEMA), true);
+// Conversa vem da Wati: a etiqueta em PDF da Luiza (#9123) não estava no histórico da Vi.
+const wati = [
+  { eventType: 'ticket', created: '2026-10-19T19:26:00Z' },
+  { eventType: 'message', type: 'document', owner: true, operatorName: 'Vi da Vista Conecte', text: '/data/documents/x.pdf', created: '2026-10-19T14:48:00Z' },
+  { eventType: 'message', type: 'text', owner: false, operatorName: 'Vi da Vista Conecte', text: 'entrego nos correios com essa etiqueta?', created: '2026-10-19T14:49:00Z' },
+  { eventType: 'message', type: 'text', owner: true, operatorName: 'API Token 1061955', text: 'Pra uva, você quer o M?', created: '2026-10-19T16:16:18Z' },
+  { eventType: 'message', type: 'image', owner: false, text: 'Mas o pacote está no meu nome.', created: '2026-10-19T14:33:00Z' },
+];
+ok('documento da equipe entra na conversa', C.watiParaMsg(wati[1]), { role: 'operador', texto: '[a loja enviou um documento (PDF, etiqueta, comprovante)]', created_at: '2026-10-19T14:48:00Z' });
+ok('mensagem pela API é da Vi, pela caixa da Wati é da equipe', [C.watiParaMsg(wati[3]).role, C.watiParaMsg(wati[1]).role, C.watiParaMsg(wati[2]).role], ['assistant', 'operador', 'user']);
+ok('imagem da cliente leva a legenda', C.watiParaMsg(wati[4]).texto, '[a cliente enviou uma imagem] Mas o pacote está no meu nome.');
+ok('evento de ticket fica de fora', C.watiParaMsg(wati[0]), null);
+ok('abrir caso lê a Wati antes do histórico da Vi', /const daWati = wa \? await conversaWati/.test(readFileSync(join(raiz, 'functions', 'api', 'casos.js'), 'utf8')), true);
 ok('agradecimento não é pendência', [C.ehSoAgradecimento('ok obrigada!'), C.ehSoAgradecimento('🙏🏻'), C.ehSoAgradecimento('Eu que agradeço'), C.ehSoAgradecimento('Sim, pode ser o M'), C.ehSoAgradecimento('obrigada, e o rastreio?')], [true, true, true, false, false]);
 
 console.log('\n3) Pedidos citados e prazo de 10 dias úteis');
@@ -95,6 +108,10 @@ ok('desconto rateado na linha sai do valor (pedido #9250 real)', C.pagoPorItem({
   { item: '1x Calça Pantalona (Uva / G)', preco_cheio: 169, desconto: 33.05, pago: 135.95, pago_por_peca: 135.95 });
 ok('duas unidades dividem o pago por peça', C.pagoPorItem({ title: 'Top', price: '59.90', quantity: 2, discount_allocations: [{ amount: '10.00' }, { amount: '1.80' }] }).pago_por_peca, 54);
 ok('sem desconto paga o cheio', C.pagoPorItem({ title: 'Saia', price: '159.00', quantity: 1 }).pago, 159);
+ok('mensagem de voucher no valor pago não é barrada', C.prometeDinheiro('Lais, seu voucher fica em R$ 135,95, que é o valor que você pagou com o desconto'), false);
+ok('estorno continua barrado mesmo falando de voucher', C.prometeDinheiro('em vez do voucher faço o estorno'), true);
+ok('desconto sem voucher continua barrado', C.prometeDinheiro('te dou 10% de desconto na próxima'), true);
+ok('voucher no valor pago é da Marcelly, acima vai para a Bárbara', /Voucher no valor pago a Marcelly faz sozinha/.test(C.SISTEMA) && /voucher acima do valor pago/.test(C.SISTEMA), true);
 ok('instrução manda voucher no valor pago', /Voucher de troca ou devolução é sempre no valor que a cliente PAGOU/.test(C.SISTEMA), true);
 ok('instrução manda anotar e fechar o que foi resolvido por fora', /Resolvido por fora/.test(C.SISTEMA), true);
 
