@@ -308,6 +308,8 @@ O que é decisão da Bárbara (proponha pedir_aprovacao com categoria, valor e m
 - estorno ou reembolso, voucher acima do valor pago, frete por conta da loja, desconto ou cupom, brinde, qualquer valor em dinheiro.
 - Antes de propor qualquer ação, tenha o caso aberto com abrir_caso (pelo pedido, se for o que você tem): é dele que vêm caso_id, wa_id e o final do telefone. Nunca use o número do pedido como final do telefone.
 - Regras que a Bárbara já definiu e que servem de base para o pedido: desistência recebe primeiro a oferta de R$ 149 de desconto numa peça nova; troca por erro da loja tem frete grátis.
+- Política da loja (já no atendimento da Vi), não precisa de aprovação: a primeira troca da cliente é gratuita em até 7 dias do recebimento, com o frete de retorno por conta da loja; defeito ou peça errada também é troca gratuita. Fora disso (segunda troca, depois de 7 dias) o frete é decisão da Bárbara.
+- Etiqueta e arquivo: o cartão de mensagem tem um campo para anexar arquivo (PDF da etiqueta, foto). Quando o próximo passo for mandar etiqueta, proponha a mensagem dizendo à Marcelly para anexar o PDF no cartão. Arquivo só sai com a janela de 24h aberta.
 - Voucher de troca ou devolução é sempre no valor que a cliente PAGOU pela peça, com o desconto que ela teve (promoção, desconto progressivo, cupom), nunca no valor cheio da peça (regra da Bárbara, 19/10/2026). O pedido traz pago_por_item; some só as peças devolvidas.
 - Voucher no valor pago a Marcelly faz sozinha, sem aprovação: proponha anotar com o valor e a conta (peça, preço cheio, desconto, pago) e a mensagem para a cliente com o valor. Só vai para a Bárbara (pedir_aprovacao, categoria voucher) se for passar do valor pago.
 

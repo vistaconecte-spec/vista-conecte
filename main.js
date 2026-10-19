@@ -1957,7 +1957,8 @@ function csCartaoAcao(a, bi, ai) {
   box.innerHTML = `
     <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;color:var(--text-sec);margin-bottom:6px">${CS_TITULO[a.tipo] || csEsc(a.tipo)}${ref ? ' · ' + csEsc(ref) : ''} ${din}</div>
     ${comTexto ? `<textarea data-c="texto" rows="${a.tipo === 'mensagem' ? 4 : 2}" style="width:100%;box-sizing:border-box;padding:8px;border:1px solid var(--border);border-radius:8px;font-size:13px;font-family:inherit">${csEsc(a.texto)}</textarea>` : `<div style="font-size:12.5px">${csEsc(a.texto)}</div>`}
-    ${a.tipo === 'mensagem' ? `<div style="font-size:11px;color:var(--text-ter);margin-top:4px">Se a janela de 24h tiver fechado, vai o template de continuidade com este assunto <input data-c="assunto" value="${csEsc(a.assunto || '')}" style="width:220px;max-width:100%;padding:3px 6px;border:1px solid var(--border);border-radius:6px;font-size:12px"></div>` : ''}
+    ${a.tipo === 'mensagem' ? `<div style="font-size:11px;color:var(--text-ter);margin-top:4px">Se a janela de 24h tiver fechado, vai o template de continuidade com este assunto <input data-c="assunto" value="${csEsc(a.assunto || '')}" style="width:220px;max-width:100%;padding:3px 6px;border:1px solid var(--border);border-radius:6px;font-size:12px"></div>
+    <label style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:11.5px;color:var(--text-sec);margin-top:6px"><i class="ti ti-paperclip"></i> Anexar etiqueta ou arquivo (PDF ou foto, opcional) <input data-c="arquivo" type="file" accept=".pdf,image/*" style="font-size:11.5px;max-width:100%"></label>` : ''}
     <div style="display:flex;align-items:center;gap:10px;margin-top:8px;flex-wrap:wrap">
       <button class="btn-primary" style="font-size:12px;padding:6px 14px">${csEstado && csEstado.so_leitura ? 'Simular (só leitura)' : 'Confirmar'}</button>
       <span data-c="res" style="font-size:12px;color:#b45309">${a._avisos ? 'Ajuste antes de enviar, o texto ' + csEsc(a._avisos.join(', ')) : ''}</span>
@@ -1975,10 +1976,21 @@ async function csExecutar(box, a, bi, ai) {
     texto: campo('texto') ?? a.texto, assunto: campo('assunto') ?? a.assunto,
     categoria: a.categoria, valor: campo('valor') ?? a.valor,
   };
-  if (a.tipo === 'mensagem' && !(csEstado && csEstado.so_leitura) && !confirm('Enviar esta mensagem para a cliente no WhatsApp?')) return;
+  const arq = (box.querySelector('[data-c="arquivo"]') || {}).files?.[0] || null;
+  if (arq && arq.size > 5 * 1024 * 1024) { res.style.color = '#b91c1c'; res.textContent = 'Arquivo grande demais (máximo 5 MB).'; return; }
+  if (a.tipo === 'mensagem' && !(csEstado && csEstado.so_leitura)
+    && !confirm(arq ? `Enviar o arquivo ${arq.name} e a mensagem para a cliente no WhatsApp?` : 'Enviar esta mensagem para a cliente no WhatsApp?')) return;
   btn.disabled = true; res.style.color = 'var(--text-sec)'; res.textContent = 'enviando...';
   try {
-    const r = await fetch('/api/casos', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(corpo) });
+    // Com arquivo vai como multipart (a função repassa para a Wati); sem arquivo, JSON como antes.
+    let init = { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(corpo) };
+    if (arq) {
+      const fd = new FormData();
+      Object.entries(corpo).forEach(([k, v]) => { if (v !== undefined && v !== null) fd.append(k, String(v)); });
+      fd.append('arquivo', arq, arq.name);
+      init = { method: 'POST', body: fd };
+    }
+    const r = await fetch('/api/casos', init);
     if (r.status === 401 || r.status === 403) { sessaoExpirou(); return; }
     const d = await r.json().catch(() => ({ erro: 'resposta inválida do servidor' }));
     const guardar = ok => csGuardarRes(bi, ai, { ok, cor: res.style.color, texto: res.textContent, texto_usado: corpo.texto });

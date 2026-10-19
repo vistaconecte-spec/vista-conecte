@@ -26,6 +26,7 @@ import {
 const SB_URL = 'https://hckzsblwyabmhzbjdjgx.supabase.co';
 const API_SHOPIFY = '2024-04';
 const WATI_V1 = 'https://live-mt-server.wati.io/1061955/api/v1';
+const ARQUIVO_MAX = 5 * 1024 * 1024;
 
 const J = (o, s = 200) => new Response(JSON.stringify(o), {
   status: s, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },
@@ -257,7 +258,9 @@ async function conversaWati(env, wa, limite) {
     const r = await fetch(`${WATI_V1}/getMessages/${wa}?pageSize=${limite}&pageNumber=1`, { headers: { Authorization: 'Bearer ' + env.WATI_TOKEN } });
     if (!r.ok) return null;
     const itens = ((await r.json()).messages || {}).items || [];
-    return itens.map(watiParaMsg).filter(Boolean).reverse();
+    // Lista vazia vira null: aí entra o histórico da Vi, em vez de concluir que a janela fechou.
+    const msgs = itens.map(watiParaMsg).filter(Boolean).reverse();
+    return msgs.length ? msgs : null;
   } catch (_) { return null; }
 }
 
@@ -266,6 +269,15 @@ async function watiSessao(env, wa, texto) {
     { method: 'POST', headers: { Authorization: 'Bearer ' + env.WATI_TOKEN }, body: '' });
   const j = await r.json().catch(() => ({}));
   if (!r.ok || j.result === false || j.ok === false) throw new Error('Wati não aceitou a mensagem: ' + JSON.stringify(j).slice(0, 200));
+}
+
+async function watiArquivo(env, wa, arquivo, legenda) {
+  const fd = new FormData();
+  fd.append('file', arquivo, arquivo.name || 'arquivo.pdf');
+  const r = await fetch(`${WATI_V1}/sendSessionFile/${wa}${legenda ? '?caption=' + encodeURIComponent(legenda) : ''}`,
+    { method: 'POST', headers: { Authorization: 'Bearer ' + env.WATI_TOKEN }, body: fd });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok || j.result === false || j.ok === false) throw new Error('Wati não aceitou o arquivo: ' + JSON.stringify(j).slice(0, 200));
 }
 
 async function watiTemplate(env, wa, template, params) {
@@ -294,19 +306,32 @@ async function executar(env, b, agora = Date.now()) {
   let simulacao = '';
 
   if (tipo === 'mensagem') {
-    const prob = problemasDoTexto(texto);
-    if (prob.length) return { ok: false, erro: 'Ajuste o texto antes de enviar: ' + prob.join(', ') };
+    // Arquivo anexado no cartão (PDF da etiqueta, foto). Pedido da Marcelly em 19/10/2026: "não dá
+    // pra enviar por ali a etiqueta". Arquivo só vai dentro da janela de 24h (template não leva).
+    const arq = b.arquivo && typeof b.arquivo === 'object' && b.arquivo.size ? b.arquivo : null;
+    if (arq && arq.size > ARQUIVO_MAX) return { ok: false, erro: 'Arquivo grande demais (máximo 5 MB).' };
+    if (!(arq && !texto)) {
+      const prob = problemasDoTexto(texto);
+      if (prob.length) return { ok: false, erro: 'Ajuste o texto antes de enviar: ' + prob.join(', ') };
+    }
     if (!wa) return { ok: false, erro: 'sem número da cliente' };
     if (prometeDinheiro(texto) && !(casoId && aprovacaoLiberada(casoId, log)))
       return { ok: false, erro: 'O texto promete dinheiro (estorno, desconto, frete, brinde). Isso precisa da aprovação da Bárbara antes.' };
-    const msgs = await db.get(`wati_ia_mensagens?wa_id=eq.${wa}&role=eq.user&order=created_at.desc&limit=1&select=role,created_at`);
-    const jan = janelaAberta(msgs, agora);
+    // Janela pela Wati (a mesma fonte da conversa); o histórico da Vi fica de reserva.
+    const conv = await conversaWati(env, wa, 15)
+      || await db.get(`wati_ia_mensagens?wa_id=eq.${wa}&role=eq.user&order=created_at.desc&limit=1&select=role,created_at`);
+    const jan = janelaAberta(conv, agora);
     const assunto = String(b.assunto || '').trim();
+    if (arq && !jan.aberta) return { ok: false, erro: 'A janela de 24h fechou e arquivo não vai por template. Mande primeiro a mensagem sem o arquivo (vai o template de continuidade); quando a cliente responder, anexe a etiqueta de novo.' };
     if (!jan.aberta && !assunto) return { ok: false, erro: 'A janela de 24h fechou. Precisa de um assunto curto para o template de continuidade.' };
-    simulacao = jan.aberta ? 'iria como mensagem normal (janela de 24h aberta)' : `iria pelo template de continuidade com o assunto "${assunto}" (janela fechada)`;
+    simulacao = arq ? `iria o arquivo ${arq.name || ''} com a mensagem (janela de 24h aberta)`
+      : jan.aberta ? 'iria como mensagem normal (janela de 24h aberta)' : `iria pelo template de continuidade com o assunto "${assunto}" (janela fechada)`;
     if (soLeitura(env)) return { ok: false, so_leitura: true, simulacao };
     let gravado = texto;
-    if (jan.aberta) await watiSessao(env, wa, texto);
+    if (arq) {
+      await watiArquivo(env, wa, arq, texto);
+      gravado = `[a loja enviou o arquivo ${arq.name || ''}]${texto ? ' ' + texto : ''}`;
+    } else if (jan.aberta) await watiSessao(env, wa, texto);
     else {
       const nome = primeiroNome(caso && caso.nome);
       await watiTemplate(env, wa, TEMPLATE_CONTINUIDADE, [{ name: 'nome', value: nome }, { name: 'assunto', value: assunto }]);
@@ -315,9 +340,9 @@ async function executar(env, b, agora = Date.now()) {
     // Grava no histórico da Vi como mensagem dela (assistant): ela continua a conversa sabendo o
     // que foi dito. Como "operador" a Vi pausaria 24h naquele contato.
     await db.send('POST', 'wati_ia_mensagens', { msg_id: novoId('painel_'), wa_id: wa, role: 'assistant', texto: gravado }, 'return=minimal');
-    const c = caso || await abrirCasoNovo(db, wa, texto);
-    await registrar(env, { caso_id: c.id, tipo: 'mensagem', texto: gravado, via: jan.aberta ? 'sessao' : 'template', em: new Date(agora).toISOString() });
-    return { ok: true, feito: jan.aberta ? 'mensagem enviada' : 'template de continuidade enviado', caso_id: c.id };
+    const c = caso || await abrirCasoNovo(db, wa, gravado);
+    await registrar(env, { caso_id: c.id, tipo: 'mensagem', texto: gravado, via: arq ? 'arquivo' : jan.aberta ? 'sessao' : 'template', em: new Date(agora).toISOString() });
+    return { ok: true, feito: arq ? 'arquivo enviado' : jan.aberta ? 'mensagem enviada' : 'template de continuidade enviado', caso_id: c.id };
   }
 
   if (tipo === 'anotar') {
@@ -446,7 +471,12 @@ export async function onRequestGet({ request, env }) {
 
 export async function onRequestPost({ request, env }) {
   if (!env.SUPABASE_SERVICE_ROLE_KEY) return J({ erro: 'SUPABASE_SERVICE_ROLE_KEY ausente' }, 500);
-  const b = await request.json().catch(() => null);
+  // Botão com arquivo anexado chega como multipart; o resto é JSON.
+  let b = null;
+  if (/multipart\/form-data/i.test(request.headers.get('content-type') || '')) {
+    const fd = await request.formData().catch(() => null);
+    if (fd) { b = {}; for (const [k, v] of fd.entries()) b[k] = v; }
+  } else b = await request.json().catch(() => null);
   if (!b || !b.acao) return J({ erro: 'corpo inválido' }, 400);
   try {
     if (b.acao === 'assistente') return await assistente(env, b.messages);

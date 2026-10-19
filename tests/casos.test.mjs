@@ -203,6 +203,30 @@ ok('pedido de dinheiro entra na fila', [v3.ok, logAtual.aprovacoes.length, logAt
 ok('e avisa a Bárbara pelo template', vivas.some(c => c.startsWith('POST /1061955/api/v1/sendTemplateMessage')), true);
 ok('com dinheiro pendente o caso não fecha', (await api._interno.executar(envVivo, { tipo: 'fechar', caso_id: 658 })).ok, false);
 
+console.log('\n6c) Etiqueta em PDF pelo cartão (pedido da Marcelly, 19/10/2026)');
+const pdf = new File(['%PDF-1.1 teste'], 'etiqueta-9250.pdf', { type: 'application/pdf' });
+vivas.length = 0;
+const a1 = await api._interno.executar(envVivo, { tipo: 'mensagem', caso_id: 658, texto: 'Segue a etiqueta, Priscilla', arquivo: pdf });
+ok('arquivo vai pela Wati com a legenda', [a1.ok, a1.feito, vivas.some(c => c.startsWith('POST /1061955/api/v1/sendSessionFile/5511999990000'))], [true, 'arquivo enviado', true]);
+ok('registro diz que foi arquivo', logAtual.acoes[logAtual.acoes.length - 1].via, 'arquivo');
+const a2 = await api._interno.executar(envVivo, { tipo: 'mensagem', caso_id: 658, texto: '', arquivo: pdf });
+ok('arquivo sem texto também vai', a2.ok, true);
+const grande = { size: 6 * 1024 * 1024, name: 'grande.pdf' };
+ok('arquivo acima de 5 MB é recusado', /grande demais/.test((await api._interno.executar(envVivo, { tipo: 'mensagem', caso_id: 658, texto: 'x', arquivo: grande })).erro), true);
+const fetchAntes = globalThis.fetch;
+globalThis.fetch = async (url, init) => /wati_ia_mensagens/.test(String(url)) && (!init || !init.method || init.method === 'GET')
+  ? new Response(JSON.stringify([{ role: 'user', created_at: '2026-10-10T10:00:00Z' }]), { status: 200 }) : fetchAntes(url, init);
+const a3 = await api._interno.executar(envVivo, { tipo: 'mensagem', caso_id: 658, texto: 'segue', assunto: 'etiqueta', arquivo: pdf });
+ok('janela fechada: arquivo não vai e explica o caminho', /janela de 24h fechou e arquivo não vai por template/.test(a3.erro), true);
+globalThis.fetch = fetchAntes;
+const fd = new FormData();
+fd.append('acao', 'executar'); fd.append('tipo', 'mensagem'); fd.append('caso_id', '658'); fd.append('texto', 'Segue a etiqueta'); fd.append('arquivo', pdf, 'etiqueta-9250.pdf');
+const rq = await api.onRequestPost({ request: new Request('https://x/api/casos', { method: 'POST', body: fd }), env: { ...env, CASOS_SO_LEITURA: '1' } });
+const rqj = await rq.json();
+ok('cartão com arquivo chega como multipart e é entendido', [rqj.so_leitura, /etiqueta-9250\.pdf/.test(rqj.simulacao || '')], [true, true]);
+ok('tela manda o arquivo junto do cartão', main.includes("fd.append('arquivo', arq, arq.name)") && main.includes('data-c="arquivo" type="file"'), true);
+ok('instrução diz que dá para anexar a etiqueta e que a primeira troca é gratuita', /anexar arquivo/.test(C.SISTEMA) && /primeira troca da cliente é gratuita em até 7 dias/.test(C.SISTEMA), true);
+
 console.log('\n7) Tela abre vazia e a rota nasce protegida');
 ok('pílula Casos no Atendimento', html.includes(`atdShowSub('casos')`) && html.includes('id="atd-sub-casos"'), true);
 const abrir = main.slice(main.indexOf('async function csAbrir'), main.indexOf('function csRenderTopo'));
