@@ -1855,6 +1855,9 @@ async function trcUnlock() {
 }
 
 // ── Atendimento — SAC / Troca / Devolução / Vendas (mesma senha do Financeiro) ──
+// Pílula que abre ao entrar no ATENDIMENTO. Era o SAC; desde 19/10/2026 é a "Vi - atendimento"
+// (caixa do WhatsApp oficial), a pedido da Bárbara.
+const ATD_SUB_INICIAL = 'whats';
 function abrirAtendimento(item) {
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   if (item) item.classList.add('active');
@@ -1874,7 +1877,7 @@ function abrirAtendimento(item) {
   const ok = sessionStorage.getItem('fin-ok') === '1';
   document.getElementById('atd-gate').style.display = ok ? 'none' : '';
   document.getElementById('atd-content').style.display = ok ? '' : 'none';
-  if (ok) atdShowSub('sac'); else setTimeout(() => document.getElementById('atd-senha')?.focus(), 60);
+  if (ok) atdShowSub(ATD_SUB_INICIAL); else setTimeout(() => document.getElementById('atd-senha')?.focus(), 60);
   closeSidebar();
 }
 async function atdUnlock() {
@@ -1885,7 +1888,7 @@ async function atdUnlock() {
     document.getElementById('atd-senha').value = '';
     document.getElementById('atd-gate').style.display = 'none';
     document.getElementById('atd-content').style.display = '';
-    atdShowSub('sac');
+    atdShowSub(ATD_SUB_INICIAL);
   } else {
     document.getElementById('atd-erro').textContent = 'Senha incorreta';
   }
@@ -14740,7 +14743,7 @@ const _renderInicial = () => {
   else if (modeloAtual === '__trafego__') { if (sessionStorage.getItem('fin-ok') === '1') trafCarregarFrame(); }
   else if (modeloAtual === '__notas__') { if (sessionStorage.getItem('fin-ok') === '1') notasCarregarFrame(); }
   else if (modeloAtual === '__fluxo__') { if (sessionStorage.getItem('fin-ok') === '1') renderFluxo(); }
-  else if (modeloAtual === '__atendimento__') { if (sessionStorage.getItem('fin-ok') === '1') atdShowSub('sac'); }
+  else if (modeloAtual === '__atendimento__') { if (sessionStorage.getItem('fin-ok') === '1') atdShowSub(ATD_SUB_INICIAL); }
   else if (modeloAtual === '__trocas__') { if (sessionStorage.getItem('fin-ok') === '1') trcAtualizar(); }
   else if (modeloAtual === '__frete__') { if (sessionStorage.getItem('fin-ok') === '1') frtCarregarMes(); }
   else if (modeloAtual === '__modelagem__') { if (sessionStorage.getItem('mdl-ok') === '1') mdlCarregarLista(); }

@@ -185,6 +185,7 @@ ok('pílula Vi - atendimento no ATENDIMENTO', idx.includes("atdShowSub('whats')\
 ok('pílula em primeiro (pedido da Bárbara)', idx.indexOf('id="atd-pill-whats"') < idx.indexOf('id="atd-pill-kanban"'), true);
 ok('lista pede os pendentes', readFileSync(join(raiz, 'functions', '_whatsapp.js'), 'utf8').includes('ultima_entrada_em,pendentes'), true);
 ok('atdShowSub conhece a pílula', mainJs.includes("'casos', 'whats']"), true);
+ok('ATENDIMENTO abre em Vi - atendimento', [mainJs.includes("const ATD_SUB_INICIAL = 'whats'"), (mainJs.match(/atdShowSub\(ATD_SUB_INICIAL\)/g) || []).length, mainJs.includes("atdShowSub('sac')")], [true, 3, false]);
 
 console.log(`\n${total - falhas}/${total} ok`);
 if (falhas) process.exit(1);
