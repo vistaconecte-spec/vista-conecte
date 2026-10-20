@@ -1293,7 +1293,7 @@ function buildSidebar() {
   // Botão Trocas — quadro por etapa da troca (19/10/2026, mesma senha do Atendimento)
   const trcItem = document.createElement('div');
   trcItem.className = 'nav-item nav-dashboard' + (modeloAtual === '__trocas__' ? ' active' : '');
-  trcItem.innerHTML = '<i class="ti ti-replace"></i> TROCAS';
+  trcItem.innerHTML = '<i class="ti ti-replace"></i> TROCAS E DEVOLUÇÕES';
   trcItem.onclick = () => abrirTrocas(trcItem);
   nav.appendChild(trcItem);
 
@@ -1781,20 +1781,20 @@ function trcCampo(id, campo, valor) {
 function trcPedirReversa(id) { revPedir('retorno', id); }
 // WhatsApp com o código (20/10/2026): o robô pede ao /api/troca-aviso depois de gerar o código.
 // Fora das 24 h do WhatsApp (sem o modelo aprovado) a mensagem fica aqui para a Marcelly mandar.
-function trcAvisoInfo(t) {
-  const r = ((loadLocal('vc:reversas-resultado') || {}).itens || {})['retorno:' + t.id];
+function trcAvisoInfo(t, lista = 'retorno') {
+  const r = ((loadLocal('vc:reversas-resultado') || {}).itens || {})[lista + ':' + t.id];
   return r && r.codigo ? r : null;
 }
-function trcAvisoHtml(t) {
-  const r = trcAvisoInfo(t);
+function trcAvisoHtml(t, lista = 'retorno') {
+  const r = trcAvisoInfo(t, lista);
   if (!r) return '';
   if (r.whatsapp_em) return `<div class="trc-dica"><i class="ti ti-brand-whatsapp"></i> código enviado no WhatsApp em ${new Date(r.whatsapp_em).toLocaleDateString('pt-BR')}</div>`;
   if (r.whatsapp_texto) return `<div class="trc-aviso" style="color:#b45309"><i class="ti ti-brand-whatsapp"></i> ${r.whatsapp_motivo === 'fora_da_janela' ? 'cliente fora das 24 h do WhatsApp, o sistema tenta de novo de hora em hora' : 'o WhatsApp não saiu'}</div>`
-    + `<button class="trc-btn trc-btn-sec" onclick="trcCopiarAviso('${t.id}', this)"><i class="ti ti-copy"></i> copiar mensagem</button>`;
+    + `<button class="trc-btn trc-btn-sec" onclick="trcCopiarAviso('${t.id}', this, '${lista}')"><i class="ti ti-copy"></i> copiar mensagem</button>`;
   return `<div class="trc-dica"><i class="ti ti-brand-whatsapp"></i> WhatsApp com o código sai entre 8h e 21h</div>`;
 }
-async function trcCopiarAviso(id, btn) {
-  const t = retGetConfig().itens.find(x => x.id === id); const r = t && trcAvisoInfo(t);
+async function trcCopiarAviso(id, btn, lista = 'retorno') {
+  const t = (lista === 'estorno' ? estGetConfig() : retGetConfig()).itens.find(x => x.id === id); const r = t && trcAvisoInfo(t, lista);
   if (!r || !r.whatsapp_texto) return;
   try { await navigator.clipboard.writeText(r.whatsapp_texto); if (btn) btn.innerHTML = '<i class="ti ti-check"></i> copiada'; }
   catch (e) { prompt('Copie a mensagem:', r.whatsapp_texto); }
@@ -1893,12 +1893,132 @@ async function trcAtualizar() {
   const st = document.getElementById('trc-sync');
   if (st) st.textContent = 'buscando pedidos novos...';
   try { await retSincronizarShopify(); } catch (e) {}
+  try { await estSincronizarShopify(); } catch (e) {}
   if (st) st.textContent = 'conferindo os pedidos de troca na Shopify...';
   try { await trcConferirShopify(); } catch (e) { console.warn('[trocas] conferência na Shopify falhou', e); }
-  trcRender();
+  trcRender(); devRender();
   if (st) st.textContent = 'atualizado ' + new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 }
-function abrirTrocas(item) {
+// ── Quadro da Devolução (20/10/2026, pedido da Bárbara) ──────────────────────────
+// Crédito na loja e dinheiro de volta, no mesmo molde do quadro da Troca: a etapa sai dos dados
+// (código, chegada, vale, estorno). Na chegada: crédito gera o vale (botões de sempre), dinheiro
+// fica "estorno pendente com a Bárbara" até ela apertar "estorno feito" (regra dela: o dinheiro
+// é com ela, e o fechamento é pelo botão). Concluída some depois de 15 dias.
+const DEV_ETAPAS = [
+  ['pedido',    'Pedido feito',      'pedir a reversa',               '#5b8def'],
+  ['pagar',     'Reversa pra pagar', 'pagar no carrinho da Frenet',   '#e0892b'],
+  ['esperando', 'Esperando a peça',  'cliente posta com o código',    '#8a63d2'],
+  ['chegou',    'Chegou',            'conferir e fazer vale ou estorno', '#c99a3c'],
+  ['concluida', 'Concluída',         'vale enviado ou estorno feito', '#3aa76d'],
+];
+let _trcSecao = 'trocas';
+function trcSecao(secao) {
+  _trcSecao = secao === 'dev' ? 'dev' : 'trocas';
+  const t = document.getElementById('trc-sec-trocas'), d = document.getElementById('trc-sec-dev');
+  if (t) t.style.display = _trcSecao === 'trocas' ? '' : 'none';
+  if (d) d.style.display = _trcSecao === 'dev' ? '' : 'none';
+  document.getElementById('trc-pill-trocas')?.classList.toggle('active', _trcSecao === 'trocas');
+  document.getElementById('trc-pill-dev')?.classList.toggle('active', _trcSecao === 'dev');
+  const resumo = document.getElementById('trc-resumo'); // contagem das trocas, ao lado do título
+  if (resumo) resumo.style.display = _trcSecao === 'trocas' ? '' : 'none';
+  if (_trcSecao === 'dev') devRender(); else trcRender();
+}
+function devEtapa(t) {
+  if (estConcluida(t)) return 'concluida';
+  if (t.chegou_em || t.data_chegada_reversa) return 'chegou';
+  if (revCodigoAtual('estorno', t)) return 'esperando';
+  const st = revStatus('estorno', t);
+  if (st.txt && !st.pode) return 'pagar';
+  return 'pedido';
+}
+function devNoQuadro(t) {
+  if (!estConcluida(t)) return true;
+  const em = new Date(t.vale_enviado_em || t.estorno_feito_em || t.etapa_em || t.atualizado_em || 0).getTime();
+  return Date.now() - em < TRC_CONCLUIDA_DIAS * 86400000;
+}
+function devCartaoHtml(t, etapa) {
+  const esc = v => String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+  const dias = estDiasNaFila(t);
+  const bucket = retBucket(dias);
+  const fechada = estConcluida(t);
+  const credito = valeEhCredito(t);
+  const reais = v => 'R$ ' + (Number(v) || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 });
+  const selo = (!fechada && dias >= 2) ? `<span class="trc-dias" style="background:${bucket.bar}">${dias}d</span>` : '';
+  const st = revStatus('estorno', t);
+  const btn = (fn, ico, txt) => `<button class="trc-btn" onclick="${fn}"><i class="ti ${ico}"></i> ${txt}</button>`;
+  const inp = (ph) => `<input class="trc-inp" placeholder="${ph}" onchange="devCodigo('${t.id}', this.value)">`;
+  const pedido = revNumeroPedido('estorno', t);
+  let acao = '';
+  if (etapa === 'pedido') {
+    acao = (st.txt ? `<div class="trc-aviso" style="color:${st.cor || 'var(--text-ter)'}">${esc(st.txt)}</div>` : '')
+      + (pedido ? btn(`revPedir('estorno','${t.id}')`, 'ti-truck-return', 'pedir reversa') : '<div class="trc-aviso">sem número de pedido</div>')
+      + inp('ou cole o código da reversa')
+      + `<button class="trc-btn trc-btn-sec" onclick="valeChegou('${t.id}')"><i class="ti ti-package-import"></i> chegou</button>`;
+  } else if (etapa === 'pagar') {
+    acao = `<div class="trc-aviso" style="color:${st.cor || 'var(--text-ter)'}">${esc(st.txt)}</div>`
+      + `<a class="trc-link" href="https://painel.frenet.com.br/shoppingcart/index" target="_blank" rel="noopener"><i class="ti ti-external-link"></i> abrir carrinho da Frenet</a>`
+      + `<div class="trc-dica">depois de pago, o código aparece aqui sozinho</div>`;
+  } else if (etapa === 'esperando') {
+    const rs = trcRastreio(t, 'estorno'), venc = trcVencimento(t, Date.now(), 'estorno');
+    acao = `<div class="trc-cod">reversa <b>${esc(t.codigo_devolucao)}</b></div>`
+      + (rs && rs.postado ? `<div class="trc-aviso" style="color:#5a3e9e"><i class="ti ti-truck"></i> postada, a caminho${rs.ocorrencia ? ' · ' + esc(rs.ocorrencia) : ''}</div>` : '')
+      + (venc ? `<div class="trc-aviso" style="color:${venc.cor}"><i class="ti ti-clock-exclamation"></i> ${esc(venc.txt)}</div>` : '')
+      + trcAvisoHtml(t, 'estorno')
+      + btn(`valeChegou('${t.id}')`, 'ti-package-import', 'chegou');
+  } else if (etapa === 'chegou') {
+    const quando = t.chegou_em ? new Date(t.chegou_em).toLocaleDateString('pt-BR') : '';
+    acao = t.chegada_por_rastreio
+      ? `<div class="trc-aviso" style="color:#c99a3c"><i class="ti ti-package"></i> entregue pelos Correios em ${esc(quando)}, abra e confira</div>`
+      : `<div class="trc-cod">chegou ${esc(quando)}</div>`;
+    if (credito) {
+      acao += `<div style="display:flex;gap:4px;flex-wrap:wrap">${valeAcaoHtml(t)}</div>`;
+    } else {
+      acao += `<div class="trc-aviso" style="color:#b45309"><i class="ti ti-cash"></i> estorno de ${reais(t.valor)} pendente com a Bárbara</div>`
+        + btn(`devEstornoFeito('${t.id}')`, 'ti-check', 'estorno feito');
+    }
+  } else {
+    acao = credito
+      ? `<div class="trc-dica">${t.vale_codigo ? 'vale ' + esc(t.vale_codigo) + ' enviado' : 'concluída'}${t.vale_enviado_em ? ' em ' + new Date(t.vale_enviado_em).toLocaleDateString('pt-BR') : ''}</div>`
+      : `<div class="trc-dica">estorno feito${t.estorno_feito_em ? ' em ' + new Date(t.estorno_feito_em).toLocaleDateString('pt-BR') : ''}</div>`;
+  }
+  const vencCor = etapa === 'esperando' ? (trcVencimento(t, Date.now(), 'estorno') || {}).cor : null;
+  return `<div class="trc-card${fechada ? ' trc-fechada' : ''}" style="border-left-color:${vencCor || bucket.bar}${vencCor ? ';background:' + (vencCor === '#dc2626' ? 'rgba(220,38,38,.07)' : 'rgba(224,137,43,.09)') : ''}">
+    <div class="trc-topo"><b title="${esc(t.cliente)}">${esc(t.cliente) || '(sem nome)'}</b>${selo}<button class="trc-x" title="excluir esta devolução" onclick="estDel('${t.id}')">×</button></div>
+    <div class="trc-ped">${esc(pedido)}${pedido ? ' · ' : ''}<span class="trc-tag" style="${credito ? '' : 'color:#b45309;background:rgba(224,137,43,.12)'}">${credito ? 'crédito' : 'dinheiro'}</span> · <b>${reais(t.valor)}</b>${t.portal_id ? ' · <span class="trc-tag">portal</span>' : ''}</div>
+    <div class="trc-prod" title="${esc(t.pecas)}">${esc(t.pecas)}</div>
+    ${t.motivo ? `<div class="trc-dica" title="${esc(t.motivo)}">${esc(String(t.motivo).slice(0, 70))}</div>` : ''}
+    <div class="trc-acao">${acao}</div>
+  </div>`;
+}
+function devRender() {
+  const board = document.getElementById('dev-board');
+  if (!board) return;
+  const itens = estGetConfig().itens.filter(devNoQuadro).map(t => ({ t, etapa: devEtapa(t), dias: estDiasNaFila(t) }));
+  board.innerHTML = DEV_ETAPAS.map(([k, rotulo, passo, cor]) => {
+    const da = itens.filter(x => x.etapa === k).sort((a, b) => estConcluida(a.t) - estConcluida(b.t) || b.dias - a.dias);
+    return `<div class="trc-col">
+      <div class="trc-col-topo" style="border-top-color:${cor}"><span>${rotulo}</span><b>${da.length}</b></div>
+      <div class="trc-col-passo">${passo}</div>
+      ${da.map(x => devCartaoHtml(x.t, k)).join('') || '<div class="trc-vazio">nada aqui</div>'}
+    </div>`;
+  }).join('');
+  const abertas = itens.filter(x => !estConcluida(x.t));
+  const pend = abertas.filter(x => x.etapa === 'chegou' && !valeEhCredito(x.t));
+  const el = document.getElementById('dev-resumo');
+  if (el) el.textContent = `${abertas.length} em aberto` + (pend.length ? ` · ${pend.length} estorno${pend.length > 1 ? 's' : ''} pendente${pend.length > 1 ? 's' : ''} com a Bárbara (${pend.reduce((s, x) => s + (Number(x.t.valor) || 0), 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })})` : '');
+}
+function devCodigo(id, valor) {
+  const v = String(valor || '').trim();
+  if (!v) return;
+  estEdit(id, 'codigo_devolucao', v);
+  atdSyncViews();
+}
+function devEstornoFeito(id) {
+  const t = estGetConfig().itens.find(x => x.id === id); if (!t) return;
+  if (!confirm(`Confirma que o estorno de ${(Number(t.valor) || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} para ${t.cliente || 'a cliente'} já foi feito?`)) return;
+  valeAlterar(id, x => { x.estorno_feito_em = new Date().toISOString(); x.etapa = 'concluido'; x.etapa_em = x.estorno_feito_em; });
+}
+function abrirTrocas(item, secao) {
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   if (item) item.classList.add('active');
   if (!['__dashboard__', '__financeiro__', '__precos__', '__trafego__', '__fluxo__', '__atendimento__', '__trocas__', '__frete__', '__notas__'].includes(modeloAtual) && (estEditado || prodEditado || cfgEditado)) {
@@ -1907,7 +2027,7 @@ function abrirTrocas(item) {
   estEditado = false; prodEditado = false; cfgEditado = false; esconderBtnSalvar();
   modeloAtual = '__trocas__';
   location.hash = 'trocas';
-  document.getElementById('model-title').innerHTML = '<span style="font-family:\'Bebas Neue\',\'Arial Narrow\',sans-serif;font-weight:400;font-size:26px;letter-spacing:0.1em">TROCAS</span>';
+  document.getElementById('model-title').innerHTML = '<span style="font-family:\'Bebas Neue\',\'Arial Narrow\',sans-serif;font-weight:400;font-size:26px;letter-spacing:0.1em">TROCAS E DEVOLUÇÕES</span>';
   document.getElementById('model-sub').textContent = '';
   document.getElementById('topbar-actions').style.display = 'none';
   document.getElementById('tabs-modelo').style.display = 'none';
@@ -1917,6 +2037,7 @@ function abrirTrocas(item) {
   const ok = sessionStorage.getItem('fin-ok') === '1';
   document.getElementById('trc-gate').style.display = ok ? 'none' : '';
   document.getElementById('trc-content').style.display = ok ? '' : 'none';
+  trcSecao(secao || _trcSecao);
   if (ok) trcAtualizar(); else setTimeout(() => document.getElementById('trc-senha')?.focus(), 60);
   closeSidebar();
 }
@@ -2030,14 +2151,14 @@ function frtLock() {
 // Alterna entre as 4 sub-seções (pílulas) dentro do painel Atendimento
 function atdShowSub(sub) {
   if (sub === 'retorno') { abrirTrocas(null); return; } // a troca mora na aba TROCAS desde 19/10/2026
-  ['kanban', 'sac', 'estorno', 'vendas', 'casos', 'whats'].forEach(s => {
+  if (sub === 'estorno') { abrirTrocas(null, 'dev'); return; } // a devolução também, desde 20/10/2026
+  ['kanban', 'sac', 'vendas', 'casos', 'whats'].forEach(s => {
     const el = document.getElementById('atd-sub-' + s);
     if (el) el.style.display = (s === sub) ? '' : 'none';
     const pill = document.getElementById('atd-pill-' + s);
     if (pill) pill.classList.toggle('active', s === sub);
   });
   if (sub === 'sac') sacRender();
-  else if (sub === 'estorno') { estRender(); estSincronizarShopify(); }
   else if (sub === 'kanban') kbAbrir();
   else if (sub === 'vendas') vndCarregar();
   else if (sub === 'casos') csAbrir();
@@ -3426,12 +3547,12 @@ function valeEnviado(id) {
 // e grava `rastreio-trocas`. Regras da Bárbara: entregue → o cartão vai sozinho para "Chegou"
 // (a equipe ainda confere); 2 dias antes do código vencer sem postagem, laranja; vencido,
 // vermelho. Nada vai para a cliente. Chegada marcada à mão nunca é mexida.
-function trcRastreio(t) {
+function trcRastreio(t, lista = 'retorno') {
   const r = loadLocal('vc:rastreio-trocas');
-  return (r && r.itens && r.itens['retorno:' + t.id]) || null;
+  return (r && r.itens && r.itens[lista + ':' + t.id]) || null;
 }
-function trcVencimento(t, agora = Date.now()) {
-  const r = trcRastreio(t);
+function trcVencimento(t, agora = Date.now(), lista = 'retorno') {
+  const r = trcRastreio(t, lista);
   if (!r || r.postado || !r.vence_em) return null;
   const falta = new Date(r.vence_em).getTime() - agora;
   const dia = new Date(r.vence_em).toLocaleDateString('pt-BR');
@@ -3455,7 +3576,20 @@ function revAplicarRastreio() {
     n++;
   });
   if (n) { retSalvar(cfg); atdSyncViews(); }
-  return n;
+  // Devolução (20/10/2026): o robô grava a chave 'estorno:<id>'; entregue marca chegou_em, a equipe confere
+  const cfgE = estGetConfig();
+  let nE = 0;
+  cfgE.itens.forEach(t => {
+    const x = r.itens['estorno:' + t.id];
+    if (!x || !x.entregue || t.chegou_em || estConcluida(t)) return;
+    carimbarItem(t);
+    t.chegou_em = x.entregue_em || new Date().toISOString();
+    t.chegada_por_rastreio = true;
+    if (!t.etapa || t.etapa === 'novo') { t.etapa = 'andamento'; t.etapa_em = t.chegou_em; }
+    nE++;
+  });
+  if (nE) { estSalvar(cfgE); atdSyncViews(); }
+  return n + nE;
 }
 
 // ── Portal de trocas da cliente (/trocas, 19/10/2026) ─────────────────────────
@@ -3624,6 +3758,7 @@ function estAtualizarSetas() {
   });
 }
 function estRender() {
+  if (!document.getElementById('atd-est-tbody')) return; // a lista saiu em 20/10/2026: o quadro da Devolução mostra tudo
   const cfg = estGetConfig();
   const pendentes = cfg.itens
     .filter(t => !estConcluida(t))
@@ -3834,6 +3969,7 @@ function atdSyncViews() {
   try { if (document.getElementById('sac-tbody')) sacRender(); } catch (e) {}
   try { if (document.getElementById('ret-tbody')) retRender(); } catch (e) {}
   try { if (document.getElementById('trc-board')) trcRender(); } catch (e) {}
+  try { if (document.getElementById('dev-board')) devRender(); } catch (e) {}
   try { if (document.getElementById('atd-est-tbody')) estRender(); } catch (e) {}
   try { if (document.getElementById('kb-board')) kbRender(); } catch (e) {}
 }

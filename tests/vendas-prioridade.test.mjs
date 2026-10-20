@@ -65,8 +65,8 @@ console.log('\n2) A leitura da Shopify segue a paginacao e usa updated_at_min');
 
 console.log('\n3) A tela VENDAS existe e e so leitura');
 ok('pill Vendas ao lado das outras', /atd-pill-vendas[\s\S]{0,80}atdShowSub\('vendas'\)/.test(html), true);
-// 'retorno' saiu da lista em 19/10/2026: a troca ganhou a aba TROCAS própria no menu
-ok('atdShowSub conhece vendas', /\['kanban', 'sac', ('retorno', )?'estorno', 'vendas'(, '[a-z]+')*\]/.test(main), true);
+// 'retorno' saiu da lista em 19/10/2026 e 'estorno' em 20/10/2026: troca e devolução ganharam a aba TROCAS E DEVOLUÇÕES
+ok('atdShowSub conhece vendas', /\['kanban', 'sac', ('retorno', )?('estorno', )?'vendas'(, '[a-z]+')*\]/.test(main), true);
 ok('abrir a aba busca na Shopify', /else if \(sub === 'vendas'\) vndCarregar\(\);/.test(main), true);
 ok('a aba le /api/shopify-rascunhos', /fetch\(`\/api\/shopify-rascunhos\?desde=\$\{desde\}&ate=\$\{ate\}`/.test(main), true);
 {

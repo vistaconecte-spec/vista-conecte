@@ -861,12 +861,36 @@
         </div>
         <div id="trc-content" style="display:none">
           <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap">
-            <div style="font-weight:700;font-size:18px"><i class="ti ti-replace"></i> Trocas</div>
+            <div style="font-weight:700;font-size:18px"><i class="ti ti-replace"></i> Trocas e devoluções</div>
             <span id="trc-resumo" style="font-size:12px;color:var(--text-sec)"></span>
             <span id="trc-sync" style="font-size:11px;color:var(--text-ter)"></span>
             <button class="btn-outline" style="margin-left:auto;font-size:11px;padding:5px 10px" onclick="trcAtualizar()"><i class="ti ti-refresh"></i> Atualizar</button>
             <button class="btn-outline" style="font-size:11px;padding:5px 10px" onclick="trcLock()"><i class="ti ti-lock"></i> Sair</button>
           </div>
+          <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap">
+            <div id="trc-pill-trocas" class="atd-pill active" onclick="trcSecao('trocas')"><i class="ti ti-replace"></i> Trocas</div>
+            <div id="trc-pill-dev" class="atd-pill" onclick="trcSecao('dev')"><i class="ti ti-receipt-refund"></i> Devoluções</div>
+          </div>
+          <div id="trc-sec-dev" style="display:none">
+            <div id="dev-resumo" style="font-size:12px;color:var(--text-sec);margin:-4px 0 10px"></div>
+            <div id="dev-board" class="trc-board"></div>
+            <div style="font-weight:700;font-size:13px;margin:22px 0 10px;color:var(--text-sec);text-transform:uppercase;letter-spacing:.04em">Nova devolução (pedido que chegou pelo WhatsApp)</div>
+            <div id="atd-sub-estorno">
+            <div class="card" style="padding:14px 16px;margin-bottom:14px;border-left:4px solid var(--gold-dark)">
+              <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+                <input id="atd-est-cliente" placeholder="Cliente" style="width:160px;font-size:12px;padding:7px 10px;border:1px solid var(--border);border-radius:6px">
+                <input id="atd-est-pecas" placeholder="Peças" style="flex:1;min-width:180px;font-size:12px;padding:7px 10px;border:1px solid var(--border);border-radius:6px">
+                <input id="atd-est-valor" type="number" step="0.01" placeholder="Valor R$" style="width:100px;font-size:12px;padding:7px 10px;border:1px solid var(--border);border-radius:6px">
+                <input id="atd-est-codigo" placeholder="Cód. devolução" style="width:140px;font-size:12px;padding:7px 10px;border:1px solid var(--border);border-radius:6px">
+                <input id="atd-est-data" placeholder="Data (ex.: 03/08)" style="width:110px;font-size:12px;padding:7px 10px;border:1px solid var(--border);border-radius:6px">
+                <input id="atd-est-motivo" placeholder="Motivo" style="width:150px;font-size:12px;padding:7px 10px;border:1px solid var(--border);border-radius:6px" onkeydown="if(event.key==='Enter')estAdd()">
+                <button class="btn-primary" style="font-size:12px;padding:7px 14px" onclick="estAdd()"><i class="ti ti-plus"></i> Adicionar</button>
+              </div>
+            </div>
+            
+          </div>
+          </div>
+          <div id="trc-sec-trocas">
           <div id="trc-board" class="trc-board"></div>
           <div style="font-weight:700;font-size:13px;margin:22px 0 10px;color:var(--text-sec);text-transform:uppercase;letter-spacing:.04em">Nova troca (pedido que chegou pelo WhatsApp)</div>
           <div id="atd-sub-retorno">
@@ -890,6 +914,7 @@
               <div id="ret-pedido-preview" style="display:none;margin-top:10px;padding:10px 12px;background:rgba(245,240,232,.75);border-radius:14px;font-size:12px"></div>
             </div>
           </div>
+          </div>
         </div>
       </div>
 
@@ -911,14 +936,13 @@
           </style>
           <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap">
             <div style="font-weight:700;font-size:18px"><i class="ti ti-headset"></i> Atendimento</div>
-            <span style="font-size:12px;color:var(--text-sec)">SAC · Devolução · Vendas</span>
+            <span style="font-size:12px;color:var(--text-sec)">SAC · Vendas</span>
             <button class="btn-outline" style="margin-left:auto;font-size:11px;padding:5px 10px" onclick="atdLock()"><i class="ti ti-lock"></i> Sair</button>
           </div>
           <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">
             <div id="atd-pill-whats" class="atd-pill" onclick="atdShowSub('whats')"><i class="ti ti-brand-whatsapp"></i> Vi - atendimento</div>
             <div id="atd-pill-kanban" class="atd-pill" onclick="atdShowSub('kanban')"><i class="ti ti-layout-kanban"></i> CRM</div>
             <div id="atd-pill-sac" class="atd-pill" onclick="atdShowSub('sac')"><i class="ti ti-headset"></i> SAC</div>
-            <div id="atd-pill-estorno" class="atd-pill" onclick="atdShowSub('estorno')"><i class="ti ti-receipt-refund"></i> Devolução</div>
             <div id="atd-pill-vendas" class="atd-pill" onclick="atdShowSub('vendas')"><i class="ti ti-cash"></i> Vendas</div>
             <div id="atd-pill-casos" class="atd-pill" onclick="atdShowSub('casos')"><i class="ti ti-message-chatbot"></i> Assistente</div>
           </div>
@@ -1094,41 +1118,6 @@
               </div>
             </div>
           </div>
-          <div id="atd-sub-estorno" style="display:none">
-            <div class="card" style="padding:14px 16px;margin-bottom:14px;border-left:4px solid var(--gold-dark)">
-              <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-                <input id="atd-est-cliente" placeholder="Cliente" style="width:160px;font-size:12px;padding:7px 10px;border:1px solid var(--border);border-radius:6px">
-                <input id="atd-est-pecas" placeholder="Peças" style="flex:1;min-width:180px;font-size:12px;padding:7px 10px;border:1px solid var(--border);border-radius:6px">
-                <input id="atd-est-valor" type="number" step="0.01" placeholder="Valor R$" style="width:100px;font-size:12px;padding:7px 10px;border:1px solid var(--border);border-radius:6px">
-                <input id="atd-est-codigo" placeholder="Cód. devolução" style="width:140px;font-size:12px;padding:7px 10px;border:1px solid var(--border);border-radius:6px">
-                <input id="atd-est-data" placeholder="Data (ex.: 03/08)" style="width:110px;font-size:12px;padding:7px 10px;border:1px solid var(--border);border-radius:6px">
-                <input id="atd-est-motivo" placeholder="Motivo" style="width:150px;font-size:12px;padding:7px 10px;border:1px solid var(--border);border-radius:6px" onkeydown="if(event.key==='Enter')estAdd()">
-                <button class="btn-primary" style="font-size:12px;padding:7px 14px" onclick="estAdd()"><i class="ti ti-plus"></i> Adicionar</button>
-              </div>
-            </div>
-            <div class="card" style="border-top:3px solid var(--gold-dark)">
-              <div class="card-header">
-                <div>
-                  <div class="card-title" style="color:var(--gold-dark)"><i class="ti ti-receipt-refund"></i> Devoluções · Estorno</div>
-                  <div style="font-size:11px;color:var(--text-ter);margin-top:2px"><b>Reembolso</b> — dinheiro de volta ao cliente (não é troca por outra peça)</div>
-                </div>
-                <div style="display:flex;align-items:center;gap:10px">
-                  <span id="atd-est-sync-status" style="font-size:10px;color:var(--text-ter)"></span>
-                  <button class="btn-outline" style="font-size:10px;padding:4px 8px" onclick="estSincronizarShopify()"><i class="ti ti-refresh"></i> Shopify</button>
-                  <span id="atd-est-total-valor" style="font-size:12px;font-weight:700;color:var(--gold-dark)"></span>
-                </div>
-              </div>
-              <div style="overflow-x:auto">
-              <table class="est-tab">
-                <!-- Larguras fixas por coluna: sem isso o navegador dimensiona pela largura
-                     dos inputs (que era em px) e o conteúdo não bate com o cabeçalho. -->
-                <colgroup><col style="width:16%"><col style="width:30%"><col style="width:8%"><col style="width:13%"><col style="width:14%"><col style="width:19%"><col style="width:32px"></colgroup>
-                <thead><tr style="color:var(--gold-dark);font-size:11px;text-transform:uppercase;background:rgba(184,134,11,.10)"><th data-sort="cliente" onclick="estOrdenar('cliente')" title="Clique para ordenar" style="text-align:left;padding:4px;cursor:pointer;user-select:none">Cliente <span class="est-arrow"></span></th><th data-sort="pecas" onclick="estOrdenar('pecas')" title="Clique para ordenar" style="text-align:left;padding:4px;cursor:pointer;user-select:none">Peças <span class="est-arrow"></span></th><th data-sort="valor" onclick="estOrdenar('valor')" title="Clique para ordenar" style="text-align:right;padding:4px;cursor:pointer;user-select:none">Valor R$ <span class="est-arrow"></span></th><th data-sort="codigo_devolucao" onclick="estOrdenar('codigo_devolucao')" title="Clique para ordenar" style="text-align:left;padding:4px;cursor:pointer;user-select:none">Cód. devolução <span class="est-arrow"></span></th><th data-sort="data" onclick="estOrdenar('data')" title="Clique para ordenar" style="text-align:left;padding:4px;cursor:pointer;user-select:none">Data <span class="est-arrow"></span></th><th data-sort="motivo" onclick="estOrdenar('motivo')" title="Clique para ordenar" style="text-align:left;padding:4px;cursor:pointer;user-select:none">Motivo <span class="est-arrow"></span></th><th style="width:28px"></th></tr></thead>
-                <tbody id="atd-est-tbody"></tbody>
-              </table>
-              </div>
-            </div>
-          </div>
         </div>
       </div>
 
@@ -1168,7 +1157,7 @@
   </div>
 </div>
 <script src="data.js?v=2026100701"></script>
-<script src="main.js?v=2026102003"></script>
+<script src="main.js?v=2026102004"></script>
 <script async src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js" onload="initSupabase()"></script>
 </body>
 </html>

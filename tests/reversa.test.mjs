@@ -157,6 +157,9 @@ console.log('\n7) Rastreio da devolução (robô de hora em hora, 20/10/2026)');
     const carimbarItem = t => { t.atualizado_em = 'agora'; return t; };
     const retGetConfig = () => loadLocal('vc:retorno');
     const retSalvar = c => { mem['vc:retorno'] = c; };
+    const estGetConfig = () => loadLocal('vc:estorno') || { itens: [] };
+    const estSalvar = c => { mem['vc:estorno'] = c; };
+    const estConcluida = t => t.status === 'resolvido' || t.etapa === 'concluido';
     const atdSyncViews = () => {};
     ${main.slice(a, b)}
     return { trcVencimento, revAplicarRastreio };
@@ -196,6 +199,25 @@ console.log('\n8) Troca do portal fecha quando a peça nova é despachada (20/10
   ok('tudo despachado: fecha com o rastreio no reenvio', [p1.status, p1.codigo_reenvio], ['resolvido', 'AA123']);
   ok('1 de 2: continua aberta e mostra o parcial', [p2.status, p2.pedido_troca_envio], ['pendente', '1 de 2 peças enviadas']);
   ok('manual sem pedido de troca: aviso vermelho', m1.pedido_troca_ausente, true);
+}
+
+console.log('\n9) Etapa no quadro da Devolução (20/10/2026)');
+{
+  const a = main.indexOf('const DEV_ETAPAS'), b = main.indexOf('function devCartaoHtml');
+  const L = lab({ 'vc:reversas-pedido': { itens: [] }, 'vc:reversas-resultado': { itens: {} } });
+  const D = new Function('L', `
+    const estConcluida = t => t.status === 'resolvido' || t.etapa === 'concluido';
+    const revCodigoAtual = L.revCodigoAtual, revStatus = L.revStatus;
+    const TRC_CONCLUIDA_DIAS = 15;
+    ${main.slice(a, b)}
+    return { devEtapa, devNoQuadro };
+  `)(L);
+  ok('sem nada: pedido feito', D.devEtapa({ id: 'e1', pecas: 'x — pedido #1' }), 'pedido');
+  ok('com código da reversa: esperando', D.devEtapa({ id: 'e1', pecas: 'x — pedido #1', codigo_devolucao: '4665143571' }), 'esperando');
+  ok('#9250-R1 da Shopify não é código: pedido feito', D.devEtapa({ id: 'e1', pecas: 'x — pedido #1', codigo_devolucao: '#9250-R1' }), 'pedido');
+  ok('chegou', D.devEtapa({ id: 'e1', chegou_em: '2026-10-20T10:00:00Z', codigo_devolucao: 'AP1' }), 'chegou');
+  ok('estorno feito: concluída', D.devEtapa({ id: 'e1', chegou_em: 'x', etapa: 'concluido', estorno_feito_em: 'x' }), 'concluida');
+  ok('concluída há 20 dias sai do quadro', D.devNoQuadro({ etapa: 'concluido', estorno_feito_em: new Date(Date.now() - 20 * 864e5).toISOString() }), false);
 }
 
 console.log(falhas ? `\n✗ ${falhas} de ${total} falharam` : `\n✓ TODOS OS TESTES PASSARAM — ${total}/${total}`);
