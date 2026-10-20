@@ -1931,7 +1931,10 @@ function devEtapa(t) {
   if (st.txt && !st.pode) return 'pagar';
   return 'pedido';
 }
+// Arquivada = fechada na limpeza de 20/10/2026 (73 pedidos de devolução da Shopify de dez/2025 a ago/2026
+// que ninguém fechou: estorno já feito, virou troca ou antiga sem registro). Sai do quadro e fica na lista de baixo.
 function devNoQuadro(t) {
+  if (t.arquivada) return false;
   if (!estConcluida(t)) return true;
   const em = new Date(t.vale_enviado_em || t.estorno_feito_em || t.etapa_em || t.atualizado_em || 0).getTime();
   return Date.now() - em < TRC_CONCLUIDA_DIAS * 86400000;
@@ -2002,6 +2005,7 @@ function devRender() {
       ${da.map(x => devCartaoHtml(x.t, k)).join('') || '<div class="trc-vazio">nada aqui</div>'}
     </div>`;
   }).join('');
+  devRenderArquivadas();
   const abertas = itens.filter(x => !estConcluida(x.t));
   const pend = abertas.filter(x => x.etapa === 'chegou' && !valeEhCredito(x.t));
   const el = document.getElementById('dev-resumo');
@@ -2012,6 +2016,24 @@ function devCodigo(id, valor) {
   if (!v) return;
   estEdit(id, 'codigo_devolucao', v);
   atdSyncViews();
+}
+function devRenderArquivadas() {
+  const box = document.getElementById('dev-arquivadas');
+  if (!box) return;
+  const esc = v => String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+  const arq = estGetConfig().itens.filter(t => t.arquivada).sort((a, b) => (estChaveOrdenacao(b, 'data') || 0) - (estChaveOrdenacao(a, 'data') || 0));
+  const aberto = box.open;
+  box.style.display = arq.length ? '' : 'none';
+  box.innerHTML = `<summary>Arquivadas · ${arq.length}</summary>` + arq.map(t => `<div class="dev-arq-linha">
+      <div><b>${esc(t.cliente) || '(sem nome)'}</b> · ${esc(revNumeroPedido('estorno', t))} · R$ ${(Number(t.valor) || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })} · ${esc(t.data)}
+        <div class="trc-dica">${esc(t.motivo_fechamento || 'arquivada')}</div></div>
+      <button class="trc-btn trc-btn-sec" onclick="devReabrir('${t.id}')">reabrir</button>
+    </div>`).join('');
+  box.open = aberto;
+}
+function devReabrir(id) {
+  if (!confirm('Reabrir esta devolução e voltar com ela para o quadro?')) return;
+  valeAlterar(id, x => { delete x.arquivada; delete x.motivo_fechamento; delete x.status; delete x.etapa; delete x.estorno_feito_em; });
 }
 function devEstornoFeito(id) {
   const t = estGetConfig().itens.find(x => x.id === id); if (!t) return;

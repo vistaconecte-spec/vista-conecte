@@ -1477,6 +1477,9 @@ table.est-tab td > div > input { min-width: 0; flex: 1 1 auto; }
 .trc-cod { font-size: 11px; color: var(--text-sec); }
 .trc-link { font-size: 11px; font-weight: 700; color: var(--gold-dark); text-decoration: none; }
 .trc-vazio { font-size: 11px; color: var(--text-ter); text-align: center; padding: 14px 0; }
+.dev-arq { margin-top: 14px; font-size: 12px; color: var(--text-sec); }
+.dev-arq summary { cursor: pointer; font-weight: 700; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; padding: 6px 0; }
+.dev-arq-linha { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 7px 0; border-bottom: 1px solid var(--border); }
 .trc-pt { font-size: 11px; color: #5a3e9e; margin: -2px 0 6px; }
 .trc-btn-sec { background: #fff; color: var(--text); border: 1px solid var(--border); }
 .trc-x { margin-left: auto; flex: 0 0 auto; background: none; border: 0; color: var(--text-ter); font-size: 15px; line-height: 1; cursor: pointer; padding: 0 2px; }
