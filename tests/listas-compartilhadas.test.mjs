@@ -93,7 +93,7 @@ for (const [salvar, chave, campo] of [['sacSalvar', 'sac', 'tickets'],
   ok(`${salvar} nao manda mais o array inteiro`, corpo.includes(`salvarNuvem('${chave}', cfg)`), false);
 }
 ok('excluir registra o id em removidos', (main.match(/cfg\.removidos = \[/g) || []).length, 4); // sac/ret/est + vndToggleComissao (11/09/2026)
-ok('as edicoes carimbam o item', (main.match(/carimbarItem\(t\);/g) || []).length, 12); // 8 edicoes + sacUrgenteToggle (11/09/2026) + revAplicarCodigos, valeAlterar e trcConferirShopify (19/10/2026)
+ok('as edicoes carimbam o item', (main.match(/carimbarItem\(t\);/g) || []).length, 13); // 8 edicoes + sacUrgenteToggle (11/09/2026) + revAplicarCodigos, valeAlterar e trcConferirShopify (19/10/2026) + revAplicarRastreio (20/10/2026)
 ok('leitura da nuvem que falha nao apaga o que foi digitado',
    /if \(daNuvem === undefined\) \{ await salvarNuvem\(chave, cfgDigitado\); return null; \}/.test(main), true);
 

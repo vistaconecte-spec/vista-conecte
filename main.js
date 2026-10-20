@@ -622,8 +622,8 @@ async function sincronizarNuvem() {
       const novo  = JSON.stringify(row.dados);
       if (atual !== novo) {
         saveLocal('vc:' + row.id, row.dados); mudou = true;
-        if (row.id === 'reversas-resultado' || row.id === 'reversas-pedido') {
-          try { revAplicarCodigos(); atdSyncViews(); } catch (e) {}
+        if (row.id === 'reversas-resultado' || row.id === 'reversas-pedido' || row.id === 'rastreio-trocas') {
+          try { revAplicarCodigos(); revAplicarRastreio(); atdSyncViews(); } catch (e) {}
         }
       }
     });
@@ -1716,10 +1716,16 @@ function trcCartaoHtml(t, etapa) {
       + `<a class="trc-link" href="https://painel.frenet.com.br/shoppingcart/index" target="_blank" rel="noopener"><i class="ti ti-external-link"></i> abrir carrinho da Frenet</a>`
       + `<div class="trc-dica">depois de pago, o código aparece aqui sozinho</div>`;
   } else if (etapa === 'esperando') {
-    acao = `<div class="trc-cod">reversa <b>${esc(t.codigo_logistica_reversa)}</b></div>` + btn(`trcChegou('${t.id}')`, 'ti-package-import', 'chegou');
+    const rs = trcRastreio(t), venc = trcVencimento(t);
+    acao = `<div class="trc-cod">reversa <b>${esc(t.codigo_logistica_reversa)}</b></div>`
+      + (rs && rs.postado ? `<div class="trc-aviso" style="color:#5a3e9e"><i class="ti ti-truck"></i> postada${rs.postado_visto_em ? ' (vista em ' + new Date(rs.postado_visto_em).toLocaleDateString('pt-BR') + ')' : ''}, a caminho${rs.ocorrencia ? ' · ' + esc(rs.ocorrencia) : ''}</div>` : '')
+      + (venc ? `<div class="trc-aviso" style="color:${venc.cor}"><i class="ti ti-clock-exclamation"></i> ${esc(venc.txt)}</div>` : '')
+      + btn(`trcChegou('${t.id}')`, 'ti-package-import', 'chegou');
   } else if (etapa === 'chegou') {
     const quando = t.data_chegada_reversa ? t.data_chegada_reversa.split('-').reverse().join('/') : '';
-    acao = `<div class="trc-cod">chegou ${esc(quando)}</div>`;
+    acao = t.chegada_por_rastreio
+      ? `<div class="trc-aviso" style="color:#c99a3c"><i class="ti ti-package"></i> entregue pelos Correios em ${esc(quando)}, abra e confira</div>`
+      : `<div class="trc-cod">chegou ${esc(quando)}</div>`;
     if (t.pedido_troca_id && !t.pedido_troca_manual && !t.conferido_em && !t.recusada_em) {
       acao += `<div class="trc-dica">abra o pacote: sem uso e com etiqueta?</div>`
         + btn(`trcConferido('${t.id}', this)`, 'ti-circle-check', 'conferido')
@@ -1735,7 +1741,8 @@ function trcCartaoHtml(t, etapa) {
     acao = (t.codigo_reenvio ? `<div class="trc-cod">reenvio <b>${esc(t.codigo_reenvio)}</b></div>` : '')
       + (fechada ? `<div class="trc-dica">concluída ${t.resolvido_em ? new Date(t.resolvido_em).toLocaleDateString('pt-BR') : ''}</div>` : btn(`retToggle('${t.id}')`, 'ti-check', 'concluir'));
   }
-  return `<div class="trc-card${fechada ? ' trc-fechada' : ''}" style="border-left-color:${bucket.bar}">
+  const vencCor = etapa === 'esperando' ? (trcVencimento(t) || {}).cor : null;
+  return `<div class="trc-card${fechada ? ' trc-fechada' : ''}${vencCor ? ' trc-alerta' : ''}" style="border-left-color:${vencCor || bucket.bar}${vencCor ? ';background:' + (vencCor === '#dc2626' ? 'rgba(220,38,38,.07)' : 'rgba(224,137,43,.09)') : ''}">
     <div class="trc-topo"><b title="${esc(t.cliente)}">${esc(t.cliente) || '(sem nome)'}</b>${selo}<button class="trc-x" title="excluir esta troca" onclick="retDel('${t.id}')">×</button></div>
     <div class="trc-ped">${esc(t.pedido || '')}${t.obs ? ` · troca por <b>${esc(t.obs)}</b>` : ''}${t.portal_id ? ' · <span class="trc-tag">portal</span>' : ''}</div>
     <div class="trc-prod" title="${esc(t.produtos)}">${esc(t.produtos)}</div>
@@ -3376,6 +3383,43 @@ function valeEnviado(id) {
   valeAlterar(id, t => { t.vale_enviado_em = new Date().toISOString(); t.etapa = 'concluido'; t.etapa_em = t.vale_enviado_em; });
 }
 
+// ── Rastreio da devolução da troca (20/10/2026) ───────────────────────────────
+// O robô do notebook confere de hora em hora (8h às 20h) os códigos das trocas em aberto na Frenet
+// e grava `rastreio-trocas`. Regras da Bárbara: entregue → o cartão vai sozinho para "Chegou"
+// (a equipe ainda confere); 2 dias antes do código vencer sem postagem, laranja; vencido,
+// vermelho. Nada vai para a cliente. Chegada marcada à mão nunca é mexida.
+function trcRastreio(t) {
+  const r = loadLocal('vc:rastreio-trocas');
+  return (r && r.itens && r.itens['retorno:' + t.id]) || null;
+}
+function trcVencimento(t, agora = Date.now()) {
+  const r = trcRastreio(t);
+  if (!r || r.postado || !r.vence_em) return null;
+  const falta = new Date(r.vence_em).getTime() - agora;
+  const dia = new Date(r.vence_em).toLocaleDateString('pt-BR');
+  if (falta < 0) return { cor: '#dc2626', txt: `código venceu em ${dia} sem postagem` };
+  if (falta <= 2 * 86400000) return { cor: '#e0892b', txt: `código vence em ${dia} e ainda não foi postado` };
+  return null;
+}
+function revAplicarRastreio() {
+  const r = loadLocal('vc:rastreio-trocas');
+  if (!r || !r.itens) return 0;
+  const cfg = retGetConfig();
+  let n = 0;
+  cfg.itens.forEach(t => {
+    const x = r.itens['retorno:' + t.id];
+    if (!x || !x.entregue || t.data_chegada_reversa || t.status === 'resolvido') return;
+    const d = new Date(x.entregue_em || Date.now());
+    carimbarItem(t);
+    t.data_chegada_reversa = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    t.chegou_reversa = true;
+    t.chegada_por_rastreio = true;
+    n++;
+  });
+  if (n) { retSalvar(cfg); atdSyncViews(); }
+  return n;
+}
+
 // ── Portal de trocas da cliente (/trocas, 19/10/2026) ─────────────────────────
 // A cliente pede sozinha, sem login, e cada pedido vira uma linha `troca-portal:<pedido>-<ts>`
 // no vc_modelos (quem grava é /api/trocas-portal). Aqui essas linhas viram itens das listas:
@@ -3462,6 +3506,7 @@ function atdImportarPortal() {
     if (nRet) { retSalvar(cfgRet); retRender(); }
     if (nEst) { estSalvar(cfgEst); estRender(); }
     try { const d = await carregarNuvem('reversas-resultado'); if (d) saveLocal('vc:reversas-resultado', d); revAplicarCodigos(); } catch (e) {}
+    try { const d = await carregarNuvem('rastreio-trocas'); if (d) saveLocal('vc:rastreio-trocas', d); revAplicarRastreio(); } catch (e) {}
     return nRet + nEst;
   })().catch(() => 0).finally(() => { _portalImportando = null; });
   return _portalImportando;

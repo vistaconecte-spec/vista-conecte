@@ -135,5 +135,40 @@ console.log('\n6) Etapa no quadro da aba TROCAS');
   ok('aberta fica no quadro', L.trcNoQuadro({ status: 'pendente' }), true);
 }
 
+console.log('\n7) Rastreio da devolução (robô de hora em hora, 20/10/2026)');
+{
+  const a = main.indexOf('// ── Rastreio da devolução da troca'), b = main.indexOf('// ── Portal de trocas da cliente');
+  const agora = Date.parse('2026-10-20T12:00:00Z');
+  const mem = {
+    'vc:rastreio-trocas': { itens: {
+      'retorno:r1': { entregue: true, entregue_em: '2026-10-19T15:00:00Z', postado: true },
+      'retorno:r2': { postado: false, vence_em: '2026-10-21T12:00:00Z' },
+      'retorno:r3': { postado: false, vence_em: '2026-10-19T12:00:00Z' },
+      'retorno:r4': { postado: true, vence_em: '2026-10-19T12:00:00Z' },
+      'retorno:r5': { entregue: true, entregue_em: '2026-10-18T15:00:00Z' },
+    } },
+    'vc:retorno': { itens: [
+      { id: 'r1', status: 'pendente', codigo_logistica_reversa: 'AP1' },
+      { id: 'r5', status: 'pendente', codigo_logistica_reversa: 'AP5', data_chegada_reversa: '2026-10-10', chegou_reversa: true },
+    ] },
+  };
+  const R = new Function('mem', `
+    const loadLocal = k => mem[k] ? JSON.parse(JSON.stringify(mem[k])) : null;
+    const carimbarItem = t => { t.atualizado_em = 'agora'; return t; };
+    const retGetConfig = () => loadLocal('vc:retorno');
+    const retSalvar = c => { mem['vc:retorno'] = c; };
+    const atdSyncViews = () => {};
+    ${main.slice(a, b)}
+    return { trcVencimento, revAplicarRastreio };
+  `)(mem);
+  ok('faltando 1 dia sem postar: laranja', R.trcVencimento({ id: 'r2' }, agora)?.cor, '#e0892b');
+  ok('vencido sem postar: vermelho', R.trcVencimento({ id: 'r3' }, agora)?.cor, '#dc2626');
+  ok('postado não alerta, mesmo depois do prazo', R.trcVencimento({ id: 'r4' }, agora), null);
+  ok('entregue pelos Correios: 1 linha marcada como chegou', R.revAplicarRastreio(), 1);
+  const r1 = mem['vc:retorno'].itens[0], r5 = mem['vc:retorno'].itens[1];
+  ok('chegada pelo rastreio com a data da entrega', [r1.chegou_reversa, r1.chegada_por_rastreio, r1.data_chegada_reversa.length], [true, true, 10]);
+  ok('chegada marcada à mão não muda', r5.data_chegada_reversa, '2026-10-10');
+}
+
 console.log(falhas ? `\n✗ ${falhas} de ${total} falharam` : `\n✓ TODOS OS TESTES PASSARAM — ${total}/${total}`);
 if (falhas) process.exit(1);
