@@ -1746,8 +1746,8 @@ function trcCartaoHtml(t, etapa) {
     <div class="trc-topo"><b title="${esc(t.cliente)}">${esc(t.cliente) || '(sem nome)'}</b>${selo}<button class="trc-x" title="excluir esta troca" onclick="retDel('${t.id}')">×</button></div>
     <div class="trc-ped">${esc(t.pedido || '')}${t.obs ? ` · troca por <b>${esc(t.obs)}</b>` : ''}${t.portal_id ? ' · <span class="trc-tag">portal</span>' : ''}</div>
     <div class="trc-prod" title="${esc(t.produtos)}">${esc(t.produtos)}</div>
-    ${t.pedido_troca && !t.pedido_troca_manual ? `<div class="trc-pt"><i class="ti ${t.conferido_em ? 'ti-lock-open' : 'ti-lock'}"></i> peça nova no pedido <b>${esc(t.pedido_troca)}</b>${t.conferido_em ? ' (liberado)' : ' (travado)'}</div>` : ''}
-    ${t.pedido_troca_manual ? `<div class="trc-pt" style="color:${t.pedido_troca_enviado ? '#3aa76d' : '#5a3e9e'}"><i class="ti ti-file-check"></i> pedido de troca <b>${esc(t.pedido_troca)}</b> ${t.pedido_troca_enviado ? 'enviado' : 'criado, ainda não enviado'}</div>` : ''}
+    ${t.pedido_troca && !t.pedido_troca_manual ? `<div class="trc-pt"><i class="ti ${t.conferido_em ? 'ti-lock-open' : 'ti-lock'}"></i> peça nova no pedido <b>${esc(t.pedido_troca)}</b>${t.conferido_em ? ' (liberado)' : ' (travado)'}${t.pedido_troca_envio ? ', ' + esc(t.pedido_troca_envio) : ''}</div>` : ''}
+    ${t.pedido_troca_manual ? `<div class="trc-pt" style="color:${t.pedido_troca_enviado ? '#3aa76d' : '#5a3e9e'}"><i class="ti ti-file-check"></i> pedido de troca <b>${esc(t.pedido_troca)}</b> ${t.pedido_troca_enviado ? 'enviado' : (t.pedido_troca_envio ? esc(t.pedido_troca_envio) : 'criado, ainda não enviado')}</div>` : ''}
     ${!t.portal_id && t.pedido_troca_ausente && !t.pedido_troca ? `<div class="trc-pt" style="color:#dc2626"><i class="ti ti-alert-triangle"></i> sem pedido de troca na Shopify: a Marcelly precisa criar</div>` : ''}
     ${!t.pedido_troca && t.erro_pedido_troca ? `<div class="trc-pt" style="color:#dc2626" title="${esc(t.erro_pedido_troca)}"><i class="ti ti-alert-triangle"></i> pedido de troca não foi criado ${btn(`trcCriarPedido('${t.id}', this)`, 'ti-plus', 'criar agora')}</div>` : ''}
     <div class="trc-acao">${acao}</div>
@@ -1820,32 +1820,49 @@ function trcChegou(id) {
 // despachada). Sem pedido, o cartão avisa em vermelho.
 async function trcConferirShopify() {
   const cfg = retGetConfig();
-  const alvo = cfg.itens.filter(t => t.status !== 'resolvido' && !t.portal_id && String(t.pedido || '').replace(/\D/g, '') && !(t.pedido_troca_manual && t.pedido_troca_enviado));
-  if (!alvo.length) return 0;
-  const achados = {};
-  for (let i = 0; i < alvo.length; i += 50) {
-    const r = await fetch('/api/troca-busca', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pedidos: alvo.slice(i, i + 50).map(t => t.pedido) }) });
+  const abertos = cfg.itens.filter(t => t.status !== 'resolvido');
+  // Lançada à mão e ainda sem pedido de troca achado: procura o rascunho que a Marcelly criou
+  const semPedido = abertos.filter(t => !t.portal_id && !t.pedido_troca && String(t.pedido || '').replace(/\D/g, ''));
+  // Com pedido de troca (do portal ou já achado): em que pé está o envio da peça nova (20/10/2026)
+  const comPedido = abertos.filter(t => t.pedido_troca);
+  if (!semPedido.length && !comPedido.length) return 0;
+  const achados = {}, envio = {};
+  for (let i = 0; i < Math.max(semPedido.length, comPedido.length); i += 50) {
+    const r = await fetch('/api/troca-busca', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pedidos: semPedido.slice(i, i + 50).map(t => t.pedido), troca_status: comPedido.slice(i, i + 50).map(t => t.pedido_troca) }) });
     const j = await r.json();
     if (!r.ok || j.erro) throw new Error(j.erro || 'HTTP ' + r.status);
     Object.assign(achados, j.pedidos || {});
+    Object.assign(envio, j.troca_status || {});
   }
   const agora = new Date().toISOString();
+  const fechar = (t, rastreios) => {
+    if (!String(t.codigo_reenvio || '').trim() && rastreios && rastreios.length) t.codigo_reenvio = rastreios.join(', ');
+    t.status = 'resolvido'; t.resolvido_em = agora; t.etapa = 'concluido';
+  };
+  const foto = t => JSON.stringify([t.pedido_troca, t.pedido_troca_enviado, t.pedido_troca_ausente, t.pedido_troca_envio, t.codigo_reenvio, t.status]);
   let n = 0;
-  for (const t of alvo) {
+  for (const t of semPedido) {
     const num = '#' + String(t.pedido).replace(/\D/g, '');
     if (!(num in achados)) continue;
-    const pt = achados[num];
-    const antes = JSON.stringify([t.pedido_troca, t.pedido_troca_enviado, t.pedido_troca_ausente, t.codigo_reenvio, t.status]);
+    const pt = achados[num], antes = foto(t);
     if (pt) {
       Object.assign(t, { pedido_troca: pt.name, pedido_troca_id: pt.id, pedido_troca_manual: true, pedido_troca_enviado: !!pt.enviado, pedido_troca_ausente: false });
-      if (pt.enviado) {
-        if (!String(t.codigo_reenvio || '').trim() && pt.rastreio) t.codigo_reenvio = pt.rastreio;
-        t.status = 'resolvido'; t.resolvido_em = agora; t.etapa = 'concluido';
-      }
+      if (pt.enviado) fechar(t, pt.rastreio ? [pt.rastreio] : []);
     } else {
       t.pedido_troca_ausente = true;
     }
-    if (JSON.stringify([t.pedido_troca, t.pedido_troca_enviado, t.pedido_troca_ausente, t.codigo_reenvio, t.status]) !== antes) { carimbarItem(t); n++; }
+    if (foto(t) !== antes) { carimbarItem(t); n++; }
+  }
+  for (const t of comPedido) {
+    const st = envio[t.pedido_troca];
+    if (!st) continue;
+    const antes = foto(t);
+    t.pedido_troca_enviado = !!st.enviado;
+    t.pedido_troca_envio = st.pecas > 1 && !st.enviado && st.enviadas > 0 ? `${st.enviadas} de ${st.pecas} peças enviadas` : '';
+    // Regra da Bárbara: só fecha quando TODAS as peças saírem
+    if (st.enviado && !st.cancelado) fechar(t, st.rastreios);
+    if (foto(t) !== antes) { carimbarItem(t); n++; }
   }
   if (n) { retSalvar(cfg); atdSyncViews(); }
   return n;

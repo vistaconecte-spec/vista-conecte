@@ -45,11 +45,30 @@ export function casarPedidosDeTroca(originais, rascunhos) {
   return out;
 }
 
+// Pedido de troca que o PORTAL criou (20/10/2026): em que pé está o envio da peça nova. Regra da
+// Bárbara: a troca só fecha quando TODAS as peças saírem; antes disso o cartão mostra "1 de 2".
+const Q_STATUS = `query($q: String!) { orders(first: 50, query: $q) { nodes { name cancelledAt displayFulfillmentStatus
+  lineItems(first: 20) { nodes { quantity unfulfilledQuantity } }
+  fulfillments(first: 5) { createdAt trackingInfo { number } } } } }`;
+export function resumoEnvio(o) {
+  const itens = (o.lineItems && o.lineItems.nodes) || [];
+  const total = itens.reduce((s, l) => s + (l.quantity || 0), 0);
+  const falta = itens.reduce((s, l) => s + (l.unfulfilledQuantity || 0), 0);
+  const rastreios = [...new Set((o.fulfillments || []).flatMap(f => f.trackingInfo || []).map(t => t.number).filter(Boolean))];
+  return {
+    name: o.name, cancelado: !!o.cancelledAt,
+    enviado: o.displayFulfillmentStatus === 'FULFILLED' || (total > 0 && falta === 0),
+    pecas: total, enviadas: Math.max(0, total - falta), rastreios,
+    enviado_em: ((o.fulfillments || []).map(f => f.createdAt).sort().pop()) || '',
+  };
+}
+
 export async function onRequestPost({ env, request }) {
   let b = {};
   try { b = await request.json(); } catch { return json({ erro: 'corpo inválido' }, 400); }
   const nums = [...new Set((b.pedidos || []).map(p => String(p).replace(/\D/g, '')).filter(Boolean))].slice(0, 50);
-  if (!nums.length) return json({ pedidos: {} });
+  const doPortal = [...new Set((b.troca_status || []).map(p => String(p).replace(/\D/g, '')).filter(Boolean))].slice(0, 50);
+  if (!nums.length && !doPortal.length) return json({ pedidos: {}, troca_status: {} });
   const gql = async (query, variables) => {
     const r = await fetch(`https://${env.SHOPIFY_STORE_DOMAIN}/admin/api/${API_VERSION}/graphql.json`, {
       method: 'POST', headers: { 'X-Shopify-Access-Token': env.SHOPIFY_PRODUCTS_TOKEN || env.SHOPIFY_ADMIN_TOKEN, 'Content-Type': 'application/json' },
@@ -60,6 +79,15 @@ export async function onRequestPost({ env, request }) {
     return j.data;
   };
   try {
+    if (doPortal.length) {
+      const st = {};
+      for (let i = 0; i < doPortal.length; i += 25) {
+        const q = doPortal.slice(i, i + 25).map(n => `name:#${n}`).join(' OR ');
+        for (const o of (await gql(Q_STATUS, { q })).orders.nodes) st[o.name] = resumoEnvio(o);
+      }
+      if (!nums.length) return json({ pedidos: {}, troca_status: st });
+      b._st = st;
+    }
     const originais = [];
     for (let i = 0; i < nums.length; i += 25) {
       const q = nums.slice(i, i + 25).map(n => `name:#${n}`).join(' OR ');
@@ -75,7 +103,7 @@ export async function onRequestPost({ env, request }) {
       if (!d.pageInfo.hasNextPage) break;
       after = d.pageInfo.endCursor;
     }
-    return json({ pedidos: casarPedidosDeTroca(originais, rascunhos) });
+    return json({ pedidos: casarPedidosDeTroca(originais, rascunhos), troca_status: b._st || {} });
   } catch (e) {
     return json({ erro: e.message }, 502);
   }

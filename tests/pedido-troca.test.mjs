@@ -17,7 +17,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { montarRascunho, criarPedidoTroca, liberarPedidoTroca, TAG_AGUARDANDO } from '../functions/_pedido-troca.js';
-import { casarPedidosDeTroca } from '../functions/api/troca-busca.js';
+import { casarPedidosDeTroca, resumoEnvio } from '../functions/api/troca-busca.js';
 
 const raiz = join(dirname(fileURLToPath(import.meta.url)), '..');
 let falhas = 0, total = 0;
@@ -131,6 +131,16 @@ console.log('\n5) Pedido de troca feito à mão (casos reais de 19/10/2026)');
   ok('R$ 0 da mesma cliente depois do original, enviado com rastreio', [m['#8672'].name, m['#8672'].enviado, m['#8672'].rastreio], ['#9196', true, 'DZ6GH63P']);
   ok('TROCA com diferença paga (R$ 150) também conta', m['#8560'].name, '#9175');
   ok('venda comum por rascunho (Pix) não é pedido de troca', m['#8705'], null);
+}
+
+console.log('\n6) Despacho da peça nova fecha a troca (20/10/2026)');
+{
+  const ped = (o) => ({ name: '#9401', cancelledAt: null, displayFulfillmentStatus: 'UNFULFILLED', lineItems: { nodes: [] }, fulfillments: [], ...o });
+  const parcial = resumoEnvio(ped({ displayFulfillmentStatus: 'PARTIALLY_FULFILLED', lineItems: { nodes: [{ quantity: 1, unfulfilledQuantity: 0 }, { quantity: 1, unfulfilledQuantity: 1 }] }, fulfillments: [{ createdAt: '2026-10-21T10:00:00Z', trackingInfo: [{ number: 'AA1' }] }] }));
+  ok('1 de 2 peças: não está enviado', [parcial.enviado, parcial.enviadas, parcial.pecas], [false, 1, 2]);
+  const tudo = resumoEnvio(ped({ displayFulfillmentStatus: 'FULFILLED', lineItems: { nodes: [{ quantity: 2, unfulfilledQuantity: 0 }] }, fulfillments: [{ createdAt: '2026-10-21T10:00:00Z', trackingInfo: [{ number: 'AA1' }] }, { createdAt: '2026-10-22T10:00:00Z', trackingInfo: [{ number: 'BB2' }] }] }));
+  ok('tudo enviado, com os dois rastreios', [tudo.enviado, tudo.rastreios], [true, ['AA1', 'BB2']]);
+  ok('nada enviado', resumoEnvio(ped({ lineItems: { nodes: [{ quantity: 1, unfulfilledQuantity: 1 }] } })).enviado, false);
 }
 
 console.log(falhas ? `\n✗ ${falhas} de ${total} falharam` : `\n✓ TODOS OS TESTES PASSARAM — ${total}/${total}`);

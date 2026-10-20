@@ -170,5 +170,33 @@ console.log('\n7) Rastreio da devolução (robô de hora em hora, 20/10/2026)');
   ok('chegada marcada à mão não muda', r5.data_chegada_reversa, '2026-10-10');
 }
 
+console.log('\n8) Troca do portal fecha quando a peça nova é despachada (20/10/2026)');
+{
+  const a = main.indexOf('async function trcConferirShopify() {'), b = main.indexOf('async function trcAtualizar() {');
+  const mem = { 'vc:retorno': { itens: [
+    { id: 'p1', portal_id: 'troca-portal:9250-x', pedido: '#9250', pedido_troca: '#9401', status: 'pendente', conferido_em: 'x' },
+    { id: 'p2', portal_id: 'troca-portal:9251-x', pedido: '#9251', pedido_troca: '#9402', status: 'pendente', conferido_em: 'x' },
+    { id: 'm1', pedido: '#8705', status: 'pendente' },
+  ] } };
+  const respostas = { troca_status: {
+    '#9401': { name: '#9401', enviado: true, pecas: 1, enviadas: 1, rastreios: ['AA123'] },
+    '#9402': { name: '#9402', enviado: false, pecas: 2, enviadas: 1, rastreios: ['BB1'] },
+  }, pedidos: { '#8705': null } };
+  const R = new Function('mem', 'respostas', `
+    const retGetConfig = () => mem['vc:retorno'];
+    const retSalvar = c => { mem['vc:retorno'] = c; };
+    const carimbarItem = t => { t.atualizado_em = 'agora'; return t; };
+    const atdSyncViews = () => {};
+    const fetch = async () => ({ ok: true, json: async () => respostas });
+    ${main.slice(a, b)}
+    return { trcConferirShopify };
+  `)(mem, respostas);
+  await R.trcConferirShopify();
+  const [p1, p2, m1] = mem['vc:retorno'].itens;
+  ok('tudo despachado: fecha com o rastreio no reenvio', [p1.status, p1.codigo_reenvio], ['resolvido', 'AA123']);
+  ok('1 de 2: continua aberta e mostra o parcial', [p2.status, p2.pedido_troca_envio], ['pendente', '1 de 2 peças enviadas']);
+  ok('manual sem pedido de troca: aviso vermelho', m1.pedido_troca_ausente, true);
+}
+
 console.log(falhas ? `\n✗ ${falhas} de ${total} falharam` : `\n✓ TODOS OS TESTES PASSARAM — ${total}/${total}`);
 if (falhas) process.exit(1);
