@@ -140,6 +140,9 @@ export function normalizar(o) {
     enviado: o.displayFulfillmentStatus === 'FULFILLED',
     // Pedido de troca esperando a peça antiga (19/10/2026): o robô não monta etiqueta dele
     travado_troca: (o.tags || []).includes('troca-aguardando'),
+    // Pedido de troca (20/10/2026): a etiqueta do pedido original, de poucos dias antes, não pode
+    // contar como "etiqueta repetida" para a mesma cliente (Manuela #9384 foi barrada pela do #9120)
+    troca: (o.tags || []).includes('troca'),
   };
 }
 
