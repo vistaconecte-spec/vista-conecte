@@ -1720,6 +1720,7 @@ function trcCartaoHtml(t, etapa) {
     acao = `<div class="trc-cod">reversa <b>${esc(t.codigo_logistica_reversa)}</b></div>`
       + (rs && rs.postado ? `<div class="trc-aviso" style="color:#5a3e9e"><i class="ti ti-truck"></i> postada${rs.postado_visto_em ? ' (vista em ' + new Date(rs.postado_visto_em).toLocaleDateString('pt-BR') + ')' : ''}, a caminho${rs.ocorrencia ? ' · ' + esc(rs.ocorrencia) : ''}</div>` : '')
       + (venc ? `<div class="trc-aviso" style="color:${venc.cor}"><i class="ti ti-clock-exclamation"></i> ${esc(venc.txt)}</div>` : '')
+      + trcAvisoHtml(t)
       + btn(`trcChegou('${t.id}')`, 'ti-package-import', 'chegou');
   } else if (etapa === 'chegou') {
     const quando = t.data_chegada_reversa ? t.data_chegada_reversa.split('-').reverse().join('/') : '';
@@ -1778,6 +1779,26 @@ function trcCampo(id, campo, valor) {
   atdSyncViews();
 }
 function trcPedirReversa(id) { revPedir('retorno', id); }
+// WhatsApp com o código (20/10/2026): o robô pede ao /api/troca-aviso depois de gerar o código.
+// Fora das 24 h do WhatsApp (sem o modelo aprovado) a mensagem fica aqui para a Marcelly mandar.
+function trcAvisoInfo(t) {
+  const r = ((loadLocal('vc:reversas-resultado') || {}).itens || {})['retorno:' + t.id];
+  return r && r.codigo ? r : null;
+}
+function trcAvisoHtml(t) {
+  const r = trcAvisoInfo(t);
+  if (!r) return '';
+  if (r.whatsapp_em) return `<div class="trc-dica"><i class="ti ti-brand-whatsapp"></i> código enviado no WhatsApp em ${new Date(r.whatsapp_em).toLocaleDateString('pt-BR')}</div>`;
+  if (r.whatsapp_texto) return `<div class="trc-aviso" style="color:#b45309"><i class="ti ti-brand-whatsapp"></i> ${r.whatsapp_motivo === 'fora_da_janela' ? 'cliente fora das 24 h do WhatsApp, o sistema tenta de novo de hora em hora' : 'o WhatsApp não saiu'}</div>`
+    + `<button class="trc-btn trc-btn-sec" onclick="trcCopiarAviso('${t.id}', this)"><i class="ti ti-copy"></i> copiar mensagem</button>`;
+  return `<div class="trc-dica"><i class="ti ti-brand-whatsapp"></i> WhatsApp com o código sai entre 8h e 21h</div>`;
+}
+async function trcCopiarAviso(id, btn) {
+  const t = retGetConfig().itens.find(x => x.id === id); const r = t && trcAvisoInfo(t);
+  if (!r || !r.whatsapp_texto) return;
+  try { await navigator.clipboard.writeText(r.whatsapp_texto); if (btn) btn.innerHTML = '<i class="ti ti-check"></i> copiada'; }
+  catch (e) { prompt('Copie a mensagem:', r.whatsapp_texto); }
+}
 // "conferido": solta o pedido de troca na Shopify (sai da espera e perde a tag troca-aguardando)
 async function trcConferido(id, btn) {
   const t = retGetConfig().itens.find(x => x.id === id); if (!t || !t.pedido_troca_id) return;
