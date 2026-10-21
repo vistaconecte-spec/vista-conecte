@@ -1286,9 +1286,11 @@ function buildSidebar() {
   // Botão Atendimento — SAC/Troca/Devolução/Vendas (mesma senha do Financeiro)
   const atdItem = document.createElement('div');
   atdItem.className = 'nav-item nav-dashboard' + (modeloAtual === '__atendimento__' ? ' active' : '');
+  atdItem.id = 'nav-atendimento';
   atdItem.innerHTML = '<i class="ti ti-headset"></i> ATENDIMENTO';
   atdItem.onclick = () => abrirAtendimento(atdItem);
   nav.appendChild(atdItem);
+  try { waAvisoMostrar(); } catch (e) {} // o menu é refeito várias vezes: põe de volta o número de clientes esperando
 
   // Botão Trocas — quadro por etapa da troca (19/10/2026, mesma senha do Atendimento)
   const trcItem = document.createElement('div');
@@ -2190,6 +2192,90 @@ function atdShowSub(sub) {
     const f = document.getElementById('whats-frame');
     if (f && !f.getAttribute('src')) f.setAttribute('src', '/whatsapp.html?embed=1&v=2026101917');
   }
+}
+
+// ── Aviso de cliente esperando a equipe (Vi - atendimento) ──────────────────
+// Passo 1 da equipe sair da caixa do Wati (pedido da Bárbara em 21/10/2026): lá a mensagem nova só era vista
+// por quem estivesse olhando. Conta as conversas em que a cliente escreveu por último e está esperando gente:
+// a Vi está pausada (alguém da equipe assumiu e ela não responde mais) ou já passaram 3 min sem resposta (a Vi
+// passou para humano ou falhou; ela costuma responder em menos de 1 min). Só as últimas 24 h, o tempo em que
+// dá para responder sem template. O número vai no menu ATENDIMENTO, na pílula e no título da aba do navegador,
+// e toca um som quando entra conversa na conta ou chega mensagem nova numa que já estava.
+// Busca leve (só as "aguardando" das últimas 24 h): a cada 20 s com a aba à vista, a cada 60 s escondida.
+// Despedida não espera resposta: na semana de 14 a 21/10, 22 das 23 conversas que a Vi deixou sem responder
+// terminavam em ❤️, 👍 ou "obrigada", e contar essas faria a equipe ignorar o número.
+const WA_AVISO_ESPERA_MS = 3 * 60e3;
+const WA_AVISO_JANELA_MS = 24 * 3600e3;
+const WA_SO_EMOJI = /^[\p{Extended_Pictographic}\p{Emoji_Modifier}‍️\s!.]+$/u;
+const WA_DESPEDIDA = /^(ok|okay|certo|blz|beleza|show|perfeito|combinado|t[áa] bom|top|amei|entendi|sim)\b[^?]{0,20}$|obrigad|agrade[cç]|valeu|\bobg\b/i;
+const waAviso = { vistos: null, n: 0, ultimaBusca: 0, titulo: null, audio: null };
+function waEhDespedida(c) {
+  const t = String(c.ultimo_texto || '').trim();
+  if (c.ultimo_tipo === 'reaction' || (t && WA_SO_EMOJI.test(t))) return true;
+  return t.length <= 40 && !t.includes('?') && WA_DESPEDIDA.test(t);
+}
+function waPrecisaEquipe(c, agora) {
+  if (!c || c.ultima_direcao !== 'entrada' || waEhDespedida(c)) return false;
+  if (c.pausada_ate && Date.parse(c.pausada_ate) > agora) return true;
+  return agora - Date.parse(c.ultima_em) > WA_AVISO_ESPERA_MS;
+}
+function waAvisoAudio() {
+  const AC = window.AudioContext || window.webkitAudioContext;
+  if (!waAviso.audio && AC) waAviso.audio = new AC();
+  if (waAviso.audio && waAviso.audio.state === 'suspended') waAviso.audio.resume().catch(() => {});
+  return waAviso.audio;
+}
+function waAvisoSom() {
+  try {
+    const ctx = waAvisoAudio();
+    if (!ctx) return;
+    [[880, 0], [1320, 0.16]].forEach(([freq, t]) => {
+      const o = ctx.createOscillator(), g = ctx.createGain(), t0 = ctx.currentTime + t;
+      o.frequency.value = freq;
+      g.gain.setValueAtTime(0.0001, t0);
+      g.gain.exponentialRampToValueAtTime(0.25, t0 + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.15);
+      o.connect(g).connect(ctx.destination);
+      o.start(t0); o.stop(t0 + 0.16);
+    });
+  } catch (e) {}
+}
+function waAvisoMostrar() {
+  const n = waAviso.n;
+  if (waAviso.titulo === null) waAviso.titulo = document.title.replace(/^\(\d+\+?\) /, '');
+  document.title = n ? `(${n}) ${waAviso.titulo}` : waAviso.titulo;
+  for (const el of [document.getElementById('nav-atendimento'), document.getElementById('atd-pill-whats')]) {
+    if (!el) continue;
+    const velho = el.querySelector('.wa-espera');
+    if (velho) velho.remove();
+    if (n) el.insertAdjacentHTML('beforeend', `<span class="wa-espera" title="Clientes esperando resposta da equipe no WhatsApp">${n > 99 ? '99+' : n}</span>`);
+  }
+}
+async function waAvisoChecar() {
+  const agora = Date.now();
+  waAviso.ultimaBusca = agora;
+  const p = new URLSearchParams({ acao: 'conversas', filtro: 'aguardando', desde: new Date(agora - WA_AVISO_JANELA_MS).toISOString(), limite: '100' });
+  const r = await fetch('/api/whatsapp?' + p, { credentials: 'same-origin' });
+  if (!r.ok) return;
+  const esperando = ((await r.json()).conversas || []).filter(c => waPrecisaEquipe(c, agora));
+  const atual = new Map(esperando.map(c => [c.chave, c.ultima_em]));
+  const novidade = waAviso.vistos && [...atual].some(([k, em]) => waAviso.vistos.get(k) !== em);
+  waAviso.vistos = atual;
+  waAviso.n = atual.size;
+  waAvisoMostrar();
+  if (novidade) waAvisoSom();
+}
+function waAvisoIniciar() {
+  if (ehPerfilDeUmaAba()) return; // corte, costura e modelagem não atendem cliente
+  // o navegador só deixa tocar som depois de um clique na página
+  document.addEventListener('pointerdown', () => { try { waAvisoAudio(); } catch (e) {} }, { passive: true });
+  const tique = () => {
+    const intervalo = document.visibilityState === 'visible' ? 20e3 : 60e3;
+    if (Date.now() - waAviso.ultimaBusca >= intervalo - 1000) waAvisoChecar().catch(() => {});
+  };
+  tique();
+  setInterval(tique, 20e3);
+  document.addEventListener('visibilitychange', tique);
 }
 
 // ── CASOS — assistente da Marcelly ───────────────────────────────────────────
@@ -15031,6 +15117,7 @@ const _renderInicial = () => {
   else if (modeloAtual === '__modelagem__') { if (sessionStorage.getItem('mdl-ok') === '1') mdlCarregarLista(); }
   else renderModelo(modeloAtual);
 };
+waAvisoIniciar(); // clientes esperando a equipe no WhatsApp (número no menu ATENDIMENTO e som)
 carregarTodosNuvem().then(() => carregarPedidosShopify()).then(async () => {
   // Baixa de estoque dos pedidos que a Shopify já processou (inclusive o atraso de hoje).
   // Os perfis de oficina não mexem em estoque: eles só leem fichas.
