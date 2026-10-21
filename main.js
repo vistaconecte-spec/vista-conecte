@@ -2185,6 +2185,9 @@ function atdShowSub(sub) {
     const pill = document.getElementById('atd-pill-' + s);
     if (pill) pill.classList.toggle('active', s === sub);
   });
+  // Nas conversas o topo diz VI - ATENDIMENTO (pedido da Bárbara em 21/10/2026: o título saiu de dentro da lista)
+  const titulo = document.querySelector('#model-title span');
+  if (titulo && modeloAtual === '__atendimento__') titulo.textContent = sub === 'whats' ? 'VI - ATENDIMENTO' : 'ATENDIMENTO';
   if (sub === 'sac') sacRender();
   else if (sub === 'kanban') kbAbrir();
   else if (sub === 'vendas') vndCarregar();
@@ -2193,7 +2196,7 @@ function atdShowSub(sub) {
     // Caixa do WhatsApp oficial (/whatsapp.html). Carrega uma vez só; depois ela se atualiza
     // sozinha, e para de buscar enquanto a pílula está escondida.
     const f = document.getElementById('whats-frame');
-    if (f && !f.getAttribute('src')) f.setAttribute('src', '/whatsapp.html?embed=1&v=2026102117');
+    if (f && !f.getAttribute('src')) f.setAttribute('src', '/whatsapp.html?embed=1&v=2026102118');
   }
 }
 

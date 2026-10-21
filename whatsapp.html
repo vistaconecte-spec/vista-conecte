@@ -28,6 +28,7 @@
   .lista { display: flex; flex-direction: column; min-width: 0; min-height: 0; border-right: 1px solid var(--linha); background: #fff; }
   .lista-topo { padding: 14px 16px 6px; }
   .titulo { font-size: 22px; font-weight: 700; color: var(--texto); margin: 0 0 12px; }
+  .embutida .titulo { display: none; } /* dentro do painel o título fica no topo dele */
   .aviso-teste { font-size: 12px; line-height: 1.35; color: #54656F; background: var(--aviso); border-radius: 8px; padding: 7px 10px; margin-bottom: 10px; }
   .busca { display: flex; align-items: center; gap: 10px; background: var(--cinza-barra); border-radius: 8px; padding: 0 12px; height: 36px; }
   .busca svg { flex: none; color: var(--icone); }
@@ -147,6 +148,7 @@
 
 <script>
 const API = '/api/whatsapp';
+if (new URLSearchParams(location.search).has('embed')) document.body.classList.add('embutida');
 const est = { conversas: new Map(), desdeLista: null, aberta: null, msgs: new Map(), desdeConversa: null, enviando: false, filtro: '', envio: false, avisoEnvio: '' };
 const $ = id => document.getElementById(id);
 const TZ = 'America/Sao_Paulo';
