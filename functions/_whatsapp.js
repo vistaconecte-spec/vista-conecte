@@ -276,30 +276,33 @@ export async function enviarTexto(env, tel, texto, agora = Date.now()) {
   return registrarEnvioEquipe(env, c.conv.telefone, r.wamid, { tipo: 'text', texto }, texto, agora);
 }
 
-// Foto e documento pela equipe (passo 2 da saída do Wati, 21/10/2026). O arquivo chega cru no corpo, sem
-// multipart, e vai para a Meta num FormData montado pelo próprio runtime: o Worker não desmonta nada (limite
-// de 10 ms de CPU). A tela já manda foto como JPEG de até 1600 px. Limites da Meta: foto 5 MB, documento
-// 100 MB; aqui documento fica em 15 MB para caber folgado no Worker.
+// Foto, vídeo e documento pela equipe (passo 2 da saída do Wati, 21/10/2026; vídeo no mesmo dia, a Marcelly
+// tentou mandar um). O arquivo chega cru no corpo, sem multipart, e vai para a Meta num FormData montado pelo
+// próprio runtime: o Worker não desmonta nada (limite de 10 ms de CPU). A tela já manda foto como JPEG de até
+// 1600 px. Limites da Meta: foto 5 MB, vídeo 16 MB (MP4 ou 3GP, H.264), documento 100 MB; aqui documento
+// fica em 15 MB para caber folgado no Worker. Vídeo .mov do iPhone a Meta não aceita.
 export const MIDIA_TIPOS = {
   'image/jpeg': 'image', 'image/png': 'image',
+  'video/mp4': 'video', 'video/3gpp': 'video',
   'application/pdf': 'document', 'text/plain': 'document',
   'application/msword': 'document', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'document',
   'application/vnd.ms-excel': 'document', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'document',
 };
-export const MIDIA_MAX = { image: 5 * 1024 * 1024, document: 15 * 1024 * 1024 };
+export const MIDIA_MAX = { image: 5 * 1024 * 1024, video: 16 * 1024 * 1024, document: 15 * 1024 * 1024 };
+const MIDIA_NOME = { image: 'foto', video: 'vídeo', document: 'documento' };
 
 export async function enviarMidia(env, { tel, mime, nome, legenda, corpo }, agora = Date.now()) {
   mime = String(mime || '').split(';')[0].trim().toLowerCase();
   const tipo = MIDIA_TIPOS[mime];
-  if (!tipo) return { status: 415, erro: 'tipo de arquivo', detalhe: 'Dá para mandar foto (JPG ou PNG) e documento (PDF, Word, Excel ou texto).' };
+  if (!tipo) return { status: 415, erro: 'tipo de arquivo', detalhe: 'Dá para mandar foto (JPG ou PNG), vídeo MP4 e documento (PDF, Word, Excel ou texto).' };
   legenda = String(legenda || '').trim();
   if (legenda.length > 1024) return { status: 400, erro: 'legenda com mais de 1024 caracteres' };
-  nome = String(nome || '').replace(/[\\/:*?"<>|\r\n]+/g, ' ').trim().slice(0, 120) || (tipo === 'image' ? 'foto.jpg' : 'documento');
+  nome = String(nome || '').replace(/[\\/:*?"<>|\r\n]+/g, ' ').trim().slice(0, 120) || ({ image: 'foto.jpg', video: 'video.mp4' }[tipo] || 'documento');
   const c = await conversaParaEnvio(env, tel, agora);
   if (c.erro) return c;
   const buf = await new Response(corpo).arrayBuffer();
   if (!buf.byteLength) return { status: 400, erro: 'arquivo vazio' };
-  if (buf.byteLength > MIDIA_MAX[tipo]) return { status: 413, erro: 'arquivo grande', detalhe: `O limite é ${MIDIA_MAX[tipo] / 1048576} MB para ${tipo === 'image' ? 'foto' : 'documento'}.` };
+  if (buf.byteLength > MIDIA_MAX[tipo]) return { status: 413, erro: 'arquivo grande', detalhe: `O limite é ${MIDIA_MAX[tipo] / 1048576} MB para ${MIDIA_NOME[tipo]}.` };
 
   const fd = new FormData();
   fd.append('messaging_product', 'whatsapp');
@@ -309,12 +312,12 @@ export async function enviarMidia(env, { tel, mime, nome, legenda, corpo }, agor
   const u = await up.json().catch(() => ({}));
   if (!up.ok || !u.id) return { status: 502, erro: 'a Meta recusou o arquivo', detalhe: (u.error && (u.error.error_user_msg || u.error.message)) || ('HTTP ' + up.status) };
 
-  const conteudo = tipo === 'image' ? { id: u.id } : { id: u.id, filename: nome };
+  const conteudo = tipo === 'document' ? { id: u.id, filename: nome } : { id: u.id };
   if (legenda) conteudo.caption = legenda;
   const r = await mandarPelaMeta(c.token, c.conv.telefone, { type: tipo, [tipo]: conteudo });
   if (r.erro) return r;
   // a Vi lê o histórico em texto: fica dito o que a equipe mandou
-  const textoVi = (tipo === 'image' ? '[a equipe mandou uma foto]' : `[a equipe mandou o documento ${nome}]`) + (legenda ? ' ' + legenda : '');
+  const textoVi = ({ image: '[a equipe mandou uma foto]', video: '[a equipe mandou um vídeo]' }[tipo] || `[a equipe mandou o documento ${nome}]`) + (legenda ? ' ' + legenda : '');
   const fim = await registrarEnvioEquipe(env, c.conv.telefone, r.wamid, { tipo, texto: legenda || null, midia_id: u.id, midia_mime: mime }, textoVi, agora);
   return { ...fim, midia_id: u.id, tipo };
 }

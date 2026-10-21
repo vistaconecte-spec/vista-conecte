@@ -240,6 +240,18 @@ const msgDoc = feitas.find(f => f.u.endsWith('/messages'));
 ok('documento vai com o nome do arquivo', [r.status, msgDoc.b.type, msgDoc.b.document], [200, 'document', { id: '7771234567', filename: 'nota-9300.pdf' }]);
 ok('histórico do documento', feitas.find(f => f.u.includes('/wati_ia_mensagens')).b.texto, '[a equipe mandou o documento nota-9300.pdf]');
 
+// vídeo (21/10/2026, a Marcelly tentou mandar um): MP4 até 16 MB; .mov do iPhone a Meta não aceita
+feitas = []; uploads = [];
+r = await midia({ tel: '5562993161442', nome: 'vestido.mp4', legenda: 'Olha o caimento' }, new Uint8Array(4096), 'video/mp4');
+const msgVid = feitas.find(f => f.u.endsWith('/messages'));
+ok('vídeo vai como vídeo, com legenda', [r.status, msgVid.b.type, msgVid.b.video, uploads[0].get('type')], [200, 'video', { id: '7771234567', caption: 'Olha o caimento' }, 'video/mp4']);
+ok('histórico do vídeo', feitas.find(f => f.u.includes('/wati_ia_mensagens')).b.texto, '[a equipe mandou um vídeo] Olha o caimento');
+uploads = [];
+r = await midia({ tel: '5562993161442', nome: 'grande.mp4' }, new Uint8Array(16 * 1024 * 1024 + 1), 'video/mp4');
+ok('vídeo acima de 16 MB recusado sem subir', [r.status, uploads.length], [413, 0]);
+r = await midia({ tel: '5562993161442', nome: 'iphone.mov' }, new Uint8Array(100), 'video/quicktime');
+ok('vídeo .mov recusado sem subir', [r.status, uploads.length], [415, 0]);
+
 feitas = []; uploads = [];
 r = await midia({ tel: '5562993161442', nome: 'x.exe' }, new Uint8Array(10), 'application/x-msdownload');
 ok('tipo de arquivo recusado', [r.status, uploads.length], [415, 0]);

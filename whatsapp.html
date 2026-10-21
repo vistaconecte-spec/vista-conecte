@@ -104,7 +104,7 @@
   .enviar:not(:disabled):hover { background: rgba(11,20,26,.05); }
   .enviar:disabled { opacity: .35; cursor: default; }
   .anexo { flex: none; display: flex; align-items: center; gap: 12px; background: #fff; border-radius: 8px; padding: 8px 10px; margin: 0 0 6px 50px; box-shadow: 0 1px .5px rgba(11,20,26,.13); }
-  .anexo img { width: 56px; height: 56px; object-fit: cover; border-radius: 6px; flex: none; }
+  .anexo img, .anexo video { width: 56px; height: 56px; object-fit: cover; border-radius: 6px; flex: none; background: #000; }
   .anexo .doc { width: 56px; height: 56px; border-radius: 6px; background: #E9EDEF; color: var(--icone); display: flex; align-items: center; justify-content: center; flex: none; }
   .anexo .info { flex: 1; min-width: 0; font-size: 14px; }
   .anexo .info b { display: block; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -258,7 +258,7 @@ async function carregarLista(completa) {
 }
 function previa(c) {
   // a anotação que fica no histórico da Vi quando a equipe manda arquivo vira o ícone, como no WhatsApp
-  const t = String(c.ultimo_texto || '').replace(/^\[a equipe mandou uma foto\]\s*/, '📷 ').replace(/^\[a equipe mandou o documento ([^\]]+)\]\s*/, '📄 $1 ');
+  const t = String(c.ultimo_texto || '').replace(/^\[a equipe mandou uma foto\]\s*/, '📷 ').replace(/^\[a equipe mandou um vídeo\]\s*/, '🎥 ').replace(/^\[a equipe mandou o documento ([^\]]+)\]\s*/, '📄 $1 ');
   if (t.startsWith('[contexto interno')) return 'Mensagem automática da loja';
   if (!t && c.ultimo_tipo && c.ultimo_tipo !== 'text') return ({ image: 'Foto', audio: 'Áudio', video: 'Vídeo', document: 'Documento', sticker: 'Figurinha' }[c.ultimo_tipo] || 'Mensagem');
   return t;
@@ -312,8 +312,8 @@ function abrir(c) {
     <button class="descer" id="descer" aria-label="Ir para a última mensagem"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 9l6 6 6-6"/></svg></button>
     <div class="comp"><div id="modelo"></div><div id="c-janela"></div><div id="anexo"></div>
       <div class="comp-linha">
-        <button class="enviar" id="anexar" aria-label="Anexar foto ou documento" title="Foto ou documento"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.4 11.1-9.2 9.2a6 6 0 0 1-8.5-8.5l9.2-9.2a4 4 0 0 1 5.7 5.7l-9.2 9.2a2 2 0 0 1-2.8-2.8l8.5-8.5"/></svg></button>
-        <input type="file" id="arquivo" hidden accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt">
+        <button class="enviar" id="anexar" aria-label="Anexar foto, vídeo ou documento" title="Foto, vídeo ou documento"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.4 11.1-9.2 9.2a6 6 0 0 1-8.5-8.5l9.2-9.2a4 4 0 0 1 5.7 5.7l-9.2 9.2a2 2 0 0 1-2.8-2.8l8.5-8.5"/></svg></button>
+        <input type="file" id="arquivo" hidden accept="image/*,video/*,.mp4,.3gp,.mov,.pdf,.doc,.docx,.xls,.xlsx,.txt">
         <textarea id="txt" rows="1" placeholder="Digite uma mensagem"></textarea>
         <button class="enviar" id="btn" aria-label="Enviar"><svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M3.4 20.4 21 12 3.4 3.6 3.4 10l12.6 2-12.6 2z"/></svg></button>
       </div>
@@ -429,6 +429,8 @@ function desenharMsgs(rolar) {
 const DOC_TIPOS = { pdf: 'application/pdf', txt: 'text/plain', doc: 'application/msword', xls: 'application/vnd.ms-excel',
   docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' };
 const DOC_MAX = 15 * 1024 * 1024;
+const VIDEO_TIPOS = { mp4: 'video/mp4', '3gp': 'video/3gpp' };
+const VIDEO_MAX = 16 * 1024 * 1024; // limite do WhatsApp
 const tamanho = n => n < 1024 * 1024 ? Math.max(1, Math.round(n / 1024)) + ' KB' : (n / 1048576).toFixed(1).replace('.', ',') + ' MB';
 function avisar(msg, erro) { $('nota').hidden = false; $('nota').className = 'nota' + (erro ? ' erro' : ''); $('nota').textContent = msg; }
 async function fotoLeve(f) {
@@ -449,9 +451,15 @@ async function prepararAnexo(f) {
       const blob = await fotoLeve(f);
       if (!blob) throw new Error();
       est.anexo = { blob, mime: 'image/jpeg', tipo: 'image', nome: String(f.name || 'foto').replace(/\.[^.]+$/, '') + '.jpg', url: URL.createObjectURL(blob) };
+    } else if (String(f.type).startsWith('video/') || ['mp4', '3gp', 'mov'].includes(ext)) {
+      // o WhatsApp só aceita MP4/3GP (H.264); o .mov do iPhone a Meta recusa
+      const mime = VIDEO_TIPOS[ext] || (f.type === 'video/mp4' || f.type === 'video/3gpp' ? f.type : '');
+      if (!mime) return avisar('Esse vídeo é .mov (do iPhone) e o WhatsApp não aceita. Salve como MP4 ou mande do celular pelo WhatsApp.', true);
+      if (f.size > VIDEO_MAX) return avisar(`Esse vídeo tem ${tamanho(f.size)}. O WhatsApp aceita vídeo de até 16 MB.`, true);
+      est.anexo = { blob: f, mime, tipo: 'video', nome: f.name, url: URL.createObjectURL(f) };
     } else {
       const mime = DOC_TIPOS[ext];
-      if (!mime) return avisar('Dá para mandar foto e documento PDF, Word, Excel ou texto.', true);
+      if (!mime) return avisar('Dá para mandar foto, vídeo MP4 e documento PDF, Word, Excel ou texto.', true);
       if (f.size > DOC_MAX) return avisar(`Esse arquivo tem ${tamanho(f.size)}. O limite para documento é 15 MB.`, true);
       est.anexo = { blob: f, mime, tipo: 'document', nome: f.name };
     }
@@ -472,8 +480,9 @@ function desenharAnexo() {
   const a = est.anexo;
   if (!a) return;
   const DOC = '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/></svg>';
-  $('anexo').innerHTML = `<div class="anexo">${a.tipo === 'image' ? `<img src="${a.url}" alt="">` : `<div class="doc">${DOC}</div>`}
-    <div class="info"><b>${esc(a.nome)}</b><span>${a.tipo === 'image' ? 'Foto' : 'Documento'} · ${tamanho(a.blob.size)}</span></div>
+  const mini = a.tipo === 'image' ? `<img src="${a.url}" alt="">` : a.tipo === 'video' ? `<video src="${a.url}" muted preload="metadata"></video>` : `<div class="doc">${DOC}</div>`;
+  $('anexo').innerHTML = `<div class="anexo">${mini}
+    <div class="info"><b>${esc(a.nome)}</b><span>${{ image: 'Foto', video: 'Vídeo' }[a.tipo] || 'Documento'} · ${tamanho(a.blob.size)}</span></div>
     <button class="tirar" id="tirar" aria-label="Tirar anexo" title="Tirar">×</button></div>`;
   $('tirar').onclick = () => { tirarAnexo(); $('txt').focus(); };
 }
@@ -617,7 +626,7 @@ async function enviarComAnexo(legenda) {
   const txt = $('txt');
   est.enviando = true;
   desenharTopo();
-  avisar(est.anexo.tipo === 'image' ? 'Enviando a foto...' : 'Enviando o documento...');
+  avisar({ image: 'Enviando a foto...', video: 'Enviando o vídeo... (pode levar alguns segundos)' }[est.anexo.tipo] || 'Enviando o documento...');
   try {
     const d = await enviarAnexo(legenda);
     txt.value = '';
