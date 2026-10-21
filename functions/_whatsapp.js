@@ -170,9 +170,12 @@ export function chave(t) {
   return (t.length === 13 && t.startsWith('55') && t[4] === '9') ? t.slice(0, 4) + t.slice(5) : t;
 }
 // As duas grafias do mesmo celular brasileiro (sem e com o 9).
+// Não dá para separar celular de fixo pelo primeiro dígito: nas faixas novas o número depois do 9 começa com
+// 1 a 5 (Carol, 9 1180-0182; 9 4996-1417), e o painel procurava só a grafia sem o 9: 92 conversas abriam
+// vazias (21/10/2026). Devolve sempre as duas; num fixo a grafia com 9 a mais só não acha nada.
 export function variantes(t) {
   const c = chave(t);
-  return (c.length === 12 && c.startsWith('55') && /[6-9]/.test(c[4])) ? [c, c.slice(0, 4) + '9' + c.slice(4)] : [c];
+  return (c.length === 12 && c.startsWith('55')) ? [c, c.slice(0, 4) + '9' + c.slice(4)] : [c];
 }
 
 const norm = s => String(s || '').replace(/\s+/g, ' ').trim().toLowerCase();

@@ -113,7 +113,9 @@ console.log('\n3) Caixa de entrada: telefone, junção e janela');
 ok('chave tira o 9 do celular', W.chave('5562993161442'), '556293161442');
 ok('chave mantém número de 12', W.chave('553598000816'), '553598000816');
 ok('variantes com e sem o 9', W.variantes('5562993161442'), ['556293161442', '5562993161442']);
-ok('fixo não ganha 9', W.variantes('554833334444'), ['554833334444']);
+// faixa nova de celular: depois do 9 vem 1 a 5 (Carol abria vazia, 21/10/2026)
+ok('celular 9 1xxx acha as duas grafias', W.variantes('5511911800182'), ['551111800182', '5511911800182']);
+ok('celular 9 4xxx acha as duas grafias', W.variantes('551149961417'), ['551149961417', '5511949961417']);
 
 const wa = [
   { wamid: 'w1', direcao: 'entrada', tipo: 'text', texto: 'Oi, cadê meu pedido?', enviada_em: '2026-10-19T21:16:40Z' },
