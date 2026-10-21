@@ -228,7 +228,8 @@ async function carregarLista(completa) {
   }
 }
 function previa(c) {
-  const t = String(c.ultimo_texto || '');
+  // a anotação que fica no histórico da Vi quando a equipe manda arquivo vira o ícone, como no WhatsApp
+  const t = String(c.ultimo_texto || '').replace(/^\[a equipe mandou uma foto\]\s*/, '📷 ').replace(/^\[a equipe mandou o documento ([^\]]+)\]\s*/, '📄 $1 ');
   if (t.startsWith('[contexto interno')) return 'Mensagem automática da loja';
   if (!t && c.ultimo_tipo && c.ultimo_tipo !== 'text') return ({ image: 'Foto', audio: 'Áudio', video: 'Vídeo', document: 'Documento', sticker: 'Figurinha' }[c.ultimo_tipo] || 'Mensagem');
   return t;

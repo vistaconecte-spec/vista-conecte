@@ -2107,6 +2107,7 @@ function abrirAtendimento(item) {
   const ok = sessionStorage.getItem('fin-ok') === '1';
   document.getElementById('atd-gate').style.display = ok ? 'none' : '';
   document.getElementById('atd-content').style.display = ok ? '' : 'none';
+  document.getElementById('topbar-atd').classList.toggle('trancado', !ok); // pílulas no topo só destravado
   if (ok) atdShowSub(ATD_SUB_INICIAL); else setTimeout(() => document.getElementById('atd-senha')?.focus(), 60);
   closeSidebar();
 }
@@ -2118,6 +2119,7 @@ async function atdUnlock() {
     document.getElementById('atd-senha').value = '';
     document.getElementById('atd-gate').style.display = 'none';
     document.getElementById('atd-content').style.display = '';
+    document.getElementById('topbar-atd').classList.remove('trancado');
     atdShowSub(ATD_SUB_INICIAL);
   } else {
     document.getElementById('atd-erro').textContent = 'Senha incorreta';
@@ -2127,6 +2129,7 @@ function atdLock() {
   sessionStorage.removeItem('fin-ok');
   document.getElementById('atd-gate').style.display = '';
   document.getElementById('atd-content').style.display = 'none';
+  document.getElementById('topbar-atd').classList.add('trancado');
 }
 
 // ── Frete — consulta, cobrado x custo real e regras vigentes (mesma senha do Financeiro) ──
@@ -2190,7 +2193,7 @@ function atdShowSub(sub) {
     // Caixa do WhatsApp oficial (/whatsapp.html). Carrega uma vez só; depois ela se atualiza
     // sozinha, e para de buscar enquanto a pílula está escondida.
     const f = document.getElementById('whats-frame');
-    if (f && !f.getAttribute('src')) f.setAttribute('src', '/whatsapp.html?embed=1&v=2026102116');
+    if (f && !f.getAttribute('src')) f.setAttribute('src', '/whatsapp.html?embed=1&v=2026102117');
   }
 }
 
