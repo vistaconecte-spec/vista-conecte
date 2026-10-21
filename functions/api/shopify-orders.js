@@ -698,4 +698,5 @@ export async function onRequest(context) {
 }
 
 // Usado por /api/previsao-pedido (posição do pedido para a Vi): o mesmo casamento título→modelo da produção.
-export { parseLineItemMulti };
+// /api/pronta-entrega (Vi responde pronta entrega pelo estoque real menos o que já é de pedido em aberto).
+export { parseLineItemMulti, findModelAndColor, fetchAllOrders, PRODUCT_MAP };

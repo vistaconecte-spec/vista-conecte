@@ -24,6 +24,7 @@ const RENOVA_QUANDO_FALTAR_MS = 6 * 3600e3;
 //                          fora) OU sessão da dona, conferida dentro dele.
 //   previsao-pedido      → quem chama é a Vi (worker do Wati), com a chave ?k=PREVISAO_KEY
 //                          conferida dentro dele. Só leitura de UM pedido (05/10/2026).
+//   pronta-entrega       → idem, a Vi pergunta o que tem pronto de um produto (21/10/2026).
 //   bling-callback       → volta do "permitir acesso" do Bling, mesma situação do
 //                          shopify-callback. Só troca o `code` se o `state` tiver sido
 //                          assinado pelo /api/bling-auth (que exige sessão) há menos de 15 min.
@@ -32,7 +33,7 @@ const RENOVA_QUANDO_FALTAR_MS = 6 * 3600e3;
 //                          nem telefone, e relê tudo da Shopify antes de gravar.
 const PUBLICO = new Set(['/api/login', '/api/logout', '/api/sessao', '/api/shopify-callback',
   '/api/webhook-shopify-pedido', '/api/webhook-pagarme', '/api/webhook-mp', '/api/cartao-barrado',
-  '/api/previsao-pedido', '/api/bling-callback', '/api/trocas-portal',
+  '/api/previsao-pedido', '/api/pronta-entrega', '/api/bling-callback', '/api/trocas-portal',
   // Webhook do WhatsApp oficial direto da Meta (19/10/2026); confere ?k=WEBHOOK_KEY sozinho.
   '/api/webhook-whatsapp']);
 
