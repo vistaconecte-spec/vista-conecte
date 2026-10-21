@@ -318,14 +318,64 @@ export async function enviarMidia(env, { tel, mime, nome, legenda, corpo }, agor
   return { ...fim, midia_id: u.id, tipo };
 }
 
-// Liga-desliga, token, a conversa existe e está na janela de 24 h.
-async function conversaParaEnvio(env, tel, agora) {
+// Modelo aprovado pela equipe (passo 3 da saída do Wati, 21/10/2026): depois de 24 h sem a cliente escrever, a
+// regra do WhatsApp só deixa mandar template. A equipe não escolhe entre os ~16 da conta: só estes, com nome que
+// ela entende e o que pôr em cada campo. Os do Pix com código, contagem de minutos e o alerta interno ficam com a
+// Vi e o sistema. Só aparece o que está APROVADO na conta 925 (os templates moram na conta de mensagens).
+export const MODELOS_EQUIPE = [
+  { nome: 'continuidade_solicitacao_v1', rotulo: 'Retomar o atendimento', campos: ['Nome da cliente', 'Assunto (ex.: a troca do pedido 9300)'] },
+  { nome: 'recuperacao_oii_v1', rotulo: 'Só um oi, para ela responder', campos: ['Nome da cliente'] },
+  { nome: 'pedido_despachado_vi', rotulo: 'Pedido despachado, com rastreio', campos: ['Nome da cliente', 'Número do pedido', 'Código de rastreio'] },
+  { nome: 'pedido_confirmado_vi', rotulo: 'Pedido confirmado', campos: ['Nome da cliente', 'Número do pedido', 'Endereço de entrega'] },
+  { nome: 'cartao_resgate_v2', rotulo: 'Link novo para pagar no cartão', campos: ['Nome da cliente', 'Número do pedido', 'Link de pagamento'] },
+  { nome: 'pix_pendente_v1', rotulo: 'Pix pendente', campos: ['Nome da cliente', 'Número do pedido', 'Informação do Pix'] },
+  { nome: 'pix_link_v1', rotulo: 'Link para finalizar a compra', campos: ['Nome da cliente', 'Link do carrinho'] },
+];
+
+// A Meta recusa variável com quebra de linha, tab ou 4+ espaços seguidos (erro 132018): igual ao limparVariavel da Vi.
+export const limparVariavel = v => String(v ?? '').replace(/\s*[\r\n]+\s*/g, ' / ').replace(/\t/g, ' ').replace(/ {4,}/g, '   ').trim();
+
+export async function listarModelos(env) {
+  const token = env.WA_TOKEN || env.META_ACCESS_TOKEN;
+  if (!token) return [];
+  const r = await fetch(`${GRAPH}/${CONTA_MENSAGENS_ID}/message_templates?fields=name,language,status,category,components&limit=200`, { headers: { Authorization: 'Bearer ' + token } });
+  if (!r.ok) throw new Error('Meta templates: HTTP ' + r.status);
+  const aprovados = ((await r.json()).data || []).filter(t => t.status === 'APPROVED');
+  return MODELOS_EQUIPE.map(m => {
+    const t = aprovados.find(x => x.name === m.nome && x.language === 'pt_BR') || aprovados.find(x => x.name === m.nome);
+    if (!t) return null;
+    const corpo = ((t.components || []).find(c => c.type === 'BODY') || {}).text || '';
+    const nVars = new Set(corpo.match(/\{\{\d+\}\}/g) || []).size;
+    if (nVars !== m.campos.length) return null; // o template mudou na Meta: melhor não oferecer do que mandar campo trocado
+    return { nome: m.nome, rotulo: m.rotulo, campos: m.campos, corpo, idioma: t.language, categoria: t.category };
+  }).filter(Boolean);
+}
+
+export async function enviarModelo(env, tel, nome, valores, agora = Date.now()) {
+  const m = MODELOS_EQUIPE.find(x => x.nome === nome);
+  if (!m) return { status: 400, erro: 'modelo', detalhe: 'Esse modelo não está liberado para a equipe.' };
+  valores = (Array.isArray(valores) ? valores : []).map(limparVariavel);
+  if (valores.length !== m.campos.length || valores.some(v => !v)) return { status: 400, erro: 'campos', detalhe: 'Preencha todos os campos do modelo.' };
+  if (valores.some(v => v.length > 900)) return { status: 400, erro: 'campos', detalhe: 'Algum campo ficou comprido demais.' };
+  const c = await conversaParaEnvio(env, tel, agora, { janela: false }); // template sai com ou sem janela
+  if (c.erro) return c;
+  const t = (await listarModelos(env)).find(x => x.nome === nome);
+  if (!t) return { status: 409, erro: 'modelo', detalhe: 'Esse modelo não está aprovado na Meta agora.' };
+  const r = await mandarPelaMeta(c.token, c.conv.telefone, { type: 'template', template: {
+    name: nome, language: { code: t.idioma }, components: [{ type: 'body', parameters: valores.map(text => ({ type: 'text', text })) }] } });
+  if (r.erro) return r;
+  const texto = t.corpo.replace(/\{\{(\d+)\}\}/g, (x, i) => valores[Number(i) - 1] ?? x);
+  return registrarEnvioEquipe(env, c.conv.telefone, r.wamid, { tipo: 'template', texto }, texto, agora);
+}
+
+// Liga-desliga, token, a conversa existe e (para texto e arquivo) está na janela de 24 h.
+async function conversaParaEnvio(env, tel, agora, { janela = true } = {}) {
   if (!envioLiberado(env)) return { status: 503, erro: 'envio desligado', detalhe: AVISO_ENVIO };
   const token = env.WA_TOKEN || env.META_ACCESS_TOKEN;
   if (!token) return { status: 500, erro: 'META_ACCESS_TOKEN ausente' };
   const conv = (await sbGet(env, `wa_conversas?chave=eq.${chave(tel)}&select=telefone,ultima_entrada_em`))[0];
   if (!conv) return { status: 404, erro: 'conversa não encontrada' };
-  if (!janelaAberta(conv.ultima_entrada_em, agora)) return { status: 409, erro: 'janela', detalhe: 'A cliente não escreve há mais de 24 horas. Pela regra do WhatsApp, só dá para mandar um template aprovado.' };
+  if (janela && !janelaAberta(conv.ultima_entrada_em, agora)) return { status: 409, erro: 'janela', detalhe: 'A cliente não escreve há mais de 24 horas. Pela regra do WhatsApp, só dá para mandar um template aprovado.' };
   return { token, conv };
 }
 

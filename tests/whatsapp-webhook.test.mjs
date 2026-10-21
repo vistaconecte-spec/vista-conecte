@@ -251,6 +251,54 @@ convResp = [{ telefone: '556293161442', ultima_entrada_em: new Date(Date.now() -
 r = await midia({ tel: '5562993161442', nome: 'f.jpg' }, jpg, 'image/jpeg');
 ok('janela fechada: nada sobe', [r.status, uploads.length], [409, 0]);
 
+// ── Modelo aprovado fora das 24 h (passo 3, 21/10/2026) ─────────────────────
+// Depois de 24 h só sai template. A equipe só vê os da lista MODELOS_EQUIPE que estão aprovados na conta 925, e o
+// template não pode sair com campo vazio nem com o número de campos trocado (nome no lugar do pedido).
+const tplMeta = [
+  { name: 'continuidade_solicitacao_v1', language: 'pt_BR', status: 'APPROVED', category: 'UTILITY', components: [{ type: 'BODY', text: 'Olá, {{1}}! Estamos dando continuidade à sua solicitação: {{2}}.' }] },
+  { name: 'pedido_despachado_vi', language: 'pt_BR', status: 'APPROVED', category: 'UTILITY', components: [{ type: 'BODY', text: 'Oii {{1}}, pedido {{2}}, rastreio {{3}}.' }] },
+  { name: 'pix_link_v1', language: 'pt_BR', status: 'PENDING', category: 'MARKETING', components: [{ type: 'BODY', text: 'Oi {{1}} {{2}}' }] },
+  { name: 'recuperacao_oii_v1', language: 'pt_BR', status: 'APPROVED', category: 'MARKETING', components: [{ type: 'BODY', text: 'Oiii {{1}}, tudo bem? {{2}}' }] }, // mudou na Meta: 2 campos
+  { name: 'alerta_interno_vi', language: 'pt_BR', status: 'APPROVED', category: 'MARKETING', components: [{ type: 'BODY', text: 'Alerta {{1}}' }] },
+];
+feitas = [];
+convResp = [{ telefone: '556293161442', ultima_entrada_em: new Date(Date.now() - 3 * 86400e3).toISOString() }];
+globalThis.fetch = async (u, o = {}) => {
+  u = String(u);
+  feitas.push({ u, m: o.method || 'GET', b: typeof o.body === 'string' ? JSON.parse(o.body) : null });
+  if (u.includes('/message_templates')) return new Response(JSON.stringify({ data: tplMeta }), { status: 200 });
+  if (u.includes('graph.facebook.com')) return new Response(JSON.stringify({ messages: [{ id: 'wamid.MODELO' }] }), { status: 200 });
+  if (u.includes('/wa_conversas?')) return new Response(JSON.stringify(convResp), { status: 200 });
+  if (u.includes('/wati_ia_sessions?wa_id=')) return new Response(JSON.stringify([{ wa_id: '5562993161442' }]), { status: 200 });
+  return new Response('', { status: 201 });
+};
+r = await API.onRequest({ request: new Request('https://x/api/whatsapp?acao=modelos'), env: envE });
+const mods = (await r.json()).modelos;
+ok('lista só os liberados e aprovados, na ordem da equipe', mods.map(m => m.nome), ['continuidade_solicitacao_v1', 'pedido_despachado_vi']);
+ok('templates procurados na conta 925', feitas.some(f => f.u.includes('/925433550103556/message_templates')), true);
+ok('cada modelo vem com nome fácil e os campos', [mods[0].rotulo, mods[0].campos.length, mods[0].categoria], ['Retomar o atendimento', 2, 'UTILITY']);
+
+feitas = [];
+r = await post({ acao: 'enviar-modelo', tel: '5562993161442', modelo: 'continuidade_solicitacao_v1', valores: ['Ana', 'a troca do pedido 9300\nque chegou'] });
+d = await r.json();
+ok('modelo sai mesmo com a janela fechada', [r.status, d.ok, d.wamid], [200, true, 'wamid.MODELO']);
+const msgMod = feitas.find(f => f.u.endsWith('/messages'));
+ok('vai como template, pela 925, campos por posição e sem quebra de linha', [msgMod.b.type, msgMod.b.messaging_account_id, msgMod.b.template.name, msgMod.b.template.language.code, msgMod.b.template.components[0].parameters.map(p => p.text)],
+  ['template', '925433550103556', 'continuidade_solicitacao_v1', 'pt_BR', ['Ana', 'a troca do pedido 9300 / que chegou']]);
+const gmMod = feitas.find(f => f.u.includes('/wa_mensagens?') && f.m === 'POST');
+ok('grava o texto que a cliente vê', [gmMod.b[0].tipo, gmMod.b[0].texto, gmMod.b[0].origem], ['template', 'Olá, Ana! Estamos dando continuidade à sua solicitação: a troca do pedido 9300 / que chegou.', 'painel']);
+ok('pausa a Vi e conta para ela', [feitas.some(f => f.u.includes('/wati_ia_sessions?on_conflict')), feitas.find(f => f.u.includes('/wati_ia_mensagens')).b.texto.startsWith('Olá, Ana!')], [true, true]);
+
+feitas = [];
+r = await post({ acao: 'enviar-modelo', tel: '5562993161442', modelo: 'alerta_interno_vi', valores: ['x'] });
+ok('modelo fora da lista da equipe: nada sai', [r.status, feitas.some(f => f.u.endsWith('/messages'))], [400, false]);
+r = await post({ acao: 'enviar-modelo', tel: '5562993161442', modelo: 'pedido_despachado_vi', valores: ['Ana', '9300', '  '] });
+ok('campo vazio: nada sai', [r.status, feitas.some(f => f.u.endsWith('/messages'))], [400, false]);
+r = await post({ acao: 'enviar-modelo', tel: '5562993161442', modelo: 'pix_link_v1', valores: ['Ana', 'https://x'] });
+ok('modelo ainda não aprovado: nada sai', [r.status, feitas.some(f => f.u.endsWith('/messages'))], [409, false]);
+r = await API.onRequest({ request: new Request('https://x/api/whatsapp', { method: 'POST', body: JSON.stringify({ acao: 'enviar-modelo', tel: '5562993161442', modelo: 'continuidade_solicitacao_v1', valores: ['Ana', 'x'] }) }), env: { ...envE, WA_ENVIO_PAINEL: undefined } });
+ok('com o envio desligado o modelo não sai', [r.status, feitas.some(f => f.u.endsWith('/messages'))], [503, false]);
+
 ok('foto da equipe sem legenda aparece na conversa', W.mesclar([{ wamid: 'w9', direcao: 'saida', tipo: 'image', texto: null, midia_id: '777', origem: 'painel', enviada_em: '2026-10-21T19:00:00Z' }], []).map(m => [m.lado, m.tipo, m.midia_id]), [['equipe', 'image', '777']]);
 ok('status sem texto nem mídia continua fora da conversa', W.mesclar([{ wamid: 'w8', direcao: 'saida', texto: null, midia_id: null, enviada_em: '2026-10-21T19:00:00Z' }], []).length, 0);
 

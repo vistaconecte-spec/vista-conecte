@@ -2196,7 +2196,7 @@ function atdShowSub(sub) {
     // Caixa do WhatsApp oficial (/whatsapp.html). Carrega uma vez só; depois ela se atualiza
     // sozinha, e para de buscar enquanto a pílula está escondida.
     const f = document.getElementById('whats-frame');
-    if (f && !f.getAttribute('src')) f.setAttribute('src', '/whatsapp.html?embed=1&v=2026102118');
+    if (f && !f.getAttribute('src')) f.setAttribute('src', '/whatsapp.html?embed=1&v=2026102119');
   }
 }
 

@@ -106,6 +106,20 @@
   .comp .nota { font-size: 12px; color: var(--texto-sec); padding: 4px 4px 0; min-height: 18px; }
   .comp .nota.erro { color: var(--erro); }
   .fechada { margin: 4px 0 6px; font-size: 13px; color: #54656F; background: var(--aviso); border-radius: 8px; padding: 8px 12px; }
+  .fechada .btn-modelo { margin-left: 8px; border: 0; background: var(--verde); color: #fff; border-radius: 16px; padding: 5px 14px; font-size: 13px; font-weight: 600; cursor: pointer; }
+  .modelo { background: #fff; border-radius: 8px; padding: 12px 14px; margin: 4px 0 8px; box-shadow: 0 1px .5px rgba(11,20,26,.13); display: grid; gap: 10px; }
+  .modelo-topo { display: flex; align-items: center; gap: 8px; font-size: 15px; }
+  .modelo-topo b { flex: 1; font-weight: 600; }
+  .modelo select, .modelo input { width: 100%; border: 1px solid var(--linha); border-radius: 8px; padding: 8px 10px; font-size: 14px; background: #fff; }
+  .modelo label { display: grid; gap: 4px; font-size: 12px; color: var(--texto-sec); }
+  .modelo .campos { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 8px; }
+  .modelo-previa { background: #D9FDD3; border-radius: 8px; padding: 9px 12px; font-size: 14px; line-height: 20px; white-space: pre-wrap; max-height: 150px; overflow: auto; }
+  .modelo-previa mark { background: #FFF3B0; border-radius: 3px; padding: 0 2px; }
+  .modelo-pe { display: flex; align-items: center; gap: 10px; }
+  .modelo-pe span { flex: 1; font-size: 12px; color: var(--texto-sec); }
+  .modelo-pe button { border: 0; background: var(--verde); color: #fff; border-radius: 18px; padding: 8px 18px; font-size: 14px; font-weight: 600; cursor: pointer; }
+  .modelo-pe button:disabled { opacity: .45; cursor: default; }
+  .modelo .tirar { width: 32px; height: 32px; border: 0; background: transparent; color: var(--icone); cursor: pointer; border-radius: 50%; font-size: 20px; line-height: 1; }
 
   .inicio { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; background: var(--cinza-barra); border-left: 1px solid var(--linha); padding: 30px; color: var(--texto-sec); border-bottom: 6px solid var(--verde); }
   .inicio h2 { font-weight: 300; font-size: 32px; color: #41525D; margin: 18px 0 10px; }
@@ -282,7 +296,7 @@ function abrir(c) {
     </div>
     <div class="msgs" id="msgs"><div class="vazio">Carregando...</div></div>
     <button class="descer" id="descer" aria-label="Ir para a última mensagem"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 9l6 6 6-6"/></svg></button>
-    <div class="comp"><div id="c-janela"></div><div id="anexo"></div>
+    <div class="comp"><div id="modelo"></div><div id="c-janela"></div><div id="anexo"></div>
       <div class="comp-linha">
         <button class="enviar" id="anexar" aria-label="Anexar foto ou documento" title="Foto ou documento"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.4 11.1-9.2 9.2a6 6 0 0 1-8.5-8.5l9.2-9.2a4 4 0 0 1 5.7 5.7l-9.2 9.2a2 2 0 0 1-2.8-2.8l8.5-8.5"/></svg></button>
         <input type="file" id="arquivo" hidden accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt">
@@ -300,6 +314,8 @@ function abrir(c) {
     if (f && !$('txt').disabled) { e.preventDefault(); prepararAnexo(f); }
   });
   tirarAnexo();
+  est.modelo = null;
+  $('c-janela').addEventListener('click', e => { if (e.target.closest('#abrir-modelo')) abrirModelos(); });
   $('descer').onclick = () => { const m = $('msgs'); m.scrollTop = m.scrollHeight; };
   $('msgs').addEventListener('scroll', () => { const m = $('msgs'); $('descer').classList.toggle('on', m.scrollHeight - m.scrollTop - m.clientHeight > 300); });
   $('txt').addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); enviar(); } });
@@ -322,7 +338,7 @@ function desenharTopo() {
   $('c-status').textContent = (c.nome ? telBonito(c.telefone) + ' · ' : '') + vi;
   const aberta = janelaAberta();
   $('c-janela').innerHTML = !est.envio ? `<div class="fechada">${esc(est.avisoEnvio || 'Envio pelo painel desligado.')}</div>`
-    : aberta ? '' : '<div class="fechada">A cliente não escreve há mais de 24 horas. Pela regra do WhatsApp, só dá para mandar um template aprovado (ainda não disponível nesta tela).</div>';
+    : aberta || est.modelo ? '' : '<div class="fechada">A cliente não escreve há mais de 24 horas. Pela regra do WhatsApp, só dá para mandar um modelo aprovado.<button class="btn-modelo" id="abrir-modelo">Mandar modelo</button></div>';
   const pode = est.envio && aberta && !est.enviando;
   $('txt').disabled = !pode;
   $('btn').disabled = !pode;
@@ -452,6 +468,77 @@ async function enviarAnexo(legenda) {
   if (r.status === 401) throw new Error('Sessão expirada. Entre de novo no painel.');
   if (!r.ok) throw new Error(d.detalhe || d.erro || ('erro ' + r.status));
   return d;
+}
+
+// ── Modelo aprovado fora das 24 h (passo 3 da saída do Wati, 21/10/2026) ────
+// A lista vem do servidor (MODELOS_EQUIPE em functions/_whatsapp.js): só os aprovados na Meta, com o nome de cada
+// campo. O nome da cliente já vem preenchido; a prévia mostra exatamente o que ela vai receber.
+async function abrirModelos() {
+  if (!est.modelos) {
+    avisar('Buscando os modelos...');
+    try { est.modelos = (await api({ acao: 'modelos' })).modelos || []; }
+    catch (e) { return avisar(e.message, true); }
+    avisar('');
+  }
+  if (!est.modelos.length) return avisar('Nenhum modelo aprovado disponível agora.', true);
+  est.modelo = { nome: est.modelos[0].nome, valores: {} };
+  desenharModelo();
+  desenharTopo();
+}
+function fecharModelo() { est.modelo = null; $('modelo').innerHTML = ''; desenharTopo(); }
+function primeiroNome() {
+  const n = String((est.aberta && est.aberta.nome) || '').trim().split(/\s+/)[0] || '';
+  return /^\p{L}{2,}$/u.test(n) ? n[0].toUpperCase() + n.slice(1).toLowerCase() : '';
+}
+function modeloAtual() { return est.modelos.find(m => m.nome === est.modelo.nome); }
+function valoresModelo() {
+  const m = modeloAtual();
+  return m.campos.map((c, i) => String(est.modelo.valores[m.nome + i] ?? (i === 0 && c.startsWith('Nome') ? primeiroNome() : '')));
+}
+function desenharModelo() {
+  const m = modeloAtual();
+  const vals = valoresModelo();
+  $('modelo').innerHTML = `<div class="modelo">
+    <div class="modelo-topo"><b>Mandar modelo aprovado</b><button class="tirar" id="m-fechar" aria-label="Fechar" title="Fechar">×</button></div>
+    <select id="m-escolha">${est.modelos.map(x => `<option value="${esc(x.nome)}"${x.nome === m.nome ? ' selected' : ''}>${esc(x.rotulo)}</option>`).join('')}</select>
+    <div class="campos">${m.campos.map((c, i) => `<label>${esc(c)}<input data-i="${i}" value="${esc(vals[i])}" autocomplete="off"></label>`).join('')}</div>
+    <div class="modelo-previa" id="m-previa"></div>
+    <div class="modelo-pe"><span>${m.categoria === 'MARKETING' ? 'A Meta cobra este como marketing.' : 'A Meta cobra este como mensagem de serviço.'} Ao enviar, a Vi pausa 24 h nesta conversa.</span><button id="m-enviar">Enviar modelo</button></div>
+  </div>`;
+  $('m-fechar').onclick = fecharModelo;
+  $('m-escolha').onchange = e => { est.modelo.nome = e.target.value; desenharModelo(); };
+  $('modelo').querySelectorAll('input').forEach(inp => inp.addEventListener('input', () => { est.modelo.valores[m.nome + inp.dataset.i] = inp.value; previaModelo(); }));
+  $('m-enviar').onclick = enviarModeloAtual;
+  previaModelo();
+  const vazio = [...$('modelo').querySelectorAll('input')].find(x => !x.value.trim());
+  (vazio || $('m-escolha')).focus();
+}
+function previaModelo() {
+  const m = modeloAtual();
+  const vals = valoresModelo();
+  $('m-previa').innerHTML = esc(m.corpo).replace(/\{\{(\d+)\}\}/g, (x, i) => vals[i - 1].trim() ? `<mark>${esc(vals[i - 1].trim())}</mark>` : `<mark>[${esc(m.campos[i - 1])}]</mark>`);
+  $('m-enviar').disabled = est.enviando || vals.some(v => !v.trim());
+}
+async function enviarModeloAtual() {
+  const m = modeloAtual();
+  const valores = valoresModelo().map(v => v.trim());
+  est.enviando = true;
+  previaModelo();
+  avisar('Enviando o modelo...');
+  try {
+    const d = await api(null, { acao: 'enviar-modelo', tel: est.aberta.telefone, modelo: m.nome, valores });
+    est.aberta.pausada_ate = d.vi_pausada_ate;
+    const texto = m.corpo.replace(/\{\{(\d+)\}\}/g, (x, i) => valores[i - 1]);
+    est.msgs.set(d.wamid, { id: d.wamid, quando: new Date().toISOString(), lado: 'equipe', texto, tipo: 'template' });
+    est.enviando = false;
+    fecharModelo();
+    desenharMsgs(true);
+    avisar('Modelo enviado. Quando a cliente responder, dá para conversar normal de novo.');
+  } catch (e) {
+    est.enviando = false;
+    previaModelo();
+    avisar(e.message, true);
+  }
 }
 
 async function enviar() {
