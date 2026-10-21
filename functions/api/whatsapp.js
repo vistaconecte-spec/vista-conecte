@@ -8,11 +8,13 @@
  * GET  ?acao=conversa&tel=[&desde=ISO]        mensagens de uma conversa
  * GET  ?acao=midia&id=                        foto/áudio/documento da cliente
  * POST {acao:'enviar', tel, texto}            manda texto e pausa a Vi 24 h na conversa
+ * POST ?acao=enviar-midia&tel=&nome=&legenda= com o arquivo cru no corpo (Content-Type = tipo do arquivo):
+ *                                             manda foto ou documento e pausa a Vi 24 h
  *
  * Env: SUPABASE_SERVICE_ROLE_KEY, META_ACCESS_TOKEN (System User api-vista, tem
  * whatsapp_business_messaging) ou WA_TOKEN.
  */
-import { json, listarConversas, lerConversa, enviarTexto, baixarMidia, envioLiberado, AVISO_ENVIO } from '../_whatsapp.js';
+import { json, listarConversas, lerConversa, enviarTexto, enviarMidia, baixarMidia, envioLiberado, AVISO_ENVIO } from '../_whatsapp.js';
 
 const ISO = /^\d{4}-\d{2}-\d{2}T[\d:.]+(Z|[+-]\d{2}:?\d{2})$/;
 
@@ -32,6 +34,10 @@ export async function onRequest(context) {
       }
       if (acao === 'midia') return baixarMidia(env, q.get('id'));
       return json({ erro: 'ação desconhecida' }, 400);
+    }
+    if (request.method === 'POST' && q.get('acao') === 'enviar-midia') {
+      const { status, ...resto } = await enviarMidia(env, { tel: q.get('tel'), nome: q.get('nome'), legenda: q.get('legenda'), mime: request.headers.get('Content-Type'), corpo: request.body });
+      return json(resto, status);
     }
     if (request.method === 'POST') {
       const b = await request.json().catch(() => ({}));

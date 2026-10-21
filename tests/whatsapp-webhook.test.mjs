@@ -206,6 +206,54 @@ ok('Meta recusou: não grava nem pausa', [r.status, feitas.some(f => f.u.include
 r = await post({ acao: 'enviar', tel: '556293161442', texto: '   ' });
 ok('texto vazio', r.status, 400);
 
+// ── Foto e documento pela equipe (passo 2 da saída do Wati, 21/10/2026) ─────
+// O arquivo chega cru e sobe para a Meta antes da mensagem; se algo barrar, nada pode subir nem sair.
+convResp = [{ telefone: '556293161442', ultima_entrada_em: new Date(Date.now() - 3600e3).toISOString() }];
+let uploads = [];
+feitas = [];
+globalThis.fetch = async (u, o = {}) => {
+  u = String(u);
+  if (u.endsWith('/media')) { uploads.push(o.body); return new Response(JSON.stringify({ id: '7771234567' }), { status: 200 }); }
+  feitas.push({ u, m: o.method || 'GET', b: typeof o.body === 'string' ? JSON.parse(o.body) : null });
+  if (u.includes('graph.facebook.com')) return new Response(JSON.stringify({ messages: [{ id: 'wamid.FOTO' }] }), { status: 200 });
+  if (u.includes('/wa_conversas?')) return new Response(JSON.stringify(convResp), { status: 200 });
+  if (u.includes('/wati_ia_sessions?wa_id=')) return new Response(JSON.stringify([{ wa_id: '5562993161442' }]), { status: 200 });
+  return new Response('', { status: 201 });
+};
+const midia = (params, corpoArq, tipo, e = envE) => API.onRequest({ request: new Request('https://x/api/whatsapp?' + new URLSearchParams({ acao: 'enviar-midia', ...params }), { method: 'POST', headers: { 'Content-Type': tipo }, body: corpoArq }), env: e });
+const jpg = new Uint8Array(2048).fill(7);
+r = await midia({ tel: '5562993161442', nome: 'foto.jpg', legenda: 'Olha a cor' }, jpg, 'image/jpeg');
+d = await r.json();
+ok('foto: envio ok', [r.status, d.ok, d.tipo, d.midia_id], [200, true, 'image', '7771234567']);
+const fd = uploads[0];
+ok('foto sobe para a Meta com o arquivo', [fd instanceof FormData, fd.get('messaging_product'), fd.get('type'), fd.get('file').size, fd.get('file').name], [true, 'whatsapp', 'image/jpeg', 2048, 'foto.jpg']);
+const msgFoto = feitas.find(f => f.u.endsWith('/messages'));
+ok('vai como imagem, com legenda e pela conta 925', [msgFoto.b.type, msgFoto.b.image, msgFoto.b.messaging_account_id, msgFoto.b.to], ['image', { id: '7771234567', caption: 'Olha a cor' }, '925433550103556', '556293161442']);
+const gm = feitas.find(f => f.u.includes('/wa_mensagens?') && f.m === 'POST');
+ok('grava a foto na conversa', [gm.b[0].tipo, gm.b[0].midia_id, gm.b[0].texto, gm.b[0].origem], ['image', '7771234567', 'Olha a cor', 'painel']);
+ok('pausa a Vi', feitas.some(f => f.u.includes('/wati_ia_sessions?on_conflict')), true);
+ok('a Vi fica sabendo da foto no histórico', feitas.find(f => f.u.includes('/wati_ia_mensagens')).b.texto, '[a equipe mandou uma foto] Olha a cor');
+
+feitas = []; uploads = [];
+r = await midia({ tel: '5562993161442', nome: 'nota-9300.pdf' }, new Uint8Array(500), 'application/pdf');
+const msgDoc = feitas.find(f => f.u.endsWith('/messages'));
+ok('documento vai com o nome do arquivo', [r.status, msgDoc.b.type, msgDoc.b.document], [200, 'document', { id: '7771234567', filename: 'nota-9300.pdf' }]);
+ok('histórico do documento', feitas.find(f => f.u.includes('/wati_ia_mensagens')).b.texto, '[a equipe mandou o documento nota-9300.pdf]');
+
+feitas = []; uploads = [];
+r = await midia({ tel: '5562993161442', nome: 'x.exe' }, new Uint8Array(10), 'application/x-msdownload');
+ok('tipo de arquivo recusado', [r.status, uploads.length], [415, 0]);
+r = await midia({ tel: '5562993161442', nome: 'grande.jpg' }, new Uint8Array(5 * 1024 * 1024 + 1), 'image/jpeg');
+ok('foto acima de 5 MB recusada sem subir', [r.status, uploads.length], [413, 0]);
+r = await midia({ tel: '5562993161442', nome: 'f.jpg' }, jpg, 'image/jpeg', { ...envE, WA_ENVIO_PAINEL: undefined });
+ok('com o envio desligado nada sobe', [r.status, uploads.length], [503, 0]);
+convResp = [{ telefone: '556293161442', ultima_entrada_em: new Date(Date.now() - 25 * 3600e3).toISOString() }];
+r = await midia({ tel: '5562993161442', nome: 'f.jpg' }, jpg, 'image/jpeg');
+ok('janela fechada: nada sobe', [r.status, uploads.length], [409, 0]);
+
+ok('foto da equipe sem legenda aparece na conversa', W.mesclar([{ wamid: 'w9', direcao: 'saida', tipo: 'image', texto: null, midia_id: '777', origem: 'painel', enviada_em: '2026-10-21T19:00:00Z' }], []).map(m => [m.lado, m.tipo, m.midia_id]), [['equipe', 'image', '777']]);
+ok('status sem texto nem mídia continua fora da conversa', W.mesclar([{ wamid: 'w8', direcao: 'saida', texto: null, midia_id: null, enviada_em: '2026-10-21T19:00:00Z' }], []).length, 0);
+
 r = await API.onRequest({ request: new Request('https://x/api/whatsapp?acao=midia&id=../x'), env: envE });
 ok('id de mídia inválido', r.status, 400);
 ok('rota da caixa NÃO é pública', mid.includes("'/api/whatsapp'"), false);

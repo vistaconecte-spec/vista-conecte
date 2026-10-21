@@ -190,12 +190,12 @@ export function mesclar(wa, vi) {
     if (m.direcao === 'entrada') {
       entradas.push({ t: Date.parse(quando), texto: norm(m.texto), midia: !!m.midia_id });
       out.push({ id: m.wamid, quando, lado: 'cliente', texto: m.texto, tipo: m.tipo, midia_id: m.midia_id, mime: m.midia_mime, resposta_a: m.resposta_a });
-    } else if (m.texto) {
+    } else if (m.texto || m.midia_id) {
       nossos.add('op_' + m.wamid);
       const lado = m.origem === 'vi' ? 'vi' : m.origem === 'template' ? 'auto' : 'equipe';
       if (lado === 'vi') daVi.push({ t: Date.parse(quando), texto: norm(m.texto) });
       if (lado === 'auto') templates.push(Date.parse(quando));
-      out.push({ id: m.wamid, quando, lado, texto: m.texto, tipo: m.tipo, status: m.status, erro: m.erro });
+      out.push({ id: m.wamid, quando, lado, texto: m.texto, tipo: m.tipo, midia_id: m.midia_id, mime: m.midia_mime, status: m.status, erro: m.erro });
     }
   }
   for (const m of vi || []) {
@@ -265,36 +265,96 @@ export const envioLiberado = env => env.WA_ENVIO_PAINEL === '1';
 export const AVISO_ENVIO = 'O envio direto pela Meta ainda está em teste e não está chegando nas clientes. Por enquanto, responda pelo Wati.';
 
 export async function enviarTexto(env, tel, texto, agora = Date.now()) {
-  if (!envioLiberado(env)) return { status: 503, erro: 'envio desligado', detalhe: AVISO_ENVIO };
   texto = String(texto || '').trim();
   if (!texto) return { status: 400, erro: 'mensagem vazia' };
   if (texto.length > 4000) return { status: 400, erro: 'mensagem com mais de 4000 caracteres' };
+  const c = await conversaParaEnvio(env, tel, agora);
+  if (c.erro) return c;
+  const r = await mandarPelaMeta(c.token, c.conv.telefone, { type: 'text', text: { preview_url: true, body: texto } });
+  if (r.erro) return r;
+  return registrarEnvioEquipe(env, c.conv.telefone, r.wamid, { tipo: 'text', texto }, texto, agora);
+}
+
+// Foto e documento pela equipe (passo 2 da saída do Wati, 21/10/2026). O arquivo chega cru no corpo, sem
+// multipart, e vai para a Meta num FormData montado pelo próprio runtime: o Worker não desmonta nada (limite
+// de 10 ms de CPU). A tela já manda foto como JPEG de até 1600 px. Limites da Meta: foto 5 MB, documento
+// 100 MB; aqui documento fica em 15 MB para caber folgado no Worker.
+export const MIDIA_TIPOS = {
+  'image/jpeg': 'image', 'image/png': 'image',
+  'application/pdf': 'document', 'text/plain': 'document',
+  'application/msword': 'document', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'document',
+  'application/vnd.ms-excel': 'document', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'document',
+};
+export const MIDIA_MAX = { image: 5 * 1024 * 1024, document: 15 * 1024 * 1024 };
+
+export async function enviarMidia(env, { tel, mime, nome, legenda, corpo }, agora = Date.now()) {
+  mime = String(mime || '').split(';')[0].trim().toLowerCase();
+  const tipo = MIDIA_TIPOS[mime];
+  if (!tipo) return { status: 415, erro: 'tipo de arquivo', detalhe: 'Dá para mandar foto (JPG ou PNG) e documento (PDF, Word, Excel ou texto).' };
+  legenda = String(legenda || '').trim();
+  if (legenda.length > 1024) return { status: 400, erro: 'legenda com mais de 1024 caracteres' };
+  nome = String(nome || '').replace(/[\\/:*?"<>|\r\n]+/g, ' ').trim().slice(0, 120) || (tipo === 'image' ? 'foto.jpg' : 'documento');
+  const c = await conversaParaEnvio(env, tel, agora);
+  if (c.erro) return c;
+  const buf = await new Response(corpo).arrayBuffer();
+  if (!buf.byteLength) return { status: 400, erro: 'arquivo vazio' };
+  if (buf.byteLength > MIDIA_MAX[tipo]) return { status: 413, erro: 'arquivo grande', detalhe: `O limite é ${MIDIA_MAX[tipo] / 1048576} MB para ${tipo === 'image' ? 'foto' : 'documento'}.` };
+
+  const fd = new FormData();
+  fd.append('messaging_product', 'whatsapp');
+  fd.append('type', mime);
+  fd.append('file', new Blob([buf], { type: mime }), nome);
+  const up = await fetch(`${GRAPH}/${PHONE_NUMBER_ID}/media`, { method: 'POST', headers: { Authorization: 'Bearer ' + c.token }, body: fd });
+  const u = await up.json().catch(() => ({}));
+  if (!up.ok || !u.id) return { status: 502, erro: 'a Meta recusou o arquivo', detalhe: (u.error && (u.error.error_user_msg || u.error.message)) || ('HTTP ' + up.status) };
+
+  const conteudo = tipo === 'image' ? { id: u.id } : { id: u.id, filename: nome };
+  if (legenda) conteudo.caption = legenda;
+  const r = await mandarPelaMeta(c.token, c.conv.telefone, { type: tipo, [tipo]: conteudo });
+  if (r.erro) return r;
+  // a Vi lê o histórico em texto: fica dito o que a equipe mandou
+  const textoVi = (tipo === 'image' ? '[a equipe mandou uma foto]' : `[a equipe mandou o documento ${nome}]`) + (legenda ? ' ' + legenda : '');
+  const fim = await registrarEnvioEquipe(env, c.conv.telefone, r.wamid, { tipo, texto: legenda || null, midia_id: u.id, midia_mime: mime }, textoVi, agora);
+  return { ...fim, midia_id: u.id, tipo };
+}
+
+// Liga-desliga, token, a conversa existe e está na janela de 24 h.
+async function conversaParaEnvio(env, tel, agora) {
+  if (!envioLiberado(env)) return { status: 503, erro: 'envio desligado', detalhe: AVISO_ENVIO };
   const token = env.WA_TOKEN || env.META_ACCESS_TOKEN;
   if (!token) return { status: 500, erro: 'META_ACCESS_TOKEN ausente' };
   const conv = (await sbGet(env, `wa_conversas?chave=eq.${chave(tel)}&select=telefone,ultima_entrada_em`))[0];
   if (!conv) return { status: 404, erro: 'conversa não encontrada' };
   if (!janelaAberta(conv.ultima_entrada_em, agora)) return { status: 409, erro: 'janela', detalhe: 'A cliente não escreve há mais de 24 horas. Pela regra do WhatsApp, só dá para mandar um template aprovado.' };
+  return { token, conv };
+}
 
+async function mandarPelaMeta(token, to, corpo) {
   const r = await fetch(`${GRAPH}/${PHONE_NUMBER_ID}/messages`, {
     method: 'POST', headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ messaging_product: 'whatsapp', recipient_type: 'individual', messaging_account_id: CONTA_MENSAGENS_ID, to: conv.telefone, type: 'text', text: { preview_url: true, body: texto } }),
+    body: JSON.stringify({ messaging_product: 'whatsapp', recipient_type: 'individual', messaging_account_id: CONTA_MENSAGENS_ID, to, ...corpo }),
   });
   const d = await r.json().catch(() => ({}));
   const wamid = d.messages && d.messages[0] && d.messages[0].id;
   if (!r.ok || !wamid) return { status: 502, erro: 'a Meta recusou', detalhe: (d.error && (d.error.error_user_msg || d.error.message)) || ('HTTP ' + r.status) };
+  return { wamid };
+}
 
+// Depois que a Meta aceitou: grava a saída e faz a Vi parar 24 h nesta conversa (o mesmo que acontece
+// quando alguém da equipe responde pelo Wati: handleOperatorMsg do worker).
+async function registrarEnvioEquipe(env, telefone, wamid, linha, textoVi, agora) {
   const quando = new Date(agora).toISOString();
   // merge (e não ignore): o status da Meta pode chegar antes e já ter criado a linha sem texto
   await ok(await fetch(`${SB_URL}/rest/v1/wa_mensagens?on_conflict=wamid`, {
     method: 'POST', headers: sb(env, { Prefer: 'resolution=merge-duplicates,return=minimal' }),
-    body: JSON.stringify([{ wamid, telefone: conv.telefone, direcao: 'saida', tipo: 'text', texto, origem: 'painel', enviada_em: quando }]),
+    body: JSON.stringify([{ wamid, telefone, direcao: 'saida', ...linha, origem: 'painel', enviada_em: quando }]),
   }), 'wa_mensagens envio');
 
   // A Vi conhece a cliente pelo wa_id do Wati, que pode ser a outra grafia: pausa as que ela
   // tem e grava a fala no histórico dela na grafia que ela já usa.
-  const vs = variantes(conv.telefone);
+  const vs = variantes(telefone);
   const sess = await sbGet(env, `wati_ia_sessions?wa_id=in.(${vs.join(',')})&select=wa_id&order=updated_at.desc.nullslast`);
-  const waVi = (sess[0] && sess[0].wa_id) || conv.telefone;
+  const waVi = (sess[0] && sess[0].wa_id) || telefone;
   const ate = new Date(agora + PAUSA_VI_MS).toISOString();
   await ok(await fetch(`${SB_URL}/rest/v1/wati_ia_sessions?on_conflict=wa_id`, {
     method: 'POST', headers: sb(env, { Prefer: 'resolution=merge-duplicates,return=minimal' }),
@@ -302,7 +362,7 @@ export async function enviarTexto(env, tel, texto, agora = Date.now()) {
   }), 'pausa da Vi');
   await ok(await fetch(`${SB_URL}/rest/v1/wati_ia_mensagens?on_conflict=msg_id`, {
     method: 'POST', headers: sb(env, { Prefer: 'resolution=ignore-duplicates,return=minimal' }),
-    body: JSON.stringify({ msg_id: 'op_' + wamid, wa_id: waVi, role: 'operador', texto }),
+    body: JSON.stringify({ msg_id: 'op_' + wamid, wa_id: waVi, role: 'operador', texto: textoVi }),
   }), 'histórico da Vi');
   return { status: 200, ok: true, wamid, vi_pausada_ate: ate };
 }
