@@ -149,7 +149,7 @@
   <aside class="lista">
     <div class="lista-topo">
       <h1 class="titulo">Vi - atendimento</h1>
-      <div class="aviso-teste">Fase de teste: o Wati continua ligado. Aqui você acompanha as conversas; para responder, use o Wati por enquanto.</div>
+      <div class="aviso-teste" id="aviso-teste">Fase de teste: o Wati continua ligado. Aqui você acompanha as conversas; para responder, use o Wati por enquanto.</div>
       <label class="busca"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg><input id="busca" type="search" placeholder="Pesquisar nome ou telefone" autocomplete="off"></label>
       <div class="filtros" id="filtros">
         <button class="filtro ativo" data-f="">Tudo</button>
@@ -239,6 +239,11 @@ async function carregarLista(completa) {
     // o servidor diz se o envio pelo painel está ligado (WA_ENVIO_PAINEL); desligado, a caixa vira só leitura
     est.envio = !!d.envio;
     est.avisoEnvio = d.aviso_envio || '';
+    // Com o envio ligado (teste com a equipe, passo 5): o que sai daqui não aparece no Wati, e responder a mesma
+    // cliente pelos dois foi o que fez a Vi pausar no teste de 21/10 ("Qual tamanho e cor Marcelle?").
+    $('aviso-teste').textContent = est.envio
+      ? 'Teste com a equipe: responda por aqui. O que você manda aqui não aparece no Wati, então não responda a mesma cliente pelos dois.'
+      : 'Fase de teste: o Wati continua ligado. Aqui você acompanha as conversas; para responder, use o Wati por enquanto.';
     if (!incremental) est.conversas.clear();
     for (const c of d.conversas) est.conversas.set(c.chave, c);
     if (!buscaAtual && !est.filtro) {
