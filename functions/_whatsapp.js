@@ -229,9 +229,10 @@ async function sbGet(env, caminho) {
 }
 
 export async function listarConversas(env, { desde, busca, filtro, limite = 60 } = {}) {
-  const p = new URLSearchParams({ select: 'chave,telefone,ultima_em,ultima_direcao,ultimo_texto,ultimo_tipo,nome,pausada_ate,ultima_entrada_em,pendentes', order: 'ultima_em.desc', limit: String(Math.min(Number(limite) || 60, 200)) });
+  const p = new URLSearchParams({ select: 'chave,telefone,ultima_em,ultima_direcao,ultimo_texto,ultimo_tipo,nome,pausada_ate,ultima_entrada_em,pendentes,status_vi', order: 'ultima_em.desc', limit: String(Math.min(Number(limite) || 60, 200)) });
   if (desde) p.set('ultima_em', 'gt.' + desde);
-  if (filtro === 'aguardando') p.set('ultima_direcao', 'eq.entrada');
+  // resolvida pela equipe sai da lista de esperando até a cliente escrever de novo (aí a Vi reabre a sessão)
+  if (filtro === 'aguardando') { p.set('ultima_direcao', 'eq.entrada'); p.set('or', '(status_vi.is.null,status_vi.neq.solved)'); }
   else if (filtro === 'pausada') p.set('pausada_ate', 'gt.' + new Date().toISOString());
   const b = String(busca || '').trim();
   if (b) {
@@ -251,7 +252,7 @@ export async function lerConversa(env, tel, { desde, limite = 200 } = {}) {
   const [wa, vi, conv] = await Promise.all([
     sbGet(env, 'wa_mensagens?' + pWa),
     sbGet(env, 'wati_ia_mensagens?' + pVi),
-    sbGet(env, `wa_conversas?chave=eq.${chave(tel)}&select=chave,telefone,nome,pausada_ate,ultima_entrada_em`),
+    sbGet(env, `wa_conversas?chave=eq.${chave(tel)}&select=chave,telefone,nome,pausada_ate,ultima_entrada_em,status_vi`),
   ]);
   return { conversa: conv[0] || null, mensagens: mesclar(wa, vi) };
 }
@@ -366,6 +367,33 @@ export async function enviarModelo(env, tel, nome, valores, agora = Date.now()) 
   if (r.erro) return r;
   const texto = t.corpo.replace(/\{\{(\d+)\}\}/g, (x, i) => valores[Number(i) - 1] ?? x);
   return registrarEnvioEquipe(env, c.conv.telefone, r.wamid, { tipo: 'template', texto }, texto, agora);
+}
+
+// "Devolver para a Vi" e "Resolvida" (passo 4 da saída do Wati, 21/10/2026). Mexem só na sessão da Vi, não mandam
+// nada para a cliente, então valem com o envio desligado também.
+//  devolver: tira a pausa e o handoff; a Vi responde a PRÓXIMA mensagem da cliente.
+//  resolver: o mesmo que o "fechar" do Wati faz hoje (webhook de ticket solved no worker da Vi): status solved,
+//            descarta resposta da Vi que estava na fila e lembrete de cartão; a conversa sai da lista de
+//            esperando. Se a cliente escrever de novo, a Vi reabre a sessão sozinha e responde.
+export async function mudarVi(env, tel, acao, agora = Date.now()) {
+  if (acao !== 'devolver' && acao !== 'resolver') return { status: 400, erro: 'ação desconhecida' };
+  const conv = (await sbGet(env, `wa_conversas?chave=eq.${chave(tel)}&select=telefone`))[0];
+  if (!conv) return { status: 404, erro: 'conversa não encontrada' };
+  const sess = await sbGet(env, `wati_ia_sessions?wa_id=in.(${variantes(conv.telefone).join(',')})&select=wa_id`);
+  const waIds = sess.length ? sess.map(s => s.wa_id) : [conv.telefone];
+  const quando = new Date(agora).toISOString();
+  const campos = acao === 'devolver' ? { status: 'ativa', pausada_ate: null, handoff_motivo: null } : { status: 'solved', pausada_ate: null };
+  await ok(await fetch(`${SB_URL}/rest/v1/wati_ia_sessions?on_conflict=wa_id`, {
+    method: 'POST', headers: sb(env, { Prefer: 'resolution=merge-duplicates,return=minimal' }),
+    body: JSON.stringify(waIds.map(w => ({ wa_id: w, ...campos, updated_at: quando }))),
+  }), 'sessão da Vi');
+  if (acao === 'resolver') {
+    await ok(await fetch(`${SB_URL}/rest/v1/wati_ia_fila?wa_id=in.(${waIds.join(',')})&enviado_at=is.null`, {
+      method: 'PATCH', headers: sb(env, { Prefer: 'return=minimal' }),
+      body: JSON.stringify({ enviado_at: quando, erro: 'cancelado: conversa resolvida pela equipe no painel' }),
+    }), 'fila da Vi');
+  }
+  return { status: 200, ok: true, status_vi: campos.status };
 }
 
 // Liga-desliga, token, a conversa existe e (para texto e arquivo) está na janela de 24 h.

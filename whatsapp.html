@@ -63,6 +63,14 @@
   .chat-topo .t { min-width: 0; flex: 1; }
   .chat-topo .n { font-size: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .chat-topo .s { font-size: 13px; color: var(--texto-sec); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .acoes { flex: none; display: flex; gap: 8px; }
+  .acao { border: 1px solid var(--linha); background: #fff; border-radius: 16px; padding: 6px 12px; font-size: 13px; cursor: pointer; color: var(--texto); display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+  .acao:hover { background: #F5F6F6; }
+  .acao:disabled { opacity: .5; cursor: default; }
+  .acao.vi { color: var(--nome-vi); }
+  .acao.ok { color: var(--verde-esc); }
+  .tag-resolvida { flex: none; font-size: 11px; color: var(--verde-esc); background: #E7FCE3; border-radius: 4px; padding: 1px 5px; }
+  @media (max-width: 760px) { .acao .rot { display: none; } }
   .voltar { display: none; border: 0; background: none; cursor: pointer; padding: 4px; color: var(--icone); }
   .msgs { flex: 1; min-height: 0; overflow-y: auto; padding: 12px 6% 8px; display: flex; flex-direction: column; }
   .dia { align-self: center; margin: 12px 0 8px; padding: 5px 12px; font-size: 12.5px; color: #54656F; background: #fff; border-radius: 7.5px; box-shadow: 0 1px 0.5px rgba(11,20,26,.13); text-transform: uppercase; }
@@ -254,13 +262,13 @@ function desenharLista() {
   const lista = [...est.conversas.values()].sort((a, b) => (a.ultima_em < b.ultima_em ? 1 : -1));
   if (!lista.length) { $('itens').innerHTML = `<div class="vazio">${buscaAtual || est.filtro ? 'Nenhuma conversa encontrada.' : 'Nenhuma conversa ainda.'}</div>`; return; }
   $('itens').innerHTML = lista.map(c => {
-    const pend = c.ultima_direcao === 'entrada' ? Math.max(1, Number(c.pendentes) || 0) : 0;
+    const pend = c.ultima_direcao === 'entrada' && c.status_vi !== 'solved' ? Math.max(1, Number(c.pendentes) || 0) : 0;
     const quem = c.ultima_direcao === 'saida' && !String(c.ultimo_texto || '').startsWith('[contexto') ? '<span class="vi">Loja: </span>' : '';
     return `<div class="item${est.aberta && est.aberta.chave === c.chave ? ' ativo' : ''}" data-chave="${esc(c.chave)}">
       <div class="avatar">${AVATAR}</div>
       <div class="item-corpo">
         <div class="item-l1"><span class="item-nome">${esc(c.nome || telBonito(c.telefone))}</span><span class="item-hora${pend ? ' nova' : ''}">${horaLista(c.ultima_em)}</span></div>
-        <div class="item-l2"><span class="item-prev">${quem}${esc(previa(c))}</span>${pausada(c) ? '<span class="tag-pausa">Vi pausada</span>' : ''}${pend ? `<span class="bolinha">${pend > 99 ? '99+' : pend}</span>` : ''}</div>
+        <div class="item-l2"><span class="item-prev">${quem}${esc(previa(c))}</span>${c.status_vi === 'solved' ? '<span class="tag-resolvida">Resolvida</span>' : pausada(c) ? '<span class="tag-pausa">Vi pausada</span>' : c.status_vi === 'handoff' ? '<span class="tag-pausa">Com a equipe</span>' : ''}${pend ? `<span class="bolinha">${pend > 99 ? '99+' : pend}</span>` : ''}</div>
       </div></div>`;
   }).join('');
 }
@@ -293,6 +301,7 @@ function abrir(c) {
       <button class="voltar" id="voltar" aria-label="Voltar"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M19 12H5M11 6l-6 6 6 6"/></svg></button>
       <div class="avatar peq">${AVATAR}</div>
       <div class="t"><div class="n" id="c-nome"></div><div class="s" id="c-status"></div></div>
+      <div class="acoes" id="c-acoes"></div>
     </div>
     <div class="msgs" id="msgs"><div class="vazio">Carregando...</div></div>
     <button class="descer" id="descer" aria-label="Ir para a última mensagem"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 9l6 6 6-6"/></svg></button>
@@ -315,6 +324,7 @@ function abrir(c) {
   });
   tirarAnexo();
   est.modelo = null;
+  $('c-acoes').addEventListener('click', e => { const b = e.target.closest('[data-acao]'); if (b && !b.disabled) mudarVi(b.dataset.acao); });
   $('c-janela').addEventListener('click', e => { if (e.target.closest('#abrir-modelo')) abrirModelos(); });
   $('descer').onclick = () => { const m = $('msgs'); m.scrollTop = m.scrollHeight; };
   $('msgs').addEventListener('scroll', () => { const m = $('msgs'); $('descer').classList.toggle('on', m.scrollHeight - m.scrollTop - m.clientHeight > 300); });
@@ -334,8 +344,11 @@ function desenharTopo() {
   $('c-nome').textContent = c.nome || telBonito(c.telefone);
   const n = pausada(c) ? diasAtras(c.pausada_ate) : null;
   const ate = n === 0 ? 'hoje' : n === -1 ? 'amanhã' : (c.pausada_ate ? new Date(c.pausada_ate).toLocaleDateString('pt-BR', { timeZone: TZ }).slice(0, 5) : '');
-  const vi = pausada(c) ? `Vi pausada até ${ate} às ${horaBR(c.pausada_ate)}` : 'Vi atendendo';
+  const vi = c.status_vi === 'solved' ? 'Resolvida, a Vi volta se a cliente escrever'
+    : pausada(c) ? `Vi pausada até ${ate} às ${horaBR(c.pausada_ate)}`
+    : c.status_vi === 'handoff' ? 'Com a equipe (a Vi passou a conversa)' : 'Vi atendendo';
   $('c-status').textContent = (c.nome ? telBonito(c.telefone) + ' · ' : '') + vi;
+  desenharAcoes();
   const aberta = janelaAberta();
   $('c-janela').innerHTML = !est.envio ? `<div class="fechada">${esc(est.avisoEnvio || 'Envio pelo painel desligado.')}</div>`
     : aberta || est.modelo ? '' : '<div class="fechada">A cliente não escreve há mais de 24 horas. Pela regra do WhatsApp, só dá para mandar um modelo aprovado.<button class="btn-modelo" id="abrir-modelo">Mandar modelo</button></div>';
@@ -538,6 +551,34 @@ async function enviarModeloAtual() {
     est.enviando = false;
     previaModelo();
     avisar(e.message, true);
+  }
+}
+
+// ── Devolver para a Vi e Resolvida (passo 4 da saída do Wati, 21/10/2026) ───
+// Não mandam nada para a cliente: só mexem na sessão da Vi (mudarVi em functions/_whatsapp.js).
+const ICONE_VI = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg>';
+const ICONE_OK = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>';
+function desenharAcoes() {
+  const c = est.aberta;
+  if (!c || !$('c-acoes')) return;
+  const comEquipe = pausada(c) || c.status_vi === 'handoff';
+  $('c-acoes').innerHTML = (comEquipe ? `<button class="acao vi" data-acao="devolver" title="A Vi volta a responder a partir da próxima mensagem da cliente">${ICONE_VI}<span class="rot">Devolver para a Vi</span></button>` : '')
+    + (c.status_vi !== 'solved' ? `<button class="acao ok" data-acao="resolver" title="Tira a conversa da lista de esperando. Se a cliente escrever de novo, a Vi responde.">${ICONE_OK}<span class="rot">Resolvida</span></button>` : '');
+}
+async function mudarVi(acao) {
+  const c = est.aberta;
+  if (!c) return;
+  $('c-acoes').querySelectorAll('button').forEach(b => { b.disabled = true; });
+  try {
+    const d = await api(null, { acao, tel: c.telefone });
+    for (const x of [c, est.conversas.get(c.chave)].filter(Boolean)) { x.status_vi = d.status_vi; x.pausada_ate = null; }
+    if (acao === 'resolver' && est.filtro === 'aguardando') est.conversas.delete(c.chave);
+    desenharTopo();
+    desenharLista();
+    avisar(acao === 'devolver' ? 'A Vi volta a responder esta cliente a partir da próxima mensagem dela.' : 'Conversa resolvida. Se a cliente escrever de novo, a Vi responde e ela volta para a lista.');
+  } catch (e) {
+    avisar(e.message, true);
+    desenharAcoes();
   }
 }
 

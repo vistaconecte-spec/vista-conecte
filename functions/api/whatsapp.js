@@ -10,13 +10,14 @@
  * GET  ?acao=modelos                          templates que a equipe pode mandar (aprovados na conta 925)
  * POST {acao:'enviar', tel, texto}            manda texto e pausa a Vi 24 h na conversa
  * POST {acao:'enviar-modelo', tel, modelo, valores}  manda template (com ou sem a janela de 24 h)
+ * POST {acao:'devolver'|'resolver', tel}     Vi volta a responder | conversa resolvida (sai de esperando)
  * POST ?acao=enviar-midia&tel=&nome=&legenda= com o arquivo cru no corpo (Content-Type = tipo do arquivo):
  *                                             manda foto ou documento e pausa a Vi 24 h
  *
  * Env: SUPABASE_SERVICE_ROLE_KEY, META_ACCESS_TOKEN (System User api-vista, tem
  * whatsapp_business_messaging) ou WA_TOKEN.
  */
-import { json, listarConversas, lerConversa, enviarTexto, enviarMidia, enviarModelo, listarModelos, baixarMidia, envioLiberado, AVISO_ENVIO } from '../_whatsapp.js';
+import { json, listarConversas, lerConversa, enviarTexto, enviarMidia, enviarModelo, listarModelos, mudarVi, baixarMidia, envioLiberado, AVISO_ENVIO } from '../_whatsapp.js';
 
 const ISO = /^\d{4}-\d{2}-\d{2}T[\d:.]+(Z|[+-]\d{2}:?\d{2})$/;
 
@@ -44,8 +45,10 @@ export async function onRequest(context) {
     }
     if (request.method === 'POST') {
       const b = await request.json().catch(() => ({}));
-      if (b.acao !== 'enviar' && b.acao !== 'enviar-modelo') return json({ erro: 'ação desconhecida' }, 400);
-      const r = b.acao === 'enviar-modelo' ? await enviarModelo(env, b.tel, b.modelo, b.valores) : await enviarTexto(env, b.tel, b.texto);
+      const r = b.acao === 'enviar' ? await enviarTexto(env, b.tel, b.texto)
+        : b.acao === 'enviar-modelo' ? await enviarModelo(env, b.tel, b.modelo, b.valores)
+        : b.acao === 'devolver' || b.acao === 'resolver' ? await mudarVi(env, b.tel, b.acao)
+        : { status: 400, erro: 'ação desconhecida' };
       const { status, ...resto } = r;
       return json(resto, status);
     }

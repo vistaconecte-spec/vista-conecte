@@ -41,7 +41,7 @@ with msgs as (
            over (partition by chave) as pendentes
     from marcado k
 ), sess as (
-  select distinct on (public.wa_chave(wa_id)) public.wa_chave(wa_id) as chave, nome, pausada_ate
+  select distinct on (public.wa_chave(wa_id)) public.wa_chave(wa_id) as chave, nome, pausada_ate, status
     from public.wati_ia_sessions order by public.wa_chave(wa_id), updated_at desc nulls last
 )
 select k.chave,
@@ -53,7 +53,8 @@ select k.chave,
        coalesce(k.nome_perfil, s.nome) as nome,
        s.pausada_ate,
        k.ultima_entrada_em,
-       k.pendentes
+       k.pendentes,
+       s.status             as status_vi   -- ativa | handoff | solved (21/10/2026: "resolvida" sai da lista de esperando)
   from contado k
   left join sess s on s.chave = k.chave
  where k.n = 1;

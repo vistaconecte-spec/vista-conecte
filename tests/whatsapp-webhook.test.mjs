@@ -299,6 +299,43 @@ ok('modelo ainda não aprovado: nada sai', [r.status, feitas.some(f => f.u.endsW
 r = await API.onRequest({ request: new Request('https://x/api/whatsapp', { method: 'POST', body: JSON.stringify({ acao: 'enviar-modelo', tel: '5562993161442', modelo: 'continuidade_solicitacao_v1', valores: ['Ana', 'x'] }) }), env: { ...envE, WA_ENVIO_PAINEL: undefined } });
 ok('com o envio desligado o modelo não sai', [r.status, feitas.some(f => f.u.endsWith('/messages'))], [503, false]);
 
+// ── Devolver para a Vi e Resolvida (passo 4, 21/10/2026) ───────────────────
+// Não mandam nada para a cliente. Resolvida faz o mesmo que o "fechar" do Wati: status solved e a resposta da Vi
+// que estava na fila não sai mais; a conversa sai da lista de esperando até a cliente escrever de novo.
+feitas = [];
+convResp = [{ telefone: '556293161442' }];
+globalThis.fetch = async (u, o = {}) => {
+  u = String(u);
+  feitas.push({ u, m: o.method || 'GET', b: typeof o.body === 'string' ? JSON.parse(o.body) : null });
+  if (u.includes('/wa_conversas?')) return new Response(JSON.stringify(convResp), { status: 200 });
+  if (u.includes('/wati_ia_sessions?wa_id=')) return new Response(JSON.stringify([{ wa_id: '5562993161442' }, { wa_id: '556293161442' }]), { status: 200 });
+  return new Response('', { status: 201 });
+};
+const envDesligado = { ...envE, WA_ENVIO_PAINEL: undefined };
+const acaoVi = (acao, tel = '5562993161442') => API.onRequest({ request: new Request('https://x/api/whatsapp', { method: 'POST', body: JSON.stringify({ acao, tel }) }), env: envDesligado });
+r = await acaoVi('devolver');
+d = await r.json();
+const sDev = feitas.find(f => f.u.includes('/wati_ia_sessions?on_conflict'));
+ok('devolver: funciona com o envio desligado e volta a Vi nas duas grafias', [r.status, d.status_vi, sDev.b.map(x => [x.wa_id, x.status, x.pausada_ate, x.handoff_motivo])],
+  [200, 'ativa', [['5562993161442', 'ativa', null, null], ['556293161442', 'ativa', null, null]]]);
+ok('devolver não mexe na fila nem manda nada', feitas.some(f => f.u.includes('wati_ia_fila') || f.u.includes('graph.facebook.com')), false);
+feitas = [];
+r = await acaoVi('resolver');
+d = await r.json();
+const sRes = feitas.find(f => f.u.includes('/wati_ia_sessions?on_conflict'));
+const fila = feitas.find(f => f.u.includes('/wati_ia_fila'));
+ok('resolver: sessão solved e sem pausa', [r.status, d.status_vi, sRes.b.map(x => [x.status, x.pausada_ate])], [200, 'solved', [['solved', null], ['solved', null]]]);
+ok('resolver: resposta da Vi na fila não sai mais', [fila.m, fila.u.includes('wa_id=in.(5562993161442,556293161442)'), fila.u.includes('enviado_at=is.null'), fila.b.erro], ['PATCH', true, true, 'cancelado: conversa resolvida pela equipe no painel']);
+ok('resolver não manda nada para a cliente', feitas.some(f => f.u.includes('graph.facebook.com')), false);
+r = await acaoVi('apagar');
+ok('ação desconhecida', r.status, 400);
+convResp = [];
+r = await acaoVi('resolver', '5511999990000');
+ok('conversa que não existe', r.status, 404);
+feitas = [];
+await W.listarConversas({ SUPABASE_SERVICE_ROLE_KEY: 'x' }, { filtro: 'aguardando' });
+ok('esperando não traz as resolvidas', decodeURIComponent(feitas[0].u).includes('or=(status_vi.is.null,status_vi.neq.solved)') && feitas[0].u.includes('ultima_direcao=eq.entrada'), true);
+
 ok('foto da equipe sem legenda aparece na conversa', W.mesclar([{ wamid: 'w9', direcao: 'saida', tipo: 'image', texto: null, midia_id: '777', origem: 'painel', enviada_em: '2026-10-21T19:00:00Z' }], []).map(m => [m.lado, m.tipo, m.midia_id]), [['equipe', 'image', '777']]);
 ok('status sem texto nem mídia continua fora da conversa', W.mesclar([{ wamid: 'w8', direcao: 'saida', texto: null, midia_id: null, enviada_em: '2026-10-21T19:00:00Z' }], []).length, 0);
 
