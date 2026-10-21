@@ -14,6 +14,11 @@ import { SB_URL } from './_bling.js';
 
 export const WABA_ID = '838934162193647';
 export const PHONE_NUMBER_ID = '910542668806764';
+// Desde a "Account Model Evolution" da Meta (out/2026) o número é compartilhado por várias contas de mensagens
+// (838 = Wati, 4436 e 925 = criadas pelo app da Shopify). A 838 só aceita envio do app do Wati; sem dizer qual
+// usar, a Meta escolhia a 4436 (sem cartão) e nada era entregue. A nossa é a 925: cartão dela, templates
+// copiados da 838 e o app "claude" inscrito. Teste entregue em 21/10/2026.
+export const CONTA_MENSAGENS_ID = '925433550103556';
 
 const RANK = { sent: 1, delivered: 2, read: 3, failed: 4 };
 
@@ -254,8 +259,8 @@ export async function lerConversa(env, tel, { desde, limite = 200 } = {}) {
 // Envia texto pela Cloud API, grava, e faz a Vi parar 24 h nesta conversa (o mesmo que acontece
 // quando alguém da equipe responde pelo Wati: handleOperatorMsg do worker).
 // Envio pelo painel só com WA_ENVIO_PAINEL=1 no Cloudflare. Desligado em 19/10/2026: no teste a Meta aceitou os
-// envios do nosso app (200 + wamid) mas não entregou nenhum e não mandou status; resposta da equipe por aqui
-// sumiria sem ninguém saber. Ligar de novo só depois de um teste que chegue no celular.
+// envios do nosso app (200 + wamid) mas não entregou nenhum e não mandou status (caíam na conta 4436, ver
+// CONTA_MENSAGENS_ID). Pela 925 entregou em 21/10; ligar quando a equipe for sair da caixa do Wati.
 export const envioLiberado = env => env.WA_ENVIO_PAINEL === '1';
 export const AVISO_ENVIO = 'O envio direto pela Meta ainda está em teste e não está chegando nas clientes. Por enquanto, responda pelo Wati.';
 
@@ -272,7 +277,7 @@ export async function enviarTexto(env, tel, texto, agora = Date.now()) {
 
   const r = await fetch(`${GRAPH}/${PHONE_NUMBER_ID}/messages`, {
     method: 'POST', headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ messaging_product: 'whatsapp', recipient_type: 'individual', to: conv.telefone, type: 'text', text: { preview_url: true, body: texto } }),
+    body: JSON.stringify({ messaging_product: 'whatsapp', recipient_type: 'individual', messaging_account_id: CONTA_MENSAGENS_ID, to: conv.telefone, type: 'text', text: { preview_url: true, body: texto } }),
   });
   const d = await r.json().catch(() => ({}));
   const wamid = d.messages && d.messages[0] && d.messages[0].id;

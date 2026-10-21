@@ -181,6 +181,8 @@ let d = await r.json();
 ok('envio ok', [r.status, d.ok, d.wamid], [200, true, 'wamid.NOVO']);
 const meta = feitas.find(f => f.u.includes('graph.facebook.com'));
 ok('manda pro telefone que a Meta usa, texto aparado', [meta.b.to, meta.b.text.body, meta.h.Authorization], ['556293161442', 'Oi, vou ver seu pedido agora', 'Bearer tok']);
+// sem a conta, a Meta escolhia a 4436 (sem cartão) e nada era entregue (21/10/2026)
+ok('sai pela conta de mensagens 925', meta.b.messaging_account_id, '925433550103556');
 const gw = feitas.find(f => f.u.includes('/wa_mensagens?') && f.m === 'POST');
 ok('grava a saída', [gw.b[0].wamid, gw.b[0].direcao, gw.b[0].texto], ['wamid.NOVO', 'saida', 'Oi, vou ver seu pedido agora']);
 const pausa = feitas.find(f => f.u.includes('/wati_ia_sessions?on_conflict'));
