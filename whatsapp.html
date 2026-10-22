@@ -85,6 +85,8 @@
   .b .quem { font-size: 12.8px; font-weight: 600; margin-bottom: 1px; }
   .b .quem.vi { color: var(--nome-vi); }
   .b .quem.equipe { color: var(--nome-equipe); }
+  .b .quem.auto { color: var(--texto-sec); font-weight: 500; }
+  .nota-auto { align-self: center; max-width: 85%; margin: 6px 0; padding: 4px 10px; font-size: 12px; color: var(--texto-sec); background: #fff; border-radius: 7.5px; box-shadow: 0 1px 0.5px rgba(11,20,26,.13); text-align: center; }
   .b .meta { float: right; margin: 8px 0 -6px 10px; font-size: 11px; color: var(--texto-sec); white-space: nowrap; line-height: 15px; }
   .b .meta .tique { margin-left: 3px; color: #8696A0; }
   .b .meta .tique.lido { color: var(--lido); }
@@ -92,8 +94,6 @@
   .b a { color: #027EB5; }
   .b img, .b video { display: block; max-width: 100%; max-height: 330px; border-radius: 6px; margin: -3px -4px 4px -6px; cursor: zoom-in; }
   .b audio { display: block; width: 280px; max-width: 100%; height: 40px; }
-  .sistema { align-self: center; max-width: 80%; margin: 10px 0; padding: 6px 12px; font-size: 12.5px; color: #54656F; background: var(--aviso); border-radius: 7.5px; box-shadow: 0 1px 0.5px rgba(11,20,26,.13); text-align: center; white-space: pre-wrap; }
-  .sistema b { display: block; font-size: 11.5px; color: var(--texto-sec); margin-bottom: 2px; }
   .descer { position: absolute; right: 18px; bottom: 76px; width: 42px; height: 42px; border-radius: 50%; border: 0; background: #fff; color: var(--icone); box-shadow: 0 1px 3px rgba(11,20,26,.25); cursor: pointer; display: none; align-items: center; justify-content: center; }
   .descer.on { display: flex; }
 
@@ -392,8 +392,21 @@ function corpoMidia(m) {
 function meta(m) {
   if (m.lado === 'equipe' && m.status === 'failed') return `<span class="meta"><span class="falha">Não entregue${m.erro && m.erro[0] ? ': ' + esc(m.erro[0].title || m.erro[0].message || m.erro[0].code) : ''}</span></span>`;
   let tique = '';
-  if (m.lado === 'equipe') tique = m.status === 'read' ? `<span class="tique lido">${TIQUE2}</span>` : m.status === 'delivered' ? `<span class="tique">${TIQUE2}</span>` : `<span class="tique">${TIQUE}</span>`;
+  if (m.lado === 'equipe' || m.lado === 'auto') tique = m.status === 'read' ? `<span class="tique lido">${TIQUE2}</span>` : m.status === 'delivered' ? `<span class="tique">${TIQUE2}</span>` : `<span class="tique">${TIQUE}</span>`;
   return `<span class="meta">${horaBR(m.quando)}${tique}</span>`;
+}
+// De que era a mensagem automática, lido da nota interna que a Vi grava junto com o envio.
+function resumoNota(t) {
+  t = String(t || '');
+  const n = (t.match(/#(\d{3,6})/) || [])[1];
+  const ped = n ? ` do pedido #${n}` : '';
+  if (/confirmação automática do pedido/i.test(t)) return `confirmação${ped}`;
+  if (/carrinho abandonado/i.test(t)) return 'carrinho abandonado';
+  if (/expira/i.test(t)) return `Pix perto de expirar${ped}`;
+  if (/pix/i.test(t)) return `Pix não confirmado${ped}`;
+  if (/rastreio|despach/i.test(t)) return `pedido despachado${ped}`;
+  if (/cart[aã]o/i.test(t)) return `pagamento no cartão${ped}`;
+  return 'aviso da loja';
 }
 function desenharMsgs(rolar) {
   const box = $('msgs');
@@ -406,16 +419,18 @@ function desenharMsgs(rolar) {
   for (const m of lista) {
     const d = diaSP(m.quando);
     if (d !== dia) { dia = d; ant = null; html.push(`<div class="dia">${rotuloDia(m.quando)}</div>`); }
-    if (m.lado === 'auto') {
-      const t = String(m.texto || '').replace(/^\[contexto interno:\s*/, '').replace(/\]\s*$/, '');
-      html.push(`<div class="sistema"><b>Mensagem automática da loja · ${horaBR(m.quando)}</b>${esc(t)}</div>`);
+    // Nota interna da Vi ("[contexto interno: ...]", com link e instrução para ela): a equipe não precisa ler isso.
+    // Vira uma linha curta dizendo que saiu mensagem automática e de quê (pedido da Bárbara, 22/10/2026: "ficou
+    // confuso"). O texto que a cliente recebeu, quando a Meta tem (origem template), aparece como balão normal.
+    if (m.lado === 'auto' && String(m.texto || '').startsWith('[contexto interno')) {
+      html.push(`<div class="nota-auto">Mensagem automática enviada · ${esc(resumoNota(m.texto))} · ${horaBR(m.quando)}</div>`);
       ant = null;
       continue;
     }
     const sai = m.lado !== 'cliente';
     // Mesmo grupo = mesmo autor, menos de 5 min depois: só o primeiro balão tem o "rabinho".
     const grupo = ant && ant.lado === m.lado && Date.parse(m.quando) - Date.parse(ant.quando) < 5 * 60e3;
-    const quem = !grupo && m.lado === 'vi' ? '<div class="quem vi">Vi</div>' : !grupo && m.lado === 'equipe' ? '<div class="quem equipe">Equipe</div>' : '';
+    const quem = grupo ? '' : ({ vi: '<div class="quem vi">Vi</div>', equipe: '<div class="quem equipe">Equipe</div>', auto: '<div class="quem auto">Mensagem automática</div>' }[m.lado] || '');
     const texto = m.texto ? formatar(m.texto) : (m.midia_id ? '' : '<i>mensagem sem texto</i>');
     html.push(`<div class="b ${sai ? 'sai' : 'entra'}${grupo ? '' : ' cauda novo-grupo'}">${quem}${corpoMidia(m)}${texto}${meta(m)}</div>`);
     ant = m;
