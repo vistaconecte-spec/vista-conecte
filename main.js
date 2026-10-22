@@ -10454,7 +10454,8 @@ async function copiaImprimir(numeros) {
         return `<tr><td class="cx-td"><span class="cx"></span></td><td class="q">${l.qtd}×</td>
           <td><b>${esc(p.nome)}</b></td><td>${esc(p.cor)}</td><td class="t">${esc(p.tam)}</td></tr>`;
       }
-      return `<tr class="cj"><td></td><td class="q">${l.qtd}×</td><td colspan="3"><b>${esc(l.nome)}</b> <span class="cj-n">(${l.pecas.length} peças, ${esc(l.cor)})</span></td></tr>`
+      // Sem quantidade na linha do conjunto (Bárbara, 22/10/2026: "confunde"): quem conta são as peças embaixo
+      return `<tr class="cj"><td></td><td></td><td colspan="3"><b>${esc(l.nome)}</b> <span class="cj-n">(${l.pecas.length} peças, ${esc(l.cor)})</span></td></tr>`
         + l.pecas.map(p => `<tr><td class="cx-td"><span class="cx"></span></td><td class="q">${l.qtd}×</td>
           <td class="sub">${esc(p.nome)}</td><td>${esc(p.cor)}</td><td class="t">${esc(p.tam)}</td></tr>`).join('');
     }).join('');
