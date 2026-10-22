@@ -10479,9 +10479,10 @@ async function copiaImprimir(numeros) {
         ${corpo}
       </table>
       <div class="rodape">
-        <div class="tot">Total no pacote: <b>${total} peça${total > 1 ? 's' : ''}</b>${saco ? ` · <b>Saco ${esc(saco)}</b>` : ''}</div>
-        <div class="assina">Embalado por ____________________</div>
+        <div class="tot">Total no pacote: <b>${total} peça${total > 1 ? 's' : ''}</b></div>
+        ${saco ? `<div class="saco">SACO <b>${esc(saco)}</b></div>` : ''}
       </div>
+      <div class="assina">Embalado por ____________________</div>
     </section>`);
   }
 
@@ -10528,8 +10529,11 @@ async function copiaImprimir(numeros) {
   .grupo + .grupo tr:first-child td{border-top:3px solid #000}
   .cj-n{font-size:11px;font-weight:400}
   .sub{padding-left:18px}
-  .rodape{display:flex;justify-content:space-between;align-items:flex-end;gap:12px;flex-wrap:wrap;margin-top:9px;font-size:13px}
-  .assina{font-size:11px}
+  .rodape{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-top:9px;font-size:13px}
+  /* Saco em caixa grande (Bárbara, 22/10/2026): é a primeira coisa que a Ju pega */
+  .saco{border:3px solid #000;padding:3px 12px;font-size:16px;font-weight:800;letter-spacing:.06em}
+  .saco b{font-size:26px;font-weight:900;margin-left:4px}
+  .assina{font-size:11px;margin-top:10px}
   /* 10x15: uma folha por etiqueta térmica */
   body.f10x15 .folha{padding:3mm 2mm;border-bottom:none;break-after:page;page-break-after:always}
   body.f10x15 .num{font-size:22px}
