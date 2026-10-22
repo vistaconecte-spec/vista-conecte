@@ -23,6 +23,8 @@ console.log('\n1) Texto e telefone');
   const t = textoConversa({ nome: 'Lais Jarilho', pedido: '#9250', codigo: '4665143571', validade: '2026-10-30T15:00:00Z' });
   ok('texto aprovado por ela', t, 'Oi Lais, sua troca do pedido #9250 está liberada. O código de postagem dos Correios é 4665143571 e vale até 30/10/2026. É só levar a peça embalada a uma agência e informar esse código, não precisa imprimir etiqueta nem pagar frete.');
   ok('sem travessão', /—/.test(t), false);
+  ok('crédito não fala em troca (Karina #9185, 22/10)', /troca/.test(textoConversa({ nome: 'Karina', pedido: '#9185', codigo: 'X', tipo: 'credito' })), false);
+  ok('crédito diz que vira crédito na loja', /vai virar crédito na loja/.test(textoConversa({ nome: 'Karina', pedido: '#9185', codigo: 'X', tipo: 'credito' })), true);
   ok('sem validade, não inventa data', /vale até/.test(textoConversa({ nome: 'A', pedido: '#1', codigo: 'X' })), false);
   ok('com e sem o 9', variantesWa('(11) 98507-4682'), ['5511985074682', '551185074682']);
   const agora = Date.parse('2026-10-20T15:00:00Z');

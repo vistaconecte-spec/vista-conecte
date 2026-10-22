@@ -76,6 +76,10 @@
   .opcoes { margin-top: 14px; padding-top: 14px; border-top: 1px dashed var(--linha); }
   .opcoes[hidden] { display: none; }
   .titulo-op { font-size: 13px; font-weight: 700; margin: 0 0 8px; }
+  [hidden] { display: none !important; } /* o .btn tinha display próprio e não sumia com hidden */
+  .confirma { border: 1px solid var(--linha); border-radius: 10px; padding: 14px; margin-top: 12px; }
+  .confirma ul { margin: 6px 0 14px; padding-left: 18px; }
+  .confirma li { margin-bottom: 6px; }
   .escolha { display: flex; gap: 10px; align-items: flex-start; border: 1px solid var(--linha); border-radius: 10px; padding: 11px 12px; margin-bottom: 8px; cursor: pointer; }
   .escolha input { margin: 3px 0 0; width: 18px; height: 18px; accent-color: var(--roxo); flex: 0 0 auto; }
   .escolha b { display: block; font-size: 14px; }
@@ -132,12 +136,18 @@
       <p class="ola" id="ola"></p>
       <p class="prazo" id="prazo"></p>
       <div id="lista-pecas"></div>
-      <button class="btn" id="btn-enviar" type="button">Enviar solicitação</button>
+      <button class="btn" id="btn-enviar" type="button">Continuar</button>
       <div id="erro-envio" class="erro" hidden></div>
+      <div id="confirma" class="confirma" hidden>
+        <p class="titulo-op">Confira o que você escolheu</p>
+        <ul id="confirma-lista"></ul>
+        <button class="btn" id="btn-confirmar" type="button">Confirmar e enviar</button>
+        <a href="#" class="voltar" id="btn-mudar">Voltar e mudar</a>
+      </div>
       <ul class="regras">
         <li>A peça precisa voltar sem uso, sem lavagem e com a etiqueta.</li>
         <li>Na troca, se o tamanho ou a cor que você escolheu estiver em falta, a gente te avisa antes e você decide entre outra opção ou crédito.</li>
-        <li>O crédito na loja fica com o valor que você pagou na peça e é liberado assim que ela chegar aqui.</li>
+        <li>O crédito tem o valor que você pagou na peça. Quando ela chegar e for conferida, o saldo entra na sua conta da loja, com o e-mail da compra, e aparece no pagamento.</li>
       </ul>
     </div>
     <a href="#" class="voltar" id="btn-outro">Buscar outro pedido</a>
@@ -241,9 +251,9 @@
         '<label class="marcar"><input type="checkbox" data-i="' + i + '" class="js-marcar"> Quero trocar ou devolver esta peça</label>' +
         '<div class="opcoes" id="o' + i + '" hidden>' + qtdSel +
           '<p class="titulo-op">O que você prefere?</p>' +
-          '<label class="escolha' + (semTroca ? ' off' : '') + '"><input type="radio" name="t' + i + '" value="troca"' + (semTroca ? ' disabled' : '') + '><div><b>Trocar por outro tamanho ou cor</b><span>' + (semTroca ? 'Este modelo não tem outra opção para troca.' : 'Mandamos a peça nova assim que a sua chegar.') + '</span></div></label>' +
+          '<label class="escolha' + (semTroca ? ' off' : '') + '"><input type="radio" name="t' + i + '" value="troca"' + (semTroca ? ' disabled' : '') + '><div><b>Trocar pelo mesmo modelo, em outro tamanho ou cor</b><span>' + (semTroca ? 'Este modelo não tem outra opção para troca.' : 'Mandamos a peça nova assim que a sua chegar.') + '</span></div></label>' +
           '<div class="sub-op" id="s' + i + '" hidden><select id="v' + i + '"><option value="">Escolha o novo tamanho e cor</option>' + opcoesTroca + '</select></div>' +
-          '<label class="escolha"><input type="radio" name="t' + i + '" value="credito"><div><b>Crédito na loja</b><span>' + brl(it.valor_unit) + ' por peça para usar na próxima compra, quando quiser.</span></div></label>' +
+          '<label class="escolha"><input type="radio" name="t' + i + '" value="credito"><div><b>Crédito para escolher outra peça da loja</b><span>' + brl(it.valor_unit) + ' por peça de saldo na sua conta, válido por 90 dias. Dá para usar em uma ou mais compras até acabar.</span></div></label>' +
           '<label class="escolha' + (d.pode_devolver ? '' : ' off') + '"><input type="radio" name="t' + i + '" value="devolucao"' + (d.pode_devolver ? '' : ' disabled') + '><div><b>Dinheiro de volta</b><span>' + (d.pode_devolver ? 'Estorno na forma de pagamento da compra.' : 'Só nos primeiros 7 dias depois de receber (terminou em ' + dia(d.devolucao_ate) + ').') + '</span></div></label>' +
           '<div class="grupo" style="margin-top:12px"><label class="campo" for="m' + i + '">Motivo</label><select id="m' + i + '"><option value="">Escolha o motivo</option>' + motivos + '</select></div>' +
           '<div class="grupo"><label class="campo" for="ob' + i + '">Quer contar mais alguma coisa? (opcional)</label><textarea id="ob' + i + '" maxlength="300" placeholder="Ex.: ficou curta no comprimento"></textarea></div>' +
@@ -267,9 +277,11 @@
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
-  $('btn-enviar').addEventListener('click', async function () {
+  var pendente = null;
+  $('btn-enviar').addEventListener('click', function () {
     var d = estado.dados;
     var itens = [];
+    var resumo = [];
     var erro = '';
     d.itens.forEach(function (it, i) {
       if (erro) return;
@@ -282,18 +294,38 @@
       var motivo = $('m' + i).value;
       if (!motivo) { erro = 'Escolha o motivo de ' + it.titulo + '.'; return; }
       itens.push({ line_id: it.id, tipo: t.value, nova_variante_id: nova, motivo: motivo, obs: $('ob' + i).value, qtd: $('q' + i) ? Number($('q' + i).value) : 1 });
+      var novaTxt = nova ? $('v' + i).options[$('v' + i).selectedIndex].text : '';
+      resumo.push('<b>' + esc(it.titulo) + ' ' + esc(it.variante) + '</b>, ' + (t.value === 'troca' ? 'trocar por ' + esc(novaTxt)
+        : t.value === 'credito' ? 'crédito de ' + brl(it.valor_unit * (itens[itens.length - 1].qtd || 1)) + ' para outra peça'
+        : 'dinheiro de volta, ' + brl(it.valor_unit * (itens[itens.length - 1].qtd || 1))));
     });
     if (!erro && !itens.length) erro = 'Marque pelo menos uma peça.';
     mostrarErro($('erro-envio'), erro);
     if (erro) return;
-    var b = $('btn-enviar'); b.disabled = true; b.textContent = 'Enviando...';
+    pendente = itens;
+    $('confirma-lista').innerHTML = resumo.map(function (r) { return '<li>' + r + '</li>'; }).join('');
+    $('btn-enviar').hidden = true;
+    $('confirma').hidden = false;
+    $('confirma').scrollIntoView({ behavior: 'smooth', block: 'center' });
+  });
+
+  $('btn-mudar').addEventListener('click', function (ev) {
+    ev.preventDefault();
+    $('confirma').hidden = true;
+    $('btn-enviar').hidden = false;
+  });
+
+  $('btn-confirmar').addEventListener('click', async function () {
+    var itens = pendente;
+    if (!itens || !itens.length) return;
+    var b = $('btn-confirmar'); b.disabled = true; b.textContent = 'Enviando...';
     try {
       var r = await chamar({ acao: 'enviar', pedido: estado.pedido, email: estado.email, itens: itens });
       $('protocolo').textContent = r.protocolo;
       var tipos = (r.itens || []).map(function (i) { return i.tipo; });
       var fim = [];
       if (tipos.indexOf('troca') >= 0) fim.push('a peça nova sai para você');
-      if (tipos.indexOf('credito') >= 0) fim.push('o crédito é liberado na sua conta da loja, com este mesmo e-mail');
+      if (tipos.indexOf('credito') >= 0) fim.push('o saldo do crédito entra na sua conta da loja, com este mesmo e-mail, e você recebe o aviso por e-mail e WhatsApp');
       if (tipos.indexOf('devolucao') >= 0) fim.push('o estorno é feito na forma de pagamento da compra');
       $('passo-final').textContent = 'Quando a peça chegar aqui, ' + (fim.length ? fim.join(', e ') : 'a gente segue com o que você escolheu') + '.';
       $('passo-pecas').hidden = true;
@@ -302,13 +334,15 @@
     } catch (e) {
       mostrarErro($('erro-envio'), e.message);
     } finally {
-      b.disabled = false; b.textContent = 'Enviar solicitação';
+      b.disabled = false; b.textContent = 'Confirmar e enviar';
+      $('confirma').hidden = true; $('btn-enviar').hidden = false;
     }
   });
 
   $('btn-outro').addEventListener('click', function (ev) {
     ev.preventDefault();
     estado = { pedido: '', email: '', dados: null };
+    $('confirma').hidden = true; $('btn-enviar').hidden = false;
     $('passo-pecas').hidden = true;
     $('passo-busca').hidden = false;
     $('pedido').value = ''; $('email').value = '';

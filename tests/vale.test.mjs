@@ -93,5 +93,57 @@ console.log('\n5) Etapas na lista de Devolução (main.js)');
   ok('depois de gerado: copiar e marcar enviado', [/valeCopiar/.test(valeAcaoHtml({ id: 'a', forma: 'credito', vale_codigo: 'V' })), /valeEnviado/.test(valeAcaoHtml({ id: 'a', forma: 'credito', vale_codigo: 'V' }))], [true, true]);
 }
 
+console.log('\n6) Crédito na loja como saldo (22/10/2026)');
+{
+  const C = await import('../functions/_credito.js');
+  ok('mesmo item, mesma tag', C.tagCredito('est1') === C.tagCredito('est1') && C.tagCredito('est1') !== C.tagCredito('est2'), true);
+  const m = C.mensagemCredito({ nome: 'Karina Lam', pedido: '#9185', valor: 179.55, ate: '2027-01-20T18:00:00Z' });
+  ok('mensagem com nome, valor e validade', [/^Oi Karina,/.test(m), m.includes('R$ 179,55'), m.includes('20/01/2027')], [true, true, true]);
+  ok('fala de saldo, não de cupom', [/saldo/.test(m), /cupom/i.test(m), /mais de uma compra/.test(m)], [true, false, true]);
+  ok('explica como entrar na conta', [/ícone de pessoa/.test(m), /código que chega no seu e-mail/.test(m)], [true, true]);
+  ok('sem travessão, sem dois-pontos', [/—/.test(m), /:/.test(m)], [false, false]);
+  ok('nome do cadastro novo', C.nomeCadastro('Karina Lam Souza'), { firstName: 'Karina', lastName: 'Lam Souza' });
+
+  const chamadas = [];
+  let tags = [], cliente = null;
+  globalThis.fetch = async (url, opts = {}) => {
+    const u = String(url);
+    if (u.includes('graphql.json')) {
+      const { query, variables } = JSON.parse(opts.body);
+      if (query.includes('orders(')) return new Response(JSON.stringify({ data: { orders: { nodes: [{ id: 'gid://shopify/Order/1', name: '#9185', email: 'k@x.com', phone: null, tags, customer: cliente, shippingAddress: { name: 'Karina Lam', phone: '+55 11 99653-8230' }, currentTotalPriceSet: { shopMoney: { amount: '179.55' } } }] } } }));
+      if (query.includes('customers(')) return new Response(JSON.stringify({ data: { customers: { nodes: [] } } }));
+      if (query.includes('customerCreate')) return new Response(JSON.stringify({ data: { customerCreate: { customer: { id: 'gid://shopify/Customer/novo' }, userErrors: [] } } }));
+      if (query.includes('storeCreditAccountCredit')) {
+        chamadas.push('CREDITO ' + variables.id + ' ' + variables.c.creditAmount.amount + ' ' + variables.c.notify);
+        return new Response(JSON.stringify({ data: { storeCreditAccountCredit: { storeCreditAccountTransaction: { amount: { amount: variables.c.creditAmount.amount }, account: { id: 'a', balance: { amount: variables.c.creditAmount.amount } } }, userErrors: [] } } }));
+      }
+      if (query.includes('tagsAdd')) { tags = [...tags, ...variables.tags]; return new Response(JSON.stringify({ data: { tagsAdd: { userErrors: [] } } })); }
+    }
+    if (u.includes('wati_ia_mensagens') && (opts.method || 'GET') === 'GET') return new Response(JSON.stringify([]));
+    return new Response('{}');
+  };
+  const env = { SHOPIFY_STORE_DOMAIN: 'l', SHOPIFY_ADMIN_TOKEN: 't', SUPABASE_SERVICE_ROLE_KEY: 's', WATI_TOKEN: 'w' };
+  const chamar = async b => { const r = await onRequestPost({ env, request: new Request('https://x', { method: 'POST', body: JSON.stringify(b) }) }); return { s: r.status, j: await r.json() }; };
+  const r1 = await chamar({ acao: 'credito', pedido: '#9185', item_id: 'est9185', valor: 179.55, cliente: 'Karina Lam' });
+  ok('visitante: cria o cadastro e lança o saldo com aviso por e-mail', [r1.s, r1.j.ok, r1.j.cadastro_criado, chamadas.includes('CREDITO gid://shopify/Customer/novo 179.55 true')], [200, true, true, true]);
+  ok('fora das 24 h: WhatsApp não sai e a mensagem volta pra Marcelly', [r1.j.whatsapp && r1.j.whatsapp.enviado, r1.j.whatsapp && r1.j.whatsapp.motivo, /R\$ 179,55/.test(r1.j.mensagem || '')], [false, 'fora_da_janela', true]);
+  const antes = chamadas.length;
+  const r2 = await chamar({ acao: 'credito', pedido: '#9185', item_id: 'est9185', valor: 179.55 });
+  ok('segundo clique não lança de novo (tag no pedido)', [r2.j.ja_existia, chamadas.length], [true, antes]);
+  tags = []; cliente = { id: 'gid://shopify/Customer/7' };
+  const r3 = await chamar({ acao: 'credito', pedido: '#9185', item_id: 'outro', valor: 999 });
+  ok('valor acima do pago é recusado', r3.s, 422);
+  const r4 = await chamar({ acao: 'credito', pedido: '#9185', item_id: 'outro', valor: 179.55 });
+  ok('com cadastro: credita no cadastro do pedido', [r4.j.cadastro_criado, chamadas.includes('CREDITO gid://shopify/Customer/7 179.55 true')], [false, true]);
+}
+{
+  const main = readFileSync(join(raiz, 'main.js'), 'utf8');
+  const a = main.indexOf('function valeEhCredito'), b = main.indexOf('function valeAlterar');
+  const { valeEtapa, valeAcaoHtml } = new Function(`${main.slice(a, b)}; return { valeEtapa, valeAcaoHtml };`)();
+  ok('peça chegou: botão conferido e lançar crédito', [/valeCredito/.test(valeAcaoHtml({ id: 'a', forma: 'credito', chegou_em: 'x' })), /valeGerar/.test(valeAcaoHtml({ id: 'a', forma: 'credito', chegou_em: 'x' }))], [true, false]);
+  ok('crédito lançado com WhatsApp pendente: copiar a mensagem', valeEtapa({ chegou_em: 'x', credito_lancado_em: 'y', credito_msg: 'm' }), 'gerado');
+  ok('crédito lançado e avisado: concluída', valeEtapa({ chegou_em: 'x', credito_lancado_em: 'y', vale_enviado_em: 'y' }), 'enviado');
+}
+
 console.log(falhas ? `\n✗ ${falhas} de ${total} falharam` : `\n✓ TODOS OS TESTES PASSARAM — ${total}/${total}`);
 if (falhas) process.exit(1);

@@ -1983,7 +1983,7 @@ function devCartaoHtml(t, etapa) {
     }
   } else {
     acao = credito
-      ? `<div class="trc-dica">${t.vale_codigo ? 'vale ' + esc(t.vale_codigo) + ' enviado' : 'concluída'}${t.vale_enviado_em ? ' em ' + new Date(t.vale_enviado_em).toLocaleDateString('pt-BR') : ''}</div>`
+      ? `<div class="trc-dica">${t.credito_lancado_em ? 'crédito de ' + reais(t.credito_valor || t.valor) + ' na conta' + (t.credito_ate ? ', até ' + new Date(t.credito_ate).toLocaleDateString('pt-BR') : '') : t.vale_codigo ? 'vale ' + esc(t.vale_codigo) + ' enviado' : 'concluída'}${!t.credito_lancado_em && t.vale_enviado_em ? ' em ' + new Date(t.vale_enviado_em).toLocaleDateString('pt-BR') : ''}</div>`
       : `<div class="trc-dica">estorno feito${t.estorno_feito_em ? ' em ' + new Date(t.estorno_feito_em).toLocaleDateString('pt-BR') : ''}</div>`;
   }
   const vencCor = etapa === 'esperando' ? (trcVencimento(t, Date.now(), 'estorno') || {}).cor : null;
@@ -3603,6 +3603,7 @@ function revAplicarCodigos() {
 function valeEhCredito(t) { return t.forma === 'credito' || /^cr[ée]dito na loja/i.test(String(t.motivo || '')); }
 function valeEtapa(t) {
   if (t.vale_enviado_em) return 'enviado';
+  if (t.credito_lancado_em) return t.credito_msg ? 'gerado' : 'enviado'; // crédito lançado; WhatsApp pendente = copiar
   if (t.vale_codigo) return 'gerado';
   if (t.chegou_em) return 'chegou';
   return 'esperando';
@@ -3614,8 +3615,10 @@ function valeAcaoHtml(t) {
   const b = (fn, ico, txt, tit) => `<button onclick="${fn}('${t.id}', this)" title="${tit}" style="${css}"><i class="ti ${ico}"></i> ${txt}</button>`;
   const reais = v => 'R$ ' + (Number(v) || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 });
   if (e === 'esperando') return b('valeChegou', 'ti-package-import', 'chegou', 'A peça chegou aqui: libera o vale');
-  if (e === 'chegou') return b('valeGerar', 'ti-ticket', 'gerar vale', `Cria na Shopify o cupom de ${reais(t.valor)}: 90 dias, uso único, só para esta cliente`);
-  if (e === 'gerado') return b('valeCopiar', 'ti-copy', 'copiar msg', `Copia a mensagem com o vale ${t.vale_codigo} para mandar no WhatsApp`)
+  // 22/10/2026: o crédito é SALDO na conta da cliente (não mais cupom de uso único). A equipe
+  // confere a peça e um clique lança o saldo, cria o cadastro se preciso e avisa a cliente.
+  if (e === 'chegou') return b('valeCredito', 'ti-coin', 'conferido, lançar crédito', `Depois de conferir a peça: lança ${reais(t.valor)} de saldo na conta da cliente, válido por 90 dias`);
+  if (e === 'gerado') return b('valeCopiar', 'ti-copy', 'copiar msg', t.credito_lancado_em ? 'O WhatsApp não saiu sozinho: copia a mensagem do crédito para mandar' : `Copia a mensagem com o vale ${t.vale_codigo} para mandar no WhatsApp`)
     + b('valeEnviado', 'ti-check', 'enviado', 'Marcar que o vale já foi mandado para a cliente');
   const ate = t.vale_ate ? new Date(t.vale_ate).toLocaleDateString('pt-BR') : '';
   return `<span title="vale enviado em ${new Date(t.vale_enviado_em).toLocaleDateString('pt-BR')}, válido até ${ate}" style="flex:0 0 auto;font-size:11px;font-weight:600;color:#3aa76d;white-space:nowrap"><i class="ti ti-ticket"></i> ${t.vale_codigo}</span>`;
@@ -3647,13 +3650,38 @@ async function valeGerar(id, btn) {
     atdSyncViews();
   }
 }
+async function valeCredito(id, btn) {
+  const t = estGetConfig().itens.find(x => x.id === id); if (!t) return;
+  const pedido = revNumeroPedido('estorno', t);
+  if (!pedido) { alert('Esta linha não tem número de pedido: o crédito precisa do pedido para saber quem é a cliente.'); return; }
+  const reais = v => 'R$ ' + (Number(v) || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 });
+  if (!confirm(`A peça já foi conferida (sem uso, sem lavagem, com etiqueta)?
+
+Vai entrar ${reais(t.valor)} de saldo na conta de ${t.cliente || 'a cliente'}, válido por 90 dias.`)) return;
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="ti ti-loader"></i> lançando...'; }
+  try {
+    const r = await fetch('/api/vale-troca', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ acao: 'credito', pedido, item_id: id, valor: t.valor, cliente: t.cliente }) });
+    const j = await r.json();
+    if (!r.ok || !j.ok) throw new Error(j.erro || 'HTTP ' + r.status);
+    const agora = new Date().toISOString();
+    valeAlterar(id, x => {
+      Object.assign(x, { credito_lancado_em: x.credito_lancado_em || agora, credito_valor: j.valor || x.valor, credito_ate: j.ate || x.credito_ate || null, conferido_em: x.conferido_em || agora });
+      if (j.ja_existia || (j.whatsapp && j.whatsapp.enviado)) { delete x.credito_msg; x.vale_enviado_em = x.vale_enviado_em || agora; x.etapa = 'concluido'; x.etapa_em = agora; }
+      else x.credito_msg = j.mensagem; // WhatsApp fora das 24 h: a Marcelly copia e manda
+    });
+  } catch (e) {
+    alert('Não consegui lançar o crédito: ' + e.message);
+    atdSyncViews();
+  }
+}
 async function valeCopiar(id, btn) {
-  const t = estGetConfig().itens.find(x => x.id === id); if (!t || !t.vale_msg) return;
+  const t0 = estGetConfig().itens.find(x => x.id === id); if (!t0) return;
+  const t = { ...t0, vale_msg: t0.credito_msg || t0.vale_msg }; if (!t.vale_msg) return;
   try { await navigator.clipboard.writeText(t.vale_msg); if (btn) btn.innerHTML = '<i class="ti ti-check"></i> copiada'; }
   catch (e) { prompt('Copie a mensagem:', t.vale_msg); }
 }
 function valeEnviado(id) {
-  valeAlterar(id, t => { t.vale_enviado_em = new Date().toISOString(); t.etapa = 'concluido'; t.etapa_em = t.vale_enviado_em; });
+  valeAlterar(id, t => { t.vale_enviado_em = new Date().toISOString(); delete t.credito_msg; t.etapa = 'concluido'; t.etapa_em = t.vale_enviado_em; });
 }
 
 // ── Rastreio da devolução da troca (20/10/2026) ───────────────────────────────

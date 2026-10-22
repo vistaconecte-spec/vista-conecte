@@ -25,10 +25,16 @@ const JANELA_MS = 24 * 3600e3 - 15 * 60e3; // margem de 15 min antes de fechar
 
 const json = (o, status = 200) => new Response(JSON.stringify(o), { status, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } });
 
-export function textoConversa({ nome, pedido, codigo, validade }) {
+// tipo (22/10/2026): a Karina #9185 pediu crédito e recebeu "sua troca está liberada"
+const ASSUNTO = {
+  troca: p => `sua troca do pedido ${p} está liberada`,
+  credito: p => `a devolução do pedido ${p}, que vai virar crédito na loja, está liberada`,
+  devolucao: p => `sua devolução do pedido ${p} está liberada`,
+};
+export function textoConversa({ nome, pedido, codigo, validade, tipo = 'troca' }) {
   const primeiro = String(nome || '').trim().split(/\s+/)[0] || '';
   const dia = validade ? new Date(validade).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' }) : '';
-  return `Oi${primeiro ? ' ' + primeiro : ''}, sua troca do pedido ${pedido} está liberada. O código de postagem dos Correios é ${codigo}`
+  return `Oi${primeiro ? ' ' + primeiro : ''}, ${(ASSUNTO[tipo] || ASSUNTO.troca)(pedido)}. O código de postagem dos Correios é ${codigo}`
     + (dia ? ` e vale até ${dia}` : '')
     + '. É só levar a peça embalada a uma agência e informar esse código, não precisa imprimir etiqueta nem pagar frete.';
 }
@@ -72,7 +78,7 @@ export async function onRequestPost({ env, request }) {
     const vars = variantesWa(tel);
     if (!vars.length) return json({ enviado: false, motivo: 'sem_telefone' });
     const nome = o.shippingAddress?.firstName || o.customer?.firstName || (o.shippingAddress?.name || '').split(' ')[0];
-    const texto = textoConversa({ nome, pedido: o.name, codigo, validade: b.validade });
+    const texto = textoConversa({ nome, pedido: o.name, codigo, validade: b.validade, tipo: await tipoDoItem(b) });
 
     const ult = await (await fetch(`${SB_URL}/rest/v1/wati_ia_mensagens?wa_id=in.(${vars.join(',')})&role=eq.user&order=created_at.desc&limit=1&select=wa_id,created_at`, { headers: sbH })).json();
     const ultima = Array.isArray(ult) && ult[0];
@@ -109,4 +115,17 @@ export async function onRequestPost({ env, request }) {
   } catch (e) {
     return json({ enviado: false, motivo: 'erro', detalhe: e.message }, 502);
   }
+}
+
+// Troca (lista retorno) ou devolução (lista estorno: crédito ou dinheiro), pelo item da reversa
+export async function tipoDoItem(b) {
+  if (b.tipo && ['troca', 'credito', 'devolucao'].includes(b.tipo)) return b.tipo;
+  const [lista, id] = String(b.item_id || '').split(':');
+  if (lista !== 'estorno') return 'troca';
+  try {
+    const anon = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imhja3pzYmx3eWFibWh6Ympkamd4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkxNTEyOTIsImV4cCI6MjA5NDcyNzI5Mn0.guif8jtidWmfqykhgDgPJiaRbWLoEEDMp1usTlAs1dQ';
+    const r = await fetch(`${SB_URL}/rest/v1/vc_modelos?id=eq.estorno&select=dados`, { headers: { apikey: anon, Authorization: 'Bearer ' + anon } });
+    const t = ((((await r.json())[0] || {}).dados || {}).itens || []).find(x => x && x.id === id);
+    return t && (t.forma === 'credito' || /^cr[ée]dito na loja/i.test(String(t.motivo || ''))) ? 'credito' : 'devolucao';
+  } catch (e) { return 'devolucao'; }
 }
