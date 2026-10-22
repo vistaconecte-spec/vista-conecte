@@ -10448,16 +10448,18 @@ async function copiaImprimir(numeros) {
     if (d.troca) avisos.push('<b>TROCA</b>: pedido de troca da cliente');
     if (d.obs) avisos.push('<b>A CLIENTE ESCREVEU</b>: ' + esc(d.obs));
 
+    // Cada modelo do pedido é um <tbody> próprio, separado do seguinte por linha grossa
+    // (Bárbara, 22/10/2026: separar bem um modelo do outro; o conjunto fica junto das peças dele)
     const corpo = linhas.map(l => {
       if (!l.conjunto) {
         const p = l.pecas[0];
-        return `<tr><td class="cx-td"><span class="cx"></span></td><td class="q">${l.qtd}×</td>
-          <td><b>${esc(p.nome)}</b></td><td>${esc(p.cor)}</td><td class="t">${esc(p.tam)}</td></tr>`;
+        return `<tbody class="grupo"><tr><td class="cx-td"><span class="cx"></span></td><td class="q">${l.qtd}×</td>
+          <td><b>${esc(p.nome)}</b></td><td>${esc(p.cor)}</td><td class="t">${esc(p.tam)}</td></tr></tbody>`;
       }
       // Sem quantidade na linha do conjunto (Bárbara, 22/10/2026: "confunde"): quem conta são as peças embaixo
-      return `<tr class="cj"><td></td><td></td><td colspan="3"><b>${esc(l.nome)}</b> <span class="cj-n">(${l.pecas.length} peças, ${esc(l.cor)})</span></td></tr>`
+      return `<tbody class="grupo"><tr class="cj"><td></td><td></td><td colspan="3"><b>${esc(l.nome)}</b> <span class="cj-n">(${l.pecas.length} peças, ${esc(l.cor)})</span></td></tr>`
         + l.pecas.map(p => `<tr><td class="cx-td"><span class="cx"></span></td><td class="q">${l.qtd}×</td>
-          <td class="sub">${esc(p.nome)}</td><td>${esc(p.cor)}</td><td class="t">${esc(p.tam)}</td></tr>`).join('');
+          <td class="sub">${esc(p.nome)}</td><td>${esc(p.cor)}</td><td class="t">${esc(p.tam)}</td></tr>`).join('') + '</tbody>';
     }).join('');
 
     const dt = ped.data ? new Date(ped.data).toLocaleDateString('pt-BR') : '';
@@ -10474,7 +10476,7 @@ async function copiaImprimir(numeros) {
       ${avisos.length ? `<div class="avisos">${avisos.map(a => `<div>${a}</div>`).join('')}</div>` : ''}
       <table>
         <thead><tr><th></th><th>Qtd</th><th style="text-align:left">Peça</th><th style="text-align:left">Cor</th><th>Tam.</th></tr></thead>
-        <tbody>${corpo}</tbody>
+        ${corpo}
       </table>
       <div class="rodape">
         <div class="tot">Total no pacote: <b>${total} peça${total > 1 ? 's' : ''}</b>${saco ? ` · <b>Saco ${esc(saco)}</b>` : ''}</div>
@@ -10523,6 +10525,7 @@ async function copiaImprimir(numeros) {
   .q{width:38px;text-align:center;font-weight:800}
   .t{width:60px;text-align:center;font-size:16px;font-weight:900}
   .cj td{border-bottom:none;padding-bottom:0}
+  .grupo + .grupo tr:first-child td{border-top:3px solid #000}
   .cj-n{font-size:11px;font-weight:400}
   .sub{padding-left:18px}
   .rodape{display:flex;justify-content:space-between;align-items:flex-end;gap:12px;flex-wrap:wrap;margin-top:9px;font-size:13px}
