@@ -7427,8 +7427,14 @@ function urgentesParaProducao() {
     });
     if (falta === 0) continue;
 
-    let n = !EM_PRODUCAO.includes(saved.status)  ? 1
-          : !EM_PRODUCAO.includes(saved.status2) ? 2 : 0;
+    // Leva com etapa mas grade toda zerada não está produzindo nada: está livre. Em 22/10/2026
+    // o Cropped Canelado e a Calça Bolso Frontal ficavam de fora com a 2ª leva "Em costura"
+    // desde 07/10 e zero peças. Reaproveitar não cobra nada: o faturamento da costura e do
+    // corte ignora leva sem peças (cstLevasDe).
+    const temPecas = p => Object.values(p || {}).some(arr => (arr || []).some(v => v > 0));
+    const ocupada1 = EM_PRODUCAO.includes(saved.status)  && temPecas(saved.prod);
+    const ocupada2 = EM_PRODUCAO.includes(saved.status2) && temPecas(saved.prod2);
+    let n = !ocupada1 ? 1 : !ocupada2 ? 2 : 0;
     // As duas levas ocupadas, mas uma ainda comprando tecido: o tecido não foi cortado,
     // então essa leva pode crescer (15/09/2026 — a dona clicava e só recebia o aviso de
     // bloqueio, com Macacão, Macaquinho e Vestido FU Curto faltando 1 ou 2 peças cada).
