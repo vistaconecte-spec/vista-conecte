@@ -10478,8 +10478,9 @@ async function copiaImprimir(numeros) {
     return;
   }
 
-  let formato = 'a4';
-  try { formato = localStorage.getItem('vc:copia-formato') || 'a4'; } catch (_) {}
+  // 10x15 é o padrão: a Bárbara imprime a cópia na mesma impressora térmica da etiqueta (22/10/2026)
+  let formato = '10x15';
+  try { formato = localStorage.getItem('vc:copia-formato') || '10x15'; } catch (_) {}
   const html = `<!DOCTYPE html>
 <html lang="pt-BR"><head><meta charset="UTF-8"><title>Cópia dos pedidos (${folhas.length})</title>
 <style id="pagina"></style>
@@ -10527,8 +10528,8 @@ async function copiaImprimir(numeros) {
 </style></head><body class="f${formato}">
   <div class="barra">
     <span>Papel:</span>
-    <button data-f="a4" onclick="formato('a4')">Folha A4 (2 pedidos por folha)</button>
     <button data-f="10x15" onclick="formato('10x15')">Etiqueta 10x15 (1 por etiqueta)</button>
+    <button data-f="a4" onclick="formato('a4')">Folha A4 (2 pedidos por folha)</button>
     <button class="imp" onclick="window.print()">Imprimir ${folhas.length} pedido${folhas.length > 1 ? 's' : ''}</button>
   </div>
   ${semPecas.length ? `<div class="aviso-falta">Ficaram de fora (já enviados ou sem peças na tela): ${esc(semPecas.join(', '))}</div>` : ''}
