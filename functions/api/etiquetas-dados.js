@@ -143,13 +143,16 @@ export function normalizar(o) {
     // Pedido de troca (20/10/2026): a etiqueta do pedido original, de poucos dias antes, não pode
     // contar como "etiqueta repetida" para a mesma cliente (Manuela #9384 foi barrada pela do #9120)
     troca: (o.tags || []).includes('troca'),
+    // Observação que a cliente escreveu no checkout (22/10/2026): vai na cópia do pedido que a
+    // embalagem recebe junto com a etiqueta ("é presente", "sem nota dentro")
+    obs: String(o.note || '').trim().slice(0, 300) || null,
   };
 }
 
 const QUERY = `query($q: String) {
   orders(first: 50, query: $q) {
     edges { node {
-      name legacyResourceId email phone cancelledAt displayFinancialStatus displayFulfillmentStatus tags
+      name legacyResourceId email phone note cancelledAt displayFinancialStatus displayFulfillmentStatus tags
       totalWeight currentSubtotalLineItemsQuantity
       currentTotalPriceSet { shopMoney { amount } }
       shippingLine { title discountedPriceSet { shopMoney { amount } } }

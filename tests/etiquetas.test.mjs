@@ -85,5 +85,39 @@ console.log('\n4) Janela no painel');
   ok('oficina e modelagem não alcançam /api/etiquetas-dados (fora das allowlists)', !/etiquetas-dados/.test(mw), true);
 }
 
+// 22/10/2026: a Ju embala sem ver o sistema, então cada pedido sai numa folha junto da etiqueta.
+// Conjunto tem que sair aberto nas peças (ela pega peça por peça na arara) e o total tem que
+// contar peça solta, senão ela fecha o pacote com uma a menos.
+console.log('\n5) Cópia do pedido para a embalagem');
+{
+  const comObs = api.normalizar({ name: '#1', note: '  é presente, sem preço dentro  ', shippingAddress: {}, lineItems: { edges: [] } });
+  const semObs = api.normalizar({ name: '#2', note: '', shippingAddress: {}, lineItems: { edges: [] } });
+  ok('observação da cliente vem do note (vazia vira null)', [comObs.obs, semObs.obs], ['é presente, sem preço dentro', null]);
+  ok('a consulta da Shopify pede o note', /legacyResourceId email phone note /.test(readFileSync(join(raiz, 'functions', 'api', 'etiquetas-dados.js'), 'utf8')), true);
+
+  const i = main.indexOf('const COPIA_GRANDE_MIN'), f = main.indexOf('// Os pedidos que o robô acabou de montar');
+  const MODELOS = {
+    'calca-pantalona': { nome: 'Calça Pantalona' }, 'moletom-gola-alta': { nome: 'Moletom Gola Alta' },
+    'conjunto-wide': { nome: 'Conjunto Wide' }, 'bolsa': { nome: 'Bolsa', tamanhoUnico: true },
+  };
+  const CONJUNTO_PECAS = { 'conjunto-wide': ['calca-pantalona', 'moletom-gola-alta'] };
+  const tamanhosDe = def => (def && def.tamanhos) || ['PP', 'P', 'M', 'G', 'GG'];
+  const tamNaGrade = (key, tam) => Math.min(tam, 4);
+  const requisitosDoItem = it => CONJUNTO_PECAS[it.modelKey].map(k => ({ key: k, cor: it.cor, tam: tamNaGrade(k, it.tam), qtd: it.qtd }));
+  const ctx = new Function('MODELOS', 'CONJUNTO_PECAS', 'tamanhosDe', 'tamNaGrade', 'requisitosDoItem',
+    main.slice(i, f) + '\nreturn { copiaLinhas, copiaTotalPecas };')(MODELOS, CONJUNTO_PECAS, tamanhosDe, tamNaGrade, requisitosDoItem);
+  const linhas = ctx.copiaLinhas([
+    { modelKey: 'conjunto-wide', cor: 'Preto', tam: 2, qtd: 2 },
+    { modelKey: 'calca-pantalona', cor: 'Mescla', tam: 6, qtd: 1 },
+    { modelKey: 'bolsa', cor: 'Caramelo', tam: 0, qtd: 1 },
+  ]);
+  ok('conjunto abre nas peças com cor e tamanho', linhas[0].pecas, [{ nome: 'Calça Pantalona', cor: 'Preto', tam: 'M' }, { nome: 'Moletom Gola Alta', cor: 'Preto', tam: 'M' }]);
+  ok('tamanho fora da grade cai no maior; tamanho único sai "Único"', [linhas[1].pecas[0].tam, linhas[2].pecas[0].tam], ['GG', 'Único']);
+  ok('total conta peça solta (2 conjuntos = 4 peças)', ctx.copiaTotalPecas(linhas), 6);
+  ok('botão "imprimir pedidos" no card PRONTOS PARA ENVIO', /onclick="copiaImprimirProntos\(\)"/.test(html), true);
+  ok('a janela de impressão abre no clique, antes do fetch (senão vira pop-up bloqueado)',
+    main.indexOf("window.open('', '_blank')", main.indexOf('async function copiaImprimir')) < main.indexOf("fetch('/api/etiquetas-dados", main.indexOf('async function copiaImprimir')), true);
+}
+
 console.log(`\n${total - falhas}/${total} ok${falhas ? `, ${falhas} falha(s)` : ''}`);
 process.exit(falhas ? 1 : 0);

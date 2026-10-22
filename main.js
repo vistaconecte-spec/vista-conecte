@@ -10340,9 +10340,214 @@ function etqRenderStatus(res) {
     corpo = `<b>Último lote:</b> ${st}${res.total ? ` · ${fmtBRL(res.total)} esperando pagamento` : ''}${res.msg ? `<div style="color:#b45309">${res.msg}</div>` : ''}<div style="margin-top:4px">${itens}</div>`
       // As etiquetas nascem em "Aguardando pagamento" na tela Etiquetas, não no carrinho: o passo do
       // carrinho dá erro 500 na Frenet mas a etiqueta é criada mesmo assim (#8943 e #9075, 08/10/2026).
-      + (res.status === 'pronto' ? `<div style="margin-top:6px"><a href="https://painel.frenet.com.br/Order/LabelCart" target="_blank" rel="noopener" style="font-weight:700">Abrir as etiquetas na Frenet para conferir e pagar</a></div>` : '');
+      + (res.status === 'pronto' ? `<div style="margin-top:6px"><a href="https://painel.frenet.com.br/Order/LabelCart" target="_blank" rel="noopener" style="font-weight:700">Abrir as etiquetas na Frenet para conferir e pagar</a></div>` : '')
+      + ((res.itens || []).some(i => i.ok) ? `<div style="margin-top:6px"><button class="btn-outline" style="font-size:11px;padding:4px 10px" onclick="copiaImprimirLote()"><i class="ti ti-printer"></i> imprimir a cópia destes pedidos para a embalagem</button></div>` : '');
   }
   el.innerHTML = `<div style="font-size:11px;margin-bottom:4px">${robo}</div><div style="font-size:12px">${corpo}</div>`;
+}
+
+// ─── CÓPIA DO PEDIDO PARA A EMBALAGEM ────────────────────────────────────────
+// Pedido da Bárbara em 22/10/2026: a Ju entrou só para embalar e não vê o sistema. Sai uma
+// folha por pedido, impressa junto com as etiquetas da Frenet, com o que vai no pacote peça a
+// peça (conjunto aberto nas peças dele, cada uma com a sua cor e tamanho), o saco e os avisos.
+// O nome em destaque é o da ETIQUETA (endereço de entrega), que é o que a Ju tem na mão para
+// casar a folha com a etiqueta. Pouca tinta, como as fichas do corte: só traço preto.
+const COPIA_GRANDE_MIN = 5; // o mesmo GRANDE_MIN do card PRONTOS PARA ENVIO
+
+/** Itens do pedido → linhas da folha. Conjunto vira as peças dele. Pura (testes). */
+function copiaLinhas(itens) {
+  const tamRot = (key, tam) => {
+    const def = MODELOS[key];
+    if (def && def.tamanhoUnico) return 'Único';
+    return tamanhosDe(def)[tam] || '—';
+  };
+  const nomeDe = key => (MODELOS[key] && MODELOS[key].nome) || key;
+  return (itens || []).map(it => {
+    const conjunto = !!CONJUNTO_PECAS[it.modelKey];
+    const pecas = conjunto
+      ? requisitosDoItem(it).map(r => ({ nome: nomeDe(r.key), cor: r.cor, tam: tamRot(r.key, r.tam) }))
+      : [{ nome: nomeDe(it.modelKey), cor: it.cor, tam: tamRot(it.modelKey, tamNaGrade(it.modelKey, it.tam)) }];
+    return { nome: nomeDe(it.modelKey), cor: it.cor, qtd: it.qtd || 1, conjunto, pecas };
+  });
+}
+
+/** Total de peças soltas que entram no pacote (conjunto de 2 conta 2). Pura (testes). */
+function copiaTotalPecas(linhas) {
+  return linhas.reduce((s, l) => s + l.qtd * l.pecas.length, 0);
+}
+
+// Os pedidos que o robô acabou de montar na Frenet (o último lote)
+function copiaImprimirLote() {
+  const res = loadLocal('vc:etiquetas-resultado') || {};
+  copiaImprimir((res.itens || []).filter(i => i.ok).map(i => i.numero));
+}
+
+// Botão do card: os prontos que já têm etiqueta do robô (o que a Ju vai embalar). Sem nenhum,
+// oferece todos os prontos, para quando a etiqueta foi feita à mão na Frenet.
+function copiaImprimirProntos() {
+  const prontos = window._prontosEnvio || [];
+  if (!prontos.length) { alert('Nenhum pedido pronto para envio agora.'); return; }
+  const res = loadLocal('vc:etiquetas-resultado') || {};
+  const comEtiqueta = prontos.filter(p => !etqPendentes([p], res).length).map(p => p.numero);
+  if (comEtiqueta.length) { copiaImprimir(comEtiqueta); return; }
+  if (!confirm(`Nenhum pronto tem etiqueta gerada pelo robô nos últimos ${ETQ_FEITO_DIAS} dias.\n\nImprimir a cópia dos ${prontos.length} pedidos prontos?`)) return;
+  copiaImprimir(prontos.map(p => p.numero));
+}
+
+async function copiaImprimir(numeros) {
+  numeros = [...new Set(numeros || [])];
+  if (!numeros.length) { alert('Nenhum pedido para imprimir.'); return; }
+  // A janela abre já no clique: aberta depois do fetch, o navegador bloqueia como pop-up
+  const win = window.open('', '_blank');
+  if (!win) { alert('O navegador bloqueou a janela de impressão. Libere os pop-ups do painel e tente de novo.'); return; }
+  win.document.write('<p style="font-family:Arial;padding:20px">Carregando os pedidos...</p>');
+
+  const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const detalhe = {};
+  (window._shopifyDetalhados || []).forEach(p => { detalhe[p.numero] = p; });
+  const dados = {};
+  try {
+    const r = await fetch('/api/etiquetas-dados?numeros=' + encodeURIComponent(numeros.join(',')), { cache: 'no-store' });
+    const j = await r.json();
+    if (!r.ok || j.erro) throw new Error(j.erro || 'HTTP ' + r.status);
+    j.pedidos.forEach(d => { dados[d.numero] = d; });
+  } catch (e) {
+    // Sem a Shopify a folha ainda sai com as peças (que vêm da tela); falta só nome da etiqueta e observação
+    console.warn('[cópia do pedido] dados de entrega não lidos:', e.message);
+  }
+  const lote = loadLocal('vc:etiquetas-pedido') || {};
+  const sacoLote = {};
+  (lote.pedidos || []).forEach(p => { sacoLote[p.numero] = p.saco; });
+  const feitos = (loadLocal('vc:etiquetas-resultado') || {}).feitos || {};
+
+  const folhas = [], semPecas = [];
+  for (const numero of numeros) {
+    const ped = detalhe[numero];
+    if (!ped || !ped.itens || !ped.itens.length) { semPecas.push(numero); continue; }
+    const d = dados[numero] || {};
+    const linhas = copiaLinhas(ped.itens);
+    const total = copiaTotalPecas(linhas);
+    const saco = sacoLote[numero] || d.saco;
+    const servico = (feitos[numero] && feitos[numero].servico) || d.metodo;
+    const nomeEtq = d.nome || ped.cliente || 'Cliente';
+    const avisos = [];
+    if (ped.itens.reduce((s, i) => s + (i.qtd || 0), 0) >= COPIA_GRANDE_MIN)
+      avisos.push('<b>PEDIDO GRANDE</b>: conferir peça por peça, embalar com capricho e colocar brinde');
+    if (ped.parcial) avisos.push('<b>PARCIAL</b>: parte deste pedido já foi enviada antes. Vão só as peças desta folha');
+    if (d.troca) avisos.push('<b>TROCA</b>: pedido de troca da cliente');
+    if (d.obs) avisos.push('<b>A CLIENTE ESCREVEU</b>: ' + esc(d.obs));
+
+    const corpo = linhas.map(l => {
+      if (!l.conjunto) {
+        const p = l.pecas[0];
+        return `<tr><td class="cx-td"><span class="cx"></span></td><td class="q">${l.qtd}×</td>
+          <td><b>${esc(p.nome)}</b></td><td>${esc(p.cor)}</td><td class="t">${esc(p.tam)}</td></tr>`;
+      }
+      return `<tr class="cj"><td></td><td class="q">${l.qtd}×</td><td colspan="3"><b>${esc(l.nome)}</b> <span class="cj-n">(${l.pecas.length} peças, ${esc(l.cor)})</span></td></tr>`
+        + l.pecas.map(p => `<tr><td class="cx-td"><span class="cx"></span></td><td class="q">${l.qtd}×</td>
+          <td class="sub">${esc(p.nome)}</td><td>${esc(p.cor)}</td><td class="t">${esc(p.tam)}</td></tr>`).join('');
+    }).join('');
+
+    const dt = ped.data ? new Date(ped.data).toLocaleDateString('pt-BR') : '';
+    folhas.push(`<section class="folha">
+      <div class="topo">
+        <div><div class="marca">Vista Conecte · cópia do pedido</div><div class="num">${esc(numero)}</div></div>
+        <div class="meta">${dt ? 'pedido de ' + esc(dt) : ''}${servico ? '<br>' + esc(servico) : ''}</div>
+      </div>
+      <div class="dest">
+        <div class="rl">Nome na etiqueta</div>
+        <div class="nome">${esc(nomeEtq)}</div>
+        <div class="end">${[d.cidade && d.uf ? esc(d.cidade) + '/' + esc(d.uf) : esc(d.cidade || ''), d.cep ? 'CEP ' + esc(d.cep) : ''].filter(Boolean).join(' · ')}</div>
+      </div>
+      ${avisos.length ? `<div class="avisos">${avisos.map(a => `<div>${a}</div>`).join('')}</div>` : ''}
+      <table>
+        <thead><tr><th></th><th>Qtd</th><th style="text-align:left">Peça</th><th style="text-align:left">Cor</th><th>Tam.</th></tr></thead>
+        <tbody>${corpo}</tbody>
+      </table>
+      <div class="rodape">
+        <div class="tot">Total no pacote: <b>${total} peça${total > 1 ? 's' : ''}</b>${saco ? ` · <b>Saco ${esc(saco)}</b>` : ''}</div>
+        <div class="assina">Embalado por ____________________</div>
+      </div>
+    </section>`);
+  }
+
+  if (!folhas.length) {
+    win.document.open();
+    win.document.write(`<p style="font-family:Arial;padding:20px">Não achei as peças destes pedidos na tela (${esc(semPecas.join(', '))}). Eles podem já ter sido enviados.</p>`);
+    win.document.close();
+    return;
+  }
+
+  let formato = 'a4';
+  try { formato = localStorage.getItem('vc:copia-formato') || 'a4'; } catch (_) {}
+  const html = `<!DOCTYPE html>
+<html lang="pt-BR"><head><meta charset="UTF-8"><title>Cópia dos pedidos (${folhas.length})</title>
+<style id="pagina"></style>
+<style>
+  /* Pouca tinta, mesma regra das fichas do corte: nenhum fundo cheio, só traço preto. */
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:Arial,sans-serif;color:#000;background:#fff;font-size:12px}
+  .barra{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:12px 16px;border-bottom:1px solid #999;font-size:13px}
+  .barra button{font-size:13px;padding:6px 14px;border:1px solid #000;border-radius:6px;background:#fff;cursor:pointer}
+  .barra button.on{font-weight:700;border-width:2px}
+  .barra .imp{margin-left:auto;font-weight:700}
+  .aviso-falta{padding:8px 16px;color:#b91c1c;font-size:12px}
+  .folha{padding:8mm 10mm;break-inside:avoid;page-break-inside:avoid;border-bottom:1px dashed #000}
+  .topo{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:2px solid #000;padding-bottom:5px}
+  .marca{font-size:8px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:#444}
+  .num{font-size:26px;font-weight:900;line-height:1.05}
+  .meta{text-align:right;font-size:11px;line-height:1.5}
+  .dest{padding:7px 0;border-bottom:1px solid #000}
+  .rl{font-size:8px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:#444}
+  .nome{font-size:20px;font-weight:900;text-transform:uppercase;line-height:1.15}
+  .end{font-size:11px}
+  .avisos{border:2px solid #000;padding:5px 8px;margin-top:7px;font-size:12px;line-height:1.45}
+  table{width:100%;border-collapse:collapse;margin-top:7px}
+  th{font-size:8px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;padding:4px 6px;border-bottom:1px solid #000;text-align:center}
+  td{padding:6px;border-bottom:1px solid #bbb;font-size:13px;vertical-align:middle}
+  .cx-td{width:26px}
+  .cx{display:inline-block;width:15px;height:15px;border:1.5px solid #000}
+  .q{width:38px;text-align:center;font-weight:800}
+  .t{width:60px;text-align:center;font-size:16px;font-weight:900}
+  .cj td{border-bottom:none;padding-bottom:0}
+  .cj-n{font-size:11px;font-weight:400}
+  .sub{padding-left:18px}
+  .rodape{display:flex;justify-content:space-between;align-items:flex-end;gap:12px;flex-wrap:wrap;margin-top:9px;font-size:13px}
+  .assina{font-size:11px}
+  /* 10x15: uma folha por etiqueta térmica */
+  body.f10x15 .folha{padding:3mm 2mm;border-bottom:none;break-after:page;page-break-after:always}
+  body.f10x15 .num{font-size:22px}
+  body.f10x15 .nome{font-size:16px}
+  body.f10x15 td{padding:4px;font-size:11px}
+  body.f10x15 .t{font-size:13px;width:44px}
+  body.f10x15 .q{width:30px}
+  body.f10x15 .rodape{font-size:11px}
+  @media screen{.folha{max-width:190mm;margin:0 auto}}
+  @media print{.barra,.aviso-falta{display:none}}
+</style></head><body class="f${formato}">
+  <div class="barra">
+    <span>Papel:</span>
+    <button data-f="a4" onclick="formato('a4')">Folha A4 (2 pedidos por folha)</button>
+    <button data-f="10x15" onclick="formato('10x15')">Etiqueta 10x15 (1 por etiqueta)</button>
+    <button class="imp" onclick="window.print()">Imprimir ${folhas.length} pedido${folhas.length > 1 ? 's' : ''}</button>
+  </div>
+  ${semPecas.length ? `<div class="aviso-falta">Ficaram de fora (já enviados ou sem peças na tela): ${esc(semPecas.join(', '))}</div>` : ''}
+  ${folhas.join('')}
+  <script>
+    function formato(f) {
+      document.body.className = 'f' + f;
+      document.getElementById('pagina').textContent = f === '10x15'
+        ? '@page{size:100mm 150mm;margin:3mm}'
+        : '@page{size:A4;margin:6mm}';
+      document.querySelectorAll('.barra [data-f]').forEach(b => b.classList.toggle('on', b.dataset.f === f));
+      try { localStorage.setItem('vc:copia-formato', f); } catch (_) {}
+    }
+    formato(${JSON.stringify(formato)});
+  <\/script>
+</body></html>`;
+  win.document.open();
+  win.document.write(html);
+  win.document.close();
 }
 
 // ─── CARD: TEMPO DE LIBERAÇÃO (dias úteis do pagamento ao envio) ─────────────
@@ -10673,7 +10878,9 @@ function renderProntosParaEnvio() {
             : '';
           const pedidoCell = (p.url
             ? `<a href="${esc(p.url)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" style="font-weight:700;color:#16a34a;text-decoration:none" title="Abrir pedido na Shopify">${esc(p.numero)} <i class="ti ti-external-link" style="font-size:11px;vertical-align:-1px"></i></a>`
-            : `<span style="font-weight:700;color:#16a34a">${esc(p.numero)}</span>`) + badgeAtrasado + badgeParcial + badgeGrande;
+            : `<span style="font-weight:700;color:#16a34a">${esc(p.numero)}</span>`)
+            + `&nbsp;<i class="ti ti-printer" onclick="event.stopPropagation();copiaImprimir([${esc(JSON.stringify(p.numero))}])" title="Imprimir a cópia deste pedido para a embalagem" style="cursor:pointer;color:var(--text-ter);font-size:13px;vertical-align:-1px"></i>`
+            + badgeAtrasado + badgeParcial + badgeGrande;
           return `<tr class="pronto-row" style="cursor:pointer" onclick="togglePronto(${i})">
               <td style="text-align:center"><i class="ti ti-chevron-right" id="pronto-cev-${i}" style="transition:transform .15s;color:var(--text-ter)"></i></td>
               <td>${pedidoCell}</td>
