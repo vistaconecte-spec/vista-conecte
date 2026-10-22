@@ -10364,9 +10364,12 @@ function copiaLinhas(itens) {
   const nomeDe = key => (MODELOS[key] && MODELOS[key].nome) || key;
   return (itens || []).map(it => {
     const conjunto = !!CONJUNTO_PECAS[it.modelKey];
-    const pecas = conjunto
-      ? requisitosDoItem(it).map(r => ({ nome: nomeDe(r.key), cor: r.cor, tam: tamRot(r.key, r.tam) }))
-      : [{ nome: nomeDe(it.modelKey), cor: it.cor, tam: tamRot(it.modelKey, tamNaGrade(it.modelKey, it.tam)) }];
+    // requisitosDoItem é a mesma conta do estoque: cor no nome da arara ("CINZA" do pedido → "Cinza")
+    // e tamanho fora da grade no maior tamanho
+    const reqs = requisitosDoItem(it);
+    const pecas = reqs.length
+      ? reqs.map(r => ({ nome: nomeDe(r.key), cor: r.cor, tam: tamRot(r.key, r.tam) }))
+      : [{ nome: nomeDe(it.modelKey), cor: it.cor, tam: tamRot(it.modelKey, it.tam) }];
     return { nome: nomeDe(it.modelKey), cor: it.cor, qtd: it.qtd || 1, conjunto, pecas };
   });
 }
@@ -10374,6 +10377,14 @@ function copiaLinhas(itens) {
 /** Total de peças soltas que entram no pacote (conjunto de 2 conta 2). Pura (testes). */
 function copiaTotalPecas(linhas) {
   return linhas.reduce((s, l) => s + l.qtd * l.pecas.length, 0);
+}
+
+/** "Jundiaí-SP" + "SP" → "Jundiaí/SP" (a cliente às vezes digita o estado junto da cidade). Pura (testes). */
+function copiaCidade(cidade, uf) {
+  const c = String(cidade || '').trim(), u = String(uf || '').trim().toUpperCase();
+  if (!u) return c;
+  const m = /^(.*?)\s*[-/,]\s*([A-Za-z]{2})$/.exec(c);
+  return (m && m[2].toUpperCase() === u ? m[1] : c) + '/' + u;
 }
 
 // Os pedidos que o robô acabou de montar na Frenet (o último lote)
@@ -10457,7 +10468,7 @@ async function copiaImprimir(numeros) {
       <div class="dest">
         <div class="rl">Nome na etiqueta</div>
         <div class="nome">${esc(nomeEtq)}</div>
-        <div class="end">${[d.cidade && d.uf ? esc(d.cidade) + '/' + esc(d.uf) : esc(d.cidade || ''), d.cep ? 'CEP ' + esc(d.cep) : ''].filter(Boolean).join(' · ')}</div>
+        <div class="end">${[copiaCidade(d.cidade, d.uf), d.cep ? 'CEP ' + esc(d.cep) : ''].filter(Boolean).map(esc).join(' · ')}</div>
       </div>
       ${avisos.length ? `<div class="avisos">${avisos.map(a => `<div>${a}</div>`).join('')}</div>` : ''}
       <table>
