@@ -546,6 +546,11 @@ async function fetchVendas(store, token, desdeISO) {
 const TROCA_COR = {
   '#8833': { 'conjunto-boho': { 'Preto': 'Marrom' } },
   '#8991': { 'conjunto-good': { 'Preto': 'Marrom' } },
+  // 26/10/2026: careca mescla claro acabou na Costa Rica, os Boho mescla vão no cinza chumbo
+  // (mescla escuro). O #9127 sai inteiro em chumbo, a calça M mescla do estoque fica livre.
+  '#9127': { 'conjunto-boho': { 'Mescla': 'Cinza Chumbo Mescla' } },
+  '#9334': { 'conjunto-boho': { 'Mescla': 'Cinza Chumbo Mescla' } },
+  '#9386': { 'conjunto-boho': { 'Mescla': 'Cinza Chumbo Mescla' } },
 };
 const corEntregue = (pedido, modelKey, cor) => ((TROCA_COR[pedido] || {})[modelKey] || {})[cor] || cor;
 
