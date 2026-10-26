@@ -120,7 +120,7 @@ console.log('\n5) Cópia do pedido para a embalagem');
   ok('cidade não repete o estado', [ctx.copiaCidade('Jundiaí-SP', 'SP'), ctx.copiaCidade('Campo Grande', 'MS'), ctx.copiaCidade('Brasília', ''), ctx.copiaCidade('Rio Grande - RS', 'RS')], ['Jundiaí/SP', 'Campo Grande/MS', 'Brasília', 'Rio Grande/RS']);
   ok('botão "imprimir pedidos" no card PRONTOS PARA ENVIO', /onclick="copiaImprimirProntos\(\)"/.test(html), true);
   ok('a janela de impressão abre no clique, antes do fetch (senão vira pop-up bloqueado)',
-    main.indexOf("window.open('', '_blank')", main.indexOf('async function copiaImprimir')) < main.indexOf("fetch('/api/etiquetas-dados", main.indexOf('async function copiaImprimir')), true);
+    main.indexOf("window.open('', '_blank')", main.indexOf('async function copiaImprimir')) < main.indexOf('await etqBuscarDados(', main.indexOf('async function copiaImprimir')), true);
 }
 
 console.log(`\n${total - falhas}/${total} ok${falhas ? `, ${falhas} falha(s)` : ''}`);
