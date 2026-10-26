@@ -340,6 +340,7 @@ const sRes = feitas.find(f => f.u.includes('/wati_ia_sessions?on_conflict'));
 const fila = feitas.find(f => f.u.includes('/wati_ia_fila'));
 ok('resolver: sessão solved e sem pausa', [r.status, d.status_vi, sRes.b.map(x => [x.status, x.pausada_ate])], [200, 'solved', [['solved', null], ['solved', null]]]);
 ok('resolver: resposta da Vi na fila não sai mais', [fila.m, fila.u.includes('wa_id=in.(5562993161442,556293161442)'), fila.u.includes('enviado_at=is.null'), fila.b.erro], ['PATCH', true, true, 'cancelado: conversa resolvida pela equipe no painel']);
+ok('resolver não cancela o resgate de cartão agendado (template na fila)', fila.u.includes('template=is.null'), true);
 ok('resolver não manda nada para a cliente', feitas.some(f => f.u.includes('graph.facebook.com')), false);
 r = await acaoVi('apagar');
 ok('ação desconhecida', r.status, 400);

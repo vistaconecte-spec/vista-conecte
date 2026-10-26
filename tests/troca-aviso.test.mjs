@@ -41,14 +41,15 @@ function cenario({ ultima, templateStatus, jaEnviado = false }) {
     if (u.includes('graphql.json')) return new Response(JSON.stringify({ data: { orders: { nodes: [{ name: '#9250', phone: null, shippingAddress: { firstName: 'Lais', name: 'Lais Jarilho', phone: '+55 11 98507-4682' }, customer: null }] } } }));
     if (u.includes('msg_id=eq.')) return new Response(JSON.stringify(jaEnviado ? [{ msg_id: 'x', created_at: '2026-10-20T10:00:00Z' }] : []));
     if (u.includes('role=eq.user')) return new Response(JSON.stringify(ultima ? [{ wa_id: '5511985074682', created_at: ultima }] : []));
-    if (u.includes('getMessageTemplates')) return new Response(JSON.stringify({ messageTemplates: templateStatus ? [{ elementName: 'troca_autorizacao_postagem_v1', status: templateStatus }] : [] }));
-    if (u.includes('sendSessionMessage') || u.includes('sendTemplateMessage')) return new Response(JSON.stringify({ result: true, ok: true }));
+    if (u.includes('/message_templates')) return new Response(JSON.stringify({ data: templateStatus ? [{ name: 'troca_autorizacao_postagem_v1', language: 'pt_BR', status: templateStatus, components: [{ type: 'BODY', text: 'Oii {{1}}, pedido {{2}}, autorização {{3}}, válido até {{4}}.' }] }] : [] }));
+    if (/graph\.facebook\.com\/.*\/messages$/.test(u)) return new Response(JSON.stringify({ messages: [{ id: 'wamid.T' }] }));
     if ((opts.method || '') === 'POST' && u.includes('wati_ia_mensagens')) return new Response(null, { status: 201 });
     return new Response('{}');
   };
   return chamadas;
 }
-const env = { SHOPIFY_STORE_DOMAIN: 'l', SHOPIFY_ADMIN_TOKEN: 't', SUPABASE_SERVICE_ROLE_KEY: 's', WATI_TOKEN: 'w' };
+const env = { SHOPIFY_STORE_DOMAIN: 'l', SHOPIFY_ADMIN_TOKEN: 't', SUPABASE_SERVICE_ROLE_KEY: 's', META_ACCESS_TOKEN: 'm' };
+const envios = ch => ch.filter(c => /graph\.facebook\.com\/.*\/messages$/.test(c.u)).map(c => JSON.parse(c.corpo));
 const chamar = async () => { const r = await onRequestPost({ env, request: new Request('https://x', { method: 'POST', body: JSON.stringify({ pedido: '#9250', codigo: '4665143571', validade: '2026-10-30T15:00:00Z', item_id: 'retorno:p1' }) }) }); return r.json(); };
 
 console.log('\n2) Envio');
@@ -56,23 +57,26 @@ console.log('\n2) Envio');
   const ch = cenario({ ultima: new Date(Date.now() - 2 * 3600e3).toISOString() });
   const j = await chamar();
   ok('dentro das 24 h: vai como conversa', [j.enviado, j.via], [true, 'conversa']);
+  ok('sai pela Meta como texto, para o número da conversa', [envios(ch).length, envios(ch)[0].type, envios(ch)[0].to], [1, 'text', '5511985074682']);
   ok('grava no histórico da Vi como mensagem do sistema', ch.some(c => c.metodo === 'POST' && c.u.includes('wati_ia_mensagens') && /troca_codigo_retorno:p1/.test(c.corpo || '') && /"role":"assistant"/.test(c.corpo || '')), true);
 }
 {
   const ch = cenario({ ultima: new Date(Date.now() - 40 * 3600e3).toISOString(), templateStatus: 'REJECTED' });
   const j = await chamar();
   ok('fora das 24 h e modelo recusado: não manda e devolve a mensagem', [j.enviado, j.motivo, /4665143571/.test(j.mensagem || '')], [false, 'fora_da_janela', true]);
-  ok('não mandou nada pelo Wati', ch.some(c => /sendSession|sendTemplate/.test(c.u)), false);
+  ok('não mandou nada pela Meta', envios(ch).length, 0);
 }
 {
-  cenario({ ultima: null, templateStatus: 'APPROVED' });
+  const ch = cenario({ ultima: null, templateStatus: 'APPROVED' });
   const j = await chamar();
   ok('fora das 24 h com modelo aprovado: vai pelo modelo', [j.enviado, j.via], [true, 'modelo']);
+  const t = (envios(ch)[0] || {}).template || {};
+  ok('modelo leva nome, pedido, código e validade', [t.name, t.components && t.components[0].parameters.map(p => p.text)], ['troca_autorizacao_postagem_v1', ['Lais', '9250', '4665143571', '30/10/2026']]);
 }
 {
   const ch = cenario({ ultima: new Date().toISOString(), jaEnviado: true });
   const j = await chamar();
-  ok('já mandado: não manda de novo', [j.enviado, j.ja_enviado, ch.some(c => /sendSession/.test(c.u))], [true, true, false]);
+  ok('já mandado: não manda de novo', [j.enviado, j.ja_enviado, envios(ch).length], [true, true, 0]);
 }
 
 console.log(falhas ? `\n✗ ${falhas} de ${total} falharam` : `\n✓ TODOS OS TESTES PASSARAM — ${total}/${total}`);

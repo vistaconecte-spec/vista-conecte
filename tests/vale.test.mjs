@@ -122,7 +122,7 @@ console.log('\n6) Crédito na loja como saldo (22/10/2026)');
     if (u.includes('wati_ia_mensagens') && (opts.method || 'GET') === 'GET') return new Response(JSON.stringify([]));
     return new Response('{}');
   };
-  const env = { SHOPIFY_STORE_DOMAIN: 'l', SHOPIFY_ADMIN_TOKEN: 't', SUPABASE_SERVICE_ROLE_KEY: 's', WATI_TOKEN: 'w' };
+  const env = { SHOPIFY_STORE_DOMAIN: 'l', SHOPIFY_ADMIN_TOKEN: 't', SUPABASE_SERVICE_ROLE_KEY: 's', META_ACCESS_TOKEN: 'm' };
   const chamar = async b => { const r = await onRequestPost({ env, request: new Request('https://x', { method: 'POST', body: JSON.stringify(b) }) }); return { s: r.status, j: await r.json() }; };
   const r1 = await chamar({ acao: 'credito', pedido: '#9185', item_id: 'est9185', valor: 179.55, cliente: 'Karina Lam' });
   ok('visitante: cria o cadastro e lança o saldo com aviso por e-mail', [r1.s, r1.j.ok, r1.j.cadastro_criado, chamadas.includes('CREDITO gid://shopify/Customer/novo 179.55 true')], [200, true, true, true]);

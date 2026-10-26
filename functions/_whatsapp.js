@@ -303,17 +303,8 @@ export async function enviarMidia(env, { tel, mime, nome, legenda, corpo }, agor
   nome = String(nome || '').replace(/[\\/:*?"<>|\r\n]+/g, ' ').trim().slice(0, 120) || ({ image: 'foto.jpg', video: 'video.mp4' }[tipo] || 'documento');
   const c = await conversaParaEnvio(env, tel, agora);
   if (c.erro) return c;
-  const buf = await new Response(corpo).arrayBuffer();
-  if (!buf.byteLength) return { status: 400, erro: 'arquivo vazio' };
-  if (buf.byteLength > MIDIA_MAX[tipo]) return { status: 413, erro: 'arquivo grande', detalhe: `O limite é ${MIDIA_MAX[tipo] / 1048576} MB para ${MIDIA_NOME[tipo]}.` };
-
-  const fd = new FormData();
-  fd.append('messaging_product', 'whatsapp');
-  fd.append('type', mime);
-  fd.append('file', new Blob([buf], { type: mime }), nome);
-  const up = await fetch(`${GRAPH}/${PHONE_NUMBER_ID}/media`, { method: 'POST', headers: { Authorization: 'Bearer ' + c.token }, body: fd });
-  const u = await up.json().catch(() => ({}));
-  if (!up.ok || !u.id) return { status: 502, erro: 'a Meta recusou o arquivo', detalhe: (u.error && (u.error.error_user_msg || u.error.message)) || ('HTTP ' + up.status) };
+  const u = await subirMidia(c.token, { tipo, mime, nome, corpo });
+  if (u.erro) return u;
 
   const conteudo = tipo === 'document' ? { id: u.id, filename: nome } : { id: u.id };
   if (legenda) conteudo.caption = legenda;
@@ -323,6 +314,21 @@ export async function enviarMidia(env, { tel, mime, nome, legenda, corpo }, agor
   const textoVi = ({ image: '[a equipe mandou uma foto]', video: '[a equipe mandou um vídeo]' }[tipo] || `[a equipe mandou o documento ${nome}]`) + (legenda ? ' ' + legenda : '');
   const fim = await registrarEnvioEquipe(env, c.conv.telefone, r.wamid, { tipo, texto: legenda || null, midia_id: u.id, midia_mime: mime }, textoVi, agora);
   return { ...fim, midia_id: u.id, tipo };
+}
+
+// Sobe o arquivo na Meta e devolve o id que vai na mensagem.
+async function subirMidia(token, { tipo, mime, nome, corpo }) {
+  const buf = await new Response(corpo).arrayBuffer();
+  if (!buf.byteLength) return { status: 400, erro: 'arquivo vazio' };
+  if (buf.byteLength > MIDIA_MAX[tipo]) return { status: 413, erro: 'arquivo grande', detalhe: `O limite é ${MIDIA_MAX[tipo] / 1048576} MB para ${MIDIA_NOME[tipo]}.` };
+  const fd = new FormData();
+  fd.append('messaging_product', 'whatsapp');
+  fd.append('type', mime);
+  fd.append('file', new Blob([buf], { type: mime }), nome);
+  const up = await fetch(`${GRAPH}/${PHONE_NUMBER_ID}/media`, { method: 'POST', headers: { Authorization: 'Bearer ' + token }, body: fd });
+  const u = await up.json().catch(() => ({}));
+  if (!up.ok || !u.id) return { status: 502, erro: 'a Meta recusou o arquivo', detalhe: (u.error && (u.error.error_user_msg || u.error.message)) || ('HTTP ' + up.status) };
+  return { id: u.id };
 }
 
 // Modelo aprovado pela equipe (passo 3 da saída do Wati, 21/10/2026): depois de 24 h sem a cliente escrever, a
@@ -375,6 +381,61 @@ export async function enviarModelo(env, tel, nome, valores, agora = Date.now()) 
   return registrarEnvioEquipe(env, c.conv.telefone, r.wamid, { tipo: 'template', texto }, texto, agora);
 }
 
+// ── Mensagens da LOJA: aba CASOS, aviso da troca, crédito e alerta interno (26/10/2026, saída do Wati) ──
+// Saíam pelo token de API do Wati, que a Vi não trata como atendente. Aqui é igual: não pausam a Vi, não
+// passam pela chave WA_ENVIO_PAINEL (que é da conversa da equipe) e quem chama grava a fala no histórico da
+// Vi (wati_ia_mensagens, role assistant), como já fazia. Texto livre fora da janela de 24 h a Meta aceita na
+// hora e derruba depois (131047): quem chama confere a janela antes e, fora dela, usa modelo.
+const tokenMeta = env => env.WA_TOKEN || env.META_ACCESS_TOKEN;
+const destino = tel => String(tel || '').replace(/\D/g, '');
+
+export async function enviarTextoDaLoja(env, tel, texto) {
+  if (!tokenMeta(env)) return { status: 500, erro: 'META_ACCESS_TOKEN ausente' };
+  texto = String(texto || '').trim();
+  if (!texto) return { status: 400, erro: 'mensagem vazia' };
+  return mandarPelaMeta(tokenMeta(env), destino(tel), { type: 'text', text: { preview_url: true, body: texto } });
+}
+
+// arquivo: File/Blob (o anexo do cartão da aba CASOS)
+export async function enviarArquivoDaLoja(env, tel, arquivo, legenda) {
+  if (!tokenMeta(env)) return { status: 500, erro: 'META_ACCESS_TOKEN ausente' };
+  const mime = String((arquivo && arquivo.type) || '').split(';')[0].trim().toLowerCase();
+  const tipo = MIDIA_TIPOS[mime];
+  if (!tipo) return { status: 415, erro: 'tipo de arquivo', detalhe: 'Dá para mandar foto (JPG ou PNG), vídeo MP4 e documento (PDF, Word, Excel ou texto).' };
+  const nome = String((arquivo && arquivo.name) || '').replace(/[\\/:*?"<>|\r\n]+/g, ' ').trim().slice(0, 120) || ({ image: 'foto.jpg', video: 'video.mp4' }[tipo] || 'documento.pdf');
+  const u = await subirMidia(tokenMeta(env), { tipo, mime, nome, corpo: arquivo });
+  if (u.erro) return u;
+  const conteudo = tipo === 'document' ? { id: u.id, filename: nome } : { id: u.id };
+  legenda = String(legenda || '').trim();
+  if (legenda) conteudo.caption = legenda.slice(0, 1024);
+  return mandarPelaMeta(tokenMeta(env), destino(tel), { type: tipo, [tipo]: conteudo });
+}
+
+// Um modelo da conta 925, com o corpo e quantas variáveis tem. null se não existe.
+export async function buscarModelo(env, nome) {
+  const r = await fetch(`${GRAPH}/${CONTA_MENSAGENS_ID}/message_templates?name=${encodeURIComponent(nome)}&fields=name,language,status,category,components&limit=20`, { headers: { Authorization: 'Bearer ' + tokenMeta(env) } });
+  if (!r.ok) throw new Error('Meta templates: HTTP ' + r.status);
+  const lista = ((await r.json()).data || []).filter(t => t.name === nome); // o filtro da Meta casa por pedaço do nome
+  const t = lista.find(x => x.language === 'pt_BR') || lista[0];
+  if (!t) return null;
+  const corpo = ((t.components || []).find(c => c.type === 'BODY') || {}).text || '';
+  return { nome: t.name, status: t.status, categoria: t.category, idioma: t.language, corpo, nVars: new Set(corpo.match(/\{\{\d+\}\}/g) || []).size };
+}
+
+// valores na ordem das variáveis do modelo ({{1}}, {{2}}...). Devolve também o texto como a cliente leu.
+export async function enviarModeloDaLoja(env, tel, nome, valores) {
+  if (!tokenMeta(env)) return { status: 500, erro: 'META_ACCESS_TOKEN ausente' };
+  valores = (valores || []).map(limparVariavel);
+  const t = await buscarModelo(env, nome);
+  if (!t || t.status !== 'APPROVED') return { status: 409, erro: 'modelo', detalhe: `O modelo ${nome} não está aprovado na Meta.` };
+  if (t.nVars !== valores.length) return { status: 409, erro: 'modelo', detalhe: `O modelo ${nome} tem ${t.nVars} campos na Meta e vieram ${valores.length}.` };
+  const template = { name: nome, language: { code: t.idioma } };
+  if (valores.length) template.components = [{ type: 'body', parameters: valores.map(text => ({ type: 'text', text })) }];
+  const r = await mandarPelaMeta(tokenMeta(env), destino(tel), { type: 'template', template });
+  if (r.erro) return r;
+  return { ...r, texto: t.corpo.replace(/\{\{(\d+)\}\}/g, (x, i) => valores[Number(i) - 1] ?? x) };
+}
+
 // "Devolver para a Vi" e "Resolvida" (passo 4 da saída do Wati, 21/10/2026). Mexem só na sessão da Vi, não mandam
 // nada para a cliente, então valem com o envio desligado também.
 //  devolver: tira a pausa e o handoff; a Vi responde a PRÓXIMA mensagem da cliente.
@@ -394,7 +455,8 @@ export async function mudarVi(env, tel, acao, agora = Date.now()) {
     body: JSON.stringify(waIds.map(w => ({ wa_id: w, ...campos, updated_at: quando }))),
   }), 'sessão da Vi');
   if (acao === 'resolver') {
-    await ok(await fetch(`${SB_URL}/rest/v1/wati_ia_fila?wa_id=in.(${waIds.join(',')})&enviado_at=is.null`, {
+    // o resgate de cartão agendado (template) não é resposta da Vi: segue mesmo com a conversa resolvida
+    await ok(await fetch(`${SB_URL}/rest/v1/wati_ia_fila?wa_id=in.(${waIds.join(',')})&enviado_at=is.null&template=is.null`, {
       method: 'PATCH', headers: sb(env, { Prefer: 'return=minimal' }),
       body: JSON.stringify({ enviado_at: quando, erro: 'cancelado: conversa resolvida pela equipe no painel' }),
     }), 'fila da Vi');

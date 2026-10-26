@@ -117,6 +117,22 @@ export function watiParaMsg(m) {
   return { role, texto, created_at: m.created };
 }
 
+// O mesmo para a conversa do WhatsApp do painel (mesclar() do _whatsapp.js: o que chegou e saiu pela Meta
+// mais o histórico da Vi). Substitui o getMessages do Wati desde 26/10/2026.
+export function metaParaMsg(m) {
+  if (!m || !m.quando) return null;
+  const loja = m.lado !== 'cliente';
+  const tipo = String(m.tipo || '').toLowerCase();
+  const MIDIA = { image: 'uma imagem', document: 'um documento (PDF, etiqueta, comprovante)', audio: 'um áudio',
+    voice: 'um áudio', video: 'um vídeo', sticker: 'uma figurinha' };
+  const legenda = String(m.texto || '');
+  let texto = MIDIA[tipo] ? `[${loja ? 'a loja' : 'a cliente'} enviou ${MIDIA[tipo]}]${legenda ? ' ' + legenda : ''}` : legenda;
+  if (!texto && m.lado === 'auto') texto = '[a loja enviou um template automático]';
+  if (!texto) return null;
+  const role = m.lado === 'cliente' ? 'user' : m.lado === 'equipe' ? 'operador' : 'assistant';
+  return { role, texto, created_at: m.quando };
+}
+
 // Horário de Brasília legível ("19/10 13:24"). O banco guarda em UTC, e o assistente chegou a
 // tratar 16:24 UTC como horário local; toda data que vai para ele sai daqui.
 export function brt(iso) {

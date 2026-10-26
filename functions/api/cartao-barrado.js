@@ -2,7 +2,7 @@
  * Cloudflare Pages Function: /api/cartao-barrado — painel do resgate de cartão barrado
  * (functions/_cartao-barrado.js). Só a dona (sessão) ou quem tem ?k=WEBHOOK_KEY.
  *
- * GET ?acao=status                          → config, modo, template no Wati, webhook na Shopify, escopos
+ * GET ?acao=status                          → config, modo, template na Meta, webhook na Shopify, escopos
  * GET ?acao=casos                           → últimos casos (documentos cb:* do Supabase)
  * GET ?acao=simular&pedido=9057             → diagnóstico de um pedido, SEM efeito
  * GET ?acao=executar&pedido=9057&confirmar=1 → roda o resgate nesse pedido (link + WhatsApp + tag),
@@ -15,7 +15,7 @@
  * mandar cookie de um curl, e eu não tenho o API_TOKEN); a sessão é conferida AQUI.
  */
 import { lerSessao } from '../_sessao.js';
-import { igual, json, config, shopify, listarDocs, templateWati, diagnosticar, processarPedido, chaveSupabase } from '../_cartao-barrado.js';
+import { igual, json, config, shopify, listarDocs, templateMeta, diagnosticar, processarPedido, chaveSupabase } from '../_cartao-barrado.js';
 
 export async function onRequest(context) {
   const { request, env } = context;
@@ -36,19 +36,19 @@ export async function onRequest(context) {
       const [escopos, webhooks, template] = await Promise.all([
         sh.escopos().catch(e => ['erro: ' + e.message]),
         sh.webhooks().catch(e => [{ erro: e.message }]),
-        env.WATI_TOKEN ? templateWati(env, cfg.template).catch(e => ({ erro: e.message })) : null,
+        (env.WA_TOKEN || env.META_ACCESS_TOKEN) ? templateMeta(env, cfg.template).catch(e => ({ erro: e.message })) : null,
       ]);
       const nosso = webhooks.filter(w => w.address && w.address.includes('/api/webhook-shopify-pedido'));
       return json({
         modo: cfg.ativo ? 'ATIVO (manda WhatsApp)' : 'observar (só registra)',
         config: { ...cfg, base: cfg.base },
         env: {
-          WEBHOOK_KEY: !!env.WEBHOOK_KEY, WATI_TOKEN: !!env.WATI_TOKEN, PAGARME_SECRET_KEY: !!env.PAGARME_SECRET_KEY,
+          WEBHOOK_KEY: !!env.WEBHOOK_KEY, META_ACCESS_TOKEN: !!(env.WA_TOKEN || env.META_ACCESS_TOKEN), SUPABASE_SERVICE_ROLE_KEY: !!env.SUPABASE_SERVICE_ROLE_KEY, PAGARME_SECRET_KEY: !!env.PAGARME_SECRET_KEY,
           MP_ACCESS_TOKEN: !!env.MP_ACCESS_TOKEN, SHOPIFY_CLIENT_SECRET: !!env.SHOPIFY_CLIENT_SECRET, SUPABASE_ANON_KEY: !!env.SUPABASE_ANON_KEY,
         },
         shopify: { write_orders: escopos.includes('write_orders'), read_orders: escopos.includes('read_orders'), escopos: escopos.length },
         webhook: nosso.length ? nosso.map(w => ({ id: w.id, topic: w.topic, address: w.address.replace(/k=[^&]+/, 'k=***'), api_version: w.api_version })) : 'NÃO registrado',
-        template: template ? (template.erro ? template : { nome: template.elementName || template.name, status: template.status, categoria: template.category, params: (template.custom_params || []).map(p => p.name), corpo: template.body }) : 'WATI_TOKEN ausente ou template não encontrado',
+        template: template ? (template.erro ? template : { nome: template.nome, status: template.status, categoria: template.categoria, variaveis: template.nVars, corpo: template.corpo }) : 'META_ACCESS_TOKEN ausente ou template não encontrado na Meta',
       });
     }
 

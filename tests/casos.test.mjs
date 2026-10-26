@@ -91,7 +91,15 @@ ok('documento da equipe entra na conversa', C.watiParaMsg(wati[1]), { role: 'ope
 ok('mensagem pela API é da Vi, pela caixa da Wati é da equipe', [C.watiParaMsg(wati[3]).role, C.watiParaMsg(wati[1]).role, C.watiParaMsg(wati[2]).role], ['assistant', 'operador', 'user']);
 ok('imagem da cliente leva a legenda', C.watiParaMsg(wati[4]).texto, '[a cliente enviou uma imagem] Mas o pacote está no meu nome.');
 ok('evento de ticket fica de fora', C.watiParaMsg(wati[0]), null);
-ok('abrir caso lê a Wati antes do histórico da Vi', /const daWati = wa \? await conversaWati/.test(readFileSync(join(raiz, 'functions', 'api', 'casos.js'), 'utf8')), true);
+ok('abrir caso lê o WhatsApp antes do histórico da Vi sozinho', /const doZap = wa \? await conversaWhatsapp/.test(readFileSync(join(raiz, 'functions', 'api', 'casos.js'), 'utf8')), true);
+// Desde 26/10/2026 a conversa vem do painel (Meta + histórico da Vi, já juntos pelo mesclar do _whatsapp.js).
+ok('foto da cliente pela Meta leva a legenda', C.metaParaMsg({ quando: '2026-10-26T14:33:00Z', lado: 'cliente', tipo: 'image', texto: 'Mas o pacote está no meu nome.' }),
+  { role: 'user', texto: '[a cliente enviou uma imagem] Mas o pacote está no meu nome.', created_at: '2026-10-26T14:33:00Z' });
+ok('documento da equipe pelo painel é da equipe', C.metaParaMsg({ quando: '2026-10-26T14:48:00Z', lado: 'equipe', tipo: 'document', texto: null }),
+  { role: 'operador', texto: '[a loja enviou um documento (PDF, etiqueta, comprovante)]', created_at: '2026-10-26T14:48:00Z' });
+ok('Vi e template são da loja automática', [C.metaParaMsg({ quando: 'x', lado: 'vi', tipo: 'text', texto: 'Pra uva, você quer o M?' }).role, C.metaParaMsg({ quando: 'x', lado: 'auto', tipo: 'template', texto: '' }).texto],
+  ['assistant', '[a loja enviou um template automático]']);
+ok('status sem texto fica de fora', C.metaParaMsg({ quando: 'x', lado: 'equipe', tipo: null, texto: null }), null);
 ok('agradecimento não é pendência', [C.ehSoAgradecimento('ok obrigada!'), C.ehSoAgradecimento('🙏🏻'), C.ehSoAgradecimento('Eu que agradeço'), C.ehSoAgradecimento('Sim, pode ser o M'), C.ehSoAgradecimento('obrigada, e o rastreio?')], [true, true, true, false, false]);
 
 console.log('\n3) Pedidos citados e prazo de 10 dias úteis');
@@ -154,7 +162,7 @@ globalThis.fetch = async (url, init = {}) => {
   if (/vc_modelos/.test(url)) return j([{ dados: { acoes: [{ caso_id: 658, tipo: 'mensagem' }], aprovacoes: [] }, updated_at: '2026-10-19T10:00:00Z' }]);
   return j({});
 };
-const env = { SUPABASE_SERVICE_ROLE_KEY: 'x', WATI_TOKEN: 'x', SHOPIFY_STORE_DOMAIN: 'x', SHOPIFY_ADMIN_TOKEN: 'x', CASOS_AVISO_WA: '5548000000000', CASOS_SO_LEITURA: '1' };
+const env = { SUPABASE_SERVICE_ROLE_KEY: 'x', META_ACCESS_TOKEN: 'x', SHOPIFY_STORE_DOMAIN: 'x', SHOPIFY_ADMIN_TOKEN: 'x', CASOS_AVISO_WA: '5548000000000', CASOS_SO_LEITURA: '1' };
 const r1 = await api._interno.executar(env, { tipo: 'mensagem', caso_id: 658, texto: 'Oi Priscilla, seu pedido já saiu e te mando o rastreio' });
 ok('mensagem só simula', [r1.ok, r1.so_leitura, /janela de 24h aberta/.test(r1.simulacao)], [false, true, true]);
 const r2 = await api._interno.executar(env, { tipo: 'mensagem', caso_id: 658, texto: 'Pedimos desculpas: vamos cancelar' });
@@ -172,12 +180,18 @@ ok('nenhuma escrita saiu em só leitura', chamadas.filter(c => !c.startsWith('GE
 
 console.log('\n6b) Liberado: cada botão faz só o que diz');
 const vivas = [];
+const enviosMeta = [];
 let logAtual = { acoes: [], aprovacoes: [] };
 globalThis.fetch = async (url, init = {}) => {
   const m = (init.method || 'GET').toUpperCase(), u = String(url);
   vivas.push(m + ' ' + u.split('?')[0].replace(/^https:\/\/[^/]+/, '') + (/vc_modelos|wati_sac_casos/.test(u) && m !== 'GET' ? ' ' + String(init.body || '').slice(0, 60) : ''));
   const j = o => new Response(JSON.stringify(o), { status: 200, headers: { 'Content-Type': 'application/json' } });
-  if (/sendSessionMessage|sendTemplateMessage/.test(u)) return j({ result: true });
+  if (/graph\.facebook\.com\/.*\/messages$/.test(u.split('?')[0])) { enviosMeta.push(JSON.parse(init.body)); return j({ messages: [{ id: 'wamid.T' + enviosMeta.length }] }); }
+  if (/graph\.facebook\.com\/.*\/media$/.test(u.split('?')[0])) return j({ id: '771' });
+  if (/message_templates/.test(u)) return j({ data: [
+    { name: 'continuidade_solicitacao_v1', language: 'pt_BR', status: 'APPROVED', components: [{ type: 'BODY', text: 'Olá, {{1}}! Estamos dando continuidade à sua solicitação: {{2}}.' }] },
+    { name: 'alerta_interno_vi', language: 'pt_BR', status: 'APPROVED', components: [{ type: 'BODY', text: 'Alerta do sistema Vi (Vista Conecte): {{1}}' }] }] });
+  if (/wa_mensagens/.test(u) && m === 'GET') return j([]);
   if (/wati_sac_casos/.test(u) && m === 'GET') return j([{ id: 658, wa_id: '5511999990000', nome: 'Priscilla C', pedido: '9142', resumo: 'x', status: 'aberto' }]);
   if (/wati_ia_mensagens/.test(u) && m === 'GET') return j([{ role: 'user', created_at: new Date(Date.now() - 3600e3).toISOString() }]);
   if (/vc_modelos/.test(u) && m === 'GET') return j([{ dados: JSON.parse(JSON.stringify(logAtual)), updated_at: '2026-10-19T10:00:00Z' }]);
@@ -191,7 +205,8 @@ vivas.length = 0;
 const v1 = await api._interno.executar(envVivo, { tipo: 'mensagem', caso_id: 658, texto: 'Oi Priscilla, seu pedido já saiu e te mando o rastreio' });
 ok('mensagem enviada na janela aberta', [v1.ok, v1.feito], [true, 'mensagem enviada']);
 ok('envio, histórico da Vi e registro, nessa ordem', vivas.filter(c => !c.startsWith('GET')).map(c => c.split(' ').slice(0, 2).join(' ')),
-  ['POST /1061955/api/v1/sendSessionMessage/5511999990000', 'POST /rest/v1/wati_ia_mensagens', 'PATCH /rest/v1/vc_modelos']);
+  ['POST /v23.0/910542668806764/messages', 'POST /rest/v1/wati_ia_mensagens', 'PATCH /rest/v1/vc_modelos']);
+ok('sai pela Meta, para a cliente, pela conta 925', [enviosMeta[0].to, enviosMeta[0].type, enviosMeta[0].messaging_account_id], ['5511999990000', 'text', '925433550103556']);
 ok('registro guarda a mensagem do caso', logAtual.acoes.map(a => [a.caso_id, a.tipo, a.via]), [[658, 'mensagem', 'sessao']]);
 vivas.length = 0;
 const v2 = await api._interno.executar(envVivo, { tipo: 'fechar', caso_id: 658 });
@@ -200,14 +215,17 @@ ok('fechar grava status resolvido', vivas.some(c => c.startsWith('PATCH /rest/v1
 vivas.length = 0;
 const v3 = await api._interno.executar(envVivo, { tipo: 'pedir_aprovacao', caso_id: 658, categoria: 'estorno', valor: 303.99, texto: 'cliente desistiu' });
 ok('pedido de dinheiro entra na fila', [v3.ok, logAtual.aprovacoes.length, logAtual.aprovacoes[0] && logAtual.aprovacoes[0].status], [true, 1, 'pendente']);
-ok('e avisa a Bárbara pelo template', vivas.some(c => c.startsWith('POST /1061955/api/v1/sendTemplateMessage')), true);
+const aviso = enviosMeta[enviosMeta.length - 1];
+ok('e avisa a Bárbara pelo template da Meta', [/avisada no WhatsApp/.test(v3.feito), aviso.to, aviso.template && aviso.template.name], [true, '5548000000000', 'alerta_interno_vi']);
 ok('com dinheiro pendente o caso não fecha', (await api._interno.executar(envVivo, { tipo: 'fechar', caso_id: 658 })).ok, false);
 
 console.log('\n6c) Etiqueta em PDF pelo cartão (pedido da Marcelly, 19/10/2026)');
 const pdf = new File(['%PDF-1.1 teste'], 'etiqueta-9250.pdf', { type: 'application/pdf' });
 vivas.length = 0;
 const a1 = await api._interno.executar(envVivo, { tipo: 'mensagem', caso_id: 658, texto: 'Segue a etiqueta, Priscilla', arquivo: pdf });
-ok('arquivo vai pela Wati com a legenda', [a1.ok, a1.feito, vivas.some(c => c.startsWith('POST /1061955/api/v1/sendSessionFile/5511999990000'))], [true, 'arquivo enviado', true]);
+const doc = enviosMeta[enviosMeta.length - 1];
+ok('arquivo vai pela Meta com a legenda', [a1.ok, a1.feito, vivas.some(c => c.startsWith('POST /v23.0/910542668806764/media')), doc.type, doc.document && doc.document.id, doc.document && doc.document.caption],
+  [true, 'arquivo enviado', true, 'document', '771', 'Segue a etiqueta, Priscilla']);
 ok('registro diz que foi arquivo', logAtual.acoes[logAtual.acoes.length - 1].via, 'arquivo');
 const a2 = await api._interno.executar(envVivo, { tipo: 'mensagem', caso_id: 658, texto: '', arquivo: pdf });
 ok('arquivo sem texto também vai', a2.ok, true);
@@ -218,6 +236,11 @@ globalThis.fetch = async (url, init) => /wati_ia_mensagens/.test(String(url)) &&
   ? new Response(JSON.stringify([{ role: 'user', created_at: '2026-10-10T10:00:00Z' }]), { status: 200 }) : fetchAntes(url, init);
 const a3 = await api._interno.executar(envVivo, { tipo: 'mensagem', caso_id: 658, texto: 'segue', assunto: 'etiqueta', arquivo: pdf });
 ok('janela fechada: arquivo não vai e explica o caminho', /janela de 24h fechou e arquivo não vai por template/.test(a3.erro), true);
+const a4 = await api._interno.executar(envVivo, { tipo: 'mensagem', caso_id: 658, texto: 'segue', assunto: 'a troca do pedido 9142' });
+const tpl = enviosMeta[enviosMeta.length - 1].template || {};
+ok('janela fechada: vai o template de continuidade pela Meta', [a4.feito, tpl.name, (tpl.components || [])[0] && tpl.components[0].parameters.map(p => p.text)],
+  ['template de continuidade enviado', 'continuidade_solicitacao_v1', ['Priscilla', 'a troca do pedido 9142']]);
+ok('o histórico da Vi recebe o texto do template', /continuidade à sua solicitação: a troca do pedido 9142/.test(logAtual.acoes[logAtual.acoes.length - 1].texto), true);
 globalThis.fetch = fetchAntes;
 const fd = new FormData();
 fd.append('acao', 'executar'); fd.append('tipo', 'mensagem'); fd.append('caso_id', '658'); fd.append('texto', 'Segue a etiqueta'); fd.append('arquivo', pdf, 'etiqueta-9250.pdf');

@@ -101,13 +101,8 @@ ok('MP webhook novo', extrairPagamento(new URLSearchParams('data.id=55&type=paym
 ok('MP IPN antigo', extrairPagamento(new URLSearchParams('topic=payment&id=77'), {}), { tipo: 'payment', id: '77' });
 ok('MP merchant_order é ignorado pelo tipo', extrairPagamento(new URLSearchParams('topic=merchant_order&id=1'), {}).tipo, 'merchant_order');
 
-console.log('\nparâmetros do template (na ordem: nome, pedido, link)');
-ok('nomes vêm do template', lib.paramsWati({ custom_params: [{ name: 'first_name' }, { name: 'pedido' }, { name: 'link' }] }, ['Juliana', '#9057', 'https://x']),
-  [{ name: 'first_name', value: 'Juliana' }, { name: 'pedido', value: '#9057' }, { name: 'link', value: 'https://x' }]);
-ok('ordem trocada no template não troca os valores', lib.paramsWati({ custom_params: [{ name: 'link_pagamento' }, { name: 'nome' }] }, ['Juliana', '#9057', 'https://x']),
-  [{ name: 'link_pagamento', value: 'https://x' }, { name: 'nome', value: 'Juliana' }]);
-ok('nome que não diz nada cai na posição', lib.paramsWati({ custom_params: [{ name: 'a' }, { name: 'b' }] }, ['Juliana', '#9057', 'https://x']),
-  [{ name: 'a', value: 'Juliana' }, { name: 'b', value: '#9057' }]);
+console.log('\nvariáveis do template (na ordem: nome, pedido, link)');
+ok('valores na ordem do modelo da Meta', lib.valoresResgate({ nome: 'Juliana', pedido: '#9057' }, { url: 'https://x' }), ['Juliana', '#9057', 'https://x']);
 
 console.log('\nmiddleware');
 {
@@ -120,8 +115,9 @@ console.log('\nmiddleware');
 // ── pipeline inteiro com rede de mentira ─────────────────────────────────────
 console.log('\npipeline (fetch de mentira)');
 const chamadas = [];
+const fila = [];
 function redeFalsa({ travaConflito = false, pagarmeFalha = false } = {}) {
-  chamadas.length = 0;
+  chamadas.length = 0; fila.length = 0;
   globalThis.fetch = async (url, opts = {}) => {
     const u = String(url); const m = opts.method || 'GET';
     chamadas.push(`${m} ${u.replace(/\?.*$/, '')}`);
@@ -131,27 +127,32 @@ function redeFalsa({ travaConflito = false, pagarmeFalha = false } = {}) {
     if (u.includes('/orders/7732224786541/transactions.json')) return R({ transactions: [recusaMP, recusaMP] });
     if (u.includes('supabase.co/rest/v1/vc_modelos') && m === 'POST') return travaConflito ? new Response('dup', { status: 409 }) : new Response(null, { status: 201 });
     if (u.includes('supabase.co/rest/v1/vc_modelos') && m === 'PATCH') { chamadas.push('doc:' + JSON.parse(opts.body).dados.status); return new Response(null, { status: 204 }); }
-    if (u.includes('wati.io') && u.includes('/messagetemplates?')) return R({ templates: [{ elementName: 'cartao_resgate_v1', status: 'approved', custom_params: [{ name: 'first_name' }, { name: 'pedido' }, { name: 'link' }] }] });
-    if (u.includes('wati.io') && u.includes('/schedule')) { chamadas.push('wati:' + JSON.parse(opts.body).recipients[0].custom_params.map(p => p.value).join('|')); return R({ success: true, broadcast_id: 'b1' }); }
+    if (u.includes('graph.facebook.com') && u.includes('/message_templates')) return R({ data: [{ name: 'cartao_resgate_v1', language: 'pt_BR', status: 'APPROVED', category: 'UTILITY', components: [{ type: 'BODY', text: 'Oi {{1}}, recebemos seu pedido {{2}}. Link novo {{3}}' }] }] });
+    if (u.includes('supabase.co/rest/v1/wati_ia_fila') && m === 'POST') { const b = JSON.parse(opts.body); fila.push({ ...b, chave: opts.headers.apikey }); chamadas.push('fila:' + b.template.params.map(p => p.value).join('|')); return R([{ id: 41 }], 201); }
     if (u.includes('api.pagar.me/1/payment_links')) return pagarmeFalha ? R({ errors: [{ message: 'conta bloqueada' }] }, 401) : R({ id: 'pl_1', url: 'https://pagar.me/l/abc' });
     if (u.includes('mercadopago.com/checkout/preferences')) return R({ id: 'pref_1', init_point: 'https://mp.com/p/xyz' });
     if (u.includes('graphql.json')) { const b = JSON.parse(opts.body); chamadas.push('gql:' + (b.query.includes('tagsAdd') ? 'tagsAdd ' + b.variables.tags.join(',') : 'outro')); return R({ data: { tagsAdd: { userErrors: [] } } }); }
     throw new Error('fetch inesperado: ' + u);
   };
 }
-const env = { SHOPIFY_STORE_DOMAIN: 'loja.myshopify.com', SHOPIFY_ADMIN_TOKEN: 't', SUPABASE_ANON_KEY: 's', WATI_TOKEN: 'w', PAGARME_SECRET_KEY: 'ak', MP_ACCESS_TOKEN: 'mp', WEBHOOK_KEY: 'chave' };
+const env = { SHOPIFY_STORE_DOMAIN: 'loja.myshopify.com', SHOPIFY_ADMIN_TOKEN: 't', SUPABASE_ANON_KEY: 's', SUPABASE_SERVICE_ROLE_KEY: 'srv', META_ACCESS_TOKEN: 'm', PAGARME_SECRET_KEY: 'ak', MP_ACCESS_TOKEN: 'mp', WEBHOOK_KEY: 'chave' };
 
 {
   redeFalsa();
   const r = await lib.processarPedido(env, '7732224786541');
   ok('modo observar: registra e para', [r.feito, r.status, r.modo], [true, 'observado', 'observar']);
-  ok('modo observar: nem Wati nem link nem tag', chamadas.some(c => c.includes('wati.io') || c.includes('pagar.me') || c.includes('graphql')), false);
+  ok('modo observar: nem WhatsApp nem link nem tag', chamadas.some(c => c.includes('graph.facebook') || c.includes('wati_ia_fila') || c.includes('pagar.me') || c.includes('graphql')), false);
 }
 {
   redeFalsa();
   const r = await lib.processarPedido({ ...env, CARTAO_BARRADO_ATIVO: '1' }, '7732224786541');
   ok('ativo: agendado com link do Pagar.me', [r.feito, r.status, r.link.provedor, r.link.url], [true, 'agendado', 'pagarme', 'https://pagar.me/l/abc']);
-  ok('ativo: WhatsApp leva nome, pedido e link', chamadas.find(c => c.startsWith('wati:')), 'wati:Juliana|#9057|https://pagar.me/l/abc');
+  ok('ativo: WhatsApp leva nome, pedido e link', chamadas.find(c => c.startsWith('fila:')), 'fila:Juliana|#9057|https://pagar.me/l/abc');
+  const f = fila[0];
+  const esperaMin = (Date.parse(f.due_at) - Date.now()) / 60e3;
+  ok('ativo: entra na fila da Vi para daqui a 5 min, com a chave de serviço', [f.wa_id, esperaMin > 4.9 && esperaMin <= 5, f.chave, f.template.nome], ['5521988887777', true, 'srv', 'cartao_resgate_v1']);
+  ok('ativo: o texto vai pronto, com o link (a Vi não cancela item com http)', f.texto, 'Oi Juliana, recebemos seu pedido #9057. Link novo https://pagar.me/l/abc');
+  ok('ativo: o documento guarda o agendamento', [r.whatsapp.fila_id, typeof r.whatsapp.agendado_para], [41, 'string']);
   ok('ativo: tag no pedido', chamadas.find(c => c.startsWith('gql:')), 'gql:tagsAdd cartao-barrado-avisado');
   ok('ativo: MP não foi chamado', chamadas.some(c => c.includes('mercadopago')), false);
 }
@@ -164,7 +165,7 @@ const env = { SHOPIFY_STORE_DOMAIN: 'loja.myshopify.com', SHOPIFY_ADMIN_TOKEN: '
   redeFalsa({ travaConflito: true });
   const r = await lib.processarPedido({ ...env, CARTAO_BARRADO_ATIVO: '1' }, '7732224786541');
   ok('segundo webhook do mesmo pedido leva 409 e desiste', [r.feito, r.motivo], [false, 'já em andamento (trava)']);
-  ok('e não manda nada', chamadas.some(c => c.includes('wati.io')), false);
+  ok('e não manda nada', chamadas.some(c => c.includes('wati_ia_fila')), false);
 }
 {
   redeFalsa();

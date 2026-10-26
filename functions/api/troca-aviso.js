@@ -12,14 +12,16 @@
  *  - fora da janela, se o modelo `troca_autorizacao_postagem_v1` já estiver aprovado, vai por ele;
  *  - senão devolve { enviado:false, motivo:'fora_da_janela', mensagem } e o cartão mostra a
  *    mensagem pronta para a Marcelly.
- * Sai pelo token de API do sistema, que a Vi reconhece e NÃO trata como atendente (não pausa).
+ * Sai pela Meta como mensagem da loja (_whatsapp.js, desde 26/10/2026; antes pelo token de API do
+ * Wati): a Vi NÃO trata como atendente (não pausa).
  * Grava no histórico da Vi (wati_ia_mensagens) para ela saber o que foi mandado e nunca mandar duas.
  *
  * POST { pedido: '#9250', codigo, validade (ISO), item_id }
  */
+import { enviarTextoDaLoja, enviarModeloDaLoja } from '../_whatsapp.js';
+
 const API_VERSION = '2026-04';
 const SB_URL = 'https://hckzsblwyabmhzbjdjgx.supabase.co';
-const WATI_V1 = 'https://live-mt-server.wati.io/1061955/api/v1';
 export const TEMPLATE_TROCA = 'troca_autorizacao_postagem_v1';
 const JANELA_MS = 24 * 3600e3 - 15 * 60e3; // margem de 15 min antes de fechar
 
@@ -60,7 +62,7 @@ export async function onRequestPost({ env, request }) {
   const num = String(b.pedido || '').replace(/\D/g, '');
   const codigo = String(b.codigo || '').trim();
   if (!num || !codigo || !b.item_id) return json({ erro: 'informe pedido, codigo e item_id' }, 400);
-  if (!env.SUPABASE_SERVICE_ROLE_KEY || !env.WATI_TOKEN) return json({ erro: 'faltam SUPABASE_SERVICE_ROLE_KEY ou WATI_TOKEN' }, 500);
+  if (!env.SUPABASE_SERVICE_ROLE_KEY || !(env.WA_TOKEN || env.META_ACCESS_TOKEN)) return json({ erro: 'faltam SUPABASE_SERVICE_ROLE_KEY ou META_ACCESS_TOKEN' }, 500);
   const sbH = { apikey: env.SUPABASE_SERVICE_ROLE_KEY, Authorization: 'Bearer ' + env.SUPABASE_SERVICE_ROLE_KEY, 'Content-Type': 'application/json' };
   const msgId = 'troca_codigo_' + String(b.item_id).replace(/[^\w:-]/g, '');
 
@@ -86,24 +88,15 @@ export async function onRequestPost({ env, request }) {
     let via = null;
 
     if (ultima && dentroDaJanela(ultima.created_at)) {
-      const s = await fetch(`${WATI_V1}/sendSessionMessage/${wa}?messageText=${encodeURIComponent(texto)}`, { method: 'POST', headers: { Authorization: 'Bearer ' + env.WATI_TOKEN } });
-      const j = await s.json().catch(() => ({}));
-      if (!s.ok || j.result === false || j.ok === false) return json({ enviado: false, motivo: 'wati_recusou', detalhe: JSON.stringify(j).slice(0, 200), mensagem: texto });
+      const s = await enviarTextoDaLoja(env, wa, texto);
+      if (s.erro) return json({ enviado: false, motivo: 'meta_recusou', detalhe: s.detalhe || s.erro, mensagem: texto });
       via = 'conversa';
     } else {
-      // Fora das 24 h: só pelo modelo aprovado
-      const lt = await (await fetch(`${WATI_V1}/getMessageTemplates?pageSize=100`, { headers: { Authorization: 'Bearer ' + env.WATI_TOKEN } })).json().catch(() => ({}));
-      const t = (lt.messageTemplates || []).find(x => x.elementName === TEMPLATE_TROCA);
-      if (!t || t.status !== 'APPROVED') return json({ enviado: false, motivo: 'fora_da_janela', mensagem: texto });
+      // Fora das 24 h: só pelo modelo aprovado (variáveis: nome, pedido, autorização, validade)
       const dia = b.validade ? new Date(b.validade).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' }) : '';
-      const params = [{ name: 'nome', value: nome || '' }, { name: 'pedido', value: num }, { name: 'autorizacao', value: codigo }, { name: 'validade', value: dia }];
-      const parameters = [...params, ...params.map((p, i) => ({ name: String(i + 1), value: p.value }))];
-      const s = await fetch(`${WATI_V1}/sendTemplateMessage?whatsappNumber=${wa}`, {
-        method: 'POST', headers: { Authorization: 'Bearer ' + env.WATI_TOKEN, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ template_name: TEMPLATE_TROCA, broadcast_name: 'troca_' + num + '_' + Date.now(), parameters }),
-      });
-      const j = await s.json().catch(() => ({}));
-      if (!s.ok || j.result !== true) return json({ enviado: false, motivo: 'wati_recusou', detalhe: JSON.stringify(j).slice(0, 200), mensagem: texto });
+      const s = await enviarModeloDaLoja(env, wa, TEMPLATE_TROCA, [nome || 'cliente', num, codigo, dia]);
+      if (s.erro === 'modelo') return json({ enviado: false, motivo: 'fora_da_janela', mensagem: texto });
+      if (s.erro) return json({ enviado: false, motivo: 'meta_recusou', detalhe: s.detalhe || s.erro, mensagem: texto });
       via = 'modelo';
     }
 

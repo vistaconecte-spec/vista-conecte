@@ -15,17 +15,17 @@
 //   POST { acao:'feito', id, nota }             → aprovação cumprida (conta como ação do caso)
 //
 // Secrets: ANTHROPIC_API_KEY, CASOS_AVISO_WA (número da Bárbara para o aviso), CASOS_SO_LEITURA (=1 trava os botões),
-// SUPABASE_SERVICE_ROLE_KEY, SHOPIFY_STORE_DOMAIN, SHOPIFY_ADMIN_TOKEN, MP_ACCESS_TOKEN, WATI_TOKEN.
+// SUPABASE_SERVICE_ROLE_KEY, SHOPIFY_STORE_DOMAIN, SHOPIFY_ADMIN_TOKEN, MP_ACCESS_TOKEN, META_ACCESS_TOKEN (ou WA_TOKEN).
 import {
   soLeitura, MODELO, DOC_LOG, TEMPLATE_CONTINUIDADE, TEMPLATE_ALERTA, CATEGORIAS_DINHEIRO,
   SISTEMA, FERRAMENTAS, FERRAMENTAS_SERVIDOR, problemasDoTexto, prometeDinheiro, janelaAberta, revisarResposta,
   semResposta, promessasDaEquipe, pagoPorItem, numerosDePedido, prazoDoPedido, logVazio, podeFechar, aprovacaoLiberada, novoId,
-  primeiroNome, finalTel, resumoDoCaso, conversaParaAssistente, hojeTexto, brt, watiParaMsg,
+  primeiroNome, finalTel, resumoDoCaso, conversaParaAssistente, hojeTexto, brt, metaParaMsg,
 } from '../_casos.js';
+import { variantes, mesclar, enviarTextoDaLoja, enviarArquivoDaLoja, enviarModeloDaLoja } from '../_whatsapp.js';
 
 const SB_URL = 'https://hckzsblwyabmhzbjdjgx.supabase.co';
 const API_SHOPIFY = '2024-04';
-const WATI_V1 = 'https://live-mt-server.wati.io/1061955/api/v1';
 const ARQUIVO_MAX = 5 * 1024 * 1024;
 
 const J = (o, s = 200) => new Response(JSON.stringify(o), {
@@ -159,11 +159,11 @@ async function pendenciasDoDia(env, agora = Date.now()) {
     lerLog(env),
   ]);
   const comCaso = new Set(casos.map(c => c.wa_id));
-  // Confere na Wati quem parece sem resposta: o histórico da Vi não tem documento nem imagem que
-  // a equipe mandou, e a cliente apareceria esperando quando a etiqueta já tinha ido.
+  // Confere na conversa do WhatsApp quem parece sem resposta: o histórico da Vi não tem documento nem
+  // imagem que a equipe mandou, e a cliente apareceria esperando quando a etiqueta já tinha ido.
   const candidatos = semResposta(msgs, { agora }).slice(0, 12);
   const conferidos = await Promise.all(candidatos.map(async e => {
-    const w = await conversaWati(env, e.wa_id, 10);
+    const w = await conversaWhatsapp(env, e.wa_id, 10);
     if (!w) return e;
     return semResposta(w.map(m => ({ ...m, wa_id: e.wa_id })), { agora })[0] || null;
   }));
@@ -200,9 +200,9 @@ async function abrirCaso(env, { caso_id, wa_id, pedido }, agora = Date.now()) {
   }
   const wa = (caso && caso.wa_id) || String(wa_id || '').replace(/\D/g, '');
   if (!caso && !wa && !pedido) return { encontrado: false, motivo: 'nada para buscar' };
-  // Conversa da WATI (tem documento, foto, áudio e template); o histórico da Vi só entra se a Wati falhar.
-  const daWati = wa ? await conversaWati(env, wa, 60) : null;
-  const msgs = daWati || (wa ? (await db.get(`wati_ia_mensagens?wa_id=eq.${wa}&order=created_at.desc&limit=60&select=role,texto,created_at`)).reverse() : []);
+  // Conversa do WhatsApp (tem documento, foto, áudio e template); o histórico da Vi sozinho só entra se ela falhar.
+  const doZap = wa ? await conversaWhatsapp(env, wa, 60) : null;
+  const msgs = doZap || (wa ? (await db.get(`wati_ia_mensagens?wa_id=eq.${wa}&order=created_at.desc&limit=60&select=role,texto,created_at`)).reverse() : []);
   const daCliente = msgs.filter(m => m.role === 'user').map(m => m.texto).join('\n');
   const numeros = numerosDePedido(pedido || (caso && caso.pedido), caso && caso.resumo, daCliente).slice(0, 2);
   const pedidos = [];
@@ -215,7 +215,7 @@ async function abrirCaso(env, { caso_id, wa_id, pedido }, agora = Date.now()) {
     aviso_caso: caso ? null : 'sem caso no CRM para este contato; se a Marcelly agir, o painel abre um',
     wa_id: wa || null, final_tel: finalTel(wa),
     janela_24h: janelaAberta(msgs, agora),
-    conversa_fonte: daWati ? 'Wati (completa, com documentos e imagens)' : 'histórico da Vi (só texto; documento e imagem enviados podem faltar)',
+    conversa_fonte: doZap ? 'WhatsApp (completa, com documentos e imagens)' : 'histórico da Vi (só texto; documento e imagem enviados podem faltar)',
     conversa: conversaParaAssistente(msgs),
     promessas_da_equipe: promessasDaEquipe(msgs, { agora }),
     pedidos,
@@ -251,43 +251,28 @@ async function assistente(env, messages) {
   return J({ content: corpo.content, stop_reason: corpo.stop_reason, usage: corpo.usage, revisao: revisarResposta(corpo.content) });
 }
 
-// ── Wati ────────────────────────────────────────────────────────────────────────
-async function conversaWati(env, wa, limite) {
-  if (!env.WATI_TOKEN || !/^\d+$/.test(String(wa || ''))) return null;
+// ── WhatsApp (pela Meta desde 26/10/2026; antes pelo Wati) ───────────────────────────────
+// O que chegou e saiu pela Meta (wa_mensagens) junto com o histórico da Vi, nas duas grafias do número.
+// Duas leituras por conversa: a lista de pendências confere até 12 de uma vez, longe dos 50 subrequests.
+async function conversaWhatsapp(env, wa, limite) {
+  if (!/^\d+$/.test(String(wa || ''))) return null;
   try {
-    const r = await fetch(`${WATI_V1}/getMessages/${wa}?pageSize=${limite}&pageNumber=1`, { headers: { Authorization: 'Bearer ' + env.WATI_TOKEN } });
-    if (!r.ok) return null;
-    const itens = ((await r.json()).messages || {}).items || [];
+    const db = sb(env);
+    const vs = variantes(wa).join(',');
+    const [daMeta, daVi] = await Promise.all([
+      db.get(`wa_mensagens?telefone=in.(${vs})&or=(texto.not.is.null,midia_id.not.is.null)&select=wamid,direcao,tipo,texto,midia_id,midia_mime,status,erro,enviada_em,recebida_em,origem&order=recebida_em.desc&limit=${limite}`),
+      db.get(`wati_ia_mensagens?wa_id=in.(${vs})&select=msg_id,role,texto,created_at&order=created_at.desc&limit=${limite}`),
+    ]);
     // Lista vazia vira null: aí entra o histórico da Vi, em vez de concluir que a janela fechou.
-    const msgs = itens.map(watiParaMsg).filter(Boolean).reverse();
+    const msgs = mesclar(daMeta, daVi).map(metaParaMsg).filter(Boolean).slice(-limite);
     return msgs.length ? msgs : null;
   } catch (_) { return null; }
 }
 
-async function watiSessao(env, wa, texto) {
-  const r = await fetch(`${WATI_V1}/sendSessionMessage/${wa}?messageText=${encodeURIComponent(texto)}`,
-    { method: 'POST', headers: { Authorization: 'Bearer ' + env.WATI_TOKEN }, body: '' });
-  const j = await r.json().catch(() => ({}));
-  if (!r.ok || j.result === false || j.ok === false) throw new Error('Wati não aceitou a mensagem: ' + JSON.stringify(j).slice(0, 200));
-}
-
-async function watiArquivo(env, wa, arquivo, legenda) {
-  const fd = new FormData();
-  fd.append('file', arquivo, arquivo.name || 'arquivo.pdf');
-  const r = await fetch(`${WATI_V1}/sendSessionFile/${wa}${legenda ? '?caption=' + encodeURIComponent(legenda) : ''}`,
-    { method: 'POST', headers: { Authorization: 'Bearer ' + env.WATI_TOKEN }, body: fd });
-  const j = await r.json().catch(() => ({}));
-  if (!r.ok || j.result === false || j.ok === false) throw new Error('Wati não aceitou o arquivo: ' + JSON.stringify(j).slice(0, 200));
-}
-
-async function watiTemplate(env, wa, template, params) {
-  const parameters = [...params, ...params.map((p, i) => ({ name: String(i + 1), value: p.value }))];
-  const r = await fetch(`${WATI_V1}/sendTemplateMessage?whatsappNumber=${wa}`, {
-    method: 'POST', headers: { Authorization: 'Bearer ' + env.WATI_TOKEN, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ template_name: template, broadcast_name: 'casos_' + hojeTexto(), parameters }),
-  });
-  const j = await r.json().catch(() => ({}));
-  if (!r.ok || j.result !== true) throw new Error('Wati recusou o template: ' + JSON.stringify(j).slice(0, 200));
+// Os envios devolvem { erro, detalhe } em vez de lançar; aqui vira erro do botão, como era com o Wati.
+function conferirEnvio(r) {
+  if (r && r.erro) throw new Error('A Meta não aceitou: ' + (r.detalhe || r.erro));
+  return r;
 }
 
 // ── Botões ──────────────────────────────────────────────────────────────────────
@@ -317,8 +302,8 @@ async function executar(env, b, agora = Date.now()) {
     if (!wa) return { ok: false, erro: 'sem número da cliente' };
     if (prometeDinheiro(texto) && !(casoId && aprovacaoLiberada(casoId, log)))
       return { ok: false, erro: 'O texto promete dinheiro (estorno, desconto, frete, brinde). Isso precisa da aprovação da Bárbara antes.' };
-    // Janela pela Wati (a mesma fonte da conversa); o histórico da Vi fica de reserva.
-    const conv = await conversaWati(env, wa, 15)
+    // Janela pela conversa do WhatsApp (a mesma fonte da conversa); o histórico da Vi fica de reserva.
+    const conv = await conversaWhatsapp(env, wa, 15)
       || await db.get(`wati_ia_mensagens?wa_id=eq.${wa}&role=eq.user&order=created_at.desc&limit=1&select=role,created_at`);
     const jan = janelaAberta(conv, agora);
     const assunto = String(b.assunto || '').trim();
@@ -329,13 +314,12 @@ async function executar(env, b, agora = Date.now()) {
     if (soLeitura(env)) return { ok: false, so_leitura: true, simulacao };
     let gravado = texto;
     if (arq) {
-      await watiArquivo(env, wa, arq, texto);
+      conferirEnvio(await enviarArquivoDaLoja(env, wa, arq, texto));
       gravado = `[a loja enviou o arquivo ${arq.name || ''}]${texto ? ' ' + texto : ''}`;
-    } else if (jan.aberta) await watiSessao(env, wa, texto);
+    } else if (jan.aberta) conferirEnvio(await enviarTextoDaLoja(env, wa, texto));
     else {
       const nome = primeiroNome(caso && caso.nome);
-      await watiTemplate(env, wa, TEMPLATE_CONTINUIDADE, [{ name: 'nome', value: nome }, { name: 'assunto', value: assunto }]);
-      gravado = `Olá, ${nome}! Estamos dando continuidade à sua solicitação: ${assunto}.\n\nPara seguirmos com o atendimento, é só responder esta mensagem.`;
+      gravado = conferirEnvio(await enviarModeloDaLoja(env, wa, TEMPLATE_CONTINUIDADE, [nome, assunto])).texto;
     }
     // Grava no histórico da Vi como mensagem dela (assistant): ela continua a conversa sabendo o
     // que foi dito. Como "operador" a Vi pausaria 24h naquele contato.
@@ -407,7 +391,7 @@ async function executar(env, b, agora = Date.now()) {
     }, logVazio);
     let avisada = false;
     if (env.CASOS_AVISO_WA) {
-      try { await watiTemplate(env, String(env.CASOS_AVISO_WA).replace(/\D/g, ''), TEMPLATE_ALERTA, [{ name: 'mensagem', value: aviso.slice(0, 900) }]); avisada = true; } catch (_) {}
+      try { avisada = !(await enviarModeloDaLoja(env, env.CASOS_AVISO_WA, TEMPLATE_ALERTA, [aviso.slice(0, 900)])).erro; } catch (_) {}
     }
     return { ok: true, feito: 'pedido enviado para a Bárbara' + (avisada ? ' (avisada no WhatsApp)' : ' (aviso no WhatsApp não saiu, ela vê no painel)'), id };
   }

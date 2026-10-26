@@ -16,9 +16,10 @@
 //   4. Gera um link de pagamento por OUTRO caminho: Pagar.me (outro adquirente, outro
 //      antifraude) e, se ele falhar, Checkout Pro do Mercado Pago (mesmo antifraude, mas a
 //      cliente pode entrar na conta dela, o que baixa o risco).
-//   5. Agenda o template no Wati pra +5 min. Quem ainda está tentando (1 dos 7 passou na
-//      5ª tentativa) não recebe mensagem no meio do caminho; o texto do template tem a
-//      linha "se já deu certo, desconsidere" pra quem pagou nesse intervalo.
+//   5. Põe o template na fila da Vi (wati_ia_fila, due_at +5 min) e o cron dela (a cada 30 s)
+//      manda pela Meta. Até 26/10/2026 era o agendamento do Wati, e a Meta não agenda envio.
+//      Quem ainda está tentando (1 dos 7 passou na 5ª tentativa) não recebe mensagem no meio
+//      do caminho.
 //   6. Marca a tag no pedido da Shopify.
 //   7. Quando o link é pago, o postback do Pagar.me/MP bate em /api/webhook-pagarme ou
 //      /api/webhook-mp; o pagamento é RELIDO na API do provedor (o postback também é só um
@@ -29,10 +30,12 @@
 // MODOS (env CARTAO_BARRADO_ATIVO)
 //   ausente/'0' → observar: registra o caso no Supabase e para. Serve pra ver a detecção
 //                 funcionando antes de mandar qualquer mensagem.
-//   '1'         → ativo: link + Wati + tag.
+//   '1'         → ativo: link + WhatsApp + tag.
 //
 // Prefixo "_" faz o Pages não tratar o arquivo como rota. Sem dependência de runtime
 // além de fetch/crypto.subtle, pra ser importável nos testes em Node.
+
+import { buscarModelo } from './_whatsapp.js';
 
 export const TAG_AVISADO = 'cartao-barrado-avisado';
 export const TAG_PAGO_PAGARME = 'pago-link-pagarme';
@@ -40,7 +43,6 @@ export const TAG_PAGO_MP = 'pago-link-mp';
 export const PREFIXO_DOC = 'cb:';
 export const API_VERSION = '2024-04';
 export const SB_URL = 'https://hckzsblwyabmhzbjdjgx.supabase.co';
-export const WATI_URL = 'https://live-mt-server.wati.io/api/ext/v3';
 
 // Condições do link de resgate. Sem juros até 2x acompanha o checkout de hoje (o MP
 // desligou o 3x em 27/08/2026); juros acima disso vão pra cliente. Tudo sobrescrevível
@@ -321,44 +323,31 @@ export async function gerarLink(env, cfg, diag, pedido) {
   return { link: null, erros };
 }
 
-// ── Wati ─────────────────────────────────────────────────────────────────────
+// ── WhatsApp ─────────────────────────────────────────────────────────────────
 
-function watiHeaders(env) {
-  return { Authorization: 'Bearer ' + env.WATI_TOKEN, 'Content-Type': 'application/json' };
-}
+// O modelo vive na conta de mensagens 925 da Meta (o mesmo do Wati, copiado em 21/10/2026).
+export const templateMeta = (env, nome) => buscarModelo(env, nome);
 
-export async function templateWati(env, nome) {
-  const r = await fetch(`${WATI_URL}/messagetemplates?pageSize=100`, { headers: watiHeaders(env) });
-  const j = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error(`Wati ${r.status}: ${JSON.stringify(j).slice(0, 200)}`);
-  return (j.templates || []).find(t => (t.elementName || t.name) === nome) || null;
-}
+// Variáveis na ordem do modelo: nome, pedido, link (cartao_resgate_v1 e v2).
+export const valoresResgate = (diag, link) => [diag.nome, diag.pedido, link.url];
 
-// Os nomes dos parâmetros são os que a dona deu ao criar o template no painel. Quem se chama
-// nome/name recebe o nome, pedido/order o número do pedido, link/url o link — em qualquer
-// ordem. Nome que não diz nada cai na ordem: nome, pedido, link.
-export function paramsWati(template, valores) {
-  const nomes = (template.custom_params || template.customParams || []).map(p => p.name || p.paramName);
-  const porNome = [/nome|name/i, /pedido|order/i, /link|url/i];
-  const v = valores.map(x => (x == null ? '' : String(x)));
-  return nomes.map((name, i) => {
-    const idx = porNome.findIndex(re => re.test(name));
-    return { name, value: idx >= 0 ? v[idx] : (v[i] || '') };
-  });
-}
-
-export async function agendarWati(env, cfg, diag, link, template) {
+// A fila da Vi só abre para a chave de serviço. O texto vai pronto (com o link) para o histórico
+// dela e para a trava da fila, que não cancela item com "http" quando a Vi gera resposta nova.
+export async function agendarNaFila(env, cfg, diag, link, template) {
+  const k = env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!k) throw new Error('SUPABASE_SERVICE_ROLE_KEY ausente');
   const quando = new Date(Date.now() + cfg.atrasoMin * 60e3).toISOString();
-  const body = {
-    template_name: cfg.template,
-    broadcast_name: `resgate-${diag.pedido.replace('#', '')}-${Date.now()}`,
-    scheduled_at: quando,
-    recipients: [{ phone_number: diag.telefone, custom_params: paramsWati(template, [diag.nome, diag.pedido, link.url]) }],
-  };
-  const r = await fetch(`${WATI_URL}/messagetemplates/schedule`, { method: 'POST', headers: watiHeaders(env), body: JSON.stringify(body) });
-  const j = await r.json().catch(() => ({}));
-  if (!r.ok || j.success === false) throw new Error(`Wati agendar ${r.status}: ${JSON.stringify(j).slice(0, 300)}`);
-  return { broadcast_id: j.broadcast_id || null, agendado_para: quando };
+  const valores = valoresResgate(diag, link);
+  const texto = template.corpo.replace(/\{\{(\d+)\}\}/g, (m, i) => valores[Number(i) - 1] ?? m);
+  const r = await fetch(`${SB_URL}/rest/v1/wati_ia_fila`, {
+    method: 'POST',
+    headers: { apikey: k, Authorization: 'Bearer ' + k, 'Content-Type': 'application/json', Prefer: 'return=representation' },
+    body: JSON.stringify({ wa_id: diag.telefone, texto, due_at: quando,
+      template: { nome: cfg.template, params: ['nome', 'pedido', 'link'].map((name, i) => ({ name, value: valores[i] })) } }),
+  });
+  if (!r.ok) throw new Error(`fila da Vi ${r.status}: ${(await r.text()).slice(0, 200)}`);
+  const linha = (await r.json().catch(() => []))[0] || {};
+  return { fila_id: linha.id || null, agendado_para: quando };
 }
 
 // ── Pipeline ─────────────────────────────────────────────────────────────────
@@ -383,8 +372,9 @@ export async function processarPedido(env, orderId, { forcar = false, ignorarJan
   if (!cfg.ativo) { doc.status = 'observado'; await gravarDoc(env, orderId, doc); return { feito: true, ...doc }; }
 
   try {
-    const template = await templateWati(env, cfg.template);
-    if (!template) throw new Error(`template "${cfg.template}" não existe no Wati`);
+    const template = await templateMeta(env, cfg.template);
+    if (!template) throw new Error(`template "${cfg.template}" não existe na Meta`);
+    if (template.nVars !== 3) throw new Error(`template "${cfg.template}" tem ${template.nVars} variáveis, o resgate manda 3`);
     if (String(template.status).toLowerCase() !== 'approved') throw new Error(`template "${cfg.template}" está "${template.status}", não aprovado`);
 
     const { link, erros } = await gerarLink(env, cfg, diag, pedido);
@@ -392,7 +382,7 @@ export async function processarPedido(env, orderId, { forcar = false, ignorarJan
     if (!link) throw new Error('nenhum provedor gerou link');
     doc.link = link;
 
-    doc.wati = await agendarWati(env, cfg, diag, link, template);
+    doc.whatsapp = await agendarNaFila(env, cfg, diag, link, template);
     doc.status = 'agendado';
     await sh.addTags(orderId, [TAG_AVISADO]);
     doc.tag = true;

@@ -17,9 +17,9 @@
 import { codigoVale, validarValor, mensagemVale, inputDesconto, dataVale } from '../_vale.js';
 import { tagCredito, validadeCredito, mensagemCredito, nomeCadastro } from '../_credito.js';
 import { variantesWa, dentroDaJanela } from './troca-aviso.js';
+import { enviarTextoDaLoja } from '../_whatsapp.js';
 
 const SB_URL = 'https://hckzsblwyabmhzbjdjgx.supabase.co';
-const WATI_V1 = 'https://live-mt-server.wati.io/1061955/api/v1';
 const Q_PEDIDO_CREDITO = `query($q: String!) {
   orders(first: 1, query: $q) { nodes { id name email phone tags customer { id } shippingAddress { name phone } currentTotalPriceSet { shopMoney { amount } } } }
 }`;
@@ -131,7 +131,7 @@ async function lancarCredito(env, gql, b, numero) {
 // Só dentro das 24 h da conversa (texto livre); fora disso a mensagem volta para a Marcelly.
 // A Shopify já manda o e-mail do crédito de qualquer jeito (notify: true).
 async function avisarNaConversa(env, { tel, mensagem, msgId, pedido, valor }) {
-  if (!env.SUPABASE_SERVICE_ROLE_KEY || !env.WATI_TOKEN) return { enviado: false, motivo: 'sem_configuracao' };
+  if (!env.SUPABASE_SERVICE_ROLE_KEY || !(env.WA_TOKEN || env.META_ACCESS_TOKEN)) return { enviado: false, motivo: 'sem_configuracao' };
   const vars = variantesWa(tel);
   if (!vars.length) return { enviado: false, motivo: 'sem_telefone' };
   const sbH = { apikey: env.SUPABASE_SERVICE_ROLE_KEY, Authorization: 'Bearer ' + env.SUPABASE_SERVICE_ROLE_KEY, 'Content-Type': 'application/json' };
@@ -139,9 +139,9 @@ async function avisarNaConversa(env, { tel, mensagem, msgId, pedido, valor }) {
     const ult = await (await fetch(`${SB_URL}/rest/v1/wati_ia_mensagens?wa_id=in.(${vars.join(',')})&role=eq.user&order=created_at.desc&limit=1&select=wa_id,created_at`, { headers: sbH })).json();
     const ultima = Array.isArray(ult) && ult[0];
     if (!ultima || !dentroDaJanela(ultima.created_at)) return { enviado: false, motivo: 'fora_da_janela' };
-    const s = await fetch(`${WATI_V1}/sendSessionMessage/${ultima.wa_id}?messageText=${encodeURIComponent(mensagem)}`, { method: 'POST', headers: { Authorization: 'Bearer ' + env.WATI_TOKEN } });
-    const j = await s.json().catch(() => ({}));
-    if (!s.ok || j.result === false || j.ok === false) return { enviado: false, motivo: 'wati_recusou' };
+    // mensagem da loja pela Meta (26/10/2026; antes pelo Wati): não pausa a Vi
+    const s = await enviarTextoDaLoja(env, ultima.wa_id, mensagem);
+    if (s.erro) return { enviado: false, motivo: 'meta_recusou' };
     await fetch(`${SB_URL}/rest/v1/wati_ia_mensagens`, {
       method: 'POST', headers: { ...sbH, Prefer: 'return=minimal' },
       body: JSON.stringify({ msg_id: msgId, wa_id: ultima.wa_id, role: 'assistant', texto: `${mensagem}
