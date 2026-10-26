@@ -43,7 +43,10 @@ export function avaliar(o, et) {
   if (o.displayFulfillmentStatus === 'FULFILLED') return { acao: 'pular', motivo: 'já processado com outro código (' + (jaTem.join(', ') || 'sem código') + ')' };
   const a = o.shippingAddress || {};
   const nomeEntrega = a.name || [a.firstName, a.lastName].filter(Boolean).join(' ');
-  if (!mesmaPessoa(et.nome, nomeEntrega) || norm(et.cidade) !== norm(a.city))
+  // Nome completo idêntico dispensa a cidade: no 1º lote (26/10/2026) a Frenet pôs a cidade do CEP e a cliente
+  // tinha escrito o distrito (Trancoso, Amarantina) ou "Sai Paulo", e 3 pedidos certos ficaram para trás.
+  const cidadeOk = norm(et.cidade) === norm(a.city) || norm(et.nome) === norm(nomeEntrega);
+  if (!mesmaPessoa(et.nome, nomeEntrega) || !cidadeOk)
     return { acao: 'pular', motivo: `etiqueta (${et.nome}, ${et.cidade}) não bate com a entrega (${nomeEntrega}, ${a.city})` };
   const abertos = ((o.fulfillmentOrders && o.fulfillmentOrders.edges) || []).map(e => e.node)
     .filter(f => ['OPEN', 'IN_PROGRESS'].includes(f.status))

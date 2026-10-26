@@ -43,6 +43,7 @@ ok('reembolso parcial ainda envia', api.avaliar(pedido({ displayFinancialStatus:
 ok('troca esperando a peça → pular', api.avaliar(pedido({ tags: ['troca-aguardando'] }), et).acao, 'pular');
 ok('outra pessoa na etiqueta → pular', api.avaliar(pedido(), { ...et, nome: 'Maria Oliveira' }).acao, 'pular');
 ok('outra cidade na etiqueta → pular', api.avaliar(pedido(), { ...et, cidade: 'Santos' }).acao, 'pular');
+ok('nome completo idêntico passa mesmo com distrito no lugar da cidade (Trancoso/Porto Seguro)', api.avaliar(pedido(), { ...et, nome: 'MARIA DA SILVA SOUZA', cidade: 'Trancoso' }).acao, 'processar');
 ok('parcial: manda só o que falta', api.avaliar(pedido({ displayFulfillmentStatus: 'PARTIALLY_FULFILLED', fulfillments: [{ trackingInfo: [{ number: 'AAA11111' }] }] }), et).acao, 'processar');
 ok('fulfillment order fechado → nada a enviar', api.avaliar(pedido({ fulfillmentOrders: { edges: [{ node: { id: 'x', status: 'CLOSED', lineItems: { edges: [] } } }] } }), et).acao, 'pular');
 ok('pedido não achado → pular', api.avaliar(null, et).acao, 'pular');
