@@ -136,6 +136,8 @@ export function normalizar(o) {
         nome: String(n.name || '').slice(0, 60),
         qtd: n.currentQuantity ?? n.quantity,
         preco: num(n.discountedUnitPriceAfterAllDiscountsSet && n.discountedUnitPriceAfterAllDiscountsSet.shopMoney && n.discountedUnitPriceAfterAllDiscountsSet.shopMoney.amount),
+        // Troca de R$ 0 (26/10/2026): declaração com preço zero a Frenet recusa (400); o robô declara o preço de tabela
+        preco_original: num(n.originalUnitPriceSet && n.originalUnitPriceSet.shopMoney && n.originalUnitPriceSet.shopMoney.amount),
       })),
     enviado: o.displayFulfillmentStatus === 'FULFILLED',
     // Pedido de troca esperando a peça antiga (19/10/2026): o robô não monta etiqueta dele
@@ -158,7 +160,7 @@ const QUERY = `query($q: String) {
       shippingLine { title discountedPriceSet { shopMoney { amount } } }
       shippingAddress { name firstName lastName address1 address2 city provinceCode zip phone }
       localizationExtensions(first: 5) { edges { node { key purpose value } } }
-      lineItems(first: 30) { edges { node { name quantity currentQuantity discountedUnitPriceAfterAllDiscountsSet { shopMoney { amount } } } } }
+      lineItems(first: 30) { edges { node { name quantity currentQuantity discountedUnitPriceAfterAllDiscountsSet { shopMoney { amount } } originalUnitPriceSet { shopMoney { amount } } } } }
     } }
   }
 }`;

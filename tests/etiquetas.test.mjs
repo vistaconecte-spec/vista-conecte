@@ -60,7 +60,7 @@ console.log('\n3) Normalização do pedido');
     ] },
   });
   ok('CPF, CEP e telefone formatados', [p.cpf, p.cep, p.telefone], ['123.456.789-01', '71071-264', '(61) 99999-8888']);
-  ok('itens viram a declaração de conteúdo (item devolvido fica fora)', p.itens, [{ nome: 'Calça Pantalona Moletom - Preto / M', qtd: 2, preco: 139.45 }]);
+  ok('itens viram a declaração de conteúdo (item devolvido fica fora)', p.itens, [{ nome: 'Calça Pantalona Moletom - Preto / M', qtd: 2, preco: 139.45, preco_original: 0 }]);
   ok('saco M, peso 0,7 kg, frete grátis = mais barato, pago e não enviado', [p.saco, p.peso_kg, p.regra, p.pago, p.enviado], ['M', 0.7, 'mais_barato', true, false]);
 }
 
