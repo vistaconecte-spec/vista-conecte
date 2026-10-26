@@ -10445,6 +10445,12 @@ function copiaImprimirProntos() {
   if (!prontos.length) { alert('Nenhum pedido pronto para envio agora.'); return; }
   const res = loadLocal('vc:etiquetas-resultado') || {};
   const comEtiqueta = prontos.filter(p => !etqPendentes([p], res).length).map(p => p.numero);
+  // 26/10/2026: com 61 prontos e 47 etiquetados só saíam 47 folhas, e a Bárbara precisava de todas
+  const semEtiqueta = prontos.length - comEtiqueta.length;
+  if (comEtiqueta.length && semEtiqueta) {
+    const todos = confirm(`${comEtiqueta.length} pedidos têm etiqueta do robô e ${semEtiqueta} ainda não.\n\nOK = imprimir todos os ${prontos.length}\nCancelar = só os ${comEtiqueta.length} com etiqueta`);
+    copiaImprimir(todos ? prontos.map(p => p.numero) : comEtiqueta); return;
+  }
   if (comEtiqueta.length) { copiaImprimir(comEtiqueta); return; }
   if (!confirm(`Nenhum pronto tem etiqueta gerada pelo robô nos últimos ${ETQ_FEITO_DIAS} dias.\n\nImprimir a cópia dos ${prontos.length} pedidos prontos?`)) return;
   copiaImprimir(prontos.map(p => p.numero));
