@@ -10274,11 +10274,17 @@ async function etqAbrir() {
   const pend = etqPendentes(window._prontosEnvio || [], resultado);
   _etqDados = {};
   if (pend.length) {
+    // Em lotes de 40: o /api/etiquetas-dados lê no máximo 50 números por chamada, e com 60 prontos
+    // (26/10/2026) do #9364 em diante aparecia "não achei na Shopify".
     try {
-      const r = await fetch('/api/etiquetas-dados?numeros=' + encodeURIComponent(pend.map(p => p.numero).join(',')), { cache: 'no-store' });
-      const j = await r.json();
-      if (!r.ok || j.erro) throw new Error(j.erro || 'HTTP ' + r.status);
-      for (const d of j.pedidos) _etqDados[d.numero] = d;
+      const lotes = [];
+      for (let i = 0; i < pend.length; i += 40) lotes.push(pend.slice(i, i + 40));
+      await Promise.all(lotes.map(async lote => {
+        const r = await fetch('/api/etiquetas-dados?numeros=' + encodeURIComponent(lote.map(p => p.numero).join(',')), { cache: 'no-store' });
+        const j = await r.json();
+        if (!r.ok || j.erro) throw new Error(j.erro || 'HTTP ' + r.status);
+        for (const d of j.pedidos) _etqDados[d.numero] = d;
+      }));
     } catch (e) {
       document.getElementById('etq-lista').innerHTML = `<div style="padding:14px;color:#b91c1c;font-size:12px">Não deu para ler os pedidos na Shopify (${e.message}).</div>`;
       return;
