@@ -84,7 +84,9 @@ ok('envio realmente anterior continua fora',
 ok('data inválida não vira baixa', maisNovoQue('', '2026-08-10T20:00:00.000Z'), false);
 ok('o código usa a comparação por data, não string',
    /maisNovoQue\(p\.enviado_em, ledger\.desde\)/.test(corpo), true);
-ok('a poda de 60 dias também', /!maisNovoQue\(r\.em, corte\)/.test(corpo), true);
+// a poda mudou para reservarEnvio em 26/10/2026 (o registro sobe por remessa, não mais no fim da fila)
+const reserva = main.slice(main.indexOf('async function reservarEnvio'), main.indexOf('\n}', main.indexOf('async function reservarEnvio')));
+ok('a poda de 60 dias também', /!maisNovoQue\(r\.em, corte\)/.test(reserva), true);
 
 console.log('\n4c) FURO ACHADO 10/08/2026 — envio PARCIAL não dava baixa');
 ok('a API busca também os parciais', /for \(const st of \['shipped', 'partial'\]\)/.test(api), true);
@@ -182,6 +184,18 @@ ok('o app não baixa remessa mais velha que a poda do registro',
    /maisNovoQue\(p\.enviado_em, ledger\.desde\)\s*&& maisNovoQue\(p\.enviado_em, corte\)/.test(corpo), true);
 ok('o corte é calculado ANTES do filtro de novos (não só na poda)',
    corpo.indexOf('const corte') > -1 && corpo.indexOf('const corte') < corpo.indexOf('const novos'), true);
+
+console.log('\n10) FURO ACHADO 26/10/2026 — fila grande baixada por dois aparelhos');
+// 60 envios criados às 16:18; o registro só subia no fim da fila (mais de 1 minuto) e os
+// outros aparelhos baixaram as mesmas remessas: 21 peças a mais saíram do estoque.
+ok('a fila reserva a remessa no registro antes de baixar',
+   /if \(!\(await reservarEnvio\(p, corte\)\)\) continue;\s*const b = await baixarEstoqueDoPedido/.test(corpo), true);
+ok('a fila não sobe mais o registro inteiro no fim (upsert sem condição)',
+   corpo.slice(corpo.indexOf('const novos')).includes('salvarNuvem(LEDGER_BAIXAS'), false);
+ok('a reserva grava com condição (updated_at lido) e pula remessa já marcada',
+   /if \(l\.envios\[p\.id\]\) return false;/.test(reserva) && /gravarSeNaoMudou\(LEDGER_BAIXAS, l, lidoEm\)/.test(reserva), true);
+ok('rede caída na reserva: só fica com a remessa se a marca na nuvem for a dela',
+   /depois\.envios\[p\.id\]\.aplicado === marca/.test(reserva), true);
 
 console.log(`\n${falhas === 0 ? '✓ TODOS OS TESTES PASSARAM' : '✗ ' + falhas + ' FALHA(S)'} — ${total - falhas}/${total}\n`);
 process.exit(falhas === 0 ? 0 : 1);

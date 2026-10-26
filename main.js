@@ -14030,6 +14030,45 @@ async function gravarSeNaoMudou(key, dados, lidoEm) {
   return false;
 }
 
+// Marca a remessa no registro da nuvem antes da baixa. true = este aparelho ficou com ela;
+// false = outro aparelho já marcou, ou não deu para gravar (aí não baixa: lado seguro).
+async function reservarEnvio(p, corte) {
+  for (let tentativa = 0; tentativa < 5; tentativa++) {
+    const l = await lerLedgerBaixas();
+    if (!l) return false;
+    if (l.envios[p.id]) return false;
+    const lidoEm = lidoEmDe(l);
+    if (!lidoEm) return false;
+    const marca = new Date().toISOString();
+    l.envios[p.id] = { numero: p.numero, em: p.enviado_em, aplicado: marca, pecas: 0 };
+    // Poda: 60 dias bastam para a idempotência (a janela da API é de 7), com o mesmo corte da fila
+    for (const [id, r] of Object.entries(l.envios)) if (r.em && !maisNovoQue(r.em, corte)) delete l.envios[id];
+    declararLeitura(l, l);
+    const g = await gravarSeNaoMudou(LEDGER_BAIXAS, l, lidoEm);
+    if (g === true) { saveLocal(LEDGER_LOCAL, l); return true; }
+    if (g === false) {
+      // Rede caiu no meio: só é nossa se a marca que está na nuvem é a nossa
+      const depois = await lerLedgerBaixas();
+      return !!(depois && depois.envios[p.id] && depois.envios[p.id].aplicado === marca);
+    }
+    // 'mudou' / 'recusada': outro aparelho gravou no meio, lê de novo
+  }
+  return false;
+}
+
+// Só a contagem de peças da remessa (o aviso do painel usa). Se não gravar, não faz mal.
+async function anotarPecasDoEnvio(id, n) {
+  if (!n) return;
+  for (let tentativa = 0; tentativa < 3; tentativa++) {
+    const l = await lerLedgerBaixas();
+    const lidoEm = lidoEmDe(l);
+    if (!l || !l.envios[id] || !lidoEm) return;
+    l.envios[id].pecas = n;
+    declararLeitura(l, l);
+    if (await gravarSeNaoMudou(LEDGER_BAIXAS, l, lidoEm) === true) { saveLocal(LEDGER_LOCAL, l); return; }
+  }
+}
+
 let _ultimaBaixaAuto = null; // { quando, pedidos:[], pecas:[] } — alimenta o aviso do dashboard
 let _baixaRodando = false;   // trava: agora a baixa espera a nuvem e o ciclo de 1 min pode alcançá-la
 
@@ -14089,18 +14128,20 @@ async function _baixaImediataDeProcessados() {
   );
   if (novos.length === 0) return;
 
+  // RESERVA ANTES DE BAIXAR (26/10/2026). O registro só subia no FIM da fila; com 60 envios
+  // criados de uma vez às 16:18 a fila levou mais de 1 minuto, e os outros aparelhos com o
+  // sistema aberto leram o registro ainda sem eles e baixaram as mesmas remessas: o estoque
+  // caiu 21 peças a mais do que saiu (Macacão Preto G 5→0 com 2 envios, FU Longo Off White
+  // 7→0 com 5). Agora cada remessa é marcada no registro da nuvem, com gravação condicional,
+  // antes de tirar a peça: quem chega depois vê a marca e pula. Se a baixa falhar depois da
+  // marca, a peça fica no estoque, que é o lado que se corrige contando a arara.
   const pecas = [], numeros = [];
   for (const p of novos) {
+    if (!(await reservarEnvio(p, corte))) continue;
     const b = await baixarEstoqueDoPedido(p.itens);
-    ledger.envios[p.id] = { numero: p.numero, em: p.enviado_em, aplicado: new Date().toISOString(), pecas: b.length };
+    await anotarPecasDoEnvio(p.id, b.length);
     if (b.length) { pecas.push(...b); if (!numeros.includes(p.numero)) numeros.push(p.numero); }
   }
-
-  // Poda: 60 dias bastam para a idempotência (a janela da API é de 7), com o corte lá de cima
-  for (const [id, r] of Object.entries(ledger.envios)) if (r.em && !maisNovoQue(r.em, corte)) delete ledger.envios[id];
-
-  saveLocal(LEDGER_LOCAL, ledger);
-  await salvarNuvem(LEDGER_BAIXAS, ledger, { silencioso: true });
 
   if (pecas.length) {
     _ultimaBaixaAuto = { quando: new Date().toISOString(), pedidos: numeros, pecas };
