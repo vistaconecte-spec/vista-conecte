@@ -12692,6 +12692,14 @@ function gerarFichaCompraGlobal() {
   // Usa chave normalizada para unificar variações de maiúsculas/espaços
   const grupos    = {}; // { chaveNorm: { label, cores: { cor: { metros, custo, modelos[] } } } }
   const gruposLabel = {}; // chaveNorm → nome para exibição (primeiro encontrado)
+  // Cor digitada à mão nos pilotos ("Offwhite") tem que cair na mesma linha da cor do
+  // cadastro ("Off White"): compara sem espaço/hífen/acento e mostra o nome do data.js (26/10/2026).
+  const chaveCorFicha = c => chaveCor(c).replace(/[\s-]/g, '');
+  const corOficial = {};
+  Object.values(MODELOS).forEach(d => (d.cores || []).forEach(c => {
+    const k = chaveCorFicha(c);
+    if (k && !corOficial[k]) corOficial[k] = c;
+  }));
   for (const [key, def] of Object.entries(MODELOS)) {
     if (CONJUNTO_PECAS[key]) continue;
     const saved = loadLocal('vc:' + key) || {};
@@ -12728,7 +12736,8 @@ function gerarFichaCompraGlobal() {
       const custo  = metros * preco;
       // Nome da cor como a loja de tecido conhece (data.js `corFornecedor`): "Mescla" do Boho é
       // o mescla CINZA (o claro), e a Costa Rica sempre perguntava se era o grafite (29/09/2026).
-      const corF = (def.corFornecedor && def.corFornecedor[cor]) || cor;
+      const corBruta = (def.corFornecedor && def.corFornecedor[cor]) || cor;
+      const corF = corOficial[chaveCorFicha(corBruta)] || corBruta;
       if (!grupos[chave][corF]) grupos[chave][corF] = { metros: 0, custo: 0, modelos: [] };
       grupos[chave][corF].metros  += metros;
       grupos[chave][corF].custo   += custo;
