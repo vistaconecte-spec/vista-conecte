@@ -97,7 +97,23 @@ console.log('\n3) Conferência do envio');
   ok('mais unidades do que veio é recusado', !!T.validarSolicitacao(pub, [{ ...credito, qtd: 3 }]).erro, true);
   ok('mesma linha duas vezes passando do total é recusado', !!T.validarSolicitacao(pub, [{ ...credito, qtd: 1 }, { ...credito, qtd: 2 }]).erro, true);
   const tarde = T.pedidoPublico(pedido(), [], dias(12));
-  ok('dinheiro de volta depois de 7 dias é recusado', /7 dias/.test(T.validarSolicitacao(tarde, [{ ...credito, tipo: 'devolucao' }]).erro || ''), true);
+  ok('dinheiro de volta saiu do portal (27/10/2026)', !!T.validarSolicitacao(pub, [{ ...credito, tipo: 'devolucao' }]).erro, true);
+  const prods = [
+    { title: 'Cropped Canelado', status: 'ACTIVE', featuredImage: { url: 'img' }, variants: { nodes: [
+      { id: 'v-cinza-p', title: 'Cinza / P', availableForSale: true }, { id: 'v-cinza-m', title: 'Cinza / M', availableForSale: true },
+      { id: 'v-preto-p', title: 'Preto / P', availableForSale: true }] } },
+    { title: 'Cropped Canelado Cinza', status: 'ACTIVE', variants: { nodes: [{ id: 'c-p', title: 'P' }, { id: 'c-m', title: 'M' }] } },
+    { title: 'Conjunto Cropped Canelado + Calça Pantalona Cinza', status: 'ACTIVE', variants: { nodes: [{ id: 'x', title: 'P' }] } },
+  ];
+  const c = T.casarAvulso('Cropped Canelado Cinza P', prods);
+  ok('item avulso casa com o produto unificado e acha a variante atual', [c && c.variante_atual_id, c && c.imagem], ['v-cinza-p', 'img']);
+  ok('item avulso sem produto parecido fica sem troca', T.casarAvulso('Peça Qualquer', prods), null);
+  const pAv = T.pedidoPublico(pedido({ lineItems: { nodes: [{ id: 'gid://shopify/LineItem/7', title: 'Cropped Canelado Cinza P', quantity: 1, variant: null, product: c.product, variante_atual_id: c.variante_atual_id, discountedUnitPriceAfterAllDiscountsSet: { shopMoney: { amount: '89.9' } } }] } }), [], dias(3));
+  ok('item avulso oferece as outras variantes, sem a que ela tem', pAv.itens[0].opcoes_troca.map(o => o.id), ['v-cinza-m', 'v-preto-p']);
+  const pSemCor = T.pedidoPublico(pedido({ lineItems: { nodes: [{ id: 'gid://shopify/LineItem/8', title: 'Cropped Canelado Cinza P', quantity: 1, variant: null, product: { variants: { nodes: [{ id: 'v-preto-p', title: 'Preto / P' }] } }, discountedUnitPriceAfterAllDiscountsSet: { shopMoney: { amount: '89.9' } } }] } }), [], dias(3));
+  ok('avulso com cor que a loja não tem oferece os outros tamanhos dele primeiro', pSemCor.itens[0].opcoes_troca.map(o => o.titulo), ['Cinza / PP', 'Cinza / M', 'Cinza / G', 'Cinza / GG', 'Preto / P']);
+  const vAv = T.validarSolicitacao(pSemCor, [{ line_id: 'gid://shopify/LineItem/8', tipo: 'troca', nova_variante_id: 'avulso:Cropped Canelado Cinza M', motivo: 'Ficou pequeno' }]);
+  ok('troca por tamanho avulso é aceita', vAv.itens && vAv.itens[0].nova_variante, 'Cinza / M');
   ok('crédito depois de 7 dias ainda vale', !T.validarSolicitacao(tarde, [credito]).erro, true);
   ok('nada marcado', !!T.validarSolicitacao(pub, []).erro, true);
   ok('pedido cancelado', !!T.validarSolicitacao(T.pedidoPublico(pedido({ cancelledAt: '2026-10-09' }), [], dias(3)), [troca]).erro, true);

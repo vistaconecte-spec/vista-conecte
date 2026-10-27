@@ -232,7 +232,6 @@
       $('lista-pecas').innerHTML = ''; btn.hidden = true; return;
     }
     $('prazo').innerHTML = 'Você pode trocar ou pedir crédito até <b>' + dia(d.troca_ate) + '</b>.' +
-      (d.pode_devolver ? ' Dinheiro de volta, até <b>' + dia(d.devolucao_ate) + '</b>.' : '') +
       '<br>Marque as peças que vão voltar:';
     var motivos = (d.motivos || []).map(function (m) { return '<option>' + esc(m) + '</option>'; }).join('');
     $('lista-pecas').innerHTML = d.itens.map(function (it, i) {
@@ -254,7 +253,6 @@
           '<label class="escolha' + (semTroca ? ' off' : '') + '"><input type="radio" name="t' + i + '" value="troca"' + (semTroca ? ' disabled' : '') + '><div><b>Trocar pelo mesmo modelo, em outro tamanho ou cor</b><span>' + (semTroca ? 'Este modelo não tem outra opção para troca.' : 'Mandamos a peça nova assim que a sua chegar.') + '</span></div></label>' +
           '<div class="sub-op" id="s' + i + '" hidden><select id="v' + i + '"><option value="">Escolha o novo tamanho e cor</option>' + opcoesTroca + '</select></div>' +
           '<label class="escolha"><input type="radio" name="t' + i + '" value="credito"><div><b>Crédito para escolher outra peça da loja</b><span>' + brl(it.valor_unit) + ' por peça de saldo na sua conta, válido por 90 dias. Dá para usar em uma ou mais compras até acabar.</span></div></label>' +
-          '<label class="escolha' + (d.pode_devolver ? '' : ' off') + '"><input type="radio" name="t' + i + '" value="devolucao"' + (d.pode_devolver ? '' : ' disabled') + '><div><b>Dinheiro de volta</b><span>' + (d.pode_devolver ? 'Estorno na forma de pagamento da compra.' : 'Só nos primeiros 7 dias depois de receber (terminou em ' + dia(d.devolucao_ate) + ').') + '</span></div></label>' +
           '<div class="grupo" style="margin-top:12px"><label class="campo" for="m' + i + '">Motivo</label><select id="m' + i + '"><option value="">Escolha o motivo</option>' + motivos + '</select></div>' +
           '<div class="grupo"><label class="campo" for="ob' + i + '">Quer contar mais alguma coisa? (opcional)</label><textarea id="ob' + i + '" maxlength="300" placeholder="Ex.: ficou curta no comprimento"></textarea></div>' +
         '</div></div>';

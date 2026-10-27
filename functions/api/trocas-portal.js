@@ -3,7 +3,7 @@
  *
  * Portal de trocas e devoluções da página /trocas (19/10/2026). A cliente entra com o número do
  * pedido e o e-mail da compra, sem login, escolhe as peças e diz se quer trocar por outro
- * tamanho/cor, ficar com crédito na loja ou receber o dinheiro de volta.
+ * tamanho/cor ou ficar com crédito na loja (dinheiro de volta saiu do portal em 27/10/2026).
  *
  * POST { acao: 'consultar', pedido, email }          → peças, preço pago e prazos
  * POST { acao: 'enviar', pedido, email, itens: [...] } → grava a solicitação
@@ -19,7 +19,7 @@
  * E-mail e telefone NÃO vão para o Supabase (a chave anon é pública): o painel acha o contato
  * pelo número do pedido na Shopify quando for mandar o código.
  */
-import { normalizarPedido, normalizarEmail, pedidoPublico, validarSolicitacao, idDoc, protocolo, PREFIXO_DOC, MOTIVOS } from '../_trocas.js';
+import { normalizarPedido, normalizarEmail, pedidoPublico, casarAvulso, validarSolicitacao, idDoc, protocolo, PREFIXO_DOC, MOTIVOS } from '../_trocas.js';
 import { criarPedidoTroca, gqlDe } from '../_pedido-troca.js';
 
 const API_VERSION = '2026-04';
@@ -62,16 +62,44 @@ const sbHeaders = (env, extra = {}) => {
   return { apikey: k, Authorization: `Bearer ${k}`, 'Content-Type': 'application/json', ...extra };
 };
 
-async function lerPedido(env, numero) {
+const QUERY_PRODUTOS = `query($q: String!) {
+  products(first: 15, query: $q) {
+    nodes { title status featuredImage { url(transform: { maxWidth: 200 }) } variants(first: 60) { nodes { id title availableForSale } } }
+  }
+}`;
+
+async function gql(env, query, variables) {
   const r = await fetch(`https://${env.SHOPIFY_STORE_DOMAIN}/admin/api/${API_VERSION}/graphql.json`, {
     method: 'POST',
     headers: { 'X-Shopify-Access-Token': env.SHOPIFY_ADMIN_TOKEN, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ query: QUERY, variables: { q: `name:#${numero}` } }),
+    body: JSON.stringify({ query, variables }),
   });
   if (!r.ok) throw new Error('Shopify ' + r.status);
   const j = await r.json();
   if (j.errors) throw new Error('Shopify GraphQL');
-  const o = (j.data?.orders?.nodes || [])[0];
+  return j.data;
+}
+
+// Item avulso (sem produto): busca pelas duas primeiras palavras e deixa o casarAvulso decidir.
+// Falha aqui não derruba o portal, a peça só fica sem a opção de troca, como antes.
+async function completarAvulsos(env, order) {
+  for (const li of (order.lineItems && order.lineItems.nodes) || []) {
+    if (li.product || !li.title) continue;
+    const palavras = String(li.title).replace(/[^\p{L}\p{N} ]/gu, ' ').split(/\s+/).filter(Boolean).slice(0, 2);
+    if (!palavras.length) continue;
+    try {
+      const d = await gql(env, QUERY_PRODUTOS, { q: `title:${palavras.join('\\ ')}*` });
+      const c = casarAvulso(li.title, d?.products?.nodes);
+      if (c) { li.product = c.product; li.variante_atual_id = c.variante_atual_id; li.imagem_casada = c.imagem; }
+    } catch (e) {
+      console.error('[trocas-portal] avulso', e && e.message);
+    }
+  }
+}
+
+async function lerPedido(env, numero) {
+  const d = await gql(env, QUERY, { q: `name:#${numero}` });
+  const o = (d?.orders?.nodes || [])[0];
   return o && o.name === '#' + numero ? o : null;
 }
 
@@ -92,6 +120,7 @@ export async function onRequestPost(context) {
   try {
     const order = await lerPedido(env, numero);
     if (!order || normalizarEmail(order.email) !== email) return json({ erro: NAO_ACHOU }, 404);
+    await completarAvulsos(env, order);
     const docs = await lerSolicitacoes(env, numero);
     const pub = pedidoPublico(order, docs);
 

@@ -7,6 +7,8 @@
  *  - dinheiro de volta: só nos 7 dias do direito de arrependimento;
  *  - crédito sem bônus: vale o que a cliente pagou na peça (já com os descontos do pedido);
  *  - troca é gratuita (a loja manda o código dos Correios).
+ *  - 27/10/2026: o portal não oferece mais dinheiro de volta (pedido dela). Quem tem direito
+ *    ao arrependimento resolve pelo WhatsApp; aqui só troca e crédito.
  *
  * A Shopify quase nunca sabe o dia da entrega (deliveredAt vem nulo quando o envio é pela
  * Frenet). Sem ele, conta a partir do envio + TRANSITO_ESTIMADO_DIAS. É de propósito o lado
@@ -17,7 +19,7 @@ export const PRAZO_TROCA_DIAS = 30;
 export const PRAZO_DEVOLUCAO_DIAS = 7;
 export const TRANSITO_ESTIMADO_DIAS = 8;
 export const PREFIXO_DOC = 'troca-portal:';
-export const TIPOS = ['troca', 'credito', 'devolucao'];
+export const TIPOS = ['troca', 'credito'];
 export const MOTIVOS = [
   'Ficou pequeno',
   'Ficou grande',
@@ -103,6 +105,45 @@ export function jaDevolvidoNaShopify(order) {
   return m;
 }
 
+const semAcento = t => String(t || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
+
+// Peça lançada à mão no pedido (item avulso, sem produto nem variante, ex.: "Cropped Canelado
+// Cinza P" no #9220): sem isto o portal não tinha tamanho/cor para oferecer e a troca travava.
+// Acha o produto da loja cujo nome é o começo do nome da peça (o unificado, com mais variantes,
+// ganha do antigo por cor) e a variante que ela já tem (o resto do nome: cor e tamanho).
+export function casarAvulso(titulo, produtos) {
+  const t = semAcento(titulo);
+  const candidatos = (produtos || []).filter(p => {
+    const n = semAcento(p && p.title);
+    return n && p.status !== 'ARCHIVED' && (t === n || t.startsWith(n + ' '));
+  });
+  if (!candidatos.length) return null;
+  const nVar = p => ((p.variants && p.variants.nodes) || []).length;
+  candidatos.sort((a, b) => nVar(b) - nVar(a) || semAcento(b.title).length - semAcento(a.title).length);
+  const prod = candidatos[0];
+  const resto = t.slice(semAcento(prod.title).length).trim().split(' ').filter(Boolean).sort().join(' ');
+  const atual = ((prod.variants && prod.variants.nodes) || []).find(v =>
+    semAcento(v.title).split(/[\s/]+/).filter(Boolean).sort().join(' ') === resto);
+  return {
+    product: { variants: prod.variants },
+    variante_atual_id: atual ? atual.id : null,
+    imagem: (prod.featuredImage && prod.featuredImage.url) || '',
+  };
+}
+
+export const TAMANHOS = ['PP', 'P', 'M', 'G', 'GG'];
+export const PREFIXO_AVULSO = 'avulso:';
+
+// "Cropped Canelado Cinza P" → os outros tamanhos, com id avulso:<nome com o tamanho novo>
+export function outrosTamanhosAvulso(titulo) {
+  const m = String(titulo || '').trim().match(/^(.*\S)\s+(PP|P|M|G|GG)$/i);
+  if (!m) return [];
+  const base = m[1];
+  const tam = m[2].toUpperCase();
+  const cor = base.split(/\s+/).length > 1 ? base.split(/\s+/).pop() : '';
+  return TAMANHOS.filter(t => t !== tam).map(t => ({ id: PREFIXO_AVULSO + base + ' ' + t, titulo: (cor ? cor + ' / ' : '') + t }));
+}
+
 // O que a página pode ver do pedido. Nada de endereço, telefone, CPF ou e-mail: quem acertou
 // número + e-mail só enxerga as peças, o preço pago e o prazo.
 export function pedidoPublico(order, docs, agora = new Date()) {
@@ -113,15 +154,18 @@ export function pedidoPublico(order, docs, agora = new Date()) {
     .filter(li => (li.currentQuantity ?? li.quantity) > 0)
     .map(li => {
       const qtd = li.currentQuantity ?? li.quantity;
-      const atual = li.variant && li.variant.id;
-      const opcoes = ((li.product && li.product.variants && li.product.variants.nodes) || [])
+      const atual = (li.variant && li.variant.id) || li.variante_atual_id;
+      const daLoja = ((li.product && li.product.variants && li.product.variants.nodes) || [])
         .filter(v => v.id !== atual && v.availableForSale !== false)
         .map(v => ({ id: v.id, titulo: v.title }));
+      // Avulso cuja cor não existe no produto da loja (o Cropped Canelado Cinza só existe dentro
+      // do conjunto): os outros tamanhos da mesma peça entram como avulso no pedido de troca.
+      const opcoes = !li.variant && !atual ? [...outrosTamanhosAvulso(li.title), ...daLoja] : daLoja;
       return {
         id: li.id,
         titulo: li.title,
         variante: li.variantTitle || '',
-        imagem: (li.image && li.image.url) || '',
+        imagem: (li.image && li.image.url) || (li.imagem_casada || ''),
         valor_unit: valorDe(li),
         qtd,
         qtd_disponivel: Math.max(0, qtd - (ja[li.id] || 0) - (naShopify[li.id] || 0)),

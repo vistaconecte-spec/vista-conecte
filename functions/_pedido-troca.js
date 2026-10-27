@@ -56,11 +56,18 @@ export function montarRascunho({ original, itens, protocolo, numeroOriginal }) {
     shippingAddress: endereco,
     billingAddress: endereco,
     ...(cpf ? { localizedFields: [{ key: 'TAX_CREDENTIAL_BR', value: cpf.value }] } : {}),
-    lineItems: itens.map(it => ({
-      variantId: it.nova_variante_id,
-      quantity: it.qtd || 1,
-      appliedDiscount: { valueType: 'PERCENTAGE', value: 100, title: 'Troca' },
-    })),
+    lineItems: itens.map(it => {
+      const desconto = { valueType: 'PERCENTAGE', value: 100, title: 'Troca' };
+      // Peça que veio como item avulso no pedido original (sem variante na loja): volta avulsa
+      if (String(it.nova_variante_id).startsWith('avulso:')) {
+        return {
+          title: String(it.nova_variante_id).slice('avulso:'.length),
+          originalUnitPriceWithCurrency: { amount: Number(it.valor_unit) || 0, currencyCode: 'BRL' },
+          quantity: it.qtd || 1, requiresShipping: true, taxable: false, appliedDiscount: desconto,
+        };
+      }
+      return { variantId: it.nova_variante_id, quantity: it.qtd || 1, appliedDiscount: desconto };
+    }),
     shippingLine: { title: 'Troca grátis', priceWithCurrency: { amount: 0, currencyCode: 'BRL' } },
     acceptAutomaticDiscounts: false,
     note: `TROCA do pedido #${num} pelo portal (protocolo ${protocolo}). Peça nova só sai depois que a antiga chegar e for conferida (aba TROCAS).`,

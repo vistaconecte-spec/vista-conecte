@@ -48,6 +48,8 @@ console.log('\n1) Rascunho igual ao manual');
   ok('frete zero e sem desconto automático', [d.shippingLine.priceWithCurrency.amount, d.acceptAutomaticDiscounts], [0, false]);
   ok('tags que o painel e o robô leem', d.tags, ['troca', 'troca-aguardando', 'troca-de-9250', 'tp-tp9250-k2ab']);
   ok('nota começa com TROCA, como os manuais', /^TROCA do pedido #9250/.test(d.note), true);
+  const av = montarRascunho({ original, itens: [{ tipo: 'troca', nova_variante_id: 'avulso:Cropped Canelado Cinza M', valor_unit: 89.9, qtd: 1 }], protocolo: 'TP9220-AAAA', numeroOriginal: '9220' });
+  ok('peça avulsa volta avulsa com 100% de desconto', [av.lineItems[0].title, av.lineItems[0].variantId, av.lineItems[0].originalUnitPriceWithCurrency.amount, av.lineItems[0].requiresShipping, av.lineItems[0].appliedDiscount.value], ['Cropped Canelado Cinza M', undefined, 89.9, true, 100]);
 }
 
 function shopifyFalsa({ jaExiste = null, foStatus = 'OPEN' } = {}) {
