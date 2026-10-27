@@ -454,6 +454,12 @@ export async function mudarVi(env, tel, acao, agora = Date.now()) {
     method: 'POST', headers: sb(env, { Prefer: 'resolution=merge-duplicates,return=minimal' }),
     body: JSON.stringify(waIds.map(w => ({ wa_id: w, ...campos, updated_at: quando }))),
   }), 'sessão da Vi');
+  // Os dois botões desligam a pausa de 24 h. Em 27/10/2026 a Vi respondeu logo depois da Marcelly em 3 conversas e
+  // não havia como saber se foi clique: fica no log da Vi (best effort, não trava o botão).
+  await fetch(`${SB_URL}/rest/v1/wati_ia_log`, {
+    method: 'POST', headers: sb(env, { Prefer: 'return=minimal' }),
+    body: JSON.stringify({ wa_id: waIds[0], direction: 'equipe', content: acao === 'devolver' ? 'Devolver para a Vi pelo painel: pausa desligada' : 'Resolvida pelo painel: pausa desligada' }),
+  }).catch(() => {});
   if (acao === 'resolver') {
     // o resgate de cartão agendado (template) não é resposta da Vi: segue mesmo com a conversa resolvida
     await ok(await fetch(`${SB_URL}/rest/v1/wati_ia_fila?wa_id=in.(${waIds.join(',')})&enviado_at=is.null&template=is.null`, {
