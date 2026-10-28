@@ -3549,6 +3549,8 @@ function revStatus(lista, t) {
   const ped = ((loadLocal('vc:reversas-pedido') || {}).itens || []).find(x => x.id === id);
   const reais = v => 'R$ ' + (Number(v) || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 });
   if (r && r.status === 'carrinho') return { txt: `${r.servico || 'reversa'} ${reais(r.preco)} no carrinho da Frenet: falta pagar`, pode: false, cor: '#b45309' };
+  // A Frenet só libera a reversa depois de registrar a entrega da ida; o robô tenta de novo a cada 30 min (28/10/2026)
+  if (r && r.status === 'aguardando') return { txt: 'robô: esperando a Frenet liberar a reversa (registra a entrega primeiro), tenta de novo sozinho', pode: false, cor: '#b45309' };
   if (r && r.status === 'erro' && !(ped && String(ped.pedido_em) > String(r.em))) return { txt: 'robô: ' + r.erro, pode: true, cor: '#dc2626' };
   if (ped && Date.now() - new Date(ped.pedido_em).getTime() < 72 * 3600000) return { txt: res.aviso ? 'robô: ' + res.aviso : 'reversa na fila do robô', pode: false, cor: 'var(--text-ter)' };
   return { txt: '', pode: true };
