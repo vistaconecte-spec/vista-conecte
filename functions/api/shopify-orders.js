@@ -65,6 +65,7 @@ const PRODUCT_MAP = {
   'Conjunto Chill':                                         'conjunto-canguru-longo',
   // Calças
   'Bermuda Moletom':                                        'bermuda-moletom',
+  'Top Laço':                                               'top-laco',
   'Calça Moletom Pantalona':                                'calca-pantalona',
   'Calça Pantalona Moletom':                                'calca-pantalona',
   'Calça Pantalona':                                        'calca-pantalona-viscolycra',
