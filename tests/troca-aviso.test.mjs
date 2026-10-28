@@ -33,13 +33,14 @@ console.log('\n1) Texto e telefone');
   ok('nunca falou: fora', dentroDaJanela(null, agora), false);
 }
 
-function cenario({ ultima, templateStatus, jaEnviado = false }) {
+function cenario({ ultima, templateStatus, jaEnviado = false, outraPeca = false }) {
   const chamadas = [];
   globalThis.fetch = async (url, opts = {}) => {
     const u = String(url);
     chamadas.push({ u, metodo: opts.method || 'GET', corpo: opts.body });
     if (u.includes('graphql.json')) return new Response(JSON.stringify({ data: { orders: { nodes: [{ name: '#9250', phone: null, shippingAddress: { firstName: 'Lais', name: 'Lais Jarilho', phone: '+55 11 98507-4682' }, customer: null }] } } }));
     if (u.includes('msg_id=eq.')) return new Response(JSON.stringify(jaEnviado ? [{ msg_id: 'x', created_at: '2026-10-20T10:00:00Z' }] : []));
+    if (u.includes('msg_id=like.troca_codigo_') && u.includes('4665143571')) return new Response(JSON.stringify(outraPeca ? [{ msg_id: 'troca_codigo_retorno:p0', created_at: '2026-10-28T20:16:46Z' }] : []));
     if (u.includes('role=eq.user')) return new Response(JSON.stringify(ultima ? [{ wa_id: '5511985074682', created_at: ultima }] : []));
     if (u.includes('/message_templates')) return new Response(JSON.stringify({ data: templateStatus ? [{ name: 'troca_autorizacao_postagem_v1', language: 'pt_BR', status: templateStatus, components: [{ type: 'BODY', text: 'Oii {{1}}, pedido {{2}}, autorização {{3}}, válido até {{4}}.' }] }] : [] }));
     if (/graph\.facebook\.com\/.*\/messages$/.test(u)) return new Response(JSON.stringify({ messages: [{ id: 'wamid.T' }] }));
@@ -77,6 +78,11 @@ console.log('\n2) Envio');
   const ch = cenario({ ultima: new Date().toISOString(), jaEnviado: true });
   const j = await chamar();
   ok('já mandado: não manda de novo', [j.enviado, j.ja_enviado, envios(ch).length], [true, true, 0]);
+}
+{
+  const ch = cenario({ ultima: new Date().toISOString(), outraPeca: true });
+  const j = await chamar();
+  ok('2ª peça com o mesmo código: não manda de novo (Taís #9015, 28/10)', [j.enviado, j.ja_enviado, envios(ch).length], [true, true, 0]);
 }
 
 console.log(falhas ? `\n✗ ${falhas} de ${total} falharam` : `\n✓ TODOS OS TESTES PASSARAM — ${total}/${total}`);

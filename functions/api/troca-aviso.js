@@ -69,6 +69,11 @@ export async function onRequestPost({ env, request }) {
   try {
     const ja = await (await fetch(`${SB_URL}/rest/v1/wati_ia_mensagens?msg_id=eq.${encodeURIComponent(msgId)}&select=msg_id,created_at`, { headers: sbH })).json();
     if (Array.isArray(ja) && ja.length) return json({ enviado: true, ja_enviado: true, em: ja[0].created_at });
+    // Duas peças da mesma troca saem na mesma reversa, com um código só: o aviso vai uma vez por código, não por
+    // peça (Taís #9015 recebeu a mesma mensagem duas vezes em 28/10/2026)
+    const codigoUrl = encodeURIComponent(codigo.replace(/[^\w-]/g, ''));
+    const mesmoCodigo = await (await fetch(`${SB_URL}/rest/v1/wati_ia_mensagens?msg_id=like.troca_codigo_*&texto=like.*${codigoUrl}*&select=msg_id,created_at&limit=1`, { headers: sbH })).json();
+    if (Array.isArray(mesmoCodigo) && mesmoCodigo.length) return json({ enviado: true, ja_enviado: true, em: mesmoCodigo[0].created_at });
 
     const r = await fetch(`https://${env.SHOPIFY_STORE_DOMAIN}/admin/api/${API_VERSION}/graphql.json`, {
       method: 'POST', headers: { 'X-Shopify-Access-Token': env.SHOPIFY_ADMIN_TOKEN, 'Content-Type': 'application/json' },
