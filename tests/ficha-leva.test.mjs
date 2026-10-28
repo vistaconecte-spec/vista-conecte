@@ -163,6 +163,15 @@ ok('e o tecido em branco também vira travessão', valorDe(semDados, 'Tecido'), 
 ok('mas a peça de produção continua mostrando os números dela',
    [valorDe(f1, 'Tecido'), valorDe(f1, 'Consumo / Peça')], ['Moletom', '1.3m']);
 
+
+console.log('\n7b) Cor com peça na leva e fora do cadastro também sai na folha');
+// 28/10/2026: Cropped Frente Única com 2 peças Off White na leva e Off White fora do cadastro
+// saiu com a ficha em branco para o cortador.
+const foraCadastro = await ficha(1, { ...SALVO, prod: { Preto: [0, 0, 0, 0, 0], 'Off White': [0, 0, 1, 1, 0] } });
+ok('a linha da cor fora do cadastro aparece', /Off White/.test(foraCadastro), true);
+ok('e o total conta as 2 peças', /2 peças/.test(foraCadastro), true);
+const zerada = await ficha(1, { ...SALVO, prod: { Preto: [1, 0, 0, 0, 0], Uva: [0, 0, 0, 0, 0] } });
+ok('cor fora do cadastro sem peça não vira linha', /Uva/.test(zerada), false);
 console.log('\n8) Quem decide se é piloto é o grupo PILOTOS da barra lateral');
 // Sem flag nova no modelo: quando o piloto é aprovado a chave muda de grupo e o carimbo
 // some sozinho. Uma flag separada dependeria de alguém lembrar de apagá-la.

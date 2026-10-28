@@ -12256,7 +12256,13 @@ async function gerarFicha(keyArg, levaArg) {
     return rows;
   };
   // Mesma forma que lerRows devolve, só que a partir do mapa salvo {cor: [qtds]}
-  const rowsDeSalvo = mapa => cores.map(cor => {
+  // Cor com peça na leva mas fora do cadastro do modelo também sai na folha (28/10/2026):
+  // a ficha do Cropped Frente Única saiu EM BRANCO com 2 peças Off White na leva, porque só
+  // as cores cadastradas viravam linha, e o cortador recebeu um papel sem nada pra cortar.
+  const mesmaCor = (a, b) => String(a).trim().toLowerCase() === String(b).trim().toLowerCase();
+  const rowsDeSalvo = mapa => [...cores, ...Object.keys(mapa || {}).filter(c =>
+      !cores.some(k => mesmaCor(k, c)) && (mapa[c] || []).some(v => v > 0))
+  ].map(cor => {
     const orig = (mapa && mapa[cor]) || [];
     const vals = Array.from({ length: SZ_FICHA.length }, (_, i) => orig[i] || 0);
     return { cor, vals, tot: vals.reduce((a, b) => a + b, 0) };

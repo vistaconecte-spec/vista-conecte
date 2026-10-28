@@ -110,7 +110,7 @@ const MODELOS = {
 
   'cropped-moletom':{nome:'Cropped Moletom',tecido:'Moletom',consumo:0.8,preco:27.5,componentes:'',obs:'',cores:['Cinza','Preto','Nude','Marrom','Off White','Vermelho'],tamanhos:['PP','P','M','G','GG','G1'],aberto:{'Cinza':[0,0,0,0,0],'Preto':[0,0,0,0,0],'Nude':[0,0,0,0,0],'Marrom':[0,0,0,0,0],'Off White':[0,0,0,0,0],'Vermelho':[0,0,0,0,0]}},
 
-  'cropped-frente-unica':{nome:'Cropped Frente Única',tecido:'Suplex',consumo:0.6,preco:20,componentes:'',obs:'Consumo/preço estimados (mesmo padrão dos outros croppeds) — ajustar quando tiver dado real.',cores:['Royal','Preto','Militar'],aberto:{'Royal':[0,0,0,0,0],'Preto':[0,0,0,0,0],'Militar':[0,0,0,0,0]}},
+  'cropped-frente-unica':{nome:'Cropped Frente Única',tecido:'Suplex',consumo:0.6,preco:20,componentes:'',obs:'Consumo/preço estimados (mesmo padrão dos outros croppeds) — ajustar quando tiver dado real.',cores:['Royal','Preto','Militar','Off White'],aberto:{'Royal':[0,0,0,0,0],'Preto':[0,0,0,0,0],'Militar':[0,0,0,0,0],'Off White':[0,0,0,0,0]}},
   // Par da 'calca-boho' — as duas juntas formam o Conjunto Boho.
   'blusa-boho':{nome:'Blusa Boho',tecido:'Viscose Est.',consumo:1.0,preco:12,componentes:'2 Frentes – 1 Costas',obs:'Modelagem despojada, ombro levemente caído, recortes frontais. Consumo/preço estimados (divididos do conjunto) — ajustar com o dado real.',cores:['Nude','Mescla','Marinho','Cinza Chumbo Mescla'],tamanhos:['PP','P','M','G','GG','G1'],aliasCores:{'Cinza':'Mescla'},corFornecedor:{'Mescla':'Mescla Cinza','Cinza Chumbo Mescla':'Mescla Escuro'},aberto:{'Nude':[0,0,0,0,0,0],'Mescla':[0,0,0,0,0,0],'Marinho':[0,0,0,0,0,0],'Cinza Chumbo Mescla':[0,0,0,0,0,0]}},
 
