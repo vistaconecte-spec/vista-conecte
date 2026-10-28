@@ -66,6 +66,7 @@ const PRODUCT_MAP = {
   // Calças
   'Bermuda Moletom':                                        'bermuda-moletom',
   'Top Laço':                                               'top-laco',
+  'Top Basic':                                              'top-basico',
   'Calça Moletom Pantalona':                                'calca-pantalona',
   'Calça Pantalona Moletom':                                'calca-pantalona',
   'Calça Pantalona':                                        'calca-pantalona-viscolycra',
