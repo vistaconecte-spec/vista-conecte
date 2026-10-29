@@ -220,6 +220,8 @@ console.log('\n9) Etapa no quadro da Devolução (20/10/2026)');
   ok('chegou, crédito em coluna própria (29/10)', D.devEtapa({ id: 'e1', chegou_em: '2026-10-20T10:00:00Z', codigo_devolucao: 'AP1', forma: 'credito' }), 'chegou_credito');
   ok('estorno feito: concluída', D.devEtapa({ id: 'e1', chegou_em: 'x', etapa: 'concluido', estorno_feito_em: 'x' }), 'concluida');
   ok('concluída há 20 dias sai do quadro', D.devNoQuadro({ etapa: 'concluido', estorno_feito_em: new Date(Date.now() - 20 * 864e5).toISOString() }), false);
+  ok('concluída hoje também sai: fica no botão concluídas (29/10)', D.devNoQuadro({ etapa: 'concluido', estorno_feito_em: new Date().toISOString() }), false);
+  ok('aberta continua no quadro', D.devNoQuadro({ id: 'e9', chegou_em: 'x' }), true);
 }
 
 console.log(falhas ? `\n✗ ${falhas} de ${total} falharam` : `\n✓ TODOS OS TESTES PASSARAM — ${total}/${total}`);

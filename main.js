@@ -1934,7 +1934,6 @@ const DEV_ETAPAS = [
   // 29/10/2026 (Bárbara): crédito e dinheiro em colunas separadas, porque o que a equipe faz é diferente
   ['chegou_credito',  'Chegou, crédito',            'conferir e lançar o saldo', '#2f9e8f'],
   ['chegou_dinheiro', 'Chegou, dinheiro de volta',  'conferir e fazer o estorno', '#c99a3c'],
-  ['concluida', 'Concluída',         'saldo lançado ou estorno feito', '#3aa76d'],
 ];
 let _trcSecao = 'trocas';
 function trcSecao(secao) {
@@ -1958,11 +1957,9 @@ function devEtapa(t) {
 }
 // Arquivada = fechada na limpeza de 20/10/2026 (73 pedidos de devolução da Shopify de dez/2025 a ago/2026
 // que ninguém fechou: estorno já feito, virou troca ou antiga sem registro). Sai do quadro e fica na lista de baixo.
+// 29/10/2026 (Bárbara): concluída não ocupa coluna, fica atrás do botão "concluídas", junto das arquivadas
 function devNoQuadro(t) {
-  if (t.arquivada) return false;
-  if (!estConcluida(t)) return true;
-  const em = new Date(t.vale_enviado_em || t.estorno_feito_em || t.etapa_em || t.atualizado_em || 0).getTime();
-  return Date.now() - em < TRC_CONCLUIDA_DIAS * 86400000;
+  return !t.arquivada && !estConcluida(t);
 }
 function devCartaoHtml(t, etapa) {
   const esc = v => String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
@@ -2046,12 +2043,16 @@ function devRenderArquivadas() {
   const box = document.getElementById('dev-arquivadas');
   if (!box) return;
   const esc = v => String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
-  const arq = estGetConfig().itens.filter(t => t.arquivada).sort((a, b) => (estChaveOrdenacao(b, 'data') || 0) - (estChaveOrdenacao(a, 'data') || 0));
+  const dataFim = t => new Date(t.credito_lancado_em || t.estorno_feito_em || t.vale_enviado_em || t.etapa_em || t.atualizado_em || 0).getTime();
+  const arq = estGetConfig().itens.filter(t => t.arquivada || estConcluida(t)).sort((a, b) => dataFim(b) - dataFim(a));
   const aberto = box.open;
+  const dia = v => v ? new Date(v).toLocaleDateString('pt-BR') : '';
+  const como = t => t.motivo_fechamento || (t.credito_lancado_em ? `crédito lançado em ${dia(t.credito_lancado_em)}${t.credito_ate ? ', vale até ' + dia(t.credito_ate) : ''}`
+    : t.estorno_feito_em ? `estorno feito em ${dia(t.estorno_feito_em)}` : t.vale_codigo ? `vale ${t.vale_codigo} enviado` : 'concluída');
   box.style.display = arq.length ? '' : 'none';
-  box.innerHTML = `<summary>Arquivadas · ${arq.length}</summary>` + arq.map(t => `<div class="dev-arq-linha">
-      <div><b>${esc(t.cliente) || '(sem nome)'}</b> · ${esc(revNumeroPedido('estorno', t))} · R$ ${(Number(t.valor) || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })} · ${esc(t.data)}
-        <div class="trc-dica">${esc(t.motivo_fechamento || 'arquivada')}</div></div>
+  box.innerHTML = `<summary><i class="ti ti-archive"></i> concluídas · ${arq.length}</summary>` + arq.map(t => `<div class="dev-arq-linha">
+      <div><b>${esc(t.cliente) || '(sem nome)'}</b> · ${esc(revNumeroPedido('estorno', t))} · ${valeEhCredito(t) ? 'crédito' : 'dinheiro'} R$ ${(Number(t.credito_valor || t.valor) || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+        <div class="trc-dica">${esc(como(t))}</div></div>
       <button class="trc-btn trc-btn-sec" onclick="devReabrir('${t.id}')">reabrir</button>
     </div>`).join('');
   box.open = aberto;
