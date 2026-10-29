@@ -209,13 +209,15 @@ console.log('\n9) Etapa no quadro da Devolução (20/10/2026)');
     const estConcluida = t => t.status === 'resolvido' || t.etapa === 'concluido';
     const revCodigoAtual = L.revCodigoAtual, revStatus = L.revStatus;
     const TRC_CONCLUIDA_DIAS = 15;
+    const valeEhCredito = t => t.forma === 'credito';
     ${main.slice(a, b)}
     return { devEtapa, devNoQuadro };
   `)(L);
   ok('sem nada: pedido feito', D.devEtapa({ id: 'e1', pecas: 'x — pedido #1' }), 'pedido');
   ok('com código da reversa: esperando', D.devEtapa({ id: 'e1', pecas: 'x — pedido #1', codigo_devolucao: '4665143571' }), 'esperando');
   ok('#9250-R1 da Shopify não é código: pedido feito', D.devEtapa({ id: 'e1', pecas: 'x — pedido #1', codigo_devolucao: '#9250-R1' }), 'pedido');
-  ok('chegou', D.devEtapa({ id: 'e1', chegou_em: '2026-10-20T10:00:00Z', codigo_devolucao: 'AP1' }), 'chegou');
+  ok('chegou, dinheiro de volta', D.devEtapa({ id: 'e1', chegou_em: '2026-10-20T10:00:00Z', codigo_devolucao: 'AP1' }), 'chegou_dinheiro');
+  ok('chegou, crédito em coluna própria (29/10)', D.devEtapa({ id: 'e1', chegou_em: '2026-10-20T10:00:00Z', codigo_devolucao: 'AP1', forma: 'credito' }), 'chegou_credito');
   ok('estorno feito: concluída', D.devEtapa({ id: 'e1', chegou_em: 'x', etapa: 'concluido', estorno_feito_em: 'x' }), 'concluida');
   ok('concluída há 20 dias sai do quadro', D.devNoQuadro({ etapa: 'concluido', estorno_feito_em: new Date(Date.now() - 20 * 864e5).toISOString() }), false);
 }

@@ -1931,8 +1931,10 @@ const DEV_ETAPAS = [
   ['pedido',    'Pedido feito',      'pedir a reversa',               '#5b8def'],
   ['pagar',     'Reversa pra pagar', 'pagar no carrinho da Frenet',   '#e0892b'],
   ['esperando', 'Esperando a peça',  'cliente posta com o código',    '#8a63d2'],
-  ['chegou',    'Chegou',            'conferir e fazer vale ou estorno', '#c99a3c'],
-  ['concluida', 'Concluída',         'vale enviado ou estorno feito', '#3aa76d'],
+  // 29/10/2026 (Bárbara): crédito e dinheiro em colunas separadas, porque o que a equipe faz é diferente
+  ['chegou_credito',  'Chegou, crédito',            'conferir e lançar o saldo', '#2f9e8f'],
+  ['chegou_dinheiro', 'Chegou, dinheiro de volta',  'conferir e fazer o estorno', '#c99a3c'],
+  ['concluida', 'Concluída',         'saldo lançado ou estorno feito', '#3aa76d'],
 ];
 let _trcSecao = 'trocas';
 function trcSecao(secao) {
@@ -1948,7 +1950,7 @@ function trcSecao(secao) {
 }
 function devEtapa(t) {
   if (estConcluida(t)) return 'concluida';
-  if (t.chegou_em || t.data_chegada_reversa) return 'chegou';
+  if (t.chegou_em || t.data_chegada_reversa) return valeEhCredito(t) ? 'chegou_credito' : 'chegou_dinheiro';
   if (revCodigoAtual('estorno', t)) return 'esperando';
   const st = revStatus('estorno', t);
   if (st.txt && !st.pode) return 'pagar';
@@ -1991,7 +1993,7 @@ function devCartaoHtml(t, etapa) {
       + (venc ? `<div class="trc-aviso" style="color:${venc.cor}"><i class="ti ti-clock-exclamation"></i> ${esc(venc.txt)}</div>` : '')
       + trcAvisoHtml(t, 'estorno')
       + btn(`valeChegou('${t.id}')`, 'ti-package-import', 'chegou');
-  } else if (etapa === 'chegou') {
+  } else if (etapa === 'chegou_credito' || etapa === 'chegou_dinheiro') {
     const quando = t.chegou_em ? new Date(t.chegou_em).toLocaleDateString('pt-BR') : '';
     acao = t.chegada_por_rastreio
       ? `<div class="trc-aviso" style="color:#c99a3c"><i class="ti ti-package"></i> entregue pelos Correios em ${esc(quando)}, abra e confira</div>`
@@ -2030,7 +2032,7 @@ function devRender() {
   }).join('');
   devRenderArquivadas();
   const abertas = itens.filter(x => !estConcluida(x.t));
-  const pend = abertas.filter(x => x.etapa === 'chegou' && !valeEhCredito(x.t));
+  const pend = abertas.filter(x => x.etapa === 'chegou_dinheiro');
   const el = document.getElementById('dev-resumo');
   if (el) el.textContent = `${abertas.length} em aberto` + (pend.length ? ` · ${pend.length} estorno${pend.length > 1 ? 's' : ''} pendente${pend.length > 1 ? 's' : ''} com a Bárbara (${pend.reduce((s, x) => s + (Number(x.t.valor) || 0), 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })})` : '');
 }
