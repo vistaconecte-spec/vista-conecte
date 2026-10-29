@@ -1699,6 +1699,26 @@ function trcNoQuadro(t) {
   const em = new Date(t.resolvido_em || t.atualizado_em || 0).getTime();
   return Date.now() - em < TRC_CONCLUIDA_DIAS * 86400000;
 }
+// Onde está a peça nova do pedido de troca (29/10/2026, Bárbara: "o status já deveria constar no
+// card"). Mesma conta do Assistente (csSituacaoProducao): pronta, separada esperando a antiga, ou
+// qual peça falta e em que etapa da produção. Some quando a troca já foi enviada.
+function trcProducaoHtml(t) {
+  const esc = v => String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+  const n = String(t.pedido_troca || '').replace(/\D/g, '');
+  if (!n || t.status === 'resolvido' || t.pedido_troca_enviado || String(t.codigo_reenvio || '').trim()) return '';
+  if (!window._pedidosPendentes && !window._prontosEnvio) return '<div class="trc-dica">o status da peça nova aparece quando os pedidos carregarem</div>';
+  const linha = (cor, ico, txt) => `<div class="trc-pt" style="color:${cor}"><i class="ti ${ico}"></i> ${txt}</div>`;
+  if ((window._aguardandoTroca || []).some(p => String(p.numero || '').replace(/\D/g, '') === n))
+    return linha('#3aa76d', 'ti-package', 'peça nova separada, sai depois do conferido');
+  let sp; try { sp = csSituacaoProducao(n); } catch (_) { return ''; }
+  if (!sp || sp.aviso) return '';
+  if (/pronto para envio/.test(sp.situacao || '')) return linha('#3aa76d', 'ti-truck', 'peça nova pronta, esperando a etiqueta');
+  if (sp.faltas && sp.faltas.length)
+    return sp.faltas.map(f => f.em_producao
+      ? linha('#5a3e9e', 'ti-scissors', `${esc(f.peca)} em produção, ${esc(f.etapa_interna)}`)
+      : linha('#dc2626', 'ti-alert-triangle', `${esc(f.peca)} não está na produção`)).join('');
+  return '';
+}
 function trcCartaoHtml(t, etapa) {
   const esc = v => String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
   const dias = retDiasNaFila(t);
@@ -1751,6 +1771,7 @@ function trcCartaoHtml(t, etapa) {
     <div class="trc-prod" title="${esc(t.produtos)}">${esc(t.produtos)}</div>
     ${t.pedido_troca && !t.pedido_troca_manual ? `<div class="trc-pt"><i class="ti ${t.conferido_em ? 'ti-lock-open' : 'ti-lock'}"></i> peça nova no pedido <b>${esc(t.pedido_troca)}</b>${t.conferido_em ? ' (liberado)' : ' (travado)'}${t.pedido_troca_envio ? ', ' + esc(t.pedido_troca_envio) : ''}</div>` : ''}
     ${t.pedido_troca_manual ? `<div class="trc-pt" style="color:${t.pedido_troca_enviado ? '#3aa76d' : '#5a3e9e'}"><i class="ti ti-file-check"></i> pedido de troca <b>${esc(t.pedido_troca)}</b> ${t.pedido_troca_enviado ? 'enviado' : (t.pedido_troca_envio ? esc(t.pedido_troca_envio) : 'criado, ainda não enviado')}</div>` : ''}
+    ${trcProducaoHtml(t)}
     ${!t.portal_id && t.pedido_troca_ausente && !t.pedido_troca ? `<div class="trc-pt" style="color:#dc2626"><i class="ti ti-alert-triangle"></i> sem pedido de troca na Shopify: a Marcelly precisa criar</div>` : ''}
     ${!t.pedido_troca && t.erro_pedido_troca ? `<div class="trc-pt" style="color:#dc2626" title="${esc(t.erro_pedido_troca)}"><i class="ti ti-alert-triangle"></i> pedido de troca não foi criado ${btn(`trcCriarPedido('${t.id}', this)`, 'ti-plus', 'criar agora')}</div>` : ''}
     <div class="trc-acao">${acao}</div>
@@ -10879,6 +10900,7 @@ function renderProntosParaEnvio() {
   }
 
   window._pedidosPendentes = pendentes;
+  window._aguardandoTroca = aguardandoTroca; // o cartão da troca mostra a peça nova separada
   window._prontosEnvio = prontos; // a janela GERAR ETIQUETAS parte desta mesma lista
   renderPedidosParados();
   renderPedidosGrandes(prontos, pendentes, GRANDE_MIN);
