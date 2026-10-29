@@ -121,7 +121,7 @@ async function lancarCredito(env, gql, b, numero) {
     await gql(M_TAG, { id: o.id, tags: [tag] }).catch(() => {});
     const saldo = Number(r.storeCreditAccountTransaction?.account?.balance?.amount) || null;
     const mensagem = mensagemCredito({ nome, pedido: o.name, valor: v.valor, ate });
-    const whatsapp = await avisarNaConversa(env, { tel: o.shippingAddress?.phone || o.phone, mensagem, msgId: 'credito_' + String(b.item_id).replace(/[^\w:-]/g, ''), pedido: o.name, valor: v.valor });
+    const whatsapp = await avisarNaConversa(env, { tel: o.shippingAddress?.phone || o.phone, mensagem, msgId: 'credito_' + String(b.item_id).replace(/[^\w:-]/g, ''), pedido: o.name, valor: v.valor, pecas: String(b.pecas || '').slice(0, 300) });
     return json({ ok: true, valor: v.valor, ate: ate.toISOString(), saldo, cadastro_criado: cadastroCriado, mensagem, whatsapp });
   } catch (e) {
     return json({ erro: e.message }, 502);
@@ -130,7 +130,9 @@ async function lancarCredito(env, gql, b, numero) {
 
 // Só dentro das 24 h da conversa (texto livre); fora disso a mensagem volta para a Marcelly.
 // A Shopify já manda o e-mail do crédito de qualquer jeito (notify: true).
-async function avisarNaConversa(env, { tel, mensagem, msgId, pedido, valor }) {
+// pecas (29/10/2026): a Vi indicou à Larissa #8986 a mesma calça que ela tinha devolvido, porque o
+// histórico só dizia o número do pedido. Agora o registro interno diz qual peça voltou.
+async function avisarNaConversa(env, { tel, mensagem, msgId, pedido, valor, pecas }) {
   if (!env.SUPABASE_SERVICE_ROLE_KEY || !(env.WA_TOKEN || env.META_ACCESS_TOKEN)) return { enviado: false, motivo: 'sem_configuracao' };
   const vars = variantesWa(tel);
   if (!vars.length) return { enviado: false, motivo: 'sem_telefone' };
@@ -145,7 +147,7 @@ async function avisarNaConversa(env, { tel, mensagem, msgId, pedido, valor }) {
     await fetch(`${SB_URL}/rest/v1/wati_ia_mensagens`, {
       method: 'POST', headers: { ...sbH, Prefer: 'return=minimal' },
       body: JSON.stringify({ msg_id: msgId, wa_id: ultima.wa_id, role: 'assistant', texto: `${mensagem}
-[contexto interno: crédito na loja de R$ ${valor} lançado na conta dela pelo pedido ${pedido}, depois que a peça chegou e foi conferida. Ele aparece no pagamento quando ela entra com o e-mail da compra.]` }),
+[contexto interno: crédito na loja de R$ ${valor} lançado na conta dela pelo pedido ${pedido}, depois que a peça chegou e foi conferida.${pecas ? ` Peça que voltou: ${pecas}. Se ela pedir outra parecida, não indique essa mesma peça.` : ''} Ele aparece no pagamento quando ela entra com o e-mail da compra.]` }),
     }).catch(() => {});
     return { enviado: true };
   } catch (e) {

@@ -3686,7 +3686,7 @@ async function valeCredito(id, btn) {
 Vai entrar ${reais(t.valor)} de saldo na conta de ${t.cliente || 'a cliente'}, válido por 90 dias.`)) return;
   if (btn) { btn.disabled = true; btn.innerHTML = '<i class="ti ti-loader"></i> lançando...'; }
   try {
-    const r = await fetch('/api/vale-troca', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ acao: 'credito', pedido, item_id: id, valor: t.valor, cliente: t.cliente }) });
+    const r = await fetch('/api/vale-troca', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ acao: 'credito', pedido, item_id: id, valor: t.valor, cliente: t.cliente, pecas: t.pecas }) });
     const j = await r.json();
     if (!r.ok || !j.ok) throw new Error(j.erro || 'HTTP ' + r.status);
     const agora = new Date().toISOString();
