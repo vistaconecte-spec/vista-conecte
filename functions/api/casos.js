@@ -8,6 +8,7 @@
 //
 //   GET  /api/casos?estado=1        → { so_leitura, aprovacoes_pendentes }   (barato, sem IA)
 //   GET  /api/casos?aprovacoes=1    → lista de aprovações (fila da Bárbara)
+//   GET  /api/casos?abertos=1       → casos abertos do CRM da Vi (botão "Casos em aberto", sem IA)
 //   POST { acao:'assistente', messages }        → resposta do modelo (content, stop_reason)
 //   POST { acao:'ferramenta', nome, input }     → resultado de uma ferramenta do servidor
 //   POST { acao:'executar', tipo, ... }         → botão confirmado (em só leitura só simula)
@@ -19,7 +20,7 @@
 import {
   soLeitura, MODELO, DOC_LOG, TEMPLATE_CONTINUIDADE, TEMPLATE_ALERTA, CATEGORIAS_DINHEIRO,
   SISTEMA, FERRAMENTAS, FERRAMENTAS_SERVIDOR, problemasDoTexto, prometeDinheiro, janelaAberta, revisarResposta,
-  semResposta, promessasDaEquipe, pagoPorItem, numerosDePedido, prazoDoPedido, logVazio, podeFechar, podeFecharPelaConversa, aprovacaoLiberada, novoId,
+  semResposta, promessasDaEquipe, pagoPorItem, numerosDePedido, prazoDoPedido, logVazio, podeFechar, podeFecharPelaConversa, casoDeDinheiro, aprovacaoLiberada, novoId,
   primeiroNome, finalTel, resumoDoCaso, conversaParaAssistente, hojeTexto, brt, metaParaMsg,
 } from '../_casos.js';
 import { variantes, mesclar, enviarTextoDaLoja, enviarArquivoDaLoja, enviarModeloDaLoja } from '../_whatsapp.js';
@@ -384,7 +385,7 @@ async function executar(env, b, agora = Date.now()) {
     simulacao = 'o caso ' + casoId + ' seria fechado';
     if (soLeitura(env)) return { ok: false, so_leitura: true, simulacao };
     await db.send('PATCH', `wati_sac_casos?id=eq.${casoId}&status=eq.aberto`, { status: 'resolvido', atualizado_at: new Date(agora).toISOString() }, 'return=minimal');
-    await registrar(env, { caso_id: casoId, tipo: 'fechar', texto: 'Fechado junto com a conversa (Resolvida no Vi - atendimento)', em: new Date(agora).toISOString() });
+    await registrar(env, { caso_id: casoId, tipo: 'fechar', texto: texto || 'Fechado junto com a conversa (Resolvida no Vi - atendimento)', em: new Date(agora).toISOString() });
     return { ok: true, feito: 'caso fechado' };
   }
 
@@ -457,6 +458,11 @@ export async function onRequestGet({ request, env }) {
   try {
     const log = await lerLog(env);
     const abertas = log.aprovacoes.filter(a => a.status === 'pendente' || a.status === 'aprovado');
+    // Botão "Casos em aberto" no topo do Assistente (30/10/2026): lista direta do CRM da Vi, sem passar pela IA.
+    if (u.searchParams.get('abertos')) {
+      const casos = await sb(env).get('wati_sac_casos?status=eq.aberto&order=criado_at.asc&limit=300&select=id,wa_id,nome,tipo,pedido,resumo,criado_at,status,responsavel');
+      return J({ casos: casos.map(c => ({ ...resumoDoCaso(c), dinheiro: casoDeDinheiro(c), pode_fechar: podeFecharPelaConversa(c, log).ok })) });
+    }
     if (u.searchParams.get('aprovacoes')) {
       return J({ so_leitura: soLeitura(env), aprovacoes: log.aprovacoes.slice(-60).reverse() });
     }

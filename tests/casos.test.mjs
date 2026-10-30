@@ -331,6 +331,13 @@ ok('pedido de dinheiro com a Bárbara segura', C.podeFecharPelaConversa({ id: 74
 const wa = readFileSync(join(raiz, 'whatsapp.html'), 'utf8');
 ok('tela mostra os casos depois do Resolvida e fecha pelo fechar_conversa', /desenharCasos\(d\.casos/.test(wa) && /tipo: 'fechar_conversa'/.test(wa), true);
 
+console.log('\nBotão "Casos em aberto" no topo do Assistente (30/10/2026)');
+const apiTxt = readFileSync(join(raiz, 'functions', 'api', 'casos.js'), 'utf8');
+ok('rota ?abertos=1 lê o CRM sem IA e marca dinheiro', /searchParams\.get\('abertos'\)/.test(apiTxt) && /dinheiro: casoDeDinheiro\(c\), pode_fechar: podeFecharPelaConversa\(c, log\)\.ok/.test(apiTxt), true);
+ok('botão no topo ao lado do Aguardando Bárbara', /id="cs-btn-abertos"[^>]*onclick="csAbrirAbertos\(\)"/.test(html) && html.indexOf('id="cs-btn-abertos"') < html.indexOf('id="cs-btn-apv"'), true);
+ok('Fechar só aparece quando pode fechar', /\$\{c\.pode_fechar \? `<button[^`]*csFecharDaLista/.test(main), true);
+ok('Abrir manda o caso para o chat', /function csAbrirCaso\(id\) \{[\s\S]{0,160}'Abre o caso ' \+ id;[\s\S]{0,20}csEnviar\(\);/.test(main), true);
+
 ok('rota fora do PUBLICO (exige sessão)', /PUBLICO = new Set\([^)]*casos/.test(mid), false);
 
 console.log(`\n${total - falhas}/${total} passaram`);

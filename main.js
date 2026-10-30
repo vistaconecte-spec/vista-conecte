@@ -2738,10 +2738,70 @@ async function csRodar() {
   }
 }
 
+// Botão "Casos em aberto" (Bárbara, 30/10/2026): a lista inteira do CRM da Vi, do mais antigo para o mais novo,
+// direto do servidor e sem IA. Abrir manda o caso para o chat; Fechar vale para o que acabou (dinheiro fica com a Bárbara).
+async function csAbrirAbertos() {
+  const box = document.getElementById('cs-abertos');
+  if (!box.hidden) { box.hidden = true; return; }
+  document.getElementById('cs-apv').hidden = true;
+  box.hidden = false;
+  box.innerHTML = '<div style="font-size:12px;color:var(--text-sec)">carregando...</div>';
+  try {
+    const r = await fetch('/api/casos?abertos=1');
+    if (r.status === 401 || r.status === 403) { sessaoExpirou(); return; }
+    const d = await r.json();
+    if (d.erro) throw new Error(d.erro);
+    const casos = d.casos || [];
+    const btn = document.getElementById('cs-btn-abertos');
+    if (btn) btn.innerHTML = `<i class="ti ti-list-details"></i> Casos em aberto <b>(${casos.length})</b>`;
+    if (!casos.length) { box.innerHTML = '<div style="font-size:12px;color:var(--text-ter)">Nenhum caso aberto.</div>'; return; }
+    box.innerHTML = `<div style="max-height:46vh;overflow-y:auto;padding-right:4px">` + casos.map(c => `
+      <div id="cs-ab-${c.caso_id}" style="padding:9px 12px;border:1px solid var(--border);border-radius:10px;margin-bottom:6px;font-size:12.5px;background:rgba(255,255,255,.6)">
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:baseline">
+          <b>#${c.caso_id} ${csEsc(c.cliente)}</b>
+          ${c.pedido ? `<span>pedido ${csEsc(c.pedido)}</span>` : ''}
+          <span style="color:var(--text-sec)">${csEsc(c.tipo)}</span>
+          <span style="color:${c.aberto_ha_dias >= 7 ? '#dc2626' : 'var(--text-ter)'};font-weight:600">${c.aberto_ha_dias === 0 ? 'hoje' : `há ${c.aberto_ha_dias} dia${c.aberto_ha_dias > 1 ? 's' : ''}`}</span>
+          ${c.dinheiro ? '<span style="font-size:10px;font-weight:700;color:#b45309">DINHEIRO</span>' : ''}
+          <span style="margin-left:auto;display:flex;gap:6px">
+            <button class="btn-outline" style="font-size:11px;padding:3px 10px" onclick="csAbrirCaso(${c.caso_id})">Abrir no assistente</button>
+            ${c.pode_fechar ? `<button class="btn-outline" style="font-size:11px;padding:3px 10px" onclick="csFecharDaLista(${c.caso_id})">Fechar</button>` : ''}
+          </span>
+        </div>
+        <div style="margin-top:3px;color:var(--text-sec)">${csEsc(c.resumo)}</div>
+      </div>`).join('') + '</div>';
+  } catch (e) { box.innerHTML = `<div style="font-size:12px;color:#b91c1c">falhou: ${csEsc(e.message)}</div>`; }
+}
+
+function csAbrirCaso(id) {
+  document.getElementById('cs-abertos').hidden = true;
+  const el = document.getElementById('cs-input');
+  el.value = 'Abre o caso ' + id;
+  csEnviar();
+}
+
+async function csFecharDaLista(id) {
+  if (!confirm('Fechar o caso ' + id + '? Só feche se não falta mais nada para essa cliente.')) return;
+  try {
+    const r = await fetch('/api/casos', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ acao: 'executar', tipo: 'fechar_conversa', caso_id: id, texto: 'Fechado pela lista de casos em aberto do Assistente' }) });
+    if (r.status === 401 || r.status === 403) { sessaoExpirou(); return; }
+    const d = await r.json().catch(() => ({}));
+    if (d.so_leitura) { alert('Modo só leitura: nada foi gravado.'); return; }
+    if (!d.ok) { alert(d.erro || 'não deu certo'); return; }
+    const linha = document.getElementById('cs-ab-' + id);
+    if (linha) linha.remove();
+    const btn = document.getElementById('cs-btn-abertos');
+    const n = document.querySelectorAll('#cs-abertos [id^="cs-ab-"]').length;
+    if (btn) btn.innerHTML = `<i class="ti ti-list-details"></i> Casos em aberto <b>(${n})</b>`;
+  } catch (e) { alert('falhou: ' + e.message); }
+}
+
 // Fila "Aguardando Bárbara": ela aprova ou recusa; aprovado volta para a Marcelly fazer e marcar feito.
 async function csAbrirAprovacoes() {
   const box = document.getElementById('cs-apv');
   if (!box.hidden) { box.hidden = true; return; }
+  document.getElementById('cs-abertos').hidden = true;
   box.hidden = false;
   box.innerHTML = '<div style="font-size:12px;color:var(--text-sec)">carregando...</div>';
   try {
