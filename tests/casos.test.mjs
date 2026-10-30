@@ -262,7 +262,7 @@ ok('negrito e tópicos viram formatação', csMd('**Fazer agora**\n- **Karina**,
   '<div><b>Fazer agora</b></div><ul style="margin:2px 0 8px;padding-left:20px"><li style="margin:3px 0"><b>Karina</b>, #8893 parado</li><li style="margin:3px 0">outra</li></ul>');
 ok('passos numerados viram lista', /<ol[^>]*><li[^>]*>abrir<\/li><li[^>]*>mandar<\/li><\/ol>/.test(csMd('1. abrir\n2. mandar')), true);
 ok('texto da cliente não vira HTML', csMd('- <img src=x onerror=alert(1)> **oi**').includes('<img'), false);
-ok('bolha do assistente usa a formatação', main.includes("div.innerHTML = csMd(texto)"), true);
+ok('bolha do assistente usa a formatação', main.includes("div.innerHTML = csCartaoStatus(status) + csMd(texto)"), true);
 ok('instrução pede tópicos e próximo passo', /sempre em tópicos/.test(C.SISTEMA) && /próximo passo concreto/.test(C.SISTEMA), true);
 console.log('\n7b) Conversa não some quando a página recarrega');
 ok('abrir a aba redesenha a conversa salva antes de mostrar vazio', main.includes("!chat.children.length && !csRestaurar()"), true);
@@ -340,18 +340,21 @@ ok('a contagem já vem no estado e aparece no botão ao abrir', /casos_abertos: 
 ok('Abrir manda o caso para o chat', /function csAbrirCaso\(id\) \{[\s\S]{0,160}'Abre o caso ' \+ id;[\s\S]{0,20}csEnviar\(\);/.test(main), true);
 
 console.log('\nCaso aberto sempre diz se o pedido foi processado e a etapa da peça (Bárbara, 30/10/2026, caso 661)');
-ok('Quadro começa pela linha Pedido com o status_curto', /Quadro" que SEMPRE começa pela linha "Pedido:" com o status_curto/.test(C.SISTEMA), true);
+ok('status vai num cartão fixo e a IA não repete', /cartão fixo da tela acima da sua resposta: NÃO escreva status/.test(C.SISTEMA), true);
+ok('caso curto: Quadro e O que fazer com no máximo 3', /\*\*Quadro\*\*: no máximo 3 itens/.test(C.SISTEMA) && /\*\*O que fazer\*\*: no máximo 3 passos/.test(C.SISTEMA), true);
+ok('a resposta desenha o cartão e guarda para recarregar', /div\.innerHTML = csCartaoStatus\(status\) \+ csMd\(texto\)/.test(main) && /csBolha\(b\.quem, b\.texto, b\.acoes, b\.res, b\.status\)/.test(main), true);
 {
-  const ini = main.indexOf('function csStatusCurto(');
-  const statusCurto = new Function(main.slice(ini, main.indexOf('\n}\n', ini) + 2) + 'return csStatusCurto;')();
-  ok('enviado', statusCurto({ numero: '#9269', pagamento: 'paid', envio: 'fulfilled', etiquetas: [{ em: '2026-10-22T15:00:00Z', transportadora: 'Outra', rastreio: 'AE058992551BR' }] }),
-    '#9269: processado, enviado (etiqueta de 22/10 Outra, rastreio AE058992551BR).');
+  const ini = main.indexOf('function csStatusPedido(');
+  const fim = main.indexOf('function csCartaoStatus(');
+  const { statusPedido, statusCurto } = new Function(main.slice(ini, fim) + 'return { statusPedido: csStatusPedido, statusCurto: csStatusCurto };')();
+  ok('enviado', statusPedido({ numero: '#9269', pagamento: 'paid', envio: 'fulfilled', etiquetas: [{ em: '2026-10-22T15:00:00Z', transportadora: 'Outra', rastreio: 'AE058992551BR' }] }),
+    { numero: '#9269', rotulo: 'ENVIADO', cor: 'verde', detalhe: '22/10 · Outra · AE058992551BR', pecas: [] });
   ok('pronto e não enviado', statusCurto({ numero: '#9400', pagamento: 'paid', envio: 'não enviado' }, { situacao: 'pronto para envio' }),
-    '#9400: não processado, mas pronto para envio, todas as peças estão no estoque.');
-  ok('esperando peça com a etapa', statusCurto({ numero: '#9177', pagamento: 'paid', envio: 'não enviado' },
-    { situacao: 'esperando peça', faltas: [{ peca: 'Macacão Amplo Off White P', faltam: 1, em_producao: true, etapa_interna: 'COSTURA' }, { peca: 'Vestido Amplo Preto P', faltam: 2, em_producao: false }] }),
-    '#9177: não processado, esperando peça. Macacão Amplo Off White P em COSTURA; Vestido Amplo Preto P x2 não está na produção; o resto já está no estoque.');
-  ok('cancelado', statusCurto({ numero: '#9001', cancelado_em: '2026-10-10T12:00:00Z', envio: 'não enviado' }), '#9001: cancelado em 10/10.');
+    '#9400: não enviado, pronto para envio, todas as peças no estoque.');
+  ok('esperando peça com a etapa de cada peça', statusPedido({ numero: '#9177', pagamento: 'paid', envio: 'não enviado' },
+    { situacao: 'esperando peça', faltas: [{ peca: 'Macacão Amplo Off White P', faltam: 1, em_producao: true, etapa_interna: 'COSTURA' }, { peca: 'Vestido Amplo Preto P', faltam: 2, em_producao: false }] }).pecas,
+    ['Macacão Amplo Off White P: COSTURA', 'Vestido Amplo Preto P x2: não está na produção', 'demais peças no estoque']);
+  ok('cancelado', statusCurto({ numero: '#9001', cancelado_em: '2026-10-10T12:00:00Z', envio: 'não enviado' }), '#9001: cancelado, em 10/10.');
 }
 
 ok('rota fora do PUBLICO (exige sessão)', /PUBLICO = new Set\([^)]*casos/.test(mid), false);

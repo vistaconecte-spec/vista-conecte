@@ -2356,7 +2356,7 @@ function csRestaurar() {
   csSanear();
   csBolhas = [];
   document.getElementById('cs-chat').innerHTML = '';
-  g.bolhas.forEach(b => csBolha(b.quem, b.texto, b.acoes, b.res));
+  g.bolhas.forEach(b => csBolha(b.quem, b.texto, b.acoes, b.res, b.status));
   return true;
 }
 
@@ -2450,9 +2450,9 @@ function csMd(t) {
 }
 
 // `res` = o que cada botão desta fala já fez (vem do aparelho quando a conversa é redesenhada).
-function csBolha(quem, texto, acoes, res) {
+function csBolha(quem, texto, acoes, res, status) {
   const bi = csBolhas.length;
-  csBolhas.push({ quem, texto, acoes: acoes || [], res: res || {} });
+  csBolhas.push({ quem, texto, acoes: acoes || [], res: res || {}, status: status || [] });
   const chat = document.getElementById('cs-chat');
   const v = document.getElementById('cs-vazio'); if (v) v.remove();
   const div = document.createElement('div');
@@ -2462,7 +2462,7 @@ function csBolha(quem, texto, acoes, res) {
     erro: 'align-self:flex-start;background:rgba(220,38,38,.08);color:#b91c1c;border:1px solid rgba(220,38,38,.25)',
   }[quem];
   div.style.cssText = `max-width:88%;padding:10px 13px;border-radius:14px;font-size:13.5px;line-height:1.5;white-space:pre-wrap;word-break:break-word;${estilo}`;
-  if (quem === 'assistente') { div.style.whiteSpace = 'normal'; div.innerHTML = csMd(texto); }
+  if (quem === 'assistente') { div.style.whiteSpace = 'normal'; div.innerHTML = csCartaoStatus(status) + csMd(texto); }
   else div.innerHTML = csEsc(texto);
   (acoes || []).forEach((a, ai) => {
     const box = csCartaoAcao(a, bi, ai);
@@ -2599,28 +2599,39 @@ function csProducaoCurta(numero) {
   return 'não está nos pagos em aberto (enviado, não pago ou cancelado)';
 }
 
-// Uma linha pronta com o pedido: processado (enviado) ou não e, se não, onde está cada peça que falta.
-// Pedido da Bárbara (30/10/2026, caso 661): o caso aberto tem que dizer isso SEMPRE e resumido, então a
-// frase sai daqui, do dado da Shopify + estoque real, e o assistente só copia (não depende de ele lembrar).
-function csStatusCurto(p, sit) {
+// Status do pedido: processado (enviado) ou não e, se não, a etapa de cada peça que falta.
+// Pedido da Bárbara (30/10/2026, casos 661 e 708): todo caso mostra isso SEMPRE e resumido. Sai daqui, do dado
+// da Shopify + estoque real, e vira o cartão fixo STATUS DO PEDIDO no topo da resposta (csCartaoStatus); a IA
+// não escreve nem repete (no meio do texto dela a linha se perdia).
+function csStatusPedido(p, sit) {
   const dm = iso => iso ? new Date(iso).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }) : '';
-  const etq = (p.etiquetas || []).filter(e => e.rastreio || e.em);
-  const envios = etq.map(e => `etiqueta de ${dm(e.em)}${e.transportadora ? ' ' + e.transportadora : ''}${e.rastreio ? ', rastreio ' + e.rastreio : ''}`).join('; ');
-  const faltas = s => (s && s.faltas || []).map(f => `${f.peca}${f.faltam > 1 ? ' x' + f.faltam : ''} ${f.em_producao ? 'em ' + f.etapa_interna : 'não está na produção'}`).join('; ');
-  if (p.cancelado_em) return `${p.numero}: cancelado em ${dm(p.cancelado_em)}.`;
-  if (p.pagamento && !['paid', 'partially_refunded'].includes(p.pagamento)) return `${p.numero}: não pago (${p.pagamento}).`;
-  if (p.envio === 'fulfilled') return `${p.numero}: processado, enviado (${envios || 'sem rastreio na Shopify'}).`;
-  if (p.envio === 'partial') {
-    const f = faltas(sit);
-    return `${p.numero}: enviado em parte (${envios || 'sem rastreio'}).${f ? ' Falta ' + f + '.' : ''}`;
-  }
-  if (!sit || !sit.situacao) return `${p.numero}: não processado, ainda não enviado (status da peça indisponível nesta tela).`;
-  if (sit.situacao === 'pronto para envio') return `${p.numero}: não processado, mas pronto para envio, todas as peças estão no estoque.`;
-  if (sit.faltas) {
-    return `${p.numero}: não processado, esperando peça. ${faltas(sit)}; o resto já está no estoque.`
-      + (sit.troca_de_etiqueta ? ' Sai hoje trocando a etiqueta.' : '');
-  }
-  return `${p.numero}: não processado, ainda não enviado.`;
+  const envios = (p.etiquetas || []).filter(e => e.rastreio || e.em)
+    .map(e => [dm(e.em), e.transportadora, e.rastreio].filter(Boolean).join(' · ')).join(' | ');
+  const pecas = s => (s && s.faltas || []).map(f => `${f.peca}${f.faltam > 1 ? ' x' + f.faltam : ''}: ${f.em_producao ? f.etapa_interna : 'não está na produção'}`);
+  const st = (rotulo, cor, detalhe, lista) => ({ numero: p.numero, rotulo, cor, detalhe: detalhe || '', pecas: lista || [] });
+  if (p.cancelado_em) return st('CANCELADO', 'cinza', 'em ' + dm(p.cancelado_em));
+  if (p.pagamento && !['paid', 'partially_refunded'].includes(p.pagamento)) return st('NÃO PAGO', 'cinza', p.pagamento);
+  if (p.envio === 'fulfilled') return st('ENVIADO', 'verde', envios || 'sem rastreio na Shopify');
+  if (p.envio === 'partial') { const l = pecas(sit); return st('ENVIADO EM PARTE', 'laranja', envios || 'sem rastreio', l.length ? [...l, 'o resto já saiu'] : []); }
+  if (!sit || !sit.situacao) return st('NÃO ENVIADO', 'laranja', 'etapa das peças indisponível nesta tela');
+  if (sit.situacao === 'pronto para envio') return st('NÃO ENVIADO', 'verde', 'pronto para envio, todas as peças no estoque');
+  if (sit.faltas) return st('NÃO ENVIADO', 'vermelho', 'esperando peça' + (sit.troca_de_etiqueta ? ', sai hoje trocando a etiqueta' : ''),
+    [...pecas(sit), 'demais peças no estoque']);
+  return st('NÃO ENVIADO', 'laranja', '');
+}
+function csStatusCurto(p, sit) {
+  const s = csStatusPedido(p, sit);
+  return `${s.numero}: ${s.rotulo.toLowerCase()}${s.detalhe ? ', ' + s.detalhe : ''}.${s.pecas.length ? ' ' + s.pecas.join('; ') + '.' : ''}`;
+}
+function csCartaoStatus(lista) {
+  if (!lista || !lista.length) return '';
+  const cor = { verde: '#16a34a', laranja: '#b45309', vermelho: '#dc2626', cinza: '#6b7280' };
+  return `<div style="border:1px solid var(--border);border-radius:10px;padding:8px 11px;margin-bottom:10px;background:rgba(255,255,255,.9)">
+    <div style="font-size:10px;font-weight:800;letter-spacing:.08em;color:var(--text-ter);margin-bottom:4px">STATUS DO PEDIDO</div>`
+    + lista.map(s => `<div style="padding:2px 0"><b>${csEsc(s.numero)}</b> <span style="font-weight:800;color:${cor[s.cor] || 'inherit'}">${csEsc(s.rotulo)}</span>`
+      + `${s.detalhe ? ` <span style="color:var(--text-sec)">· ${csEsc(s.detalhe)}</span>` : ''}`
+      + s.pecas.map(x => `<div style="padding-left:14px;color:var(--text-sec)">${csEsc(x)}</div>`).join('') + '</div>').join('')
+    + '</div>';
 }
 
 // As ferramentas do servidor não enxergam o estoque real; a tela junta o status da peça
@@ -2628,7 +2639,12 @@ function csStatusCurto(p, sit) {
 function csEnriquecer(nome, out) {
   try {
     const num = v => (String(v || '').match(/\d{4,5}/) || [])[0];
-    const juntar = p => { const n = num(p.numero); if (!n) return; p.producao = csSituacaoProducao(n); p.status_curto = csStatusCurto(p, p.producao); };
+    const juntar = p => {
+      const n = num(p.numero); if (!n) return;
+      p.producao = csSituacaoProducao(n);
+      p.status_curto = csStatusCurto(p, p.producao);
+      csStatusTurno.set(n, csStatusPedido(p, p.producao)); // vira o cartão STATUS DO PEDIDO desta resposta
+    };
     if (nome === 'pendencias_do_dia' && out && out.casos_abertos)
       out.casos_abertos.forEach(c => { const n = num(c.pedido); if (n) c.producao = csProducaoCurta(n); });
     if (nome === 'abrir_caso' && out && out.pedidos)
@@ -2709,8 +2725,10 @@ function csSituacaoProducao(numero) {
   return { numero: n, situacao: 'não está entre os pedidos pagos ainda não enviados (já enviado, não pago ou cancelado); use buscar_pedido', ...noSac };
 }
 
+let csStatusTurno = new Map();
 async function csRodar() {
   csOcupado = true;
+  csStatusTurno = new Map();
   csStatus('pensando...');
   try {
     let revisou = false;
@@ -2753,7 +2771,7 @@ async function csRodar() {
         const inp = resposta.input || {};
         const avisos = {};
         (d.revisao || []).forEach(r => { avisos[r.indice] = r.problemas; });
-        csBolha('assistente', inp.texto || textos || '', (inp.acoes || []).map((a, i) => avisos[i] ? { ...a, _avisos: avisos[i] } : a));
+        csBolha('assistente', inp.texto || textos || '', (inp.acoes || []).map((a, i) => avisos[i] ? { ...a, _avisos: avisos[i] } : a), null, [...csStatusTurno.values()]);
         return;
       }
       csMsgs.push({ role: 'user', content: resultados });
