@@ -2203,7 +2203,7 @@ function frtLock() {
 function atdShowSub(sub) {
   if (sub === 'retorno') { abrirTrocas(null); return; } // a troca mora na aba TROCAS desde 19/10/2026
   if (sub === 'estorno') { abrirTrocas(null, 'dev'); return; } // a devolução também, desde 20/10/2026
-  ['kanban', 'sac', 'vendas', 'casos', 'whats'].forEach(s => {
+  ['kanban', 'vendas', 'casos', 'whats'].forEach(s => {
     const el = document.getElementById('atd-sub-' + s);
     if (el) el.style.display = (s === sub) ? '' : 'none';
     const pill = document.getElementById('atd-pill-' + s);
@@ -2212,8 +2212,7 @@ function atdShowSub(sub) {
   // Nas conversas o topo diz VI - ATENDIMENTO (pedido da Bárbara em 21/10/2026: o título saiu de dentro da lista)
   const titulo = document.querySelector('#model-title span');
   if (titulo && modeloAtual === '__atendimento__') titulo.textContent = sub === 'whats' ? 'VI - ATENDIMENTO' : 'ATENDIMENTO';
-  if (sub === 'sac') sacRender();
-  else if (sub === 'kanban') kbAbrir();
+  if (sub === 'kanban') kbAbrir();
   else if (sub === 'vendas') vndCarregar();
   else if (sub === 'casos') csAbrir();
   else if (sub === 'whats') {
@@ -2865,242 +2864,16 @@ function sacGetConfig() {
   return loadLocal('vc:sac') || { tickets: [], updated_at: null };
 }
 
-// Busca o pedido na Shopify (debounced) e mostra cliente/itens/status assim que digita o número.
-function sacBuscarPedido() {
-  const numero = (document.getElementById('sac-pedido').value || '').trim();
-  const preview = document.getElementById('sac-pedido-preview');
-  clearTimeout(window._sacBuscaTimer);
-  if (!numero) { preview.style.display = 'none'; preview.innerHTML = ''; return; }
-  window._sacBuscaTimer = setTimeout(async () => {
-    preview.style.display = '';
-    preview.innerHTML = 'buscando pedido...';
-    try {
-      const res = await fetch(`/api/shopify-pedido-lookup?numero=${encodeURIComponent(numero)}`);
-      const d = await res.json();
-      if (document.getElementById('sac-pedido').value.trim() !== numero) return; // digitou algo novo enquanto buscava
-      if (!d.encontrado) { preview.innerHTML = '<span style="color:var(--text-ter)">Pedido não encontrado.</span>'; return; }
-      const itensTxt = (d.itens || []).map(i => `${i.qtd}× ${i.titulo}${i.variante ? ' (' + i.variante + ')' : ''}`).join(', ');
-      const statusCor = d.cancelado ? '#dc2626' : (d.status_financeiro === 'paid' ? '#16a34a' : '#b45309');
-      preview.innerHTML = `
-        <div style="display:flex;flex-wrap:wrap;gap:6px 16px;align-items:baseline">
-          <strong>${d.numero}</strong>
-          <span>${d.cliente || '(sem nome)'}</span>
-          <span style="color:${statusCor};font-weight:600">${d.cancelado ? 'cancelado' : d.status_financeiro}</span>
-          <span style="color:var(--text-ter)">${d.status_envio === 'fulfilled' ? 'enviado' : d.status_envio === 'partial' ? 'parcialmente enviado' : 'não enviado'}</span>
-          ${d.rastreio ? `<span style="color:var(--text-ter)">rastreio: ${d.rastreio}</span>` : ''}
-        </div>
-        <div style="margin-top:4px;color:var(--text-ter)">${itensTxt || '(sem itens)'}</div>`;
-      // Preenche o rastreio automaticamente se o campo ainda estiver vazio
-      const rastreioEl = document.getElementById('sac-rastreio');
-      if (d.rastreio && rastreioEl && !rastreioEl.value) rastreioEl.value = d.rastreio;
-    } catch (e) {
-      preview.innerHTML = '<span style="color:#dc2626">Erro ao buscar pedido.</span>';
-    }
-  }, 500);
-}
-
 function sacSalvar(cfg) {
   cfg.updated_at = new Date().toISOString();
   saveLocal('vc:sac', cfg);
   clearTimeout(window._sacSaveTimer);
   window._sacSaveTimer = setTimeout(() => {
     salvarListaCompartilhada('sac', 'tickets', cfg)
-      .then(final => { if (final) sacRender(); })
+      .then(final => { if (final) atdSyncViews(); }) // a tela do SAC saiu em 30/10/2026; o Kanban mostra os tickets
       .catch(() => {});
   }, 900);
 }
-function sacAdd() {
-  const pedido = (document.getElementById('sac-pedido').value || '').trim();
-  const caso = (document.getElementById('sac-caso').value || '').trim();
-  const rastreio = (document.getElementById('sac-rastreio').value || '').trim();
-  if (!pedido || !caso) { alert('Preencha ao menos o nº do pedido e a informação do caso.'); return; }
-  const cfg = sacGetConfig();
-  const urgente = !!document.getElementById('sac-urgente')?.checked;
-  const novo = {
-    id: 'sac' + Date.now(), pedido, caso, info_expedicao: '',
-    rastreio, urgente, status: 'pendente', criado_em: new Date().toISOString(),
-  };
-  cfg.tickets.push(novo);
-  sacSalvar(cfg);
-  sacRender();
-  sacCarregarItens(novo.id, pedido); // busca itens/cliente em segundo plano
-  ['sac-pedido', 'sac-caso', 'sac-rastreio'].forEach(id => document.getElementById(id).value = '');
-  const chk = document.getElementById('sac-urgente'); if (chk) chk.checked = false;
-  document.getElementById('sac-pedido-preview').style.display = 'none';
-  document.getElementById('sac-pedido').focus();
-}
-
-// Prioridade de liberação (pedido da dona no grupo, 11/09/2026): o pedido com ocorrência
-// de cliente vai para o topo e para o card vermelho, para a Expedição liberar primeiro.
-// A planilha antiga fazia isso à mão, escrevendo "URGENTE//" no motivo.
-function sacUrgenteToggle(id) {
-  const cfg = sacGetConfig();
-  const t = cfg.tickets.find(x => x.id === id); if (!t) return;
-  carimbarItem(t);
-  t.urgente = !t.urgente;
-  sacSalvar(cfg);
-  sacRender();
-}
-function sacDiasEmAberto(t) {
-  const ms = Date.now() - Date.parse(t.criado_em || '');
-  return isNaN(ms) ? null : Math.floor(ms / 86400000);
-}
-function sacRenderPrioridade(cfg) {
-  const card = document.getElementById('sac-prioridade-card');
-  const lista = document.getElementById('sac-prioridade-lista');
-  const total = document.getElementById('sac-prioridade-total');
-  if (!card || !lista) return;
-  const urgentes = cfg.tickets
-    .filter(t => t.urgente && t.status !== 'resolvido')
-    .sort((a, b) => (a.criado_em || '').localeCompare(b.criado_em || '')); // o mais antigo primeiro
-  card.style.display = urgentes.length ? '' : 'none';
-  if (total) total.textContent = urgentes.length + (urgentes.length === 1 ? ' pedido' : ' pedidos');
-  const esc = v => String(v || '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-  lista.innerHTML = urgentes.map(t => {
-    const dias = sacDiasEmAberto(t);
-    const idade = dias === null ? '' : (dias === 0 ? 'hoje' : dias === 1 ? '1 dia' : dias + ' dias');
-    return `<div style="display:flex;gap:12px;align-items:center;padding:7px 10px;border-bottom:1px solid #fee2e2;font-size:12px">
-      <strong style="min-width:70px">${esc(t.pedido)}</strong>
-      <span style="min-width:150px;color:var(--text-sec)">${esc(t.cliente || '')}</span>
-      <span style="flex:1">${esc(t.caso || t.motivo || '')}</span>
-      <span style="min-width:120px;color:var(--text-ter)">${t.rastreio ? 'rastreio ' + esc(t.rastreio) : 'sem rastreio'}</span>
-      <span style="min-width:60px;text-align:right;font-weight:700;color:${dias >= 3 ? '#b91c1c' : '#7c2d12'}">${idade}</span>
-    </div>`;
-  }).join('');
-}
-
-// Busca cliente/itens do pedido na Shopify e grava no ticket (uma vez só — fica salvo).
-const _sacBuscandoItens = new Set();
-async function sacCarregarItens(id, pedido) {
-  if (_sacBuscandoItens.has(id)) return;
-  _sacBuscandoItens.add(id);
-  try {
-    const res = await fetch(`/api/shopify-pedido-lookup?numero=${encodeURIComponent(pedido)}`);
-    const d = await res.json();
-    const cfg = sacGetConfig();
-    const t = cfg.tickets.find(x => x.id === id); if (!t) return;
-  carimbarItem(t);
-    t.cliente = d.encontrado ? (d.cliente || null) : null;
-    t.itens = d.encontrado ? (d.itens || []) : [];
-    t.itens_busca_em = new Date().toISOString();
-    sacSalvar(cfg);
-    sacRender();
-    // Se o popup de seleção estava aberto pra esse ticket esperando os itens carregarem, atualiza com a lista.
-    const popup = document.getElementById('sac-linha-itens-popup');
-    if (popup && popup.dataset.ticketId === id && popup.style.display !== 'none') {
-      const inputEl = document.querySelector(`[data-sac-info-id="${id}"]`);
-      if (inputEl) sacMostrarItensLinha(id, inputEl);
-    }
-  } catch (e) {
-  } finally {
-    _sacBuscandoItens.delete(id);
-  }
-}
-
-// Ao focar o campo "Info expedição" de um ticket já criado, mostra um popup com os itens
-// do pedido (checkbox) pra marcar o que está faltando, igual ao formulário do topo.
-function sacMostrarItensLinha(id, inputEl) {
-  const cfg = sacGetConfig();
-  const t = cfg.tickets.find(x => x.id === id); if (!t) return;
-  const popup = document.getElementById('sac-linha-itens-popup');
-  if (!popup) return;
-  popup.dataset.ticketId = id;
-  if (!t.itens || !t.itens.length) {
-    popup.innerHTML = '<div style="padding:8px 10px;font-size:12px;color:var(--text-ter)">buscando itens do pedido...</div>';
-    sacCarregarItens(id, t.pedido);
-  } else {
-    const itensHtml = t.itens.map((i, idx) => `
-      <label style="display:flex;align-items:center;gap:5px;cursor:pointer;padding:3px 4px;font-size:12px;white-space:nowrap">
-        <input type="checkbox" onchange="sacLinhaFaltanteToggle('${id}')" data-sac-linha-idx="${idx}">
-        ${i.qtd}× ${i.titulo}${i.variante ? ' (' + i.variante + ')' : ''}
-      </label>`).join('');
-    popup.innerHTML = `<div style="font-size:10px;font-weight:700;color:var(--text-ter);padding:4px 4px 2px;text-transform:uppercase">marque o que está faltando</div>${itensHtml}`;
-  }
-  const r = inputEl.getBoundingClientRect();
-  popup.style.left = Math.round(r.left) + 'px';
-  popup.style.top = Math.round(r.bottom + 4) + 'px';
-  popup.style.width = Math.max(r.width, 220) + 'px';
-  popup.style.display = 'block';
-}
-function sacLinhaFaltanteToggle(id) {
-  const popup = document.getElementById('sac-linha-itens-popup');
-  const cfg = sacGetConfig();
-  const t = cfg.tickets.find(x => x.id === id); if (!t || !popup) return;
-  const marcados = Array.from(popup.querySelectorAll('[data-sac-linha-idx]:checked'))
-    .map(el => t.itens[parseInt(el.dataset.sacLinhaIdx)])
-    .filter(Boolean);
-  const texto = marcados.length ? 'Faltando: ' + marcados.map(i => `${i.titulo}${i.variante ? ' (' + i.variante + ')' : ''}`).join(', ') : '';
-  const inputEl = document.querySelector(`[data-sac-info-id="${id}"]`);
-  if (inputEl) inputEl.value = texto;
-  sacEdit(id, 'info_expedicao', texto);
-}
-document.addEventListener('click', (e) => {
-  const popup = document.getElementById('sac-linha-itens-popup');
-  if (!popup || popup.style.display === 'none') return;
-  if (e.target.closest('#sac-linha-itens-popup') || e.target.closest('[data-sac-info-id]')) return;
-  popup.style.display = 'none';
-});
-function sacToggle(id) {
-  const cfg = sacGetConfig();
-  const t = cfg.tickets.find(x => x.id === id); if (!t) return;
-  carimbarItem(t);
-  t.status = (t.status === 'resolvido') ? 'pendente' : 'resolvido';
-  t.resolvido_em = (t.status === 'resolvido') ? new Date().toISOString() : null;
-  sacSalvar(cfg);
-  atdSyncViews();
-}
-function sacEdit(id, campo, val) {
-  const cfg = sacGetConfig();
-  const t = cfg.tickets.find(x => x.id === id); if (!t) return;
-  carimbarItem(t);
-  t[campo] = val;
-  sacSalvar(cfg);
-}
-function sacDel(id) {
-  if (!confirm('Excluir esse ticket de SAC?')) return;
-  const cfg = sacGetConfig();
-  cfg.tickets = cfg.tickets.filter(x => x.id !== id);
-  // sem isto a mesclagem traria o item de volta pela nuvem
-  cfg.removidos = [...(cfg.removidos || []), { id, em: new Date().toISOString() }];
-  sacSalvar(cfg);
-  atdSyncViews();
-}
-function sacRender() {
-  const cfg = sacGetConfig();
-  const mostrarResolvidos = document.getElementById('sac-mostrar-resolvidos')?.checked;
-  const lista = cfg.tickets
-    .filter(t => mostrarResolvidos || t.status !== 'resolvido')
-    .sort((a, b) => {
-      // urgente pendente vem primeiro; dentro de cada grupo, o mais novo primeiro
-      const ua = (a.urgente && a.status !== 'resolvido') ? 1 : 0, ub = (b.urgente && b.status !== 'resolvido') ? 1 : 0;
-      if (ua !== ub) return ub - ua;
-      return (b.criado_em || '').localeCompare(a.criado_em || '');
-    });
-  sacRenderPrioridade(cfg);
-  const itensPlano = t => {
-    if (!t.itens || !t.itens.length) return '(sem itens carregados)';
-    return t.itens.map(i => `${i.qtd}× ${i.titulo}${i.variante ? ' (' + i.variante + ')' : ''}`).join(', ');
-  };
-  const esc = v => (v || '').replace(/"/g, '&quot;');
-  const rows = lista.map(t => `
-    <tr style="${t.status === 'resolvido' ? 'opacity:0.5' : (t.urgente ? 'background:#fff5f5' : '')}">
-      <td style="padding:4px;text-align:center;vertical-align:middle"><input type="checkbox" ${t.status === 'resolvido' ? 'checked' : ''} onchange="sacToggle('${t.id}')" title="marcar como resolvido"></td>
-      <td style="padding:4px;text-align:center;vertical-align:middle"><button onclick="sacUrgenteToggle('${t.id}')" title="${t.urgente ? 'tirar da prioridade' : 'marcar como urgente'}" style="background:none;border:none;cursor:pointer;font-size:15px;color:${t.urgente ? '#b91c1c' : '#d4d4d4'}"><i class="ti ti-flame"></i></button></td>
-      <td style="padding:4px;width:100px;max-width:100px;font-weight:700;white-space:nowrap;text-align:left;vertical-align:middle" title="Itens do pedido: ${esc(itensPlano(t))}">${t.pedido}${t.cliente ? `<div style="font-weight:400;font-size:11px;color:var(--text-ter);overflow:hidden;text-overflow:ellipsis">${t.cliente}</div>` : ''}</td>
-      <td style="padding:4px;vertical-align:middle"><input value="${esc(t.caso !== undefined ? t.caso : t.motivo)}" oninput="sacEdit('${t.id}','caso',this.value)" style="width:100%;min-width:180px;font-size:12px;padding:4px 6px;border:1px solid var(--border);border-radius:5px;${t.status === 'resolvido' ? 'text-decoration:line-through' : ''}"></td>
-      <td style="padding:4px;vertical-align:middle"><input value="${esc(t.info_expedicao || t.itens_faltantes)}" data-sac-info-id="${t.id}" oninput="sacEdit('${t.id}','info_expedicao',this.value)" onfocus="sacMostrarItensLinha('${t.id}', this)" style="width:100%;min-width:220px;font-size:12px;padding:4px 6px;border:1px solid var(--border);border-radius:5px"></td>
-      <td style="padding:4px;vertical-align:middle"><input value="${esc(t.rastreio)}" oninput="sacEdit('${t.id}','rastreio',this.value)" style="width:130px;font-size:12px;padding:4px 6px;border:1px solid var(--border);border-radius:5px"></td>
-      <td style="padding:4px;text-align:center;vertical-align:middle"><button onclick="sacDel('${t.id}')" title="excluir" style="background:none;border:none;cursor:pointer;color:var(--text-ter);font-size:15px">×</button></td>
-    </tr>`).join('');
-  document.getElementById('sac-tbody').innerHTML = rows ||
-    '<tr><td colspan="7" style="text-align:center;color:var(--text-ter);font-size:12px;padding:12px">Nenhum ticket ' + (mostrarResolvidos ? '' : 'pendente') + '.</td></tr>';
-  const total = cfg.tickets.filter(t => t.status !== 'resolvido').length;
-  const totalEl = document.getElementById('sac-total-pendentes');
-  if (totalEl) totalEl.textContent = total + ' pendente' + (total === 1 ? '' : 's');
-  // Busca itens em segundo plano pros tickets que ainda não têm (ex.: criados antes dessa função existir)
-  lista.filter(t => t.itens === undefined).forEach(t => sacCarregarItens(t.id, t.pedido));
-}
-
 // ── Vendas pelo WhatsApp (rascunhos da Shopify) ───────────────────────────────
 // Pedido da dona no grupo Sac/Expedição (11/09/2026): "criar uma aba vendas da Marcelly,
 // puxar os pedidos criados em rascunho; não puxar os de R$ 0 (são trocas)". Só leitura:
@@ -4134,7 +3907,6 @@ function kbSetEtapa(tipo, id, etapa) {
 // mesmo storage (vc:sac / vc:retorno / vc:estorno), então qualquer ação — resolver, mover
 // etapa, marcar chegada, excluir — reflete na hora em TODAS as abas, esteja qual estiver visível.
 function atdSyncViews() {
-  try { if (document.getElementById('sac-tbody')) sacRender(); } catch (e) {}
   try { if (document.getElementById('ret-tbody')) retRender(); } catch (e) {}
   try { if (document.getElementById('trc-board')) trcRender(); } catch (e) {}
   try { if (document.getElementById('dev-board')) devRender(); } catch (e) {}

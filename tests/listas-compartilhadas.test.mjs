@@ -87,13 +87,14 @@ console.log('\n' + '4) A gravacao passa pela mesclagem, nao pelo array inteiro')
 for (const [salvar, chave, campo] of [['sacSalvar', 'sac', 'tickets'],
                                       ['retSalvar', 'retorno', 'itens'],
                                       ['estSalvar', 'estorno', 'itens']]) {
-  const corpo = pedaco(`function ${salvar}(cfg) {`, `function ${salvar === 'estSalvar' ? 'estAdd' : (salvar === 'retSalvar' ? 'retAdd' : 'sacAdd')}(`);
+  // a tela do SAC (sacAdd) saiu em 30/10/2026: o sacSalvar ficou para o Kanban e o Assistente
+  const corpo = pedaco(`function ${salvar}(cfg) {`, salvar === 'estSalvar' ? 'function estAdd(' : (salvar === 'retSalvar' ? 'function retAdd(' : '// ── Vendas pelo WhatsApp'));
   ok(`${salvar} mescla em vez de sobrescrever`,
      corpo.includes(`salvarListaCompartilhada('${chave}', '${campo}', cfg)`), true);
   ok(`${salvar} nao manda mais o array inteiro`, corpo.includes(`salvarNuvem('${chave}', cfg)`), false);
 }
-ok('excluir registra o id em removidos', (main.match(/cfg\.removidos = \[/g) || []).length, 4); // sac/ret/est + vndToggleComissao (11/09/2026)
-ok('as edicoes carimbam o item', (main.match(/carimbarItem\(t\);/g) || []).length, 15); // 8 edicoes + sacUrgenteToggle (11/09/2026) + revAplicarCodigos, valeAlterar e trcConferirShopify (19/10/2026) + revAplicarRastreio (trocas e devolucoes) e o despacho do portal no trcConferirShopify (20/10/2026)
+ok('excluir registra o id em removidos', (main.match(/cfg\.removidos = \[/g) || []).length, 3); // ret/est + vndToggleComissao (11/09/2026); o sacDel saiu com a tela do SAC (30/10/2026)
+ok('as edicoes carimbam o item', (main.match(/carimbarItem\(t\);/g) || []).length, 11); // 30/10/2026: -4 com a tela do SAC (sacEdit, sacToggle, sacUrgenteToggle, faltante); antes 15 = 8 edicoes + sacUrgenteToggle (11/09/2026) + revAplicarCodigos, valeAlterar e trcConferirShopify (19/10/2026) + revAplicarRastreio (trocas e devolucoes) e o despacho do portal no trcConferirShopify (20/10/2026)
 ok('leitura da nuvem que falha nao apaga o que foi digitado',
    /if \(daNuvem === undefined\) \{ await salvarNuvem\(chave, cfgDigitado\); return null; \}/.test(main), true);
 

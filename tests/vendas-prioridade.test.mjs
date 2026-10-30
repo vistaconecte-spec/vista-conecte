@@ -66,7 +66,7 @@ console.log('\n2) A leitura da Shopify segue a paginacao e usa updated_at_min');
 console.log('\n3) A tela VENDAS existe e e so leitura');
 ok('pill Vendas ao lado das outras', /atd-pill-vendas[\s\S]{0,80}atdShowSub\('vendas'\)/.test(html), true);
 // 'retorno' saiu da lista em 19/10/2026 e 'estorno' em 20/10/2026: troca e devolução ganharam a aba TROCAS E DEVOLUÇÕES
-ok('atdShowSub conhece vendas', /\['kanban', 'sac', ('retorno', )?('estorno', )?'vendas'(, '[a-z]+')*\]/.test(main), true);
+ok('atdShowSub conhece vendas', /\['kanban', ('sac', )?('retorno', )?('estorno', )?'vendas'(, '[a-z]+')*\]/.test(main), true);
 ok('abrir a aba busca na Shopify', /else if \(sub === 'vendas'\) vndCarregar\(\);/.test(main), true);
 ok('a aba le /api/shopify-rascunhos', /fetch\(`\/api\/shopify-rascunhos\?desde=\$\{desde\}&ate=\$\{ate\}`/.test(main), true);
 {
@@ -116,16 +116,11 @@ console.log('\n3c) A dona marca o rascunho que nao e venda da Marcelly, e a comi
   ok('sem botao em toda linha', /não é da Marcelly<\/button>/.test(main), false);
 }
 
-console.log('\n4) Prioridade no SAC');
-ok('o formulario tem o URGENTE', /id="sac-urgente"/.test(html), true);
-ok('sacAdd grava urgente', /rastreio, urgente, status: 'pendente'/.test(main), true);
-ok('o card de prioridade existe', /id="sac-prioridade-card"/.test(html), true);
-ok('urgente pendente vai para o topo da lista', /const ua = \(a\.urgente && a\.status !== 'resolvido'\) \? 1 : 0/.test(main), true);
-ok('marcar urgente carimba o item (mesclagem entre aparelhos)', /function sacUrgenteToggle\(id\) \{[\s\S]{0,160}carimbarItem\(t\);/.test(main), true);
-ok('resolvido some do card de prioridade', /\.filter\(t => t\.urgente && t\.status !== 'resolvido'\)/.test(main), true);
-ok('no card, o mais antigo primeiro (esta esperando ha mais tempo)', /\.sort\(\(a, b\) => \(a\.criado_em \|\| ''\)\.localeCompare\(b\.criado_em \|\| ''\)\); \/\/ o mais antigo primeiro/.test(main), true);
-ok('o Kanban mostra o selo', /c\.tipo === 'sac' && c\.t\.urgente && !isConcl/.test(main), true);
-ok('a tabela ganhou a coluna (colspan acompanha)', /colspan="7"/.test(main) && /colspan="3" style="text-align:left;padding:4px 4px 2px;color:#9a8870/.test(html), true);
+console.log('\n4) Prioridade no SAC: a tela saiu em 30/10/2026 (pedido da Bárbara), os tickets ficam no Kanban');
+ok('sem a pílula e sem a tela do SAC', /atd-pill-sac|atd-sub-sac|id="sac-urgente"|sac-prioridade-card/.test(html), false);
+ok('atdShowSub não conhece mais sac', /\['kanban', 'sac'/.test(main), false);
+ok('o Kanban continua mostrando o selo URGENTE', /c\.tipo === 'sac' && c\.t\.urgente && !isConcl/.test(main), true);
+ok('Kanban e Assistente seguem lendo e gravando a lista', /function sacGetConfig\(\)/.test(main) && /function sacSalvar\(cfg\)/.test(main), true);
 
 console.log(falhas ? `\nX ${falhas} de ${total} falharam\n` : `\n${total}/${total} passaram\n`);
 process.exit(falhas ? 1 : 0);
