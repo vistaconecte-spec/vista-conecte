@@ -2599,16 +2599,41 @@ function csProducaoCurta(numero) {
   return 'não está nos pagos em aberto (enviado, não pago ou cancelado)';
 }
 
+// Uma linha pronta com o pedido: processado (enviado) ou não e, se não, onde está cada peça que falta.
+// Pedido da Bárbara (30/10/2026, caso 661): o caso aberto tem que dizer isso SEMPRE e resumido, então a
+// frase sai daqui, do dado da Shopify + estoque real, e o assistente só copia (não depende de ele lembrar).
+function csStatusCurto(p, sit) {
+  const dm = iso => iso ? new Date(iso).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }) : '';
+  const etq = (p.etiquetas || []).filter(e => e.rastreio || e.em);
+  const envios = etq.map(e => `etiqueta de ${dm(e.em)}${e.transportadora ? ' ' + e.transportadora : ''}${e.rastreio ? ', rastreio ' + e.rastreio : ''}`).join('; ');
+  const faltas = s => (s && s.faltas || []).map(f => `${f.peca}${f.faltam > 1 ? ' x' + f.faltam : ''} ${f.em_producao ? 'em ' + f.etapa_interna : 'não está na produção'}`).join('; ');
+  if (p.cancelado_em) return `${p.numero}: cancelado em ${dm(p.cancelado_em)}.`;
+  if (p.pagamento && !['paid', 'partially_refunded'].includes(p.pagamento)) return `${p.numero}: não pago (${p.pagamento}).`;
+  if (p.envio === 'fulfilled') return `${p.numero}: processado, enviado (${envios || 'sem rastreio na Shopify'}).`;
+  if (p.envio === 'partial') {
+    const f = faltas(sit);
+    return `${p.numero}: enviado em parte (${envios || 'sem rastreio'}).${f ? ' Falta ' + f + '.' : ''}`;
+  }
+  if (!sit || !sit.situacao) return `${p.numero}: não processado, ainda não enviado (status da peça indisponível nesta tela).`;
+  if (sit.situacao === 'pronto para envio') return `${p.numero}: não processado, mas pronto para envio, todas as peças estão no estoque.`;
+  if (sit.faltas) {
+    return `${p.numero}: não processado, esperando peça. ${faltas(sit)}; o resto já está no estoque.`
+      + (sit.troca_de_etiqueta ? ' Sai hoje trocando a etiqueta.' : '');
+  }
+  return `${p.numero}: não processado, ainda não enviado.`;
+}
+
 // As ferramentas do servidor não enxergam o estoque real; a tela junta o status da peça
 // antes de devolver ao assistente. Sem chamada a mais à IA.
 function csEnriquecer(nome, out) {
   try {
     const num = v => (String(v || '').match(/\d{4,5}/) || [])[0];
+    const juntar = p => { const n = num(p.numero); if (!n) return; p.producao = csSituacaoProducao(n); p.status_curto = csStatusCurto(p, p.producao); };
     if (nome === 'pendencias_do_dia' && out && out.casos_abertos)
       out.casos_abertos.forEach(c => { const n = num(c.pedido); if (n) c.producao = csProducaoCurta(n); });
     if (nome === 'abrir_caso' && out && out.pedidos)
-      out.pedidos.forEach(p => { const n = num(p.numero); if (p.encontrado && n) p.producao = csSituacaoProducao(n); });
-    if (nome === 'buscar_pedido' && out && out.encontrado) { const n = num(out.numero); if (n) out.producao = csSituacaoProducao(n); }
+      out.pedidos.forEach(p => { if (p.encontrado) juntar(p); });
+    if (nome === 'buscar_pedido' && out && out.encontrado) juntar(out);
   } catch (_) {}
   return out;
 }

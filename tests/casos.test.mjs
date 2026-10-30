@@ -339,6 +339,21 @@ ok('Fechar só aparece quando pode fechar', /\$\{c\.pode_fechar \? `<button[^`]*
 ok('a contagem já vem no estado e aparece no botão ao abrir', /casos_abertos: casosAbertos/.test(apiTxt) && /csRotuloAbertos\(e\.casos_abertos\)/.test(main), true);
 ok('Abrir manda o caso para o chat', /function csAbrirCaso\(id\) \{[\s\S]{0,160}'Abre o caso ' \+ id;[\s\S]{0,20}csEnviar\(\);/.test(main), true);
 
+console.log('\nCaso aberto sempre diz se o pedido foi processado e a etapa da peça (Bárbara, 30/10/2026, caso 661)');
+ok('Quadro começa pela linha Pedido com o status_curto', /Quadro" que SEMPRE começa pela linha "Pedido:" com o status_curto/.test(C.SISTEMA), true);
+{
+  const ini = main.indexOf('function csStatusCurto(');
+  const statusCurto = new Function(main.slice(ini, main.indexOf('\n}\n', ini) + 2) + 'return csStatusCurto;')();
+  ok('enviado', statusCurto({ numero: '#9269', pagamento: 'paid', envio: 'fulfilled', etiquetas: [{ em: '2026-10-22T15:00:00Z', transportadora: 'Outra', rastreio: 'AE058992551BR' }] }),
+    '#9269: processado, enviado (etiqueta de 22/10 Outra, rastreio AE058992551BR).');
+  ok('pronto e não enviado', statusCurto({ numero: '#9400', pagamento: 'paid', envio: 'não enviado' }, { situacao: 'pronto para envio' }),
+    '#9400: não processado, mas pronto para envio, todas as peças estão no estoque.');
+  ok('esperando peça com a etapa', statusCurto({ numero: '#9177', pagamento: 'paid', envio: 'não enviado' },
+    { situacao: 'esperando peça', faltas: [{ peca: 'Macacão Amplo Off White P', faltam: 1, em_producao: true, etapa_interna: 'COSTURA' }, { peca: 'Vestido Amplo Preto P', faltam: 2, em_producao: false }] }),
+    '#9177: não processado, esperando peça. Macacão Amplo Off White P em COSTURA; Vestido Amplo Preto P x2 não está na produção; o resto já está no estoque.');
+  ok('cancelado', statusCurto({ numero: '#9001', cancelado_em: '2026-10-10T12:00:00Z', envio: 'não enviado' }), '#9001: cancelado em 10/10.');
+}
+
 ok('rota fora do PUBLICO (exige sessão)', /PUBLICO = new Set\([^)]*casos/.test(mid), false);
 
 console.log(`\n${total - falhas}/${total} passaram`);
