@@ -2398,6 +2398,12 @@ function csRenderTopo() {
     const n = (e.aprovacoes_pendentes || 0), f = (e.aprovadas_a_fazer || 0);
     btn.innerHTML = `<i class="ti ti-hourglass"></i> Aguardando Bárbara${n ? ` <b style="color:#dc2626">(${n})</b>` : ''}${f ? ` · ${f} aprovada${f > 1 ? 's' : ''} a fazer` : ''}`;
   }
+  csRotuloAbertos(e.casos_abertos);
+}
+
+function csRotuloAbertos(n) {
+  const btn = document.getElementById('cs-btn-abertos');
+  if (btn) btn.innerHTML = `<i class="ti ti-list-details"></i> Casos em aberto${n != null ? ` <b>(${n})</b>` : ''}`;
 }
 
 function csVazio() {
@@ -2752,8 +2758,7 @@ async function csAbrirAbertos() {
     const d = await r.json();
     if (d.erro) throw new Error(d.erro);
     const casos = d.casos || [];
-    const btn = document.getElementById('cs-btn-abertos');
-    if (btn) btn.innerHTML = `<i class="ti ti-list-details"></i> Casos em aberto <b>(${casos.length})</b>`;
+    csRotuloAbertos(casos.length);
     if (!casos.length) { box.innerHTML = '<div style="font-size:12px;color:var(--text-ter)">Nenhum caso aberto.</div>'; return; }
     box.innerHTML = `<div style="max-height:46vh;overflow-y:auto;padding-right:4px">` + casos.map(c => `
       <div id="cs-ab-${c.caso_id}" style="padding:9px 12px;border:1px solid var(--border);border-radius:10px;margin-bottom:6px;font-size:12.5px;background:rgba(255,255,255,.6)">
@@ -2791,9 +2796,7 @@ async function csFecharDaLista(id) {
     if (!d.ok) { alert(d.erro || 'não deu certo'); return; }
     const linha = document.getElementById('cs-ab-' + id);
     if (linha) linha.remove();
-    const btn = document.getElementById('cs-btn-abertos');
-    const n = document.querySelectorAll('#cs-abertos [id^="cs-ab-"]').length;
-    if (btn) btn.innerHTML = `<i class="ti ti-list-details"></i> Casos em aberto <b>(${n})</b>`;
+    csRotuloAbertos(document.querySelectorAll('#cs-abertos [id^="cs-ab-"]').length);
   } catch (e) { alert('falhou: ' + e.message); }
 }
 

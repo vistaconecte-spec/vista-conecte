@@ -466,7 +466,9 @@ export async function onRequestGet({ request, env }) {
     if (u.searchParams.get('aprovacoes')) {
       return J({ so_leitura: soLeitura(env), aprovacoes: log.aprovacoes.slice(-60).reverse() });
     }
-    return J({ so_leitura: soLeitura(env), tem_chave: !!env.ANTHROPIC_API_KEY,
+    // contagem no botão "Casos em aberto" já ao abrir a aba (Bárbara, 30/10/2026); só os ids, leve
+    const casosAbertos = await sb(env).get('wati_sac_casos?status=eq.aberto&select=id&limit=1000').then(l => l.length).catch(() => null);
+    return J({ so_leitura: soLeitura(env), tem_chave: !!env.ANTHROPIC_API_KEY, casos_abertos: casosAbertos,
       aprovacoes_pendentes: abertas.filter(a => a.status === 'pendente').length, aprovadas_a_fazer: abertas.filter(a => a.status === 'aprovado').length });
   } catch (e) { return J({ erro: e.message }, 500); }
 }
