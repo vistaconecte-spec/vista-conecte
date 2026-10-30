@@ -20,7 +20,7 @@
 import {
   soLeitura, MODELO, DOC_LOG, TEMPLATE_CONTINUIDADE, TEMPLATE_ALERTA, CATEGORIAS_DINHEIRO,
   SISTEMA, FERRAMENTAS, FERRAMENTAS_SERVIDOR, problemasDoTexto, prometeDinheiro, janelaAberta, revisarResposta,
-  semResposta, promessasDaEquipe, pagoPorItem, numerosDePedido, prazoDoPedido, logVazio, podeFechar, podeFecharPelaConversa, casoDeDinheiro, aprovacaoLiberada, novoId,
+  semResposta, promessasDaEquipe, pagoPorItem, numerosDePedido, prazoDoPedido, logVazio, podeFechar, podeFecharPelaConversa, casoDeDinheiro, semEscapeUnicode, aprovacaoLiberada, novoId,
   primeiroNome, finalTel, resumoDoCaso, conversaParaAssistente, hojeTexto, brt, metaParaMsg,
 } from '../_casos.js';
 import { variantes, mesclar, enviarTextoDaLoja, enviarArquivoDaLoja, enviarModeloDaLoja } from '../_whatsapp.js';
@@ -287,7 +287,7 @@ async function executar(env, b, agora = Date.now()) {
   const caso = casoId ? (await db.get(`wati_sac_casos?id=eq.${casoId}&select=*`))[0] : null;
   if (casoId && !caso) return { ok: false, erro: 'caso ' + casoId + ' não existe' };
   const wa = String((caso && caso.wa_id) || b.wa_id || '').replace(/\D/g, '');
-  const texto = String(b.texto || '').trim();
+  const texto = semEscapeUnicode(b.texto).trim();
   const pedido = String(b.pedido || (caso && caso.pedido) || '').replace(/\D/g, '');
   let simulacao = '';
 

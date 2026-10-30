@@ -286,6 +286,10 @@ export function podeFecharPelaConversa(caso, log) {
   return { ok: true, motivo: '' };
 }
 
+// A IA às vezes escreve o acento como código ("produção", anotação do caso 719 em 30/10/2026). Volta
+// para a letra antes de gravar no caso ou mandar à cliente; a tela faz o mesmo antes de mostrar.
+export const semEscapeUnicode = s => String(s ?? '').replace(/\\u([0-9a-fA-F]{4})/g, (_, h) => String.fromCharCode(parseInt(h, 16)));
+
 export function aprovacaoLiberada(casoId, log) {
   return ((log && log.aprovacoes) || []).some(a => Number(a.caso_id) === Number(casoId) && (a.status === 'aprovado' || a.status === 'feito'));
 }

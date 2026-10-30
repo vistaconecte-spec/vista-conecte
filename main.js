@@ -2803,7 +2803,11 @@ async function csRodar() {
       }
       if (resposta) {
         csPendentes = [...resultados, { type: 'tool_result', tool_use_id: resposta.id, content: 'mostrado à Marcelly' }];
-        const inp = resposta.input || {};
+        // acento escrito como código pela IA ("produção", caso 719 em 30/10/2026) volta a ser letra
+        const semEsc = s => typeof s === 'string' ? s.replace(/\\u([0-9a-fA-F]{4})/g, (_, h) => String.fromCharCode(parseInt(h, 16))) : s;
+        const inp0 = resposta.input || {};
+        const inp = { ...inp0, texto: semEsc(inp0.texto),
+          acoes: (inp0.acoes || []).map(a => Object.fromEntries(Object.entries(a).map(([k, v]) => [k, semEsc(v)]))) };
         const avisos = {};
         (d.revisao || []).forEach(r => { avisos[r.indice] = r.problemas; });
         await csCartaoSemBusca(inp.acoes);

@@ -377,6 +377,11 @@ ok('prompt manda reabrir o caso', /chame abrir_caso de novo mesmo que ele já te
 ok('sem busca na vez, a tela busca o caso para o cartão antes de desenhar', /await csCartaoSemBusca\(inp\.acoes\);\s*csBolha\('assistente'/.test(main)
   && /if \(csStatusTurno\.size \|\| csUltimoTurno\) return;/.test(main) && /csEnriquecer\('abrir_caso', await csFerramentaServidor\('abrir_caso', \{ caso_id: Number\(id\) \}\)\)/.test(main), true);
 
+console.log('\nCaso 719 (30/10/2026): acento escrito como código pela IA volta a ser letra');
+ok('servidor converte antes de gravar', C.semEscapeUnicode('Atraso de produ\\u00e7\\u00e3o pela alta'), 'Atraso de produção pela alta');
+ok('servidor usa no executar', /const texto = semEscapeUnicode\(b\.texto\)\.trim\(\);/.test(readFileSync(join(raiz, 'functions', 'api', 'casos.js'), 'utf8')), true);
+ok('tela converte texto e ações antes de mostrar', /const semEsc = s => typeof s === 'string'/.test(main) && /acoes: \(inp0\.acoes \|\| \[\]\)\.map/.test(main), true);
+
 ok('rota fora do PUBLICO (exige sessão)', /PUBLICO = new Set\([^)]*casos/.test(mid), false);
 
 console.log(`\n${total - falhas}/${total} passaram`);
