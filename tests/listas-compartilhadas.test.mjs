@@ -84,11 +84,11 @@ console.log('\n' + '3) Editar o mesmo item: a alteracao mais nova vence');
 }
 
 console.log('\n' + '4) A gravacao passa pela mesclagem, nao pelo array inteiro');
-for (const [salvar, chave, campo] of [['sacSalvar', 'sac', 'tickets'],
-                                      ['retSalvar', 'retorno', 'itens'],
+// a tela do SAC e o CRM saíram em 30/10/2026: o painel não grava mais a lista sac (só o Assistente, no servidor,
+// pelo mudarDoc com trava de updated_at), então o sacSalvar saiu daqui
+for (const [salvar, chave, campo] of [['retSalvar', 'retorno', 'itens'],
                                       ['estSalvar', 'estorno', 'itens']]) {
-  // a tela do SAC (sacAdd) saiu em 30/10/2026: o sacSalvar ficou para o Kanban e o Assistente
-  const corpo = pedaco(`function ${salvar}(cfg) {`, salvar === 'estSalvar' ? 'function estAdd(' : (salvar === 'retSalvar' ? 'function retAdd(' : '// ── Vendas pelo WhatsApp'));
+  const corpo = pedaco(`function ${salvar}(cfg) {`, `function ${salvar === 'estSalvar' ? 'estAdd' : 'retAdd'}(`);
   ok(`${salvar} mescla em vez de sobrescrever`,
      corpo.includes(`salvarListaCompartilhada('${chave}', '${campo}', cfg)`), true);
   ok(`${salvar} nao manda mais o array inteiro`, corpo.includes(`salvarNuvem('${chave}', cfg)`), false);

@@ -66,8 +66,8 @@ console.log('\n2) A leitura da Shopify segue a paginacao e usa updated_at_min');
 console.log('\n3) A tela VENDAS existe e e so leitura');
 ok('pill Vendas ao lado das outras', /atd-pill-vendas[\s\S]{0,80}atdShowSub\('vendas'\)/.test(html), true);
 // 'retorno' saiu da lista em 19/10/2026 e 'estorno' em 20/10/2026: troca e devolução ganharam a aba TROCAS E DEVOLUÇÕES
-ok('atdShowSub conhece vendas', /\['kanban', ('sac', )?('retorno', )?('estorno', )?'vendas'(, '[a-z]+')*\]/.test(main), true);
-ok('abrir a aba busca na Shopify', /else if \(sub === 'vendas'\) vndCarregar\(\);/.test(main), true);
+ok('atdShowSub conhece vendas', /\[('kanban', )?('sac', )?('retorno', )?('estorno', )?'vendas'(, '[a-z]+')*\]/.test(main), true);
+ok('abrir a aba busca na Shopify', /(else )?if \(sub === 'vendas'\) vndCarregar\(\);/.test(main), true);
 ok('a aba le /api/shopify-rascunhos', /fetch\(`\/api\/shopify-rascunhos\?desde=\$\{desde\}&ate=\$\{ate\}`/.test(main), true);
 {
   const ini = main.indexOf('function vndPeriodo'), fim = main.indexOf('function retGetConfig');
@@ -116,11 +116,24 @@ console.log('\n3c) A dona marca o rascunho que nao e venda da Marcelly, e a comi
   ok('sem botao em toda linha', /não é da Marcelly<\/button>/.test(main), false);
 }
 
-console.log('\n4) Prioridade no SAC: a tela saiu em 30/10/2026 (pedido da Bárbara), os tickets ficam no Kanban');
+console.log('\n4) Prioridade: a tela do SAC e o CRM saíram em 30/10/2026 (Bárbara), o URGENTE aparece na Expedição');
 ok('sem a pílula e sem a tela do SAC', /atd-pill-sac|atd-sub-sac|id="sac-urgente"|sac-prioridade-card/.test(html), false);
-ok('atdShowSub não conhece mais sac', /\['kanban', 'sac'/.test(main), false);
-ok('o Kanban continua mostrando o selo URGENTE', /c\.tipo === 'sac' && c\.t\.urgente && !isConcl/.test(main), true);
-ok('Kanban e Assistente seguem lendo e gravando a lista', /function sacGetConfig\(\)/.test(main) && /function sacSalvar\(cfg\)/.test(main), true);
+ok('sem o CRM (Kanban)', /atd-pill-kanban|atd-sub-kanban|kb-board/.test(html) || /function kbRender\(/.test(main), false);
+ok('atdShowSub sem sac e sem kanban', /'kanban', |'sac', 'vendas'/.test(main), false);
+ok('PRONTOS PARA ENVIO mostra o selo URGENTE', /\+ seloUrgente\(p\.urgente\) \+ badgeAtrasado/.test(main), true);
+ok('PEDIDOS PARADOS: urgente entra antes dos 15 dias e vai para o topo',
+  /\.filter\(p => p\.dias >= PARADO_ATENCAO \|\| p\.urgente\)/.test(main) && /\.sort\(\(a, b\) => \(!!b\.urgente - !!a\.urgente\) \|\| \(b\.dias - a\.dias\)\)/.test(main), true);
+ok('urgente resolvido não aparece', /if \(n && t\.urgente && t\.status !== 'resolvido'\) m\.set\(n, t\)/.test(main), true);
+{
+  const urgFn = new Function('sacGetConfig', main.slice(main.indexOf('function sacUrgentes()'), main.indexOf('const seloUrgente')) + 'return { sacUrgentes, urgenteDoPedido };');
+  const { sacUrgentes, urgenteDoPedido } = urgFn(() => ({ tickets: [
+    { pedido: '#9127', urgente: true, status: 'pendente', caso: 'ENVIAR SEDEX' },
+    { pedido: '9197', urgente: true, status: 'resolvido' },
+    { pedido: '9329', urgente: false, status: 'pendente' },
+  ] }));
+  const urg = sacUrgentes();
+  ok('pedido casa com ou sem #', [!!urgenteDoPedido(urg, '9127'), !!urgenteDoPedido(urg, '#9197'), !!urgenteDoPedido(urg, '#9329')], [true, false, false]);
+}
 
 console.log(falhas ? `\nX ${falhas} de ${total} falharam\n` : `\n${total}/${total} passaram\n`);
 process.exit(falhas ? 1 : 0);

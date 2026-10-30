@@ -2203,7 +2203,7 @@ function frtLock() {
 function atdShowSub(sub) {
   if (sub === 'retorno') { abrirTrocas(null); return; } // a troca mora na aba TROCAS desde 19/10/2026
   if (sub === 'estorno') { abrirTrocas(null, 'dev'); return; } // a devolução também, desde 20/10/2026
-  ['kanban', 'vendas', 'casos', 'whats'].forEach(s => {
+  ['vendas', 'casos', 'whats'].forEach(s => {
     const el = document.getElementById('atd-sub-' + s);
     if (el) el.style.display = (s === sub) ? '' : 'none';
     const pill = document.getElementById('atd-pill-' + s);
@@ -2212,8 +2212,7 @@ function atdShowSub(sub) {
   // Nas conversas o topo diz VI - ATENDIMENTO (pedido da Bárbara em 21/10/2026: o título saiu de dentro da lista)
   const titulo = document.querySelector('#model-title span');
   if (titulo && modeloAtual === '__atendimento__') titulo.textContent = sub === 'whats' ? 'VI - ATENDIMENTO' : 'ATENDIMENTO';
-  if (sub === 'kanban') kbAbrir();
-  else if (sub === 'vendas') vndCarregar();
+  if (sub === 'vendas') vndCarregar();
   else if (sub === 'casos') csAbrir();
   else if (sub === 'whats') {
     // Caixa do WhatsApp oficial (/whatsapp.html). Carrega uma vez só; depois ela se atualiza
@@ -2864,16 +2863,21 @@ function sacGetConfig() {
   return loadLocal('vc:sac') || { tickets: [], updated_at: null };
 }
 
-function sacSalvar(cfg) {
-  cfg.updated_at = new Date().toISOString();
-  saveLocal('vc:sac', cfg);
-  clearTimeout(window._sacSaveTimer);
-  window._sacSaveTimer = setTimeout(() => {
-    salvarListaCompartilhada('sac', 'tickets', cfg)
-      .then(final => { if (final) atdSyncViews(); }) // a tela do SAC saiu em 30/10/2026; o Kanban mostra os tickets
-      .catch(() => {});
-  }, 900);
+// Pedidos marcados como urgentes (pelo Assistente, ou os antigos da tela do SAC) que ainda não foram resolvidos.
+// A tela do SAC e o CRM saíram em 30/10/2026 (Bárbara): o selo URGENTE agora aparece nos cards PRONTOS PARA ENVIO
+// e PEDIDOS PARADOS, onde a expedição já olha, e some sozinho quando o pedido é enviado.
+function sacUrgentes() {
+  const m = new Map();
+  for (const t of sacGetConfig().tickets || []) {
+    const n = String(t.pedido || '').replace(/\D/g, '');
+    if (n && t.urgente && t.status !== 'resolvido') m.set(n, t);
+  }
+  return m;
 }
+const urgenteDoPedido = (urg, numero) => urg.get(String(numero || '').replace(/\D/g, ''));
+const seloUrgente = t => t
+  ? `&nbsp;<span title="${esc(t.caso || 'cliente com ocorrência')}" style="font-size:9px;font-weight:700;background:#b91c1c;color:#fff;border-radius:3px;padding:1px 6px;letter-spacing:0.03em;vertical-align:middle">URGENTE</span>`
+  : '';
 // ── Vendas pelo WhatsApp (rascunhos da Shopify) ───────────────────────────────
 // Pedido da dona no grupo Sac/Expedição (11/09/2026): "criar uma aba vendas da Marcelly,
 // puxar os pedidos criados em rascunho; não puxar os de R$ 0 (são trocas)". Só leitura:
@@ -3754,155 +3758,6 @@ function estRender() {
   estAtualizarSetas();
 }
 
-// ── CRM Kanban — solicitações em andamento (SAC + Trocas + Devoluções) ───────
-// Agrega os itens ABERTOS das três listas do Atendimento num quadro de etapas.
-// A etapa fica gravada no PRÓPRIO item (`etapa`/`etapa_em`) dentro do storage de origem
-// (vc:sac / vc:retorno / vc:estorno) — sem storage novo, e a lista de origem continua
-// sendo a fonte da verdade. Concluído no kanban ⇒ resolvido na lista (e vice-versa).
-const KB_ETAPAS = [
-  ['novo', 'Novo', '#5b8def'],
-  ['andamento', 'Em andamento', '#c99a3c'],
-  ['aguardando', 'Aguardando cliente', '#8a63d2'],
-  ['concluido', 'Concluído', '#3aa76d'],
-];
-const KB_TIPOS = {
-  sac: { rotulo: 'SAC', badge: 'kb-b-sac', pill: 'sac' },
-  ret: { rotulo: 'Troca', badge: 'kb-b-ret', pill: 'retorno' },
-  est: { rotulo: 'Devolução', badge: 'kb-b-est', pill: 'estorno' },
-};
-function kbGet(tipo) {
-  if (tipo === 'sac') { const cfg = sacGetConfig(); return { cfg, arr: cfg.tickets, salvar: sacSalvar }; }
-  if (tipo === 'ret') { const cfg = retGetConfig(); return { cfg, arr: cfg.itens, salvar: retSalvar }; }
-  const cfg = estGetConfig(); return { cfg, arr: cfg.itens, salvar: estSalvar };
-}
-function kbEtapaDe(tipo, t) {
-  if (t.etapa && KB_ETAPAS.some(([k]) => k === t.etapa)) {
-    // status resolvido na lista prevalece sobre uma etapa antiga não-concluída (e vice-versa)
-    if (tipo !== 'est' && t.status === 'resolvido' && t.etapa !== 'concluido') return 'concluido';
-    if (tipo !== 'est' && t.status !== 'resolvido' && t.etapa === 'concluido') return 'andamento';
-    return t.etapa;
-  }
-  if (tipo !== 'est' && t.status === 'resolvido') return 'concluido';
-  if (tipo === 'ret' && t.chegou_reversa) return 'andamento';
-  return 'novo';
-}
-// Abre o quadro: renderiza já e, em paralelo, importa trocas/devoluções novas da Shopify.
-function kbAbrir() {
-  kbRender();
-  const st = document.getElementById('kb-status');
-  if (st) st.textContent = 'sincronizando com a Shopify...';
-  Promise.allSettled([retSincronizarShopify(), estSincronizarShopify()]).then(() => {
-    kbRender();
-    if (st) st.textContent = 'sincronizado ' + new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-  });
-}
-function kbRender() {
-  const board = document.getElementById('kb-board');
-  if (!board) return;
-  const esc = v => String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
-  const cards = [];
-  sacGetConfig().tickets.forEach(t => cards.push({
-    tipo: 'sac', t,
-    nome: (t.pedido ? '#' + t.pedido + ' · ' : '') + (t.cliente || 'sem cliente'),
-    corpo: t.caso !== undefined ? t.caso : (t.motivo || ''),
-    meta: [t.info_expedicao, t.rastreio ? 'rastreio ' + t.rastreio : ''].filter(Boolean).join(' · '),
-  }));
-  retGetConfig().itens.forEach(t => cards.push({
-    tipo: 'ret', t,
-    nome: t.cliente || 'sem cliente',
-    corpo: t.produtos || '',
-    meta: [t.obs ? 'tam. ' + t.obs : '', t.chegou_reversa ? ('chegou' + (t.data_chegada_reversa ? ' ' + t.data_chegada_reversa.split('-').reverse().join('/') : '')) : (t.codigo_logistica_reversa ? 'reversa ' + t.codigo_logistica_reversa : ''), t.codigo_reenvio ? 'reenvio ' + t.codigo_reenvio : ''].filter(Boolean).join(' · '),
-  }));
-  estGetConfig().itens.forEach(t => cards.push({
-    tipo: 'est', t,
-    nome: t.cliente || 'sem cliente',
-    corpo: [t.pecas, t.motivo].filter(Boolean).join(' — '),
-    meta: [t.valor ? 'R$ ' + Number(t.valor).toLocaleString('pt-BR', { minimumFractionDigits: 2 }) : '', t.data || ''].filter(Boolean).join(' · '),
-  }));
-  const corte = Date.now() - 14 * 24 * 3600 * 1000; // Concluído mostra só os últimos 14 dias
-  const porEtapa = Object.fromEntries(KB_ETAPAS.map(([k]) => [k, []]));
-  cards.forEach(c => {
-    const etapa = kbEtapaDe(c.tipo, c.t);
-    if (etapa === 'concluido') {
-      const quando = new Date(c.t.resolvido_em || c.t.etapa_em || c.t.criado_em || 0).getTime();
-      if (quando < corte) return;
-    }
-    porEtapa[etapa].push({ ...c, etapa });
-  });
-  const dataDe = t => t.criado_em ? new Date(t.criado_em).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }) : '';
-  board.innerHTML = KB_ETAPAS.map(([key, titulo, cor]) => {
-    // Concluído: mais recentes no topo. Demais etapas: mais tempo na fila (mais urgente) no topo.
-    const diasCard = c => c.tipo === 'est' ? estDiasNaFila(c.t) : retDiasNaFila(c.t);
-    const lista = porEtapa[key].sort((a, b) => key === 'concluido'
-      ? (b.t.criado_em || '').localeCompare(a.t.criado_em || '')
-      : diasCard(b) - diasCard(a));
-    const cardsHtml = lista.map(c => {
-      const tp = KB_TIPOS[c.tipo];
-      const mover = KB_ETAPAS.map(([k, l]) => `<option value="${k}" ${k === c.etapa ? 'selected' : ''}>${l}</option>`).join('');
-      // Heatmap de envelhecimento — mesma lógica das listas (só nas não-concluídas).
-      const dias = diasCard(c);
-      const b = retBucket(dias);
-      const isConcl = c.etapa === 'concluido';
-      const cardStyle = isConcl ? '' : `border-left:5px solid ${b.bar};${b.cardBg ? 'background:' + b.cardBg + ';backdrop-filter:none;-webkit-backdrop-filter:none;' : ''}`;
-      const agingBadge = (!isConcl && dias >= 2) ? `<span class="kb-badge" style="background:${b.bar};color:#fff" title="tempo na fila aguardando resolução">${dias}d na fila</span>` : '';
-      return `
-      <div class="kb-card" draggable="true" style="${cardStyle}"
-           ondragstart="kbDragStart(event,'${c.tipo}','${c.t.id}')" ondragend="kbDragEnd(event)">
-        <span class="kb-badge ${tp.badge}" style="cursor:pointer" title="abrir na lista de ${tp.rotulo}" onclick="atdShowSub('${tp.pill}')">${tp.rotulo}</span>
-        ${(c.tipo === 'sac' && c.t.urgente && !isConcl) ? '<span class="kb-badge" style="background:#b91c1c;color:#fff" title="prioridade de liberação">URGENTE</span>' : ''}
-        ${agingBadge}
-        <div class="kb-nome" title="${esc(c.nome)}">${esc(c.nome)}</div>
-        ${c.corpo ? `<div class="kb-corpo">${esc(c.corpo)}</div>` : ''}
-        <div class="kb-meta">
-          ${c.meta ? `<span>${esc(c.meta)}</span>` : ''}
-          <span>${dataDe(c.t)}</span>
-          <select class="kb-mover" title="mover de etapa (alternativa ao arrastar)" onchange="kbSetEtapa('${c.tipo}','${c.t.id}',this.value)">${mover}</select>
-        </div>
-      </div>`;
-    }).join('');
-    return `
-    <div class="kb-col" ondragover="kbAllowDrop(event)" ondragleave="kbLeave(event)" ondrop="kbDrop(event,'${key}')">
-      <div class="kb-col-head">
-        <span class="kb-dot" style="background:${cor};color:${cor}"></span>
-        <span class="kb-col-title">${titulo}</span>
-        <span class="kb-count">${lista.length}</span>
-      </div>
-      ${cardsHtml || `<div class="kb-vazio">${key === 'concluido' ? 'nada concluído nos últimos 14 dias' : 'nenhuma solicitação'}</div>`}
-    </div>`;
-  }).join('');
-}
-let _kbDrag = null;
-function kbDragStart(ev, tipo, id) {
-  _kbDrag = { tipo, id };
-  ev.dataTransfer.effectAllowed = 'move';
-  try { ev.dataTransfer.setData('text/plain', tipo + ':' + id); } catch (e) {}
-  ev.currentTarget.classList.add('kb-drag');
-}
-function kbDragEnd(ev) {
-  ev.currentTarget.classList.remove('kb-drag');
-  document.querySelectorAll('#atd-sub-kanban .kb-col').forEach(c => c.classList.remove('kb-over'));
-}
-function kbAllowDrop(ev) { ev.preventDefault(); ev.currentTarget.classList.add('kb-over'); }
-function kbLeave(ev) { ev.currentTarget.classList.remove('kb-over'); }
-function kbDrop(ev, etapa) {
-  ev.preventDefault();
-  ev.currentTarget.classList.remove('kb-over');
-  if (!_kbDrag) return;
-  kbSetEtapa(_kbDrag.tipo, _kbDrag.id, etapa);
-  _kbDrag = null;
-}
-function kbSetEtapa(tipo, id, etapa) {
-  const { cfg, arr, salvar } = kbGet(tipo);
-  const t = arr.find(x => x.id === id); if (!t) return;
-  t.etapa = etapa;
-  t.etapa_em = new Date().toISOString();
-  if (tipo !== 'est') { // mantém o kanban e a lista de origem em acordo
-    if (etapa === 'concluido' && t.status !== 'resolvido') { t.status = 'resolvido'; t.resolvido_em = new Date().toISOString(); }
-    if (etapa !== 'concluido' && t.status === 'resolvido') { t.status = 'pendente'; t.resolvido_em = null; }
-  }
-  salvar(cfg);
-  atdSyncViews();
-}
 // Sincroniza as 3 listas (SAC, Trocas, Devolução) + o quadro Kanban de uma vez. Todas leem o
 // mesmo storage (vc:sac / vc:retorno / vc:estorno), então qualquer ação — resolver, mover
 // etapa, marcar chegada, excluir — reflete na hora em TODAS as abas, esteja qual estiver visível.
@@ -3911,7 +3766,6 @@ function atdSyncViews() {
   try { if (document.getElementById('trc-board')) trcRender(); } catch (e) {}
   try { if (document.getElementById('dev-board')) devRender(); } catch (e) {}
   try { if (document.getElementById('atd-est-tbody')) estRender(); } catch (e) {}
-  try { if (document.getElementById('kb-board')) kbRender(); } catch (e) {}
 }
 
 function finPopularMeses() {
@@ -6349,10 +6203,12 @@ function renderPedidosParados() {
   const card  = document.getElementById('card-parados');
   if (!el) return;
 
+  // urgente entra mesmo com menos de 15 dias e vai para o topo (a tela do SAC saiu em 30/10/2026)
+  const urg = sacUrgentes();
   const lista = (window._pedidosPendentes || [])
-    .map(p => ({ ...p, dias: diasDesde(p.data) }))
-    .filter(p => p.dias >= PARADO_ATENCAO)
-    .sort((a, b) => b.dias - a.dias);
+    .map(p => ({ ...p, dias: diasDesde(p.data), urgente: urgenteDoPedido(urg, p.numero) }))
+    .filter(p => p.dias >= PARADO_ATENCAO || p.urgente)
+    .sort((a, b) => (!!b.urgente - !!a.urgente) || (b.dias - a.dias));
 
   if (card) card.style.display = lista.length ? '' : 'none';
   const criticos = lista.filter(p => p.dias >= PARADO_CRITICO).length;
@@ -6456,7 +6312,7 @@ function renderPedidosParados() {
           });
           const soUma = faltamPecas(p) === 1;
           return `<tr>
-            <td style="font-weight:600"><a href="${p.url}" target="_blank" style="color:var(--gold-dark);text-decoration:none">${esc(p.numero)}</a>${p.parcial ? ' <span style="font-size:9px;background:rgba(124,58,237,.12);color:#7C3AED;border-radius:3px;padding:1px 5px">PARCIAL</span>' : ''}${soUma ? ' <span style="font-size:9px;background:rgba(217,119,6,.15);color:#b45309;border-radius:3px;padding:1px 5px;font-weight:700">FALTA 1</span>' : ''}</td>
+            <td style="font-weight:600"><a href="${p.url}" target="_blank" style="color:var(--gold-dark);text-decoration:none">${esc(p.numero)}</a>${seloUrgente(p.urgente)}${p.parcial ? ' <span style="font-size:9px;background:rgba(124,58,237,.12);color:#7C3AED;border-radius:3px;padding:1px 5px">PARCIAL</span>' : ''}${soUma ? ' <span style="font-size:9px;background:rgba(217,119,6,.15);color:#b45309;border-radius:3px;padding:1px 5px;font-weight:700">FALTA 1</span>' : ''}</td>
             <td style="font-size:11px">${esc(p.cliente || 'Cliente')}</td>
             <td style="text-align:center;font-size:11px;color:var(--text-sec)">${fmtData(p.data)}</td>
             <td style="text-align:center;font-weight:700;white-space:nowrap;color:${critico ? '#dc2626' : '#d97706'}">${p.dias} ${p.dias === 1 ? 'dia' : 'dias'}</td>
@@ -10719,7 +10575,7 @@ function renderProntosParaEnvio() {
         <th style="text-align:center">Peças</th>
       </tr></thead>
       <tbody>
-        ${prontos.map((p, i) => {
+        ${(() => { const urg = sacUrgentes(); return prontos.map(p => ({ ...p, urgente: urgenteDoPedido(urg, p.numero) })).sort((a, b) => !!b.urgente - !!a.urgente); })().map((p, i) => {
           const dt = p.data
             ? new Date(p.data).toLocaleDateString('pt-BR', { day:'2-digit', month:'2-digit', year:'2-digit' })
             : '—';
@@ -10747,7 +10603,7 @@ function renderProntosParaEnvio() {
             ? `<a href="${esc(p.url)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" style="font-weight:700;color:#16a34a;text-decoration:none" title="Abrir pedido na Shopify">${esc(p.numero)} <i class="ti ti-external-link" style="font-size:11px;vertical-align:-1px"></i></a>`
             : `<span style="font-weight:700;color:#16a34a">${esc(p.numero)}</span>`)
             + `&nbsp;<i class="ti ti-printer" onclick="event.stopPropagation();copiaImprimir([${esc(JSON.stringify(p.numero))}])" title="Imprimir a cópia deste pedido para a embalagem" style="cursor:pointer;color:var(--text-ter);font-size:13px;vertical-align:-1px"></i>`
-            + badgeAtrasado + badgeParcial + badgeGrande;
+            + seloUrgente(p.urgente) + badgeAtrasado + badgeParcial + badgeGrande;
           return `<tr class="pronto-row" style="cursor:pointer" onclick="togglePronto(${i})">
               <td style="text-align:center"><i class="ti ti-chevron-right" id="pronto-cev-${i}" style="transition:transform .15s;color:var(--text-ter)"></i></td>
               <td>${pedidoCell}</td>
