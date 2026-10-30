@@ -269,6 +269,23 @@ export function podeFechar(casoId, log) {
   return { ok: true, motivo: '' };
 }
 
+// Caso de dinheiro pelo TIPO, mesma regra do avisos.py: o resumo cita "estorno" como plano B (#723) e
+// "cobrança" sozinha é a cliente cobrando prazo.
+const semAcento = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+export function casoDeDinheiro(c) {
+  return /estorno|reembols|cobranca (repetida|indevida|duplicada|em dobro)|chargeback|contestac|procon|judici|justica/.test(semAcento(c && c.tipo));
+}
+
+// Fechar junto com o "Resolvida" do Vi - atendimento (30/10/2026): a Marcelly marcava a conversa como resolvida e o
+// caso seguia aberto, então o aviso das 9h dizia 51 casos depois de ela resolver vários. O clique dela no caso é a
+// ação; dinheiro continua só com a Bárbara.
+export function podeFecharPelaConversa(caso, log) {
+  if (casoDeDinheiro(caso)) return { ok: false, motivo: 'caso de dinheiro fica com a Bárbara' };
+  const pend = ((log && log.aprovacoes) || []).filter(a => Number(a.caso_id) === Number(caso.id) && (a.status === 'pendente' || a.status === 'aprovado'));
+  if (pend.length) return { ok: false, motivo: 'tem pedido de dinheiro com a Bárbara neste caso' };
+  return { ok: true, motivo: '' };
+}
+
 export function aprovacaoLiberada(casoId, log) {
   return ((log && log.aprovacoes) || []).some(a => Number(a.caso_id) === Number(casoId) && (a.status === 'aprovado' || a.status === 'feito'));
 }

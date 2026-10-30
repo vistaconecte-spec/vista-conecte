@@ -323,6 +323,14 @@ ok('brinde é da equipe e não vai para aprovação', [C.CATEGORIAS_DINHEIRO.inc
 ok('lista do dia: todo pedido sai com o status da peça (print da Bárbara, 19/10/2026)', /SEMPRE o status da peça tirado do campo producao/.test(C.SISTEMA) && !/só com cliente e pedido/.test(C.SISTEMA), true);
 ok('instrução manda sugerir a troca e dizer o status', /Troca de etiqueta/.test(C.SISTEMA) && /Em todo pedido atrasado ou cobrado diga o status/.test(C.SISTEMA), true);
 
+console.log('\nResolvida no Vi - atendimento fecha o caso pelo clique (30/10/2026, 51 abertos depois de ela resolver vários)');
+ok('troca de tamanho fecha sem ação registrada', C.podeFecharPelaConversa({ id: 778, tipo: 'troca de tamanho, retorno nao confirmado' }, C.logVazio()).ok, true);
+ok('estorno não fecha', C.podeFecharPelaConversa({ id: 795, tipo: 'reembolso/cancelamento' }, C.logVazio()).ok, false);
+ok('"cobrança" sozinha não é dinheiro, cobrança indevida é', [C.casoDeDinheiro({ tipo: 'cliente cobrando prazo · cobrança' }), C.casoDeDinheiro({ tipo: 'Cobrança indevida' })], [false, true]);
+ok('pedido de dinheiro com a Bárbara segura', C.podeFecharPelaConversa({ id: 744, tipo: 'pedido atrasado' }, { acoes: [], aprovacoes: [{ caso_id: 744, status: 'pendente' }] }).ok, false);
+const wa = readFileSync(join(raiz, 'whatsapp.html'), 'utf8');
+ok('tela mostra os casos depois do Resolvida e fecha pelo fechar_conversa', /desenharCasos\(d\.casos/.test(wa) && /tipo: 'fechar_conversa'/.test(wa), true);
+
 ok('rota fora do PUBLICO (exige sessão)', /PUBLICO = new Set\([^)]*casos/.test(mid), false);
 
 console.log(`\n${total - falhas}/${total} passaram`);

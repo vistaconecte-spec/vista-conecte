@@ -19,7 +19,7 @@
 import {
   soLeitura, MODELO, DOC_LOG, TEMPLATE_CONTINUIDADE, TEMPLATE_ALERTA, CATEGORIAS_DINHEIRO,
   SISTEMA, FERRAMENTAS, FERRAMENTAS_SERVIDOR, problemasDoTexto, prometeDinheiro, janelaAberta, revisarResposta,
-  semResposta, promessasDaEquipe, pagoPorItem, numerosDePedido, prazoDoPedido, logVazio, podeFechar, aprovacaoLiberada, novoId,
+  semResposta, promessasDaEquipe, pagoPorItem, numerosDePedido, prazoDoPedido, logVazio, podeFechar, podeFecharPelaConversa, aprovacaoLiberada, novoId,
   primeiroNome, finalTel, resumoDoCaso, conversaParaAssistente, hojeTexto, brt, metaParaMsg,
 } from '../_casos.js';
 import { variantes, mesclar, enviarTextoDaLoja, enviarArquivoDaLoja, enviarModeloDaLoja } from '../_whatsapp.js';
@@ -373,6 +373,18 @@ async function executar(env, b, agora = Date.now()) {
     if (soLeitura(env)) return { ok: false, so_leitura: true, simulacao };
     await db.send('PATCH', `wati_sac_casos?id=eq.${casoId}`, { status: 'resolvido', atualizado_at: new Date(agora).toISOString() }, 'return=minimal');
     await registrar(env, { caso_id: casoId, tipo: 'fechar', texto, em: new Date(agora).toISOString() });
+    return { ok: true, feito: 'caso fechado' };
+  }
+
+  if (tipo === 'fechar_conversa') {
+    if (!caso) return { ok: false, erro: 'qual caso?' };
+    if (caso.status !== 'aberto') return { ok: true, feito: 'caso já estava fechado' };
+    const pode = podeFecharPelaConversa(caso, log);
+    if (!pode.ok) return { ok: false, erro: 'Ainda não dá para fechar: ' + pode.motivo };
+    simulacao = 'o caso ' + casoId + ' seria fechado';
+    if (soLeitura(env)) return { ok: false, so_leitura: true, simulacao };
+    await db.send('PATCH', `wati_sac_casos?id=eq.${casoId}&status=eq.aberto`, { status: 'resolvido', atualizado_at: new Date(agora).toISOString() }, 'return=minimal');
+    await registrar(env, { caso_id: casoId, tipo: 'fechar', texto: 'Fechado junto com a conversa (Resolvida no Vi - atendimento)', em: new Date(agora).toISOString() });
     return { ok: true, feito: 'caso fechado' };
   }
 

@@ -113,6 +113,13 @@
   .anexo .tirar:hover { background: rgba(11,20,26,.06); }
   .comp .nota { font-size: 12px; color: var(--texto-sec); padding: 4px 4px 0; min-height: 18px; }
   .comp .nota.erro { color: var(--erro); }
+  .casos-ab { background: #fff; border-radius: 8px; padding: 8px 10px; margin-bottom: 6px; font-size: 13px; box-shadow: 0 1px 0.5px rgba(11,20,26,.13); }
+  .casos-ab .tit { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-weight: 600; margin-bottom: 4px; }
+  .casos-ab .tit button { border: 0; background: none; color: var(--texto-sec); font-size: 12px; cursor: pointer; }
+  .casos-ab .caso { display: flex; align-items: center; gap: 8px; padding: 5px 0; border-top: 1px solid var(--linha); }
+  .casos-ab .caso .txt { flex: 1; min-width: 0; }
+  .casos-ab .caso .res { color: var(--texto-sec); font-size: 12px; }
+  .casos-ab .caso .fim { flex: none; font-size: 12px; color: var(--texto-sec); }
   .fechada { margin: 4px 0 6px; font-size: 13px; color: #54656F; background: var(--aviso); border-radius: 8px; padding: 8px 12px; }
   .fechada .btn-modelo { margin-left: 8px; border: 0; background: var(--verde); color: #fff; border-radius: 16px; padding: 5px 14px; font-size: 13px; font-weight: 600; cursor: pointer; }
   .modelo { background: #fff; border-radius: 8px; padding: 12px 14px; margin: 4px 0 8px; box-shadow: 0 1px .5px rgba(11,20,26,.13); display: grid; gap: 10px; }
@@ -310,7 +317,7 @@ function abrir(c) {
     </div>
     <div class="msgs" id="msgs"><div class="vazio">Carregando...</div></div>
     <button class="descer" id="descer" aria-label="Ir para a última mensagem"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 9l6 6 6-6"/></svg></button>
-    <div class="comp"><div id="modelo"></div><div id="c-janela"></div><div id="anexo"></div>
+    <div class="comp"><div id="c-casos"></div><div id="modelo"></div><div id="c-janela"></div><div id="anexo"></div>
       <div class="comp-linha">
         <button class="enviar" id="anexar" aria-label="Anexar foto, vídeo ou documento" title="Foto, vídeo ou documento"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.4 11.1-9.2 9.2a6 6 0 0 1-8.5-8.5l9.2-9.2a4 4 0 0 1 5.7 5.7l-9.2 9.2a2 2 0 0 1-2.8-2.8l8.5-8.5"/></svg></button>
         <input type="file" id="arquivo" hidden accept="image/*,video/*,.mp4,.3gp,.mov,.pdf,.doc,.docx,.xls,.xlsx,.txt">
@@ -605,10 +612,40 @@ async function mudarVi(acao) {
     desenharTopo();
     desenharLista();
     avisar(acao === 'devolver' ? 'A Vi volta a responder esta cliente a partir da próxima mensagem dela.' : 'Conversa resolvida. Se a cliente escrever de novo, a Vi responde e ela volta para a lista.');
+    if (acao === 'resolver') desenharCasos(d.casos || []);
   } catch (e) {
     avisar(e.message, true);
     desenharAcoes();
   }
+}
+
+// Resolvida não fecha o caso do CRM da Vi (30/10/2026: o aviso das 9h seguia em 51 casos depois de a Marcelly resolver
+// vários). Depois do clique, os casos abertos desta cliente aparecem aqui e ela fecha os que acabaram; dinheiro não fecha.
+function desenharCasos(casos) {
+  const box = $('c-casos');
+  if (!box) return;
+  if (!casos.length) { box.innerHTML = ''; return; }
+  box.innerHTML = `<div class="casos-ab"><div class="tit"><span>${casos.length === 1 ? 'Ela tem 1 caso aberto' : `Ela tem ${casos.length} casos abertos`}. Já acabou?</span><button data-fechar-box>Deixar aberto</button></div>`
+    + casos.map(c => `<div class="caso" data-caso="${c.id}"><div class="txt">#${c.id} ${esc(c.tipo)}${c.pedido ? ` · pedido ${esc(c.pedido)}` : ''}<div class="res">${esc(c.resumo)}</div></div>`
+      + (c.dinheiro ? '<span class="fim">Dinheiro, fica com a Bárbara</span>' : `<button class="acao ok" data-fechar="${c.id}">${ICONE_OK}<span>Fechar caso</span></button>`) + '</div>').join('')
+    + '</div>';
+  box.onclick = async e => {
+    if (e.target.closest('[data-fechar-box]')) { box.innerHTML = ''; return; }
+    const b = e.target.closest('[data-fechar]');
+    if (!b || b.disabled) return;
+    b.disabled = true;
+    try {
+      const r = await fetch('/api/casos', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin',
+        body: JSON.stringify({ acao: 'executar', tipo: 'fechar_conversa', caso_id: Number(b.dataset.fechar) }) });
+      if (r.status === 401) throw new Error('Sessão expirada. Entre de novo no painel.');
+      const d = await r.json().catch(() => ({}));
+      if (!d.ok) throw new Error(d.so_leitura ? 'Os botões estão travados agora, o caso não foi fechado.' : (d.erro || 'erro ' + r.status));
+      b.outerHTML = '<span class="fim">Fechado</span>';
+    } catch (err) {
+      b.disabled = false;
+      avisar(err.message, true);
+    }
+  };
 }
 
 async function enviar() {

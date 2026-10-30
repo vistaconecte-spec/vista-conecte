@@ -11,6 +11,7 @@
  * do que o Wati/Vi mandam, aqui só aparece o status (sent/delivered/read), sem o texto.
  */
 import { SB_URL } from './_bling.js';
+import { casoDeDinheiro } from './_casos.js';
 
 export const WABA_ID = '838934162193647';
 export const PHONE_NUMBER_ID = '910542668806764';
@@ -466,6 +467,12 @@ export async function mudarVi(env, tel, acao, agora = Date.now()) {
       method: 'PATCH', headers: sb(env, { Prefer: 'return=minimal' }),
       body: JSON.stringify({ enviado_at: quando, erro: 'cancelado: conversa resolvida pela equipe no painel' }),
     }), 'fila da Vi');
+    // Resolvida não fecha o caso do CRM (30/10/2026: 51 abertos depois de ela resolver vários): a tela mostra os
+    // abertos desta cliente e ela fecha um por um pelo /api/casos (tipo fechar_conversa).
+    const ids = [...new Set([...waIds, ...variantes(conv.telefone)])];
+    const casos = await sbGet(env, `wati_sac_casos?wa_id=in.(${ids.join(',')})&status=eq.aberto&select=id,tipo,pedido,resumo&order=criado_at.asc`).catch(() => []);
+    return { status: 200, ok: true, status_vi: campos.status,
+      casos: casos.map(c => ({ id: c.id, tipo: String(c.tipo || '').slice(0, 80), pedido: c.pedido || null, resumo: String(c.resumo || '').slice(0, 160), dinheiro: casoDeDinheiro(c) })) };
   }
   return { status: 200, ok: true, status_vi: campos.status };
 }
