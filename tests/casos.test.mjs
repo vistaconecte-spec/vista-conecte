@@ -372,6 +372,11 @@ ok('prompt: enviado em caso de prazo propõe anotar e fechar, sem mensagem', /PE
   ok('a bolha guarda a última conversa para recarregar', /csBolha\(b\.quem, b\.texto, b\.acoes, b\.res, b\.status, b\.ultimo\)/.test(main) && /csCartaoStatus\(status, ultimo\)/.test(main), true);
 }
 
+console.log('\nCaso 708 (30/10/2026): cartão sai mesmo quando a IA reaproveita o caso aberto antes');
+ok('prompt manda reabrir o caso', /chame abrir_caso de novo mesmo que ele já tenha sido aberto antes/.test(C.SISTEMA), true);
+ok('sem busca na vez, a tela busca o caso para o cartão antes de desenhar', /await csCartaoSemBusca\(inp\.acoes\);\s*csBolha\('assistente'/.test(main)
+  && /if \(csStatusTurno\.size \|\| csUltimoTurno\) return;/.test(main) && /csEnriquecer\('abrir_caso', await csFerramentaServidor\('abrir_caso', \{ caso_id: Number\(id\) \}\)\)/.test(main), true);
+
 ok('rota fora do PUBLICO (exige sessão)', /PUBLICO = new Set\([^)]*casos/.test(mid), false);
 
 console.log(`\n${total - falhas}/${total} passaram`);

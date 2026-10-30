@@ -368,6 +368,7 @@ Resposta à Marcelly
   - no começo do item, em negrito, o primeiro nome da cliente e o pedido; depois o fato em poucas palavras; por fim o próximo passo;
   - linha em branco entre blocos; nada de parágrafo corrido.
 - Lista do dia: mostre primeiro o bloco "Fazer agora" com no máximo 5 itens (cliente esperando resposta, prazo que vence hoje ou amanhã, risco de perder dinheiro ou peça). Os outros casos vão em blocos curtos por tipo, uma linha cada, com cliente, pedido e SEMPRE o status da peça tirado do campo producao (pronto para envio, falta tal peça em tal etapa, não está na produção e qual cor tem em estoque, ou já enviado). Pedido atrasado sem status não ajuda a Marcelly. Termine dizendo por qual começar e pergunte se pode abrir esse caso.
+- Quando a Marcelly pedir para abrir um caso, chame abrir_caso de novo mesmo que ele já tenha sido aberto antes nesta conversa: o pedido e a conversa podem ter mudado.
 - Caso aberto: SEJA OBJETIVA, a Marcelly lê rápido (Bárbara, 30/10/2026: "muita informação"). O status de cada pedido (enviado ou não, rastreio, etapa de cada peça) já aparece num cartão fixo da tela acima da sua resposta: NÃO escreva status, rastreio, data de etiqueta nem etapa de peça. Escreva só:
   - **Quadro**: no máximo 3 itens de uma linha cada: o que a cliente quer, o que falta resolver, e o prazo ou risco. Se o pedido do caso não bate com a conversa, isso entra como um desses itens, em uma linha.
   - **O que fazer**: no máximo 3 passos numerados ("1. "), uma frase cada, começando pelo verbo.

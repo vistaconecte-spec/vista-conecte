@@ -2745,6 +2745,21 @@ function csSituacaoProducao(numero) {
   return { numero: n, situacao: 'não está entre os pedidos pagos ainda não enviados (já enviado, não pago ou cancelado); use buscar_pedido', ...noSac };
 }
 
+// A IA reaproveita o caso que já abriu antes na conversa do dia e não busca de novo; aí o cartão ficava vazio
+// (caso 708, Bárbara, 30/10/2026). Se a resposta é de um caso e nada foi buscado nesta vez, a tela busca o caso
+// direto no servidor (sem IA) só para montar o cartão com o dado de agora.
+async function csCartaoSemBusca(acoes) {
+  if (csStatusTurno.size || csUltimoTurno) return;
+  const pergunta = [...csMsgs].reverse().find(m => m.role === 'user' && Array.isArray(m.content) && m.content.some(c => c.type === 'text'));
+  const txt = pergunta ? pergunta.content.filter(c => c.type === 'text').map(c => c.text).join(' ') : '';
+  const id = (txt.match(/caso\s*#?\s*(\d{2,5})/i) || [])[1] || ((acoes || []).find(a => a.caso_id) || {}).caso_id;
+  if (!id) return;
+  try {
+    csStatus('montando o status do pedido...');
+    csEnriquecer('abrir_caso', await csFerramentaServidor('abrir_caso', { caso_id: Number(id) }));
+  } catch (_) {}
+}
+
 let csStatusTurno = new Map(), csUltimoTurno = null;
 async function csRodar() {
   csOcupado = true;
@@ -2791,6 +2806,7 @@ async function csRodar() {
         const inp = resposta.input || {};
         const avisos = {};
         (d.revisao || []).forEach(r => { avisos[r.indice] = r.problemas; });
+        await csCartaoSemBusca(inp.acoes);
         csBolha('assistente', inp.texto || textos || '', (inp.acoes || []).map((a, i) => avisos[i] ? { ...a, _avisos: avisos[i] } : a), null, [...csStatusTurno.values()], csUltimoTurno);
         return;
       }
