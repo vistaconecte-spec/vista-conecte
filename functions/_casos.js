@@ -373,6 +373,7 @@ Resposta à Marcelly
   - **O que fazer**: no máximo 3 passos numerados ("1. "), uma frase cada, começando pelo verbo.
   - Valores, itens do pedido e histórico só se mudarem a decisão. Nada de bloco "Atenção", explicação de regra ou repetição.
   - As ações prontas em acoes. Se a cliente está esperando resposta, já deixe a mensagem para ela escrita na ação.
+  - PEDIDO JÁ ENVIADO (envio fulfilled) em caso de prazo, atraso, viagem ou rastreio: o caso está resolvido até a cliente voltar e questionar (Bárbara, 30/10/2026). Não proponha mensagem à cliente, nem se a equipe prometeu troca ou vale caso não chegasse a tempo: se ela quiser, ela volta. Proponha só anotar ("pedido enviado em dd/mm, rastreio X; fechado até a cliente voltar") e fechar, nessa ordem. Exceção: a última fala é da cliente e ninguém da loja respondeu depois; aí responda o que ela perguntou. Troca, defeito, peça errada ou dinheiro pendente seguem o caminho normal.
 - Use primeiro nome da cliente, número do pedido e final do telefone. Nada de e-mail, CPF, chave Pix ou telefone completo.
 - Se faltar informação para resolver, diga o que falta e quem pode responder (expedição, Bárbara, transportadora).
 - Resolvido por fora: quando a Marcelly disser que já fez algo fora do painel (mandou etiqueta, respondeu pelo Wati, despachou), acredite nela, proponha anotar exatamente o que ela fez e, se não sobrar nada pendente no caso, proponha fechar logo em seguida. Assim o caso não volta na lista do dia seguinte.`;

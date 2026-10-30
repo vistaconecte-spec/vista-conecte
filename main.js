@@ -2356,7 +2356,7 @@ function csRestaurar() {
   csSanear();
   csBolhas = [];
   document.getElementById('cs-chat').innerHTML = '';
-  g.bolhas.forEach(b => csBolha(b.quem, b.texto, b.acoes, b.res, b.status));
+  g.bolhas.forEach(b => csBolha(b.quem, b.texto, b.acoes, b.res, b.status, b.ultimo));
   return true;
 }
 
@@ -2450,9 +2450,9 @@ function csMd(t) {
 }
 
 // `res` = o que cada botão desta fala já fez (vem do aparelho quando a conversa é redesenhada).
-function csBolha(quem, texto, acoes, res, status) {
+function csBolha(quem, texto, acoes, res, status, ultimo) {
   const bi = csBolhas.length;
-  csBolhas.push({ quem, texto, acoes: acoes || [], res: res || {}, status: status || [] });
+  csBolhas.push({ quem, texto, acoes: acoes || [], res: res || {}, status: status || [], ultimo: ultimo || [] });
   const chat = document.getElementById('cs-chat');
   const v = document.getElementById('cs-vazio'); if (v) v.remove();
   const div = document.createElement('div');
@@ -2462,7 +2462,7 @@ function csBolha(quem, texto, acoes, res, status) {
     erro: 'align-self:flex-start;background:rgba(220,38,38,.08);color:#b91c1c;border:1px solid rgba(220,38,38,.25)',
   }[quem];
   div.style.cssText = `max-width:88%;padding:10px 13px;border-radius:14px;font-size:13.5px;line-height:1.5;white-space:pre-wrap;word-break:break-word;${estilo}`;
-  if (quem === 'assistente') { div.style.whiteSpace = 'normal'; div.innerHTML = csCartaoStatus(status) + csMd(texto); }
+  if (quem === 'assistente') { div.style.whiteSpace = 'normal'; div.innerHTML = csCartaoStatus(status, ultimo) + csMd(texto); }
   else div.innerHTML = csEsc(texto);
   (acoes || []).forEach((a, ai) => {
     const box = csCartaoAcao(a, bi, ai);
@@ -2623,14 +2623,33 @@ function csStatusCurto(p, sit) {
   const s = csStatusPedido(p, sit);
   return `${s.numero}: ${s.rotulo.toLowerCase()}${s.detalhe ? ', ' + s.detalhe : ''}.${s.pecas.length ? ' ' + s.pecas.join('; ') + '.' : ''}`;
 }
-function csCartaoStatus(lista) {
-  if (!lista || !lista.length) return '';
+// Último assunto com a cliente (Bárbara, 30/10/2026, caso 661): a última fala dela e a última da loja depois
+// disso, como vieram na conversa do abrir_caso. Sem fala da loja depois dela = está esperando resposta.
+function csUltimoAssunto(conversa) {
+  const c = conversa || [];
+  let i = c.length - 1;
+  while (i >= 0 && c[i].quem !== 'cliente') i--;
+  const linha = (m, quem) => ({ quem, em: m.em_brt || '', texto: String(m.texto || '').replace(/\s+/g, ' ').trim().slice(0, 180) });
+  const out = [];
+  if (i >= 0) out.push(linha(c[i], 'Cliente'));
+  const loja = c.slice(i + 1).filter(m => m.quem !== 'cliente').pop();
+  if (loja) out.push(linha(loja, loja.quem === 'equipe' ? 'Equipe' : 'Vi'));
+  else if (i >= 0) out.push({ quem: 'Loja', em: '', texto: 'ainda não respondeu depois disso' });
+  return out;
+}
+
+function csCartaoStatus(lista, ultimo) {
+  lista = lista || []; ultimo = ultimo || [];
+  if (!lista.length && !ultimo.length) return '';
   const cor = { verde: '#16a34a', laranja: '#b45309', vermelho: '#dc2626', cinza: '#6b7280' };
-  return `<div style="border:1px solid var(--border);border-radius:10px;padding:8px 11px;margin-bottom:10px;background:rgba(255,255,255,.9)">
-    <div style="font-size:10px;font-weight:800;letter-spacing:.08em;color:var(--text-ter);margin-bottom:4px">STATUS DO PEDIDO</div>`
-    + lista.map(s => `<div style="padding:2px 0"><b>${csEsc(s.numero)}</b> <span style="font-weight:800;color:${cor[s.cor] || 'inherit'}">${csEsc(s.rotulo)}</span>`
-      + `${s.detalhe ? ` <span style="color:var(--text-sec)">· ${csEsc(s.detalhe)}</span>` : ''}`
-      + s.pecas.map(x => `<div style="padding-left:14px;color:var(--text-sec)">${csEsc(x)}</div>`).join('') + '</div>').join('')
+  const titulo = (t, topo) => `<div style="font-size:10px;font-weight:800;letter-spacing:.08em;color:var(--text-ter);margin:${topo ? '8px' : '0'} 0 4px">${t}</div>`;
+  return `<div style="border:1px solid var(--border);border-radius:10px;padding:8px 11px;margin-bottom:10px;background:rgba(255,255,255,.9)">`
+    + (lista.length ? titulo('STATUS DO PEDIDO')
+      + lista.map(s => `<div style="padding:2px 0"><b>${csEsc(s.numero)}</b> <span style="font-weight:800;color:${cor[s.cor] || 'inherit'}">${csEsc(s.rotulo)}</span>`
+        + `${s.detalhe ? ` <span style="color:var(--text-sec)">· ${csEsc(s.detalhe)}</span>` : ''}`
+        + s.pecas.map(x => `<div style="padding-left:14px;color:var(--text-sec)">${csEsc(x)}</div>`).join('') + '</div>').join('') : '')
+    + (ultimo.length ? titulo('ÚLTIMA CONVERSA', lista.length)
+      + ultimo.map(u => `<div style="padding:2px 0"><b>${csEsc(u.quem)}</b>${u.em ? ` <span style="color:var(--text-ter)">${csEsc(u.em)}</span>` : ''} <span style="color:var(--text-sec)">${csEsc(u.texto)}</span></div>`).join('') : '')
     + '</div>';
 }
 
@@ -2649,6 +2668,7 @@ function csEnriquecer(nome, out) {
       out.casos_abertos.forEach(c => { const n = num(c.pedido); if (n) c.producao = csProducaoCurta(n); });
     if (nome === 'abrir_caso' && out && out.pedidos)
       out.pedidos.forEach(p => { if (p.encontrado) juntar(p); });
+    if (nome === 'abrir_caso' && out && out.conversa) csUltimoTurno = csUltimoAssunto(out.conversa); // vira a ÚLTIMA CONVERSA do cartão
     if (nome === 'buscar_pedido' && out && out.encontrado) juntar(out);
   } catch (_) {}
   return out;
@@ -2725,10 +2745,10 @@ function csSituacaoProducao(numero) {
   return { numero: n, situacao: 'não está entre os pedidos pagos ainda não enviados (já enviado, não pago ou cancelado); use buscar_pedido', ...noSac };
 }
 
-let csStatusTurno = new Map();
+let csStatusTurno = new Map(), csUltimoTurno = null;
 async function csRodar() {
   csOcupado = true;
-  csStatusTurno = new Map();
+  csStatusTurno = new Map(); csUltimoTurno = null;
   csStatus('pensando...');
   try {
     let revisou = false;
@@ -2771,7 +2791,7 @@ async function csRodar() {
         const inp = resposta.input || {};
         const avisos = {};
         (d.revisao || []).forEach(r => { avisos[r.indice] = r.problemas; });
-        csBolha('assistente', inp.texto || textos || '', (inp.acoes || []).map((a, i) => avisos[i] ? { ...a, _avisos: avisos[i] } : a), null, [...csStatusTurno.values()]);
+        csBolha('assistente', inp.texto || textos || '', (inp.acoes || []).map((a, i) => avisos[i] ? { ...a, _avisos: avisos[i] } : a), null, [...csStatusTurno.values()], csUltimoTurno);
         return;
       }
       csMsgs.push({ role: 'user', content: resultados });

@@ -262,7 +262,7 @@ ok('negrito e tópicos viram formatação', csMd('**Fazer agora**\n- **Karina**,
   '<div><b>Fazer agora</b></div><ul style="margin:2px 0 8px;padding-left:20px"><li style="margin:3px 0"><b>Karina</b>, #8893 parado</li><li style="margin:3px 0">outra</li></ul>');
 ok('passos numerados viram lista', /<ol[^>]*><li[^>]*>abrir<\/li><li[^>]*>mandar<\/li><\/ol>/.test(csMd('1. abrir\n2. mandar')), true);
 ok('texto da cliente não vira HTML', csMd('- <img src=x onerror=alert(1)> **oi**').includes('<img'), false);
-ok('bolha do assistente usa a formatação', main.includes("div.innerHTML = csCartaoStatus(status) + csMd(texto)"), true);
+ok('bolha do assistente usa a formatação', main.includes("div.innerHTML = csCartaoStatus(status, ultimo) + csMd(texto)"), true);
 ok('instrução pede tópicos e próximo passo', /sempre em tópicos/.test(C.SISTEMA) && /próximo passo concreto/.test(C.SISTEMA), true);
 console.log('\n7b) Conversa não some quando a página recarrega');
 ok('abrir a aba redesenha a conversa salva antes de mostrar vazio', main.includes("!chat.children.length && !csRestaurar()"), true);
@@ -342,7 +342,7 @@ ok('Abrir manda o caso para o chat', /function csAbrirCaso\(id\) \{[\s\S]{0,160}
 console.log('\nCaso aberto sempre diz se o pedido foi processado e a etapa da peça (Bárbara, 30/10/2026, caso 661)');
 ok('status vai num cartão fixo e a IA não repete', /cartão fixo da tela acima da sua resposta: NÃO escreva status/.test(C.SISTEMA), true);
 ok('caso curto: Quadro e O que fazer com no máximo 3', /\*\*Quadro\*\*: no máximo 3 itens/.test(C.SISTEMA) && /\*\*O que fazer\*\*: no máximo 3 passos/.test(C.SISTEMA), true);
-ok('a resposta desenha o cartão e guarda para recarregar', /div\.innerHTML = csCartaoStatus\(status\) \+ csMd\(texto\)/.test(main) && /csBolha\(b\.quem, b\.texto, b\.acoes, b\.res, b\.status\)/.test(main), true);
+ok('a resposta desenha o cartão e guarda para recarregar', /div\.innerHTML = csCartaoStatus\(status, ultimo\) \+ csMd\(texto\)/.test(main) && /csBolha\(b\.quem, b\.texto, b\.acoes, b\.res, b\.status, b\.ultimo\)/.test(main), true);
 {
   const ini = main.indexOf('function csStatusPedido(');
   const fim = main.indexOf('function csCartaoStatus(');
@@ -355,6 +355,21 @@ ok('a resposta desenha o cartão e guarda para recarregar', /div\.innerHTML = cs
     { situacao: 'esperando peça', faltas: [{ peca: 'Macacão Amplo Off White P', faltam: 1, em_producao: true, etapa_interna: 'COSTURA' }, { peca: 'Vestido Amplo Preto P', faltam: 2, em_producao: false }] }).pecas,
     ['Macacão Amplo Off White P: COSTURA', 'Vestido Amplo Preto P x2: não está na produção', 'demais peças no estoque']);
   ok('cancelado', statusCurto({ numero: '#9001', cancelado_em: '2026-10-10T12:00:00Z', envio: 'não enviado' }), '#9001: cancelado, em 10/10.');
+}
+
+console.log('\nCaso 661 (30/10/2026): enviado fecha até a cliente voltar, e o cartão mostra a última conversa');
+ok('prompt: enviado em caso de prazo propõe anotar e fechar, sem mensagem', /PEDIDO JÁ ENVIADO \(envio fulfilled\)[\s\S]{0,200}resolvido até a cliente voltar/.test(C.SISTEMA) && /Proponha só anotar[\s\S]{0,120}e fechar, nessa ordem/.test(C.SISTEMA), true);
+{
+  const ini = main.indexOf('function csUltimoAssunto(');
+  const ultimo = new Function(main.slice(ini, main.indexOf('function csCartaoStatus(')) + 'return csUltimoAssunto;')();
+  ok('última da cliente e a resposta da loja depois', ultimo([
+    { quem: 'loja (Vi)', em_brt: '07/10 10:00', texto: 'oi' },
+    { quem: 'cliente', em_brt: '08/10 14:02', texto: 'vai chegar   antes do dia 20?' },
+    { quem: 'equipe', em_brt: '08/10 15:00', texto: 'vou ver' },
+    { quem: 'loja (Vi)', em_brt: '26/10 09:00', texto: 'template de continuidade' },
+  ]), [{ quem: 'Cliente', em: '08/10 14:02', texto: 'vai chegar antes do dia 20?' }, { quem: 'Vi', em: '26/10 09:00', texto: 'template de continuidade' }]);
+  ok('cliente sem resposta depois', ultimo([{ quem: 'equipe', em_brt: '07/10 10:00', texto: 'oi' }, { quem: 'cliente', em_brt: '08/10 14:02', texto: 'e aí?' }])[1].texto, 'ainda não respondeu depois disso');
+  ok('a bolha guarda a última conversa para recarregar', /csBolha\(b\.quem, b\.texto, b\.acoes, b\.res, b\.status, b\.ultimo\)/.test(main) && /csCartaoStatus\(status, ultimo\)/.test(main), true);
 }
 
 ok('rota fora do PUBLICO (exige sessão)', /PUBLICO = new Set\([^)]*casos/.test(mid), false);
