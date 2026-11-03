@@ -12452,13 +12452,19 @@ const TECIDO_SINONIMOS = {
   'viscose'    : 'Viscose',
 };
 
+// "(ref 201)" e "(201)" são o mesmo suplex: Top V e Blusa caíam em blocos separados
+// na compra de tecido (03/11/2026).
+function chaveTecidoBase(tecido) {
+  return tecido.toLowerCase().replace(/\s+/g, ' ').replace(/\(\s*ref\.?\s*/g, '(').trim();
+}
+
 function normalizarTecido(tecido) {
-  const chave = tecido.toLowerCase().replace(/\s+/g, ' ').trim();
+  const chave = chaveTecidoBase(tecido);
   return TECIDO_SINONIMOS[chave] ? TECIDO_SINONIMOS[chave].toLowerCase() : chave;
 }
 
 function labelTecido(tecido) {
-  const chave = tecido.toLowerCase().replace(/\s+/g, ' ').trim();
+  const chave = chaveTecidoBase(tecido);
   return TECIDO_SINONIMOS[chave] || tecido;
 }
 
