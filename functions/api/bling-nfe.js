@@ -13,6 +13,9 @@
  *                                       ANTES de criar a nota. ATENÇÃO: o Bling desta conta
  *                                       transmite à SEFAZ sozinho ao gerar; confirmar=1 é
  *                                       emissão de verdade.
+ * GET ?acao=reenviar&pedido=ID&confirmar=1[&endereco=&numero=&complemento=&bairro=]
+ *                                     → nota pendente que falhou no envio ou rejeitada pela SEFAZ: corrige o
+ *                                       endereço se vier, manda de novo e devolve a resposta (o motivo).
  * GET ?acao=get&caminho=/pedidos/vendas/123
  *                                     → GET cru na API do Bling, pra conferir formato. Só GET.
  *
@@ -275,7 +278,42 @@ export async function onRequestGet({ request, env }) {
       return json(await completarEEnviar(env, token, ref, anterior.nota, anterior, {}, order));
     }
 
-    return json({ erro: 'acao desconhecida (status, previa, diagnostico, emitir, enviar, get)' }, 400);
+    if (acao === 'reenviar') {
+      // Nota presa (03/11/2026): pendente que deu 400 no envio, ou REJEITADA pela SEFAZ (situação 4),
+      // cujo motivo a API não mostra. Opcionalmente corrige o endereço da cliente (&endereco= &numero=
+      // &complemento= &bairro=), manda de novo e devolve a resposta do Bling, que traz o motivo.
+      // Caso que motivou: #9434 e #9461, o Bling separou "R,Barros Falcão 4302" em rua "R" e número "BarrosFalc".
+      const ref = q.get('pedido');
+      if (!ref || q.get('confirmar') !== '1') return json({ erro: 'precisa de ?pedido=ID_DO_BLING&confirmar=1' }, 400);
+      const anterior = await lerTrava(env, ref);
+      if (!anterior || !anterior.nota) return json({ erro: 'não há nota registrada para este pedido', anterior }, 409);
+      const token = await tokenValido(env);
+      const nota = (await bling(env, `/nfe/${anterior.nota}`, { token })).data;
+      if (!nota || ![1, 4].includes(nota.situacao)) return json({ erro: `nota na situação ${nota && nota.situacao}: só reenvio pendente (1) ou rejeitada (4)` }, 409);
+      const end = {};
+      for (const k of ['endereco', 'numero', 'complemento', 'bairro']) if (q.get(k) != null) end[k] = q.get(k);
+      if (Object.keys(end).length) {
+        // O PUT recalcula o total pelos itens: frete e desconto vão explícitos, como no completarEEnviar
+        const itensCod = (nota.itens || []).map(it => it.codigo ? it : { ...it, codigo: `VC${ref}` });
+        const somaItens = itensCod.reduce((t, it) => t + Number(it.valor) * Number(it.quantidade), 0);
+        const desconto = Math.round((somaItens + Number(nota.valorFrete || 0) - Number(nota.valorNota)) * 100) / 100;
+        const corpo = { ...nota, itens: itensCod, transporte: { ...(nota.transporte || {}), frete: Number(nota.valorFrete || 0) },
+          contato: { ...nota.contato, endereco: { ...((nota.contato || {}).endereco || {}), ...end } } };
+        if (desconto > 0) corpo.desconto = desconto;
+        for (const k of ['id', 'xml', 'linkDanfe', 'linkPDF', 'chaveAcesso', 'situacao']) delete corpo[k];
+        await esperar(PAUSA_MS);
+        await bling(env, `/nfe/${anterior.nota}`, { method: 'PUT', body: corpo, token });
+      }
+      let resposta = null;
+      try { await esperar(PAUSA_MS); resposta = await bling(env, `/nfe/${anterior.nota}/enviar`, { method: 'POST', token }); }
+      catch (e) { resposta = { erro: e.message }; }
+      await esperar(PAUSA_MS * 3);
+      const depois = (await bling(env, `/nfe/${anterior.nota}`, { token })).data;
+      const r = await registrarNota(env, ref, anterior.nota, anterior, {}, depois);
+      return json({ ...r, resposta, endereco_corrigido: end, valor_antes: nota.valorNota, valor_depois: depois && depois.valorNota });
+    }
+
+    return json({ erro: 'acao desconhecida (status, previa, diagnostico, emitir, enviar, reenviar, get)' }, 400);
   } catch (e) {
     return json({ erro: e.message, status: e.status || null }, e.status && e.status < 500 ? e.status : 502);
   }
