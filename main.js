@@ -3021,8 +3021,12 @@ function sacUrgentes() {
   return m;
 }
 const urgenteDoPedido = (urg, numero) => urg.get(String(numero || '').replace(/\D/g, ''));
+// O escape é próprio: não existe `esc` global (cada tela declara o seu dentro da função), e
+// o selo chamava um que não estava no escopo. Em 02/11/2026 o primeiro pedido urgente parado
+// (#8956) derrubava renderPedidosParados no meio e o card PRONTOS PARA ENVIO ficava em branco.
+const escSelo = s => String(s).replace(/[&<>"]/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c]));
 const seloUrgente = t => t
-  ? `&nbsp;<span title="${esc(t.caso || 'cliente com ocorrência')}" style="font-size:9px;font-weight:700;background:#b91c1c;color:#fff;border-radius:3px;padding:1px 6px;letter-spacing:0.03em;vertical-align:middle">URGENTE</span>`
+  ? `&nbsp;<span title="${escSelo(t.caso || 'cliente com ocorrência')}" style="font-size:9px;font-weight:700;background:#b91c1c;color:#fff;border-radius:3px;padding:1px 6px;letter-spacing:0.03em;vertical-align:middle">URGENTE</span>`
   : '';
 // ── Vendas pelo WhatsApp (rascunhos da Shopify) ───────────────────────────────
 // Pedido da dona no grupo Sac/Expedição (11/09/2026): "criar uma aba vendas da Marcelly,
