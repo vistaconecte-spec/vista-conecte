@@ -120,6 +120,7 @@ const MODELOS = {
   // ── SAPATOS ───────────────────────────────────────────────────────────────
   'flat':{nome:'Flat',tecido:'',consumo:0,preco:0,componentes:'',obs:'',revenda:true,tamanhos:['34','35','36','37','38','39','40'],cores:['Preto','Off White'],aberto:{'Preto':[0,0,0,0,0,0,0],'Off White':[0,0,0,0,0,0,0]}},
   'sandalia-gladiadora':{nome:'Sandália Gladiadora',tecido:'',consumo:0,preco:0,componentes:'',obs:'Calçado / revenda (não produzido na confecção)',revenda:true,tamanhos:['34','35','36','37','38','39','40'],cores:['Preto','Nude/Marrom'],aliasCores:{'Bege':'Nude/Marrom'},aberto:{'Preto':[0,0,0,0,0,0,0],'Nude/Marrom':[0,0,0,0,0,0,0]}},
+  'coturno':{nome:'Coturno',tecido:'',consumo:0,preco:0,componentes:'',obs:'Calçado / revenda (não produzido na confecção). Na loja é o "Coturno Maxi".',revenda:true,tamanhos:['34','35','36','37','38','39','40'],cores:['Preto'],aberto:{'Preto':[0,0,0,0,0,0,0]}},
 
   // ── OUTROS ────────────────────────────────────────────────────────────────
   'canguru-amplo':{nome:'Canguru Amplo',tecido:'Moletom',consumo:1.8,preco:27.5,componentes:'2 Frentes – 1 Costas – 2 Mangas – 1 Capuz – 2 Bolsos',obs:'',cores:['Preto','Off White','Branco','Cinza','Marrom','Nude','Telha'],aberto:{'Preto':[0,0,0,0,0],'Off White':[0,0,0,0,0],'Branco':[0,0,0,0,0],'Cinza':[0,0,0,0,0],'Marrom':[0,0,0,0,0],'Nude':[0,0,0,0,0],'Telha':[0,0,0,0,0]}},
@@ -143,7 +144,7 @@ const SIDEBAR_ESTRUTURA = [
   {titulo:'CASACOS',     modelos:['casaco-sherpa','casaco-sherpa-capuz','casaco-pele-persa','carneirinho-cropped','sherpa-ziper-bolsos']},
   {titulo:'TOPS',        modelos:['camiseta-oversized','blusa-canelada-simples','blusa-canelada','regata-oversized','cropped-canelado','cropped-moletom','cropped-peace','cropped-frente-unica','blusa-boho','regata-good']},
   {titulo:'SAIAS',       modelos:['saia-midi','mini-saia-canelada']},
-  {titulo:'SAPATOS',     modelos:['flat','sandalia-gladiadora']},
+  {titulo:'SAPATOS',     modelos:['flat','sandalia-gladiadora','coturno']},
   {titulo:'OUTROS',      modelos:['moletom-gola-alta','moletom-ziper-bolsos','canguru-amplo']},
   {titulo:'CONJUNTOS',   modelos:['conjunto-peace','conjunto-wide','conjunto-boho','conjunto-canelado','conjunto-calca-flare-moletom','conjunto-calca-flare-camiseta','conjunto-calca-pantalona-moletom','conjunto-calca-pantalona-cropped','conjunto-cropped-basica','conjunto-cozy','conjunto-mood','conjunto-moletom-saia-midi','conjunto-pantalona-blusa','conjunto-regata-mini-saia','conjunto-camiseta-mini-saia','cropped-mini-saia','conjunto-canguru-longo','conjunto-saia-midi-oversized','conjunto-calca-bolso-camiseta','conjunto-moletom-short-bolso','conjunto-good']},
 ];

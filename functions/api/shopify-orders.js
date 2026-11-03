@@ -125,6 +125,8 @@ const PRODUCT_MAP = {
 // ou pedidos antigos sem cor no título — mapeados manualmente para modelo + cor fixos
 const EXACT_TITLE_MAP = {
   'Macacão Manga Longa':                                                       { modelKey: 'macacao-manga-longa',      color: 'Marrom'        },
+  // Coturno só tem numeração na loja (sem opção de cor) e é preto
+  'Coturno Maxi':                                                              { modelKey: 'coturno',                  color: 'Preto'         },
   'Calça Peace':                                                               { modelKey: 'calca-peace',              color: 'Marsala'       },
   'Casaco Carneirinho Cropped Feminino':                                       { modelKey: 'carneirinho-cropped',      color: 'Off White'     },
   'Conjunto Camiseta Oversized Verde Militar + Mini Saia Canelada Preta':      { modelKey: 'conjunto-camiseta-mini-saia', color: 'Militar' },
