@@ -292,9 +292,12 @@ export async function onRequestGet({ request, env }) {
       if (!nota || ![1, 4].includes(nota.situacao)) return json({ erro: `nota na situação ${nota && nota.situacao}: só reenvio pendente (1) ou rejeitada (4)` }, 409);
       const end = {};
       for (const k of ['endereco', 'numero', 'complemento', 'bairro']) if (q.get(k) != null) end[k] = q.get(k);
-      if (Object.keys(end).length) {
+      // NCM que não existe (rejeição 778): 6104.29.00 do Peace/Boho vira 6104.29.90
+      const NCM_INEXISTENTE = { '6104.29.00': '6104.29.90' };
+      const trocaNcm = (nota.itens || []).some(it => NCM_INEXISTENTE[it.classificacaoFiscal]);
+      if (Object.keys(end).length || trocaNcm) {
         // O PUT recalcula o total pelos itens: frete e desconto vão explícitos, como no completarEEnviar
-        const itensCod = (nota.itens || []).map(it => it.codigo ? it : { ...it, codigo: `VC${ref}` });
+        const itensCod = (nota.itens || []).map(it => ({ ...it, codigo: it.codigo || `VC${ref}`, classificacaoFiscal: NCM_INEXISTENTE[it.classificacaoFiscal] || it.classificacaoFiscal }));
         const somaItens = itensCod.reduce((t, it) => t + Number(it.valor) * Number(it.quantidade), 0);
         const desconto = Math.round((somaItens + Number(nota.valorFrete || 0) - Number(nota.valorNota)) * 100) / 100;
         const corpo = { ...nota, itens: itensCod, transporte: { ...(nota.transporte || {}), frete: Number(nota.valorFrete || 0) },
@@ -310,7 +313,7 @@ export async function onRequestGet({ request, env }) {
       await esperar(PAUSA_MS * 3);
       const depois = (await bling(env, `/nfe/${anterior.nota}`, { token })).data;
       const r = await registrarNota(env, ref, anterior.nota, anterior, {}, depois);
-      return json({ ...r, resposta, endereco_corrigido: end, valor_antes: nota.valorNota, valor_depois: depois && depois.valorNota });
+      return json({ ...r, resposta, endereco_corrigido: end, ncm_corrigido: trocaNcm, valor_antes: nota.valorNota, valor_depois: depois && depois.valorNota });
     }
 
     return json({ erro: 'acao desconhecida (status, previa, diagnostico, emitir, enviar, reenviar, get)' }, 400);

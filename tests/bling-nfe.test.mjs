@@ -109,7 +109,7 @@ ok('Calça Flare Canelada → 6104.63.00', ncmPorNome('Calça Flare Canelada Nud
 ok('Conjunto Cozy (moletom) → 6104.22.00', ncmPorNome('Conjunto Cozy Marsala - M'), '6104.22.00');
 ok('Conjunto Moletom + Flare canelada (misturado) → 6104.22.00', ncmPorNome('Conjunto Moletom Gola Alta + Flare Canelada Marrom'), '6104.22.00');
 ok('Conjunto Canelado → 6104.23.00', ncmPorNome('Conjunto Canelado Telha - P'), '6104.23.00');
-ok('Conjunto Peace → 6104.29.00', ncmPorNome('Conjunto Peace Preto - G'), '6104.29.00');
+ok('Conjunto Peace → 6104.29.90 (6104.29.00 não existe, rejeição 778 em 03/11/2026)', ncmPorNome('Conjunto Peace Preto - G'), '6104.29.90');
 ok('Calça Pantalona Moletom → 6104.62.00', ncmPorNome('Calça Pantalona Moletom Cinza - M'), '6104.62.00');
 ok('Calça Pantalona (viscolycra) → 6104.69.00', ncmPorNome('Calça Pantalona - Marsala / M'), '6104.69.00');
 ok('Conjunto Cropped Canelado + Calça Pantalona → 6104.23.00 (03/11/2026)', ncmPorNome('Conjunto Cropped Canelado + Calça Pantalona Cinza - P'), '6104.23.00');

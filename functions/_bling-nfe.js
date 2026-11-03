@@ -88,7 +88,9 @@ export function ncmPorNome(nome) {
   let conj = n.startsWith('conjunto') || n.includes(' + ') || (n.includes(' com ') && tem('saia', 'cropped', 'moletom', 'blusa') && !n.startsWith('blusa'));
   if (n.startsWith('blusa com punho') || n.startsWith('blusa gola')) conj = false;
   if (conj) {
-    if (tem('peace', 'boho')) return '6104.29.00';
+    // 6104.29.90, não 6104.29.00: esse código não existe (SEFAZ rejeição 778 nas notas do #9335, #9366 e #9466,
+    // 03/11/2026). A subposição só tem .10 (lã) e .90 (outras); Peace e Boho são viscolycra.
+    if (tem('peace', 'boho')) return '6104.29.90';
     const algodao = tem('moletom', 'moletinho', 'jogger', 'cozy', 'dream', 'lazy', 'mood', 'chill', 'canguru', 'oversized', 'camiseta', 'regata', 'bolso frontal', 'pantalona com blusa', 'pantalona + blusa', 'cropped vermelho');
     const canelado = tem('canelad', 'flare', 'mini saia', 'saia midi', 'gola efeito', 'punho dedinho');
     if (algodao) return '6104.22.00';
