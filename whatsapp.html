@@ -438,7 +438,11 @@ function desenharMsgs(rolar) {
     // Mesmo grupo = mesmo autor, menos de 5 min depois: só o primeiro balão tem o "rabinho".
     const grupo = ant && ant.lado === m.lado && Date.parse(m.quando) - Date.parse(ant.quando) < 5 * 60e3;
     const quem = grupo ? '' : ({ vi: '<div class="quem vi">Vi</div>', equipe: '<div class="quem equipe">Equipe</div>', auto: '<div class="quem auto">Mensagem automática</div>' }[m.lado] || '');
-    const texto = m.texto ? formatar(m.texto) : (m.midia_id ? '' : '<i>mensagem sem texto</i>');
+    // A Meta às vezes entrega a mensagem da cliente vazia (type unsupported, erro 131060): o conteúdo não existe pra
+    // ninguém ler. Aparecia como "[unsupported]" e parecia que a Vi não recebeu (Laira, 03/11/2026).
+    const indisponivel = m.tipo === 'unsupported' || /^\[(unsupported\]|mensagem da cliente que não chegou)/.test(String(m.texto || ''));
+    const texto = indisponivel ? '<i>Mensagem que não chegou: o WhatsApp da cliente entregou vazia. Peça pra ela mandar de novo.</i>'
+      : m.texto ? formatar(m.texto) : (m.midia_id ? '' : '<i>mensagem sem texto</i>');
     html.push(`<div class="b ${sai ? 'sai' : 'entra'}${grupo ? '' : ' cauda novo-grupo'}">${quem}${corpoMidia(m)}${texto}${meta(m)}</div>`);
     ant = m;
   }
