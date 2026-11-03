@@ -23,7 +23,9 @@ async function chamar(token, caminho, init = {}) {
 export async function rodada(token) {
   const resultados = [];
   let erro_geral = null;
-  const p = await chamar(token, '/api/bling-nfe?acao=pendentes&dias=2');
+  // 4 dias e não 2 (03/11/2026): sem rodada no fim de semana, pedido de sexta à tarde e de sábado ficava fora da
+  // janela de segunda e nunca ganhava nota (#9354, #9358, #9359, #9408, #9409). As travas impedem nota repetida.
+  const p = await chamar(token, '/api/bling-nfe?acao=pendentes&dias=4');
   if (p.status !== 200 || !p.d || !Array.isArray(p.d.pedidos)) {
     erro_geral = 'pendentes: ' + ((p.d && p.d.erro) || p.status);
   } else {
