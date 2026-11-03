@@ -93,6 +93,8 @@ export function ncmPorNome(nome) {
     const canelado = tem('canelad', 'flare', 'mini saia', 'saia midi', 'gola efeito', 'punho dedinho');
     if (algodao) return '6104.22.00';
     if (canelado && !tem('pantalona')) return '6104.23.00';
+    // Conjunto Cropped Canelado + Calça Pantalona: 6104.23.00, decidido por ela em 03/11/2026 (4 notas pendentes)
+    if (tem('cropped canelado') && tem('pantalona')) return '6104.23.00';
     return null;
   }
   if (tem('macacao', 'macaquinho amplo')) return '6114.30.00';

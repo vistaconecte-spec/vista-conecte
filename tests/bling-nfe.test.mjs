@@ -112,6 +112,7 @@ ok('Conjunto Canelado → 6104.23.00', ncmPorNome('Conjunto Canelado Telha - P')
 ok('Conjunto Peace → 6104.29.00', ncmPorNome('Conjunto Peace Preto - G'), '6104.29.00');
 ok('Calça Pantalona Moletom → 6104.62.00', ncmPorNome('Calça Pantalona Moletom Cinza - M'), '6104.62.00');
 ok('Calça Pantalona (viscolycra) → 6104.69.00', ncmPorNome('Calça Pantalona - Marsala / M'), '6104.69.00');
+ok('Conjunto Cropped Canelado + Calça Pantalona → 6104.23.00 (03/11/2026)', ncmPorNome('Conjunto Cropped Canelado + Calça Pantalona Cinza - P'), '6104.23.00');
 ok('Moletom Gola Alta → 6110.20.00', ncmPorNome('Moletom Gola Alta Nude - G'), '6110.20.00');
 ok('Casaco Bear → 6102.30.00', ncmPorNome('Casaco Bear Marrom - M'), '6102.30.00');
 ok('Camiseta Oversized → 6109.10.00', ncmPorNome('Camiseta Oversized Black - G'), '6109.10.00');
