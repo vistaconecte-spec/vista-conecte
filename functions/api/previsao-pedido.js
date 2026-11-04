@@ -24,6 +24,13 @@ const SB_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsIn
 const SIZES = ['PP', 'P', 'M', 'G', 'GG', 'G1'];
 const SHOE_SIZES = ['34', '35', '36', '37', '38', '39', '40'];
 
+// Modelo de tamanho único guarda estoque e levas na posição 0, mas o pedido chega com o tamanho
+// da variante (P, M, G...). Lendo a posição do pedido, a peça em corte saía como "sem_leva" e o
+// pedido inteiro ficava sem data (#9367, 04/11/2026). CÓPIA dos `tamanhoUnico` do data.js, que
+// tests/previsao-pedido.test.mjs confere. O tamanho mostrado continua sendo o que a cliente pediu.
+const TAMANHO_UNICO = ['vestido-frente-unica-longo', 'vestido-frente-unica-curto'];
+const idxEstoque = (key, idx) => (TAMANHO_UNICO.includes(key) ? 0 : idx);
+
 // CÓPIA de CONJUNTO_PECAS / CONJUNTO_CORES_COMBINADAS do main.js (o main.js roda no navegador e
 // não exporta nada). tests/previsao-pedido.test.mjs confere que as duas continuam iguais.
 const CONJUNTO_PECAS = {
@@ -146,7 +153,7 @@ export async function onRequestGet(context) {
     const pendentes = pecas.map((p) => {
       const d = linhas[p.key];
       const tamanhos = (d && d.tamanhos) || (p.idx < SIZES.length ? SIZES : SHOE_SIZES);
-      return { peca: (d && d.nome) || p.key, cor: p.cor, tamanho: tamanhos[p.idx] || SIZES[p.idx] || String(p.idx), ...situacaoPeca(d, p.cor, p.idx) };
+      return { peca: (d && d.nome) || p.key, cor: p.cor, tamanho: tamanhos[p.idx] || SIZES[p.idx] || String(p.idx), ...situacaoPeca(d, p.cor, idxEstoque(p.key, p.idx)) };
     });
     const semData = pendentes.filter((p) => p.situacao !== 'pronta' && !p.libera_em);
     const datas = pendentes.map((p) => p.libera_em).filter(Boolean).sort();
@@ -161,4 +168,4 @@ export async function onRequestGet(context) {
   }
 }
 
-export { situacaoPeca, diaUtilAnterior, pecasDe, CONJUNTO_PECAS, CONJUNTO_CORES_COMBINADAS };
+export { situacaoPeca, diaUtilAnterior, pecasDe, idxEstoque, CONJUNTO_PECAS, CONJUNTO_CORES_COMBINADAS, TAMANHO_UNICO };

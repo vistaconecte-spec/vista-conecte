@@ -14,8 +14,8 @@ import { dirname, join } from 'node:path';
 const raiz = join(dirname(fileURLToPath(import.meta.url)), '..');
 const src = readFileSync(join(raiz, 'functions/api/previsao-pedido.js'), 'utf8');
 const puro = src.slice(src.indexOf('const SIZES'), src.indexOf('export async function onRequestGet'));
-const { situacaoPeca, diaUtilAnterior, pecasDe, CONJUNTO_PECAS, CONJUNTO_CORES_COMBINADAS } =
-  new Function(puro + '; return { situacaoPeca, diaUtilAnterior, pecasDe, CONJUNTO_PECAS, CONJUNTO_CORES_COMBINADAS };')();
+const { situacaoPeca, diaUtilAnterior, pecasDe, idxEstoque, CONJUNTO_PECAS, CONJUNTO_CORES_COMBINADAS, TAMANHO_UNICO } =
+  new Function(puro + '; return { situacaoPeca, diaUtilAnterior, pecasDe, idxEstoque, CONJUNTO_PECAS, CONJUNTO_CORES_COMBINADAS, TAMANHO_UNICO };')();
 
 const main = readFileSync(join(raiz, 'main.js'), 'utf8');
 const trecho = (nome) => {
@@ -36,6 +36,17 @@ function ok(nome, real, esperado) {
 console.log('\n1) Cópia dos mapas de conjunto igual à do main.js');
 ok('CONJUNTO_PECAS', CONJUNTO_PECAS, doMain('CONJUNTO_PECAS'));
 ok('CONJUNTO_CORES_COMBINADAS', CONJUNTO_CORES_COMBINADAS, doMain('CONJUNTO_CORES_COMBINADAS'));
+ok('TAMANHO_UNICO igual aos tamanhoUnico do data.js', [...TAMANHO_UNICO].sort(),
+  Object.entries(new Function(readFileSync(join(raiz, 'data.js'), 'utf8') + '; return MODELOS')())
+    .filter(([, d]) => d.tamanhoUnico).map(([k]) => k).sort());
+
+console.log('\n1b) Tamanho único lê a posição 0, seja qual for o tamanho do pedido (#9367)');
+const unico = { est: { 'Off White': [0, 0, 0, 0, 0] }, prod: { 'Off White': [5, 0, 0, 0, 0] }, status: 'Em corte' };
+ok('vestido pedido em M acha a leva', situacaoPeca(unico, 'Off White', idxEstoque('vestido-frente-unica-longo', 2)),
+  { situacao: 'em_producao', etapa: 'Em corte', leva: 1 });
+ok('vestido pedido em M acha o estoque', situacaoPeca({ est: { Preto: [3, 0, 0, 0, 0] } }, 'Preto', idxEstoque('vestido-frente-unica-curto', 2)),
+  { situacao: 'pronta' });
+ok('modelo com grade continua na posição do pedido', idxEstoque('macacao-amplo', 3), 3);
 
 console.log('\n2) Situação da peça');
 const base = { est: { Preto: [0, 0, 6, 0, 0] }, prod: { Preto: [0, 0, 0, 2, 0] }, status: 'Em costura', status_at: '2026-09-30T21:11:21.963Z' };
