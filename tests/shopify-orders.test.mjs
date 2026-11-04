@@ -119,6 +119,10 @@ ok('cor de duas palavras também',
    conj('Conjunto Cropped Canelado + Calça Pantalona Off White', 'P')[0].cor, 'Off White');
 ok('se a cor vier na variante, ela manda',
    conj('Conjunto Cropped Canelado + Calça Pantalona', 'Marsala / GG')[0].cor, 'Marsala');
+ok('Cropped Canelado + Saia Midi vira as duas peças (pedido da Marcelly, 04/11/2026)',
+   conj('Conjunto Cropped Canelado + Saia Midi Off White', 'M'),
+   [{ modelo:'cropped-canelado', cor:'Off White', tam:2 },
+    { modelo:'saia-midi', cor:'Off White', tam:2 }]);
 ok('o conjunto do cropped MOLETOM continua funcionando como antes',
    conj('Conjunto Calça Pantalona com Cropped moletom', 'Cinza / G'),
    [{ modelo:'conjunto-calca-pantalona-cropped', cor:'Cinza', tam:3 }]);

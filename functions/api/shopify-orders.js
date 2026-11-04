@@ -383,6 +383,7 @@ const normalizarTitulo = t => String(t || '').toUpperCase().replace(/\s+/g, ' ')
  */
 const CONJUNTOS_POR_TITULO = {
   'CONJUNTO CROPPED CANELADO + CALÇA PANTALONA': ['cropped-canelado', 'calca-pantalona-viscolycra'],
+  'CONJUNTO CROPPED CANELADO + SAIA MIDI':       ['cropped-canelado', 'saia-midi'],
 };
 
 /**
