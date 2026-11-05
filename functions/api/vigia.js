@@ -6,7 +6,7 @@
  *         Quem chama é .github/workflows/vigia.yml, de hora em hora, com X-VC-Token.
  *
  * O estado só é gravado depois do envio dar certo: aviso que falhou tenta de novo na próxima hora.
- * Env: SUPABASE_ANON_KEY (a chave de serviço não alcança a vc_modelos), CASOS_AVISO_WA, META_ACCESS_TOKEN.
+ * Env: SUPABASE_ANON_KEY (a chave de serviço não alcança a vc_modelos), VIGIA_AVISO_WA (número dela, fora do repo público), META_ACCESS_TOKEN.
  */
 import { SB_URL, json } from '../_bling.js';
 import { enviarModeloDaLoja } from '../_whatsapp.js';
@@ -51,8 +51,8 @@ export async function onRequestPost({ env }) {
     const lista = problemas(pulso, robo, agora);
     const d = decidir(lista, estado, agora);
     if (d.enviar) {
-      if (!env.CASOS_AVISO_WA) return json({ erro: 'CASOS_AVISO_WA ausente' }, 500);
-      const s = await enviarModeloDaLoja(env, env.CASOS_AVISO_WA, TEMPLATE_ALERTA, [d.enviar]);
+      if (!env.VIGIA_AVISO_WA) return json({ erro: 'VIGIA_AVISO_WA ausente' }, 500);
+      const s = await enviarModeloDaLoja(env, env.VIGIA_AVISO_WA, TEMPLATE_ALERTA, [d.enviar]);
       if (s.erro) return json({ erro: s.erro, detalhe: s.detalhe }, 502);
     }
     await gravarEstado(env, d.estado);
