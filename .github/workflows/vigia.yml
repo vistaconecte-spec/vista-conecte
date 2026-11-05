@@ -14,6 +14,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 3
     steps:
-      - run: curl -sS --fail-with-body --max-time 60 -X POST -H "X-VC-Token: $VC_API_TOKEN" https://vistaconecte.pages.dev/api/vigia
+      - run: |
+          curl -sS --fail-with-body --max-time 60 -X POST -H "X-VC-Token: $VC_API_TOKEN" https://vistaconecte.pages.dev/api/vigia
         env:
           VC_API_TOKEN: ${{ secrets.VC_API_TOKEN }}
