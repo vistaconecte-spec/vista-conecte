@@ -35,7 +35,10 @@ const PUBLICO = new Set(['/api/login', '/api/logout', '/api/sessao', '/api/shopi
   '/api/webhook-shopify-pedido', '/api/webhook-pagarme', '/api/webhook-mp', '/api/cartao-barrado',
   '/api/previsao-pedido', '/api/pronta-entrega', '/api/bling-callback', '/api/trocas-portal',
   // Webhook do WhatsApp oficial direto da Meta (19/10/2026); confere ?k=WEBHOOK_KEY sozinho.
-  '/api/webhook-whatsapp']);
+  '/api/webhook-whatsapp',
+  // Checkout da Shopify pedindo a tarifa de frete grátis (04/11/2026). Só calcula em cima do
+  // carrinho que recebe: não lê nem devolve dado da loja, e a Shopify só chama a URL cadastrada.
+  '/api/frete-gratis-tarifas']);
 
 // Os perfis de oficina ('corte' e 'costura') abrem UMA aba cada — CORTE e COSTURA —,
 // montadas com o que já veio do Supabase. O que eles alcançam é uma ALLOWLIST, e não uma
