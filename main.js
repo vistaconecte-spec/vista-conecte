@@ -2608,7 +2608,8 @@ function csStatusPedido(p, sit) {
   const envios = (p.etiquetas || []).filter(e => e.rastreio || e.em)
     .map(e => [dm(e.em), e.transportadora, e.rastreio].filter(Boolean).join(' · ')).join(' | ');
   const pecas = s => (s && s.faltas || []).map(f => `${f.peca}${f.faltam > 1 ? ' x' + f.faltam : ''}: ${f.em_producao ? f.etapa_interna : 'não está na produção'}`);
-  const st = (rotulo, cor, detalhe, lista) => ({ numero: p.numero, rotulo, cor, detalhe: detalhe || '', pecas: lista || [] });
+  const nf = p.nota_fiscal ? `NF ${p.nota_fiscal.numero || ''} · chave ${p.nota_fiscal.chave}`.replace('NF  ·', 'NF ·') : 'sem nota fiscal no sistema';
+  const st = (rotulo, cor, detalhe, lista) => ({ numero: p.numero, rotulo, cor, detalhe: detalhe || '', pecas: lista || [], nf });
   if (p.cancelado_em) return st('CANCELADO', 'cinza', 'em ' + dm(p.cancelado_em));
   if (p.pagamento && !['paid', 'partially_refunded'].includes(p.pagamento)) return st('NÃO PAGO', 'cinza', p.pagamento);
   if (p.envio === 'fulfilled') return st('ENVIADO', 'verde', envios || 'sem rastreio na Shopify');
@@ -2647,7 +2648,8 @@ function csCartaoStatus(lista, ultimo) {
     + (lista.length ? titulo('STATUS DO PEDIDO')
       + lista.map(s => `<div style="padding:2px 0"><b>${csEsc(s.numero)}</b> <span style="font-weight:800;color:${cor[s.cor] || 'inherit'}">${csEsc(s.rotulo)}</span>`
         + `${s.detalhe ? ` <span style="color:var(--text-sec)">· ${csEsc(s.detalhe)}</span>` : ''}`
-        + s.pecas.map(x => `<div style="padding-left:14px;color:var(--text-sec)">${csEsc(x)}</div>`).join('') + '</div>').join('') : '')
+        + s.pecas.map(x => `<div style="padding-left:14px;color:var(--text-sec)">${csEsc(x)}</div>`).join('')
+        + (s.nf ? `<div style="padding-left:14px;color:var(--text-sec);font-size:12px;word-break:break-all">${csEsc(s.nf)}</div>` : '') + '</div>').join('') : '')
     + (ultimo.length ? titulo('ÚLTIMA CONVERSA', lista.length)
       + ultimo.map(u => `<div style="padding:2px 0"><b>${csEsc(u.quem)}</b>${u.em ? ` <span style="color:var(--text-ter)">${csEsc(u.em)}</span>` : ''} <span style="color:var(--text-sec)">${csEsc(u.texto)}</span></div>`).join('') : '')
     + '</div>';

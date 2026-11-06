@@ -131,6 +131,10 @@ async function buscarPedido(env, numero, agora = Date.now()) {
     }
   } catch (_) {}
   const mp = await pagamentoMP(env, ref).catch(() => null);
+  // Chave da NF-e: a Frenet exige na etiqueta desde 30/10/2026 e a Marcelly não tinha onde ver (06/11/2026). Vem do
+  // registro do automático (linhas bling-nfe:<id>), sem chamar o Bling; pedido de antes de 16/10 quase nunca tem.
+  const nota = await sb(env, true).get(`vc_modelos?id=like.bling-nfe:*&dados->>shopify=eq.${encodeURIComponent(o.name)}&select=dados&limit=1`)
+    .then(l => (l[0] && l[0].dados) || null).catch(() => null);
   const estornosShopify = (o.refunds || []).map(r => ({ em: r.created_at,
     valor: (r.transactions || []).reduce((s, x) => s + (parseFloat(x.amount) || 0), 0) }));
   return {
@@ -141,6 +145,7 @@ async function buscarPedido(env, numero, agora = Date.now()) {
     pago_por_item: (o.line_items || []).map(pagoPorItem),
     frete: (o.shipping_lines || []).map(s => `${s.title} R$ ${s.price}`),
     envio: o.fulfillment_status || 'não enviado',
+    nota_fiscal: nota && nota.status === 'enviada' && nota.chave ? { numero: nota.numero_nota || null, chave: String(nota.chave).replace(/\D/g, '') } : null,
     etiquetas: (o.fulfillments || []).map(f => ({ em: f.created_at, transportadora: f.tracking_company, rastreio: f.tracking_number })),
     observacao: String(o.note || '').slice(0, 500), tags: o.tags || '',
     estornos_shopify: estornosShopify, mercado_pago: mp,

@@ -364,7 +364,9 @@ ok('a resposta desenha o cartão e guarda para recarregar', /div\.innerHTML = cs
   const fim = main.indexOf('function csCartaoStatus(');
   const { statusPedido, statusCurto } = new Function(main.slice(ini, fim) + 'return { statusPedido: csStatusPedido, statusCurto: csStatusCurto };')();
   ok('enviado', statusPedido({ numero: '#9269', pagamento: 'paid', envio: 'fulfilled', etiquetas: [{ em: '2026-10-22T15:00:00Z', transportadora: 'Outra', rastreio: 'AE058992551BR' }] }),
-    { numero: '#9269', rotulo: 'ENVIADO', cor: 'verde', detalhe: '22/10 · Outra · AE058992551BR', pecas: [] });
+    { numero: '#9269', rotulo: 'ENVIADO', cor: 'verde', detalhe: '22/10 · Outra · AE058992551BR', pecas: [], nf: 'sem nota fiscal no sistema' });
+  ok('chave da nota no cartão (a Frenet exige na etiqueta, 06/11/2026)', statusPedido({ numero: '#9525', pagamento: 'paid', envio: 'não enviado', nota_fiscal: { numero: '007773', chave: '42261100000000000000550010000077731000000000' } }, { situacao: 'pronto para envio' }).nf,
+    'NF 007773 · chave 42261100000000000000550010000077731000000000');
   ok('pronto e não enviado', statusCurto({ numero: '#9400', pagamento: 'paid', envio: 'não enviado' }, { situacao: 'pronto para envio' }),
     '#9400: não enviado, pronto para envio, todas as peças no estoque.');
   ok('esperando peça com a etapa de cada peça', statusPedido({ numero: '#9177', pagamento: 'paid', envio: 'não enviado' },
