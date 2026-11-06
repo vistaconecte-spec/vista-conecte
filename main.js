@@ -3536,6 +3536,8 @@ function revStatus(lista, t) {
   const r = (res.itens || {})[id];
   const ped = ((loadLocal('vc:reversas-pedido') || {}).itens || []).find(x => x.id === id);
   const reais = v => 'R$ ' + (Number(v) || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 });
+  // Sem etiqueta de ida na Frenet o robô monta etiqueta comum (06/11/2026): depois de paga, o PDF vai no chat da cliente
+  if (r && r.status === 'carrinho' && r.comum) return { txt: `etiqueta comum ${r.servico || ''} ${reais(r.preco)} no carrinho da Frenet: pagar, baixar o PDF e mandar no chat da cliente`, pode: false, cor: '#b45309' };
   if (r && r.status === 'carrinho') return { txt: `${r.servico || 'reversa'} ${reais(r.preco)} no carrinho da Frenet: falta pagar`, pode: false, cor: '#b45309' };
   // A Frenet só libera a reversa depois de registrar a entrega da ida; o robô tenta de novo a cada 30 min (28/10/2026)
   if (r && r.status === 'aguardando') return { txt: 'robô: esperando a Frenet liberar a reversa (registra a entrega primeiro), tenta de novo sozinho', pode: false, cor: '#b45309' };
