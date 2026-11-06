@@ -2671,7 +2671,42 @@ function csEnriquecer(nome, out) {
     if (nome === 'abrir_caso' && out && out.conversa) csUltimoTurno = csUltimoAssunto(out.conversa); // vira a ÚLTIMA CONVERSA do cartão
     if (nome === 'buscar_pedido' && out && out.encontrado) juntar(out);
   } catch (_) {}
+  try {
+    const troca = v => { const m = String(v || '').match(/\d{4,5}/); return m ? csSituacaoTroca(m[0]) : null; };
+    if (nome === 'pendencias_do_dia' && out && out.casos_abertos) out.casos_abertos.forEach(c => { const t = troca(c.pedido); if (t) c.troca = t; });
+    if (nome === 'abrir_caso' && out && out.pedidos) out.pedidos.forEach(p => { const t = p.encontrado && troca(p.numero); if (t) p.troca = t; });
+    if (nome === 'buscar_pedido' && out && out.encontrado) { const t = troca(out.numero); if (t) out.troca = t; }
+  } catch (_) {}
   return out;
+}
+
+// O que o quadro TROCAS E DEVOLUÇÕES sabe do pedido. O resumo do CRM é escrito pela Vi e fica velho: dizia
+// "emitir e enviar a etiqueta" em troca com código já mandado e peça a caminho (06/11/2026, pergunta da Marcelly).
+function csSituacaoTroca(numero) {
+  const n = String(numero || '').replace(/\D/g, '');
+  const dig = v => String(v || '').replace(/\D/g, '');
+  const dia = v => new Date(v).toLocaleDateString('pt-BR');
+  const res = (loadLocal('vc:reversas-resultado') || {}).itens || {};
+  const aCaminho = (lista, t, cod) => {
+    const ras = trcRastreio(t, lista) || {}, r = res[lista + ':' + t.id] || {};
+    if (ras.postado) return `cliente já postou (código ${cod}), peça a caminho da loja: nada a fazer até chegar`;
+    if (r.whatsapp_texto && !r.whatsapp_em) return `código ${cod} pronto, mas não chegou no WhatsApp da cliente (janela fechada): chamar pelo Mandar modelo e passar o código quando ela responder`;
+    return `código ${cod} já com a cliente, ainda não postou${ras.vence_em ? `, vence em ${dia(ras.vence_em)}` : ''}`;
+  };
+  const semCodigo = (lista, t) => { const st = revStatus(lista, t); return st.txt || 'reversa ainda não pedida: botão do caminhão no cartão'; };
+  const trocas = (retGetConfig().itens || []).filter(t => trcNoQuadro(t) && (dig(t.pedido) === n || dig(t.pedido_troca) === n)).map(t => {
+    if (t.status === 'resolvido' || String(t.codigo_reenvio || '').trim()) return `troca concluída, peça nova enviada${t.codigo_reenvio ? ` (rastreio ${t.codigo_reenvio})` : ''}`;
+    if (t.chegou_reversa || t.data_chegada_reversa) return `peça antiga chegou: conferir e liberar a peça nova${t.pedido_troca ? ` (${t.pedido_troca})` : ', falta criar o pedido de troca'}`;
+    const cod = revCodigoAtual('retorno', t);
+    return cod ? aCaminho('retorno', t, cod) : semCodigo('retorno', t);
+  });
+  const devolucoes = (estGetConfig().itens || []).filter(t => !t.arquivada && !estConcluida(t) && dig(revNumeroPedido('estorno', t)) === n).map(t => {
+    if (t.chegou_em) return t.forma === 'credito' ? 'peça chegou: conferir e lançar o crédito' : 'peça chegou: estorno com a Bárbara';
+    const cod = revCodigoAtual('estorno', t);
+    return cod ? aCaminho('estorno', t, cod) : semCodigo('estorno', t);
+  });
+  const tudo = [...new Set([...trocas, ...devolucoes])];
+  return tudo.length ? tudo.join('; ') : null;
 }
 
 async function csFerramentaServidor(nome, input) {

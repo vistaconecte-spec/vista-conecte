@@ -304,6 +304,22 @@ ok('linha curta da lista do dia', [T.csProducaoCurta('9300'), T.csProducaoCurta(
   ['pronto para envio', 'falta Macaquinho Amplo Preto P (NÃO ESTÁ NA PRODUÇÃO)', 'não está nos pagos em aberto (enviado, não pago ou cancelado)']);
 const lista = T.csEnriquecer('pendencias_do_dia', { casos_abertos: [{ caso_id: 725, pedido: '#9210' }, { caso_id: 1, pedido: null }] });
 ok('lista do dia chega ao assistente com o status da peça', [/^sai hoje trocando a etiqueta/.test(lista.casos_abertos[0].producao), lista.casos_abertos[1].producao], [true, undefined]);
+// Quadro de trocas: o que está lá vale mais que o resumo do CRM (06/11/2026)
+const fabTroca = new Function('loadLocal', 'retGetConfig', 'estGetConfig', 'trcNoQuadro', 'trcRastreio', 'revCodigoAtual', 'revStatus', 'revNumeroPedido', 'estConcluida', fn('csSituacaoTroca') + '\nreturn csSituacaoTroca;');
+const cartoes = [{ id: 'a', pedido: '#100', pedido_troca: '#200' }, { id: 'b', pedido: '#101', pedido_troca: '#201' }, { id: 'c', pedido: '#102' }, { id: 'd', pedido: '#103', chegou_reversa: true }, { id: 'e', pedido: '#104', status: 'resolvido', codigo_reenvio: 'XY1' }, { id: 'f', pedido: '#105' }];
+const codigos = { a: '111', b: '222', c: '333' };
+const sitTroca = fabTroca(() => ({ itens: { 'retorno:c': { whatsapp_texto: 'oi' } } }), () => ({ itens: cartoes }), () => ({ itens: [{ id: 'x', forma: 'credito', pecas: '1× Calça — pedido #106', chegou_em: '2026-11-01' }] }), () => true,
+  t => (t.id === 'a' ? { postado: true } : t.id === 'b' ? { vence_em: '2026-11-13T12:00:00Z' } : null), (l, t) => codigos[t.id] || '', () => ({ txt: '' }), (l, t) => (/#(\d+)/.exec(t.pecas) || [])[1] || '', () => false);
+ok('quadro: postou, não falta etiqueta', /já postou \(código 111\)/.test(sitTroca('100')), true);
+ok('quadro: acha também pelo pedido da troca', sitTroca('200') === sitTroca('100'), true);
+ok('quadro: código com a cliente e validade', /código 222 já com a cliente.*vence em/.test(sitTroca('101')), true);
+ok('quadro: janela fechada pede modelo', /Mandar modelo/.test(sitTroca('102')), true);
+ok('quadro: chegou sem pedido de troca', /falta criar o pedido de troca/.test(sitTroca('103')), true);
+ok('quadro: concluída', /peça nova enviada \(rastreio XY1\)/.test(sitTroca('104')), true);
+ok('quadro: sem código pede a reversa', /botão do caminhão/.test(sitTroca('105')), true);
+ok('quadro: crédito que chegou', /lançar o crédito/.test(sitTroca('106')), true);
+ok('quadro: pedido sem cartão não diz nada', sitTroca('999'), null);
+ok('instrução manda seguir o quadro', /Campo troca/.test(C.SISTEMA), true);
 // Ida (#9243): Carneirinho Cropped Preto M fora da produção, Off White M sem dono na arara.
 const MOD2 = { 'carneirinho-cropped': { nome: 'Carneirinho Cropped', tamanhos: ['PP', 'P', 'M', 'G', 'GG'],
   aberto: { Preto: [0, 0, 1, 0, 0], 'Off White': [0, 0, 1, 0, 0], Bege: [0, 0, 0, 0, 0] } } };
