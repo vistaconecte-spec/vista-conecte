@@ -15,6 +15,7 @@
 
 export const SB_URL = 'https://hckzsblwyabmhzbjdjgx.supabase.co';
 export const BLING_API = 'https://api.bling.com.br/Api/v3';
+const BLING_API_ALT = 'https://www.bling.com.br/Api/v3';
 export const BLING_AUTHORIZE = 'https://www.bling.com.br/Api/v3/oauth/authorize';
 // Não é segredo: aparece na URL de autorização que o navegador abre.
 export const BLING_CLIENT_ID_PADRAO = '2881e6a1616ae95db825c3079fea7203dbd37e2a';
@@ -115,7 +116,7 @@ async function gravarDocToken(env, dados) {
 
 async function pedirToken(env, corpo) {
   if (!env.BLING_CLIENT_SECRET) throw new Error('BLING_CLIENT_SECRET ausente no Pages');
-  const r = await fetch(`${BLING_API}/oauth/token`, {
+  const pedir = base => fetch(`${base}/oauth/token`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/x-www-form-urlencoded',
@@ -124,7 +125,11 @@ async function pedirToken(env, corpo) {
     },
     body: new URLSearchParams(corpo).toString(),
   });
-  const txt = await r.text();
+  // 429 "error code: 1015" é o bloqueio da Cloudflare do Bling contra o IP do painel, antes de chegar no Bling (o
+  // refresh token não gira). Em 06/11/2026 a renovação ficou presa nisso e nenhuma nota saiu: tenta o outro endereço.
+  let r = await pedir(BLING_API);
+  let txt = await r.text();
+  if (r.status === 429) { r = await pedir(BLING_API_ALT); txt = await r.text(); }
   let d = null; try { d = JSON.parse(txt); } catch { /* corpo não-JSON vira erro abaixo */ }
   if (!r.ok || !d || !d.access_token) {
     const msg = d && d.error ? (d.error.description || d.error.message || d.error.type || JSON.stringify(d.error)) : txt.slice(0, 200);
