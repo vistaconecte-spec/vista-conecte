@@ -34,6 +34,8 @@ const motivos = (p, o, n) => decidir(p, o, n).motivos;
 
 console.log('\ncaminho feliz');
 ok('pedido pago, sem nota, valores iguais → emite', decidir(pedido(), order(), []), { emitir: true, motivos: [] });
+ok('pedido com peça trocada na Shopify não emite', decidir(pedido(), order({ line_items: [{ quantity: 1, current_quantity: 0 }, { quantity: 1, current_quantity: 1 }] }), []).emitir, false);
+ok('pedido sem edição emite', decidir(pedido(), order({ line_items: [{ quantity: 2, current_quantity: 2 }] }), []).emitir, true);
 ok('nota cancelada da cliente não bloqueia', decidir(pedido(), order(), [{ numero: '7600', situacao: 2 }]).emitir, true);
 ok('nota denegada da cliente não bloqueia', decidir(pedido(), order(), [{ numero: '7600', situacao: 9 }]).emitir, true);
 ok('diferença de 1 centavo passa', decidir(pedido({ total: 299.46 }), order(), []).emitir, true);

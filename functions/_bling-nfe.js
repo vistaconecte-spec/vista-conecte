@@ -62,6 +62,10 @@ export function decidir(pedido, order, notasCliente = []) {
     if ((order.refunds || []).length) motivos.push('pedido tem reembolso na Shopify');
     if (order.source_name && order.source_name !== 'web') motivos.push(`pedido não é da loja online (${order.source_name})`);
     if (ehRetirada(order)) motivos.push('retirada na loja');
+    // Pedido editado depois da compra (a Vi troca cor/tamanho na Shopify desde 08/11/2026): o pedido do Bling
+    // continua com a peça antiga e o total bate, então a nota sairia com a cor errada.
+    if ((order.line_items || []).some(li => li.current_quantity != null && li.current_quantity < li.quantity))
+      motivos.push('itens do pedido mudaram na Shopify depois da compra (troca de cor/tamanho): ajustar os itens no Bling antes de emitir');
     const diff = Math.abs(centavos(order.current_total_price ?? order.total_price) - centavos(pedido.total));
     if (diff > 1) motivos.push(`total diferente: Bling ${pedido.total} x Shopify ${order.current_total_price ?? order.total_price}`);
   }
