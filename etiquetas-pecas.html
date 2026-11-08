@@ -17,7 +17,9 @@
 
   Página estática, sem /api: os nomes e as grades vêm do data.js (o mesmo do painel).
   Abre direto em /etiquetas-pecas.html ou já com a peça: /etiquetas-pecas.html?modelo=calca-pantalona-viscolycra
-  Parâmetros opcionais: &copias=2  &papel=termica|a4  &larg=4.8  &alt=2.9  &modo=grade
+  Parâmetros opcionais: &copias=2  &papel=termica|a4  &larg=4.8  &alt=2.9  &modo=grade|nome
+  Peça de tamanho único (tamanhoUnico no data.js) abre em "só o nome": etiqueta sem tamanho
+  (pedido de 08/11/2026 para os Vestidos Frente Única Longo e Curto).
   Papel, medida (cm) e o nome editado de cada peça ficam guardados no navegador de quem usa.
 -->
 <style id="pagina">@page{size:100mm 150mm;margin:0}</style>
@@ -103,6 +105,7 @@
           <div class="modo">
             <button type="button" data-modo="tamanho" class="on">uma por tamanho</button>
             <button type="button" data-modo="grade">uma com a grade toda</button>
+            <button type="button" data-modo="nome">só o nome</button>
           </div>
         </div>
         <label class="campo">Largura (cm)
@@ -134,6 +137,10 @@
     'calca-pantalona-viscolycra': 'PANTALONA VISCOLYCRA',
     'macacao-amplo': 'MACACÃO', // como nas etiquetas da arara (08/11/2026)
   };
+  // Palavras que não podem ficar em linhas separadas quando o nome quebra (o espaço vira
+  // espaço que não quebra): sem isto saía "VESTIDO / FRENTE / ÚNICA LONGO".
+  const JUNTAS = [/FRENTE ÚNICA/g];
+  const juntar = t => JUNTAS.reduce((s, re) => s.replace(re, m => m.replace(/ /g, '\u00A0')), t);
   const INICIAL = 'calca-pantalona-viscolycra';
   // Papéis (mm). margem = sobra em volta, que a impressora não alcança.
   // Na térmica, 4,8 × 2,9 cm dá 2 colunas × 5 linhas = 10 etiquetas (PP a GG, 2 de cada).
@@ -184,9 +191,11 @@
   const qs = new URLSearchParams(location.search);
   const num = (v, d) => { const n = parseFloat(String(v).replace(',', '.')); return isFinite(n) && n > 0 ? n : d; };
 
-  let modo = qs.get('modo') === 'grade' ? 'grade' : 'tamanho';
   const pedido = qs.get('modelo');
   sel.value = (pedido && modelos[pedido]) ? pedido : (modelos[INICIAL] ? INICIAL : sel.options[0].value);
+  const unico = key => !!(modelos[key] || {}).tamanhoUnico;
+  let modo = ['grade', 'nome'].includes(qs.get('modo')) ? qs.get('modo') : (unico(sel.value) ? 'nome' : 'tamanho');
+  const marcarModo = () => document.querySelectorAll('.modo button').forEach(x => x.classList.toggle('on', x.dataset.modo === modo));
   const papelInicial = PAPEIS[qs.get('papel')] ? qs.get('papel') : (PAPEIS[mem.ler('papel', '')] ? mem.ler('papel', '') : 'termica');
   $('papel').value = papelInicial;
   $('copias').value = Math.round(num(qs.get('copias'), 1));
@@ -219,12 +228,21 @@
 
   // Maior fonte (pt) em que o texto cabe na caixa. Testa numa linha e quebrando em linhas,
   // e fica com o que der a letra MAIOR ("PANTALONA / VISCOLYCRA" em duas linhas sai quase
-  // o dobro do que numa linha só).
+  // o dobro do que numa linha só). No máximo 3 linhas: com 4, "VESTIDO / FRENTE / ÚNICA /
+  // LONGO" virava uma palavra por linha e não se lia como nome.
+  const MAX_LINHAS = 3;
+  const linhas = el => { // conta pela altura do TEXTO, não da caixa (a caixa é mais alta que o texto)
+    const h = el.style.height;
+    el.style.height = 'auto';
+    const n = Math.round(el.offsetHeight / (parseFloat(getComputedStyle(el).lineHeight) || 1));
+    el.style.height = h;
+    return n;
+  };
   function caber(el, maxPt) {
     const ajusta = () => {
       let pt = maxPt;
       el.style.fontSize = pt + 'pt';
-      while (pt > 5 && (el.scrollWidth > el.clientWidth + 0.5 || el.scrollHeight > el.clientHeight + 0.5)) {
+      while (pt > 5 && (el.scrollWidth > el.clientWidth + 0.5 || el.scrollHeight > el.clientHeight + 0.5 || linhas(el) > MAX_LINHAS)) {
         pt -= 0.25; el.style.fontSize = pt + 'pt';
       }
       return pt;
@@ -252,7 +270,9 @@
     const A = Math.min(util.h, Math.max(1.2, num($('alt').value, p.alt)));
 
     const itens = [];
-    if (modo === 'grade') {
+    if (modo === 'nome') {
+      for (let c = 0; c < copias; c++) itens.push({});
+    } else if (modo === 'grade') {
       for (let c = 0; c < copias; c++) itens.push({ grade: tams.join(' · ') });
     } else {
       tams.forEach(t => { for (let c = 0; c < copias; c++) itens.push({ tam: t }); });
@@ -277,12 +297,14 @@
       e.className = 'etq';
       e.style.width = L + 'cm'; e.style.height = A + 'cm';
       const n = document.createElement('div');
-      n.className = 'nome'; n.textContent = nome;
+      n.className = 'nome'; n.textContent = juntar(nome);
       e.appendChild(n);
-      const b = document.createElement('div');
-      if (it.tam != null) { b.className = 'tam'; b.textContent = it.tam; }
-      else { b.className = 'grade'; b.textContent = it.grade || ''; }
-      e.appendChild(b);
+      if (it.tam != null || it.grade != null) {
+        const b = document.createElement('div');
+        if (it.tam != null) { b.className = 'tam'; b.textContent = it.tam; }
+        else { b.className = 'grade'; b.textContent = it.grade; }
+        e.appendChild(b);
+      }
       folha.appendChild(e);
     });
     if (!itens.length) previa.innerHTML = '<div class="info" style="padding:30px;text-align:center">Marque pelo menos um tamanho.</div>';
@@ -294,9 +316,10 @@
       const cs = getComputedStyle(e);
       const utilH = e.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom); // px
       const utilW = e.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
-      n.style.height = (utilH * 0.55) + 'px';
+      n.style.height = (b ? utilH * 0.55 : utilH) + 'px'; // "só o nome": o nome fica com a etiqueta toda
       const nomePt = caber(n, 40);
       n.style.height = 'auto'; // fonte já escolhida: a caixa abraça o texto e o conjunto fica centrado
+      if (!b) return;
       const sobraPx = utilH - n.offsetHeight - parseFloat(getComputedStyle(b).marginTop);
       const sobraPt = Math.max(6, sobraPx * 0.75); // px → pt
       if (b.classList.contains('tam')) {
@@ -316,7 +339,11 @@
     document.title = `Etiquetas · ${nome}`;
   }
 
-  sel.onchange = () => { montarTamanhos(); desenhar(); };
+  sel.onchange = () => {
+    // tamanho único → só o nome; ao voltar para peça com grade, volta para um por tamanho
+    if (unico(sel.value)) modo = 'nome'; else if (modo === 'nome') modo = 'tamanho';
+    marcarModo(); montarTamanhos(); desenhar();
+  };
   $('papel').onchange = () => { mem.gravar('papel', $('papel').value); carregarMedida(false); desenhar(); };
   $('nome').oninput = () => {
     const nomes = mem.ler('nomes', {});
@@ -332,13 +359,9 @@
     desenhar();
   });
   document.querySelectorAll('.modo button').forEach(bt => {
-    bt.classList.toggle('on', bt.dataset.modo === modo);
-    bt.onclick = () => {
-      modo = bt.dataset.modo;
-      document.querySelectorAll('.modo button').forEach(x => x.classList.toggle('on', x === bt));
-      desenhar();
-    };
+    bt.onclick = () => { modo = bt.dataset.modo; marcarModo(); desenhar(); };
   });
+  marcarModo();
 
   carregarMedida(true);
   montarTamanhos();
