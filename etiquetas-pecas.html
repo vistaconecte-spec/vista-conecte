@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CONECTE · Etiquetas das peças</title>
+<!--
+  Etiquetas de papel com NOME DA PEÇA + TAMANHO, para imprimir em A4, recortar e pôr no
+  porta-etiqueta de acrílico da prateleira (ou presa na peça dobrada).
+  Pedido de 08/11/2026: começar pela Pantalona Viscolycra, PP a GG.
+
+  Página estática, sem /api: os nomes e as grades vêm do data.js (o mesmo do painel).
+  Abre direto em /etiquetas-pecas.html ou já com a peça: /etiquetas-pecas.html?modelo=calca-pantalona-viscolycra
+  Parâmetros opcionais: &copias=2  &larg=8  &alt=4  &modo=grade
+  O tamanho (cm) e o nome editado de cada peça ficam guardados no navegador de quem usa.
+-->
+<style>
+  :root{ --navy:#1a2b4a; --gold:#b8923f; --bg:#f4f5f7; --card:#fff; --border:#e6e8ec; --txt:#1a2b4a; --muted:#7a8699; }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;background:var(--bg);color:var(--txt)}
+  .wrap{max-width:1000px;margin:0 auto;padding:18px 16px}
+  h1{font-size:20px;letter-spacing:.18em;font-weight:800;margin:0}
+  .sub{color:var(--muted);font-size:12px;margin:2px 0 16px}
+  .painel{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:14px;display:grid;gap:12px;margin-bottom:16px}
+  .linha{display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end}
+  .campo{display:flex;flex-direction:column;gap:4px;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;font-weight:600}
+  select,input[type=text],input[type=number]{font:inherit;font-size:14px;color:var(--txt);border:1px solid var(--border);border-radius:8px;padding:7px 9px;background:#fff;text-transform:none;letter-spacing:0}
+  select{min-width:240px;max-width:100%}
+  input[type=text]{min-width:240px}
+  input[type=number]{width:76px}
+  .tams{display:flex;gap:6px;flex-wrap:wrap}
+  .tams label{display:flex;align-items:center;gap:5px;border:1px solid var(--border);border-radius:8px;padding:6px 10px;font-size:14px;font-weight:700;cursor:pointer;background:#fff}
+  .tams label.on{border-color:var(--navy);background:#eef1f7}
+  .modo{display:flex;gap:6px;flex-wrap:wrap}
+  .modo button,.acoes button{border:1px solid var(--border);background:#fff;border-radius:8px;padding:7px 14px;cursor:pointer;font-size:13px;font-weight:600;color:var(--txt)}
+  .modo button.on{background:var(--navy);color:#fff;border-color:var(--navy)}
+  .acoes{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+  .acoes .imprimir{background:var(--gold);border-color:var(--gold);color:#fff;font-size:14px;padding:9px 20px}
+  .info{font-size:12px;color:var(--muted)}
+  .dica{font-size:12px;color:var(--muted);line-height:1.5}
+
+  /* Folha A4 de verdade (21 × 29,7 cm, margem de 1 cm): o que se vê é o que sai na impressora */
+  .folha{width:210mm;min-height:297mm;padding:10mm;background:#fff;margin:0 auto 16px;box-shadow:0 1px 6px rgba(0,0,0,.12);
+         display:flex;flex-wrap:wrap;align-content:flex-start;justify-content:center}
+  .previa{overflow-x:auto;padding-bottom:4px}
+
+  .etq{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;
+       padding:2.5mm 3mm;color:#000;background:#fff;overflow:hidden;
+       outline:.25mm dashed #9a9a9a;outline-offset:-.125mm;break-inside:avoid;page-break-inside:avoid}
+  .etq .nome{width:100%;text-align:center;font-family:Arial,Helvetica,sans-serif;font-weight:700;letter-spacing:.06em;
+             line-height:1.1;white-space:nowrap;overflow:hidden}
+  .etq .nome.quebra{white-space:normal}
+  .etq .tam{font-family:Arial,Helvetica,sans-serif;font-weight:800;line-height:1;letter-spacing:.02em}
+  .etq .grade{font-family:Arial,Helvetica,sans-serif;font-weight:700;line-height:1;letter-spacing:.08em;white-space:nowrap}
+  .etq .fio{width:38%;border-top:.3mm solid #000;margin:1.6mm 0}
+
+  @page{size:A4 portrait;margin:0}
+  @media print{
+    body{background:#fff}
+    .wrap{max-width:none;padding:0}
+    .nao-imprime{display:none !important}
+    .previa{overflow:visible;padding:0}
+    .folha{margin:0;box-shadow:none;break-after:page;page-break-after:always}
+    .folha:last-child{break-after:auto;page-break-after:auto}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="nao-imprime">
+    <h1>CONECTE</h1>
+    <div class="sub">Etiquetas das peças — nome + tamanho, para imprimir em A4 e recortar</div>
+
+    <div class="painel">
+      <div class="linha">
+        <label class="campo">Peça
+          <select id="modelo"></select>
+        </label>
+        <label class="campo">Nome na etiqueta
+          <input type="text" id="nome" maxlength="60">
+        </label>
+      </div>
+
+      <div class="linha">
+        <div class="campo" style="gap:6px">Tamanhos<div class="tams" id="tams"></div></div>
+        <label class="campo">Cópias de cada
+          <input type="number" id="copias" min="1" max="60" value="1">
+        </label>
+      </div>
+
+      <div class="linha">
+        <div class="campo" style="gap:6px">Etiqueta
+          <div class="modo">
+            <button type="button" data-modo="tamanho" class="on">uma por tamanho</button>
+            <button type="button" data-modo="grade">uma com a grade toda</button>
+          </div>
+        </div>
+        <label class="campo">Largura (cm)
+          <input type="number" id="larg" min="3" max="19" step="0.1" value="8">
+        </label>
+        <label class="campo">Altura (cm)
+          <input type="number" id="alt" min="1.5" max="27" step="0.1" value="4">
+        </label>
+      </div>
+
+      <div class="dica">Meça o espaço de dentro do porta-etiqueta de acrílico e ponha a medida acima — a etiqueta sai exatamente desse tamanho.
+        Na hora de imprimir, deixe a escala em <b>100%</b> (ou "tamanho real"), não "ajustar à página". A linha tracejada é por onde recortar.</div>
+
+      <div class="acoes">
+        <button type="button" class="imprimir" onclick="window.print()">Imprimir</button>
+        <span class="info" id="resumo"></span>
+      </div>
+    </div>
+  </div>
+
+  <div class="previa" id="previa"></div>
+</div>
+
+<script src="/data.js"></script>
+<script>
+(function () {
+  const PADRAO_TAMS = ['PP', 'P', 'M', 'G', 'GG'];
+  // Nome curto que já está nas etiquetas da loja (o da ficha leva "Calça" na frente).
+  const APELIDO = { 'calca-pantalona-viscolycra': 'PANTALONA VISCOLYCRA' };
+  const INICIAL = 'calca-pantalona-viscolycra';
+
+  const $ = id => document.getElementById(id);
+  const mem = {
+    ler(k, d) { try { const v = localStorage.getItem('vc_etq_' + k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
+    gravar(k, v) { try { localStorage.setItem('vc_etq_' + k, JSON.stringify(v)); } catch (e) {} },
+  };
+
+  const modelos = (typeof MODELOS === 'object' && MODELOS) ? MODELOS : {};
+  const grupos = (typeof SIDEBAR_ESTRUTURA !== 'undefined' && Array.isArray(SIDEBAR_ESTRUTURA)) ? SIDEBAR_ESTRUTURA : [];
+  const tamanhosDe = key => {
+    const d = modelos[key] || {};
+    if (Array.isArray(d.tamanhos) && d.tamanhos.length) return d.tamanhos;
+    return d.tamanhoUnico ? ['ÚNICO'] : PADRAO_TAMS;
+  };
+  const nomePadrao = key => APELIDO[key] || String((modelos[key] || {}).nome || key).toUpperCase();
+
+  // ── lista de peças, agrupada como na barra lateral do painel ──
+  const sel = $('modelo');
+  const usados = new Set();
+  grupos.forEach(g => {
+    const ks = (g.modelos || []).filter(k => modelos[k]);
+    if (!ks.length) return;
+    const og = document.createElement('optgroup');
+    og.label = g.titulo;
+    ks.forEach(k => { usados.add(k); og.appendChild(new Option(modelos[k].nome, k)); });
+    sel.appendChild(og);
+  });
+  const resto = Object.keys(modelos).filter(k => !usados.has(k));
+  if (resto.length) {
+    const og = document.createElement('optgroup');
+    og.label = 'OUTRAS';
+    resto.forEach(k => og.appendChild(new Option(modelos[k].nome || k, k)));
+    sel.appendChild(og);
+  }
+  if (!sel.options.length) sel.appendChild(new Option('Calça Pantalona Viscolycra', INICIAL));
+
+  const qs = new URLSearchParams(location.search);
+  const num = (v, d) => { const n = parseFloat(String(v).replace(',', '.')); return isFinite(n) && n > 0 ? n : d; };
+
+  let modo = qs.get('modo') === 'grade' ? 'grade' : 'tamanho';
+  const pedido = qs.get('modelo');
+  sel.value = (pedido && modelos[pedido]) ? pedido : (modelos[INICIAL] ? INICIAL : sel.options[0].value);
+  $('larg').value = num(qs.get('larg'), mem.ler('larg', 8));
+  $('alt').value = num(qs.get('alt'), mem.ler('alt', 4));
+  $('copias').value = Math.round(num(qs.get('copias'), 1));
+
+  function montarTamanhos() {
+    const key = sel.value;
+    const box = $('tams');
+    box.innerHTML = '';
+    tamanhosDe(key).forEach(t => {
+      const lb = document.createElement('label');
+      const cb = document.createElement('input');
+      cb.type = 'checkbox'; cb.value = t; cb.checked = t !== 'G1'; // G1 só se marcar
+      lb.className = cb.checked ? 'on' : '';
+      cb.onchange = () => { lb.className = cb.checked ? 'on' : ''; desenhar(); };
+      lb.append(cb, document.createTextNode(t));
+      box.appendChild(lb);
+    });
+    const nomes = mem.ler('nomes', {});
+    $('nome').value = nomes[key] || nomePadrao(key);
+  }
+
+  // Maior fonte (em pt) em que o texto cabe na caixa; tenta numa linha só e, se ficar
+  // pequeno demais (nome comprido), deixa quebrar em duas.
+  function caber(el, maxPt, minUmaLinha) {
+    const ajusta = () => {
+      let pt = maxPt;
+      el.style.fontSize = pt + 'pt';
+      while (pt > 5 && (el.scrollWidth > el.clientWidth + 0.5 || el.scrollHeight > el.clientHeight + 0.5)) {
+        pt -= 0.5; el.style.fontSize = pt + 'pt';
+      }
+      return pt;
+    };
+    el.classList.remove('quebra');
+    if (ajusta() >= minUmaLinha) return;
+    el.classList.add('quebra');
+    ajusta();
+  }
+
+  function desenhar() {
+    const key = sel.value;
+    const nome = ($('nome').value || '').trim().toUpperCase() || nomePadrao(key);
+    const tams = [...document.querySelectorAll('#tams input:checked')].map(i => i.value);
+    const copias = Math.max(1, Math.min(60, Math.round(num($('copias').value, 1))));
+    const L = Math.min(19, Math.max(3, num($('larg').value, 8)));   // cm (área útil do A4: 19 × 27,7)
+    const A = Math.min(27.7, Math.max(1.5, num($('alt').value, 4)));
+
+    const itens = [];
+    if (modo === 'grade') {
+      for (let c = 0; c < copias; c++) itens.push({ grade: tams.join(' · ') });
+    } else {
+      tams.forEach(t => { for (let c = 0; c < copias; c++) itens.push({ tam: t }); });
+    }
+
+    const porLinha = Math.max(1, Math.floor(19 / L + 1e-6));
+    const porColuna = Math.max(1, Math.floor(27.7 / A + 1e-6));
+    const porFolha = porLinha * porColuna;
+
+    const previa = $('previa');
+    previa.innerHTML = '';
+    let folha = null;
+    itens.forEach((it, i) => {
+      if (i % porFolha === 0) { folha = document.createElement('div'); folha.className = 'folha'; previa.appendChild(folha); }
+      const e = document.createElement('div');
+      e.className = 'etq';
+      e.style.width = L + 'cm'; e.style.height = A + 'cm';
+      const n = document.createElement('div');
+      n.className = 'nome'; n.textContent = nome;
+      e.appendChild(n);
+      const fio = document.createElement('div'); fio.className = 'fio'; e.appendChild(fio);
+      const b = document.createElement('div');
+      if (it.tam != null) { b.className = 'tam'; b.textContent = it.tam; }
+      else { b.className = 'grade'; b.textContent = it.grade || ''; }
+      e.appendChild(b);
+      folha.appendChild(e);
+    });
+    if (!itens.length) previa.innerHTML = '<div class="info" style="padding:30px;text-align:center">Marque pelo menos um tamanho.</div>';
+
+    // Tamanhos das letras proporcionais à etiqueta (1 cm ≈ 28,35 pt)
+    const hPt = A * 28.35, wPt = L * 28.35;
+    previa.querySelectorAll('.etq').forEach(e => {
+      const n = e.querySelector('.nome'), b = e.querySelector('.tam, .grade');
+      const caixaNome = Math.max(0.3, A * 0.30); // cm
+      n.style.height = caixaNome + 'cm';
+      caber(n, Math.min(hPt * 0.2, 30), Math.min(hPt * 0.15, 12));
+      n.style.height = 'auto'; // fonte já escolhida: a caixa abraça o texto e o conjunto fica centrado
+      if (b.classList.contains('tam')) {
+        const alvo = Math.min(hPt * 0.46, wPt * 0.5);
+        b.style.fontSize = alvo + 'pt';
+      } else {
+        let pt = Math.min(hPt * 0.26, 40);
+        b.style.fontSize = pt + 'pt';
+        const maxW = e.clientWidth * 0.94;
+        while (pt > 5 && b.scrollWidth > maxW) { pt -= 0.5; b.style.fontSize = pt + 'pt'; }
+      }
+    });
+
+    const folhas = previa.querySelectorAll('.folha').length;
+    $('resumo').textContent = itens.length
+      ? `${itens.length} etiqueta${itens.length > 1 ? 's' : ''} de ${String(L).replace('.', ',')} × ${String(A).replace('.', ',')} cm — ${porFolha} por folha, ${folhas} folha${folhas > 1 ? 's' : ''} A4`
+      : '';
+    document.title = `Etiquetas · ${nome}`;
+  }
+
+  sel.onchange = () => { montarTamanhos(); desenhar(); };
+  $('nome').oninput = () => {
+    const nomes = mem.ler('nomes', {});
+    const v = $('nome').value.trim().toUpperCase();
+    if (v && v !== nomePadrao(sel.value)) nomes[sel.value] = v; else delete nomes[sel.value];
+    mem.gravar('nomes', nomes);
+    desenhar();
+  };
+  $('copias').oninput = desenhar;
+  ['larg', 'alt'].forEach(id => $(id).oninput = () => { mem.gravar(id, num($(id).value, id === 'larg' ? 8 : 4)); desenhar(); });
+  document.querySelectorAll('.modo button').forEach(bt => {
+    bt.classList.toggle('on', bt.dataset.modo === modo);
+    bt.onclick = () => {
+      modo = bt.dataset.modo;
+      document.querySelectorAll('.modo button').forEach(x => x.classList.toggle('on', x === bt));
+      desenhar();
+    };
+  });
+
+  montarTamanhos();
+  desenhar();
+  // A fonte pode terminar de carregar depois do primeiro desenho e mudar a largura do texto.
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(desenhar);
+})();
+</script>
+</body>
+</html>
