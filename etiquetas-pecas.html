@@ -17,7 +17,9 @@
 
   Página estática, sem /api: os nomes e as grades vêm do data.js (o mesmo do painel).
   Abre direto em /etiquetas-pecas.html ou já com a peça: /etiquetas-pecas.html?modelo=calca-pantalona-viscolycra
-  Parâmetros opcionais: &copias=2  &papel=termica|a4  &larg=4.8  &alt=2.9  &modo=grade|nome
+  Parâmetros opcionais: &copias=2  &papel=termica|a4  &larg=4.8  &alt=2.9  &modo=grade|nome  &juntar=PP/P,G/GG
+  "Juntar tamanhos": PP/P G/GG vira uma etiqueta "PP / P" e outra "G / GG" (prateleira com dois
+  tamanhos no mesmo lugar; pedido de 08/11/2026 para o Cropped Peace).
   Peça de tamanho único (tamanhoUnico no data.js) abre em "só o nome": etiqueta sem tamanho
   (pedido de 08/11/2026 para os Vestidos Frente Única Longo e Curto).
   Papel, medida (cm) e o nome editado de cada peça ficam guardados no navegador de quem usa.
@@ -94,6 +96,9 @@
         <div class="campo" style="gap:6px">Tamanhos<div class="tams" id="tams"></div></div>
         <label class="campo">Cópias de cada
           <input type="number" id="copias" min="1" max="60" value="1">
+        </label>
+        <label class="campo">Juntar tamanhos
+          <input type="text" id="juntar" placeholder="ex.: PP/P G/GG" style="min-width:150px;width:150px">
         </label>
       </div>
 
@@ -209,6 +214,27 @@
     document.getElementById('pagina').textContent = `@page{size:${p.w}mm ${p.h}mm;margin:0}`;
   }
 
+  let primeiraVez = true;
+
+  // "PP/P G/GG" → [['PP','P'],['G','GG']]. Aceita espaço, vírgula ou ponto e vírgula entre grupos.
+  function gruposJuntos(txt) {
+    return String(txt || '').toUpperCase().replace(/\s*\/\s*/g, '/').split(/[,;\s]+/)
+      .map(g => g.split('/').filter(Boolean)).filter(g => g.length > 1);
+  }
+  // Tamanhos marcados → texto de cada etiqueta, na ordem da grade: ['PP / P', 'M', 'G / GG']
+  function rotulosTamanho(tams) {
+    const juntos = gruposJuntos($('juntar').value);
+    const feitos = new Set(), rotulos = [];
+    tams.forEach(t => {
+      if (feitos.has(t)) return;
+      const g = juntos.find(g => g.includes(t));
+      const membros = g ? tams.filter(x => g.includes(x)) : [t];
+      membros.forEach(x => feitos.add(x));
+      rotulos.push(membros.join(' / '));
+    });
+    return rotulos;
+  }
+
   function montarTamanhos() {
     const key = sel.value;
     const box = $('tams');
@@ -224,6 +250,8 @@
     });
     const nomes = mem.ler('nomes', {});
     $('nome').value = nomes[key] || nomePadrao(key);
+    $('juntar').value = (primeiraVez && qs.get('juntar')) || mem.ler('juntar', {})[key] || '';
+    primeiraVez = false;
   }
 
   // Maior fonte (pt) em que o texto cabe na caixa. Testa numa linha e quebrando em linhas,
@@ -275,7 +303,7 @@
     } else if (modo === 'grade') {
       for (let c = 0; c < copias; c++) itens.push({ grade: tams.join(' · ') });
     } else {
-      tams.forEach(t => { for (let c = 0; c < copias; c++) itens.push({ tam: t }); });
+      rotulosTamanho(tams).forEach(t => { for (let c = 0; c < copias; c++) itens.push({ tam: t }); });
     }
 
     const porLinha = Math.max(1, Math.floor(util.w / L + 1e-6));
@@ -323,7 +351,9 @@
       const sobraPx = utilH - n.offsetHeight - parseFloat(getComputedStyle(b).marginTop);
       const sobraPt = Math.max(6, sobraPx * 0.75); // px → pt
       if (b.classList.contains('tam')) {
-        b.style.fontSize = Math.min(nomePt * 1.2, sobraPt) + 'pt';
+        let pt = Math.min(nomePt * 1.2, sobraPt);
+        b.style.fontSize = pt + 'pt';
+        while (pt > 5 && b.scrollWidth > utilW) { pt -= 0.25; b.style.fontSize = pt + 'pt'; } // "PP / P" é mais largo
       } else {
         let pt = Math.min(nomePt * 0.95, sobraPt);
         b.style.fontSize = pt + 'pt';
@@ -353,6 +383,13 @@
     desenhar();
   };
   $('copias').oninput = desenhar;
+  $('juntar').oninput = () => {
+    const j = mem.ler('juntar', {});
+    const v = $('juntar').value.trim();
+    if (v) j[sel.value] = v; else delete j[sel.value];
+    mem.gravar('juntar', j);
+    desenhar();
+  };
   ['larg', 'alt'].forEach(id => $(id).oninput = () => {
     const k = $('papel').value;
     mem.gravar(id + '_' + k, num($(id).value, PAPEIS[k][id]));
