@@ -5,15 +5,22 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>CONECTE · Etiquetas das peças</title>
 <!--
-  Etiquetas de papel com NOME DA PEÇA + TAMANHO, para imprimir em A4, recortar e pôr no
-  porta-etiqueta de acrílico da prateleira (ou presa na peça dobrada).
+  Etiquetas de papel com NOME DA PEÇA + TAMANHO, para recortar e pôr no porta-etiqueta de
+  acrílico da prateleira (ou presa na peça dobrada).
   Pedido de 08/11/2026: começar pela Pantalona Viscolycra, PP a GG.
+
+  Papel padrão = a MESMA impressora térmica das etiquetas de envio (folha 10 × 15 cm).
+  A 1ª versão saía em A4 e a impressora encolheu a folha inteira para 10 × 15: o nome ficou
+  minúsculo e o tamanho enorme (foto da Bárbara, 08/11/2026). Por isso: a página já sai no
+  tamanho do papel escolhido, e o NOME é o destaque (quebra em duas linhas se assim ficar
+  maior); o tamanho vem logo abaixo, só um pouco maior que o nome.
 
   Página estática, sem /api: os nomes e as grades vêm do data.js (o mesmo do painel).
   Abre direto em /etiquetas-pecas.html ou já com a peça: /etiquetas-pecas.html?modelo=calca-pantalona-viscolycra
-  Parâmetros opcionais: &copias=2  &larg=8  &alt=4  &modo=grade
-  O tamanho (cm) e o nome editado de cada peça ficam guardados no navegador de quem usa.
+  Parâmetros opcionais: &copias=2  &papel=termica|a4  &larg=4.8  &alt=2.9  &modo=grade
+  Papel, medida (cm) e o nome editado de cada peça ficam guardados no navegador de quem usa.
 -->
+<style id="pagina">@page{size:100mm 150mm;margin:0}</style>
 <style>
   :root{ --navy:#1a2b4a; --gold:#b8923f; --bg:#f4f5f7; --card:#fff; --border:#e6e8ec; --txt:#1a2b4a; --muted:#7a8699; }
   *{box-sizing:border-box}
@@ -26,7 +33,7 @@
   .campo{display:flex;flex-direction:column;gap:4px;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;font-weight:600}
   select,input[type=text],input[type=number]{font:inherit;font-size:14px;color:var(--txt);border:1px solid var(--border);border-radius:8px;padding:7px 9px;background:#fff;text-transform:none;letter-spacing:0}
   select{min-width:240px;max-width:100%}
-  input[type=text]{min-width:240px}
+  input[type=text]{min-width:240px;max-width:100%}
   input[type=number]{width:76px}
   .tams{display:flex;gap:6px;flex-wrap:wrap}
   .tams label{display:flex;align-items:center;gap:5px;border:1px solid var(--border);border-radius:8px;padding:6px 10px;font-size:14px;font-weight:700;cursor:pointer;background:#fff}
@@ -39,22 +46,22 @@
   .info{font-size:12px;color:var(--muted)}
   .dica{font-size:12px;color:var(--muted);line-height:1.5}
 
-  /* Folha A4 de verdade (21 × 29,7 cm, margem de 1 cm): o que se vê é o que sai na impressora */
-  .folha{width:210mm;min-height:297mm;padding:10mm;background:#fff;margin:0 auto 16px;box-shadow:0 1px 6px rgba(0,0,0,.12);
+  /* A folha tem o tamanho real do papel (medidas postas pelo JS): o que se vê é o que sai na impressora */
+  .folha{background:#fff;margin:0 auto 16px;box-shadow:0 1px 6px rgba(0,0,0,.12);overflow:hidden;
          display:flex;flex-wrap:wrap;align-content:flex-start;justify-content:center}
   .previa{overflow-x:auto;padding-bottom:4px}
 
+  /* Preto puro em tudo: a impressora térmica não imprime cinza (a linha cinza de corte sumiu na 1ª impressão) */
   .etq{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;
-       padding:2.5mm 3mm;color:#000;background:#fff;overflow:hidden;
-       outline:.25mm dashed #9a9a9a;outline-offset:-.125mm;break-inside:avoid;page-break-inside:avoid}
-  .etq .nome{width:100%;text-align:center;font-family:Arial,Helvetica,sans-serif;font-weight:700;letter-spacing:.06em;
-             line-height:1.1;white-space:nowrap;overflow:hidden}
-  .etq .nome.quebra{white-space:normal}
-  .etq .tam{font-family:Arial,Helvetica,sans-serif;font-weight:800;line-height:1;letter-spacing:.02em}
-  .etq .grade{font-family:Arial,Helvetica,sans-serif;font-weight:700;line-height:1;letter-spacing:.08em;white-space:nowrap}
-  .etq .fio{width:38%;border-top:.3mm solid #000;margin:1.6mm 0}
+       padding:1.8mm 3mm;color:#000;background:#fff;overflow:hidden;
+       outline:.2mm dashed #000;outline-offset:-.1mm;break-inside:avoid;page-break-inside:avoid}
+  .etq .nome{width:100%;text-align:center;font-family:Arial,Helvetica,sans-serif;font-weight:700;letter-spacing:.04em;
+             line-height:1.08;white-space:nowrap;overflow:hidden}
+  .etq .nome.quebra{white-space:normal;text-wrap:balance}
+  .etq .tam,.etq .grade{font-family:Arial,Helvetica,sans-serif;font-weight:700;line-height:1;margin-top:1.6mm}
+  .etq .tam{letter-spacing:.04em}
+  .etq .grade{letter-spacing:.06em;white-space:nowrap}
 
-  @page{size:A4 portrait;margin:0}
   @media print{
     body{background:#fff}
     .wrap{max-width:none;padding:0}
@@ -69,7 +76,7 @@
 <div class="wrap">
   <div class="nao-imprime">
     <h1>CONECTE</h1>
-    <div class="sub">Etiquetas das peças — nome + tamanho, para imprimir em A4 e recortar</div>
+    <div class="sub">Etiquetas das peças — nome + tamanho, para imprimir e recortar</div>
 
     <div class="painel">
       <div class="linha">
@@ -89,6 +96,9 @@
       </div>
 
       <div class="linha">
+        <label class="campo">Impressora
+          <select id="papel"></select>
+        </label>
         <div class="campo" style="gap:6px">Etiqueta
           <div class="modo">
             <button type="button" data-modo="tamanho" class="on">uma por tamanho</button>
@@ -96,15 +106,14 @@
           </div>
         </div>
         <label class="campo">Largura (cm)
-          <input type="number" id="larg" min="3" max="19" step="0.1" value="8">
+          <input type="number" id="larg" min="2" max="19" step="0.1">
         </label>
         <label class="campo">Altura (cm)
-          <input type="number" id="alt" min="1.5" max="27" step="0.1" value="4">
+          <input type="number" id="alt" min="1.2" max="27" step="0.1">
         </label>
       </div>
 
-      <div class="dica">Meça o espaço de dentro do porta-etiqueta de acrílico e ponha a medida acima — a etiqueta sai exatamente desse tamanho.
-        Na hora de imprimir, deixe a escala em <b>100%</b> (ou "tamanho real"), não "ajustar à página". A linha tracejada é por onde recortar.</div>
+      <div class="dica" id="dica"></div>
 
       <div class="acoes">
         <button type="button" class="imprimir" onclick="window.print()">Imprimir</button>
@@ -123,6 +132,14 @@
   // Nome curto que já está nas etiquetas da loja (o da ficha leva "Calça" na frente).
   const APELIDO = { 'calca-pantalona-viscolycra': 'PANTALONA VISCOLYCRA' };
   const INICIAL = 'calca-pantalona-viscolycra';
+  // Papéis (mm). margem = sobra em volta, que a impressora não alcança.
+  // Na térmica, 4,8 × 2,9 cm dá 2 colunas × 5 linhas = 10 etiquetas (PP a GG, 2 de cada).
+  const PAPEIS = {
+    termica: { rotulo: 'Etiquetas de envio (10 × 15 cm)', w: 100, h: 150, margem: 2, larg: 4.8, alt: 2.9,
+      dica: 'Imprima na mesma impressora das etiquetas de envio, com papel <b>10 × 15 cm</b> e escala <b>100%</b> (ou "tamanho real"), nunca "ajustar à página". A linha tracejada é por onde recortar.' },
+    a4: { rotulo: 'Folha A4 (impressora comum)', w: 210, h: 297, margem: 10, larg: 8, alt: 4,
+      dica: 'Imprima em A4 com escala <b>100%</b> (ou "tamanho real"), nunca "ajustar à página". A linha tracejada é por onde recortar.' },
+  };
 
   const $ = id => document.getElementById(id);
   const mem = {
@@ -159,15 +176,26 @@
   }
   if (!sel.options.length) sel.appendChild(new Option('Calça Pantalona Viscolycra', INICIAL));
 
+  Object.entries(PAPEIS).forEach(([k, p]) => $('papel').appendChild(new Option(p.rotulo, k)));
+
   const qs = new URLSearchParams(location.search);
   const num = (v, d) => { const n = parseFloat(String(v).replace(',', '.')); return isFinite(n) && n > 0 ? n : d; };
 
   let modo = qs.get('modo') === 'grade' ? 'grade' : 'tamanho';
   const pedido = qs.get('modelo');
   sel.value = (pedido && modelos[pedido]) ? pedido : (modelos[INICIAL] ? INICIAL : sel.options[0].value);
-  $('larg').value = num(qs.get('larg'), mem.ler('larg', 8));
-  $('alt').value = num(qs.get('alt'), mem.ler('alt', 4));
+  const papelInicial = PAPEIS[qs.get('papel')] ? qs.get('papel') : (PAPEIS[mem.ler('papel', '')] ? mem.ler('papel', '') : 'termica');
+  $('papel').value = papelInicial;
   $('copias').value = Math.round(num(qs.get('copias'), 1));
+
+  // Medida guardada por papel (a da térmica não vale para o A4 e vice-versa)
+  function carregarMedida(urlManda) {
+    const k = $('papel').value, p = PAPEIS[k];
+    $('larg').value = num(urlManda && qs.get('larg'), mem.ler('larg_' + k, p.larg));
+    $('alt').value = num(urlManda && qs.get('alt'), mem.ler('alt_' + k, p.alt));
+    $('dica').innerHTML = p.dica + ' Se o porta-etiqueta tiver outra medida, ponha a medida de dentro dele acima.';
+    document.getElementById('pagina').textContent = `@page{size:${p.w}mm ${p.h}mm;margin:0}`;
+  }
 
   function montarTamanhos() {
     const key = sel.value;
@@ -186,30 +214,39 @@
     $('nome').value = nomes[key] || nomePadrao(key);
   }
 
-  // Maior fonte (em pt) em que o texto cabe na caixa; tenta numa linha só e, se ficar
-  // pequeno demais (nome comprido), deixa quebrar em duas.
-  function caber(el, maxPt, minUmaLinha) {
+  // Maior fonte (pt) em que o texto cabe na caixa. Testa numa linha e quebrando em linhas,
+  // e fica com o que der a letra MAIOR ("PANTALONA / VISCOLYCRA" em duas linhas sai quase
+  // o dobro do que numa linha só).
+  function caber(el, maxPt) {
     const ajusta = () => {
       let pt = maxPt;
       el.style.fontSize = pt + 'pt';
       while (pt > 5 && (el.scrollWidth > el.clientWidth + 0.5 || el.scrollHeight > el.clientHeight + 0.5)) {
-        pt -= 0.5; el.style.fontSize = pt + 'pt';
+        pt -= 0.25; el.style.fontSize = pt + 'pt';
       }
       return pt;
     };
     el.classList.remove('quebra');
-    if (ajusta() >= minUmaLinha) return;
+    const umaLinha = ajusta();
     el.classList.add('quebra');
-    ajusta();
+    const quebrado = ajusta();
+    if (umaLinha >= quebrado * 0.92) { // empate: uma linha só fica mais limpo
+      el.classList.remove('quebra');
+      el.style.fontSize = umaLinha + 'pt';
+      return umaLinha;
+    }
+    return quebrado;
   }
 
   function desenhar() {
     const key = sel.value;
+    const p = PAPEIS[$('papel').value];
+    const util = { w: (p.w - 2 * p.margem) / 10, h: (p.h - 2 * p.margem) / 10 }; // cm
     const nome = ($('nome').value || '').trim().toUpperCase() || nomePadrao(key);
     const tams = [...document.querySelectorAll('#tams input:checked')].map(i => i.value);
     const copias = Math.max(1, Math.min(60, Math.round(num($('copias').value, 1))));
-    const L = Math.min(19, Math.max(3, num($('larg').value, 8)));   // cm (área útil do A4: 19 × 27,7)
-    const A = Math.min(27.7, Math.max(1.5, num($('alt').value, 4)));
+    const L = Math.min(util.w, Math.max(2, num($('larg').value, p.larg)));
+    const A = Math.min(util.h, Math.max(1.2, num($('alt').value, p.alt)));
 
     const itens = [];
     if (modo === 'grade') {
@@ -218,22 +255,27 @@
       tams.forEach(t => { for (let c = 0; c < copias; c++) itens.push({ tam: t }); });
     }
 
-    const porLinha = Math.max(1, Math.floor(19 / L + 1e-6));
-    const porColuna = Math.max(1, Math.floor(27.7 / A + 1e-6));
+    const porLinha = Math.max(1, Math.floor(util.w / L + 1e-6));
+    const porColuna = Math.max(1, Math.floor(util.h / A + 1e-6));
     const porFolha = porLinha * porColuna;
 
     const previa = $('previa');
     previa.innerHTML = '';
     let folha = null;
     itens.forEach((it, i) => {
-      if (i % porFolha === 0) { folha = document.createElement('div'); folha.className = 'folha'; previa.appendChild(folha); }
+      if (i % porFolha === 0) {
+        folha = document.createElement('div'); folha.className = 'folha';
+        folha.style.width = p.w + 'mm';
+        folha.style.height = (p.h - 0.3) + 'mm'; // um fio menor que o papel, para não sobrar página em branco
+        folha.style.padding = p.margem + 'mm';
+        previa.appendChild(folha);
+      }
       const e = document.createElement('div');
       e.className = 'etq';
       e.style.width = L + 'cm'; e.style.height = A + 'cm';
       const n = document.createElement('div');
       n.className = 'nome'; n.textContent = nome;
       e.appendChild(n);
-      const fio = document.createElement('div'); fio.className = 'fio'; e.appendChild(fio);
       const b = document.createElement('div');
       if (it.tam != null) { b.className = 'tam'; b.textContent = it.tam; }
       else { b.className = 'grade'; b.textContent = it.grade || ''; }
@@ -242,33 +284,37 @@
     });
     if (!itens.length) previa.innerHTML = '<div class="info" style="padding:30px;text-align:center">Marque pelo menos um tamanho.</div>';
 
-    // Tamanhos das letras proporcionais à etiqueta (1 cm ≈ 28,35 pt)
-    const hPt = A * 28.35, wPt = L * 28.35;
+    // O nome ganha ~55% da altura útil; o tamanho vem embaixo, só um pouco maior que o nome
+    // (1 cm ≈ 28,35 pt).
     previa.querySelectorAll('.etq').forEach(e => {
       const n = e.querySelector('.nome'), b = e.querySelector('.tam, .grade');
-      const caixaNome = Math.max(0.3, A * 0.30); // cm
-      n.style.height = caixaNome + 'cm';
-      caber(n, Math.min(hPt * 0.2, 30), Math.min(hPt * 0.15, 12));
+      const cs = getComputedStyle(e);
+      const utilH = e.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom); // px
+      const utilW = e.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+      n.style.height = (utilH * 0.55) + 'px';
+      const nomePt = caber(n, 40);
       n.style.height = 'auto'; // fonte já escolhida: a caixa abraça o texto e o conjunto fica centrado
+      const sobraPx = utilH - n.offsetHeight - parseFloat(getComputedStyle(b).marginTop);
+      const sobraPt = Math.max(6, sobraPx * 0.75); // px → pt
       if (b.classList.contains('tam')) {
-        const alvo = Math.min(hPt * 0.46, wPt * 0.5);
-        b.style.fontSize = alvo + 'pt';
+        b.style.fontSize = Math.min(nomePt * 1.2, sobraPt) + 'pt';
       } else {
-        let pt = Math.min(hPt * 0.26, 40);
+        let pt = Math.min(nomePt * 0.95, sobraPt);
         b.style.fontSize = pt + 'pt';
-        const maxW = e.clientWidth * 0.94;
-        while (pt > 5 && b.scrollWidth > maxW) { pt -= 0.5; b.style.fontSize = pt + 'pt'; }
+        while (pt > 5 && b.scrollWidth > utilW) { pt -= 0.25; b.style.fontSize = pt + 'pt'; }
       }
     });
 
     const folhas = previa.querySelectorAll('.folha').length;
+    const cm = v => String(Math.round(v * 10) / 10).replace('.', ',');
     $('resumo').textContent = itens.length
-      ? `${itens.length} etiqueta${itens.length > 1 ? 's' : ''} de ${String(L).replace('.', ',')} × ${String(A).replace('.', ',')} cm — ${porFolha} por folha, ${folhas} folha${folhas > 1 ? 's' : ''} A4`
+      ? `${itens.length} etiqueta${itens.length > 1 ? 's' : ''} de ${cm(L)} × ${cm(A)} cm — ${porFolha} por folha, ${folhas} folha${folhas > 1 ? 's' : ''} de ${cm(p.w / 10)} × ${cm(p.h / 10)} cm`
       : '';
     document.title = `Etiquetas · ${nome}`;
   }
 
   sel.onchange = () => { montarTamanhos(); desenhar(); };
+  $('papel').onchange = () => { mem.gravar('papel', $('papel').value); carregarMedida(false); desenhar(); };
   $('nome').oninput = () => {
     const nomes = mem.ler('nomes', {});
     const v = $('nome').value.trim().toUpperCase();
@@ -277,7 +323,11 @@
     desenhar();
   };
   $('copias').oninput = desenhar;
-  ['larg', 'alt'].forEach(id => $(id).oninput = () => { mem.gravar(id, num($(id).value, id === 'larg' ? 8 : 4)); desenhar(); });
+  ['larg', 'alt'].forEach(id => $(id).oninput = () => {
+    const k = $('papel').value;
+    mem.gravar(id + '_' + k, num($(id).value, PAPEIS[k][id]));
+    desenhar();
+  });
   document.querySelectorAll('.modo button').forEach(bt => {
     bt.classList.toggle('on', bt.dataset.modo === modo);
     bt.onclick = () => {
@@ -287,6 +337,7 @@
     };
   });
 
+  carregarMedida(true);
   montarTamanhos();
   desenhar();
   // A fonte pode terminar de carregar depois do primeiro desenho e mudar a largura do texto.
