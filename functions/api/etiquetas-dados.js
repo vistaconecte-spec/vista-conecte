@@ -167,6 +167,10 @@ export function normalizar(o) {
     // Observação que a cliente escreveu no checkout (22/10/2026): vai na cópia do pedido que a
     // embalagem recebe junto com a etiqueta ("é presente", "sem nota dentro")
     obs: String(o.note || '').trim().slice(0, 300) || null,
+    // Códigos de rastreio já usados em remessas deste pedido e dos últimos pedidos da cliente (09/11/2026):
+    // o robô não trata como "etiqueta repetida" uma etiqueta que já saiu com outra remessa.
+    rastreios: [...new Set([...(o.fulfillments || []), ...(((o.customer && o.customer.orders && o.customer.orders.edges) || []).flatMap(e => e.node.fulfillments || []))]
+      .flatMap(f => f.trackingInfo || []).map(t => t.number).filter(Boolean))],
   };
 }
 
@@ -174,6 +178,8 @@ const QUERY = `query($q: String) {
   orders(first: 50, query: $q) {
     edges { node {
       name legacyResourceId email phone note cancelledAt displayFinancialStatus displayFulfillmentStatus tags
+      fulfillments(first: 10) { trackingInfo(first: 3) { number } }
+      customer { orders(first: 6, sortKey: CREATED_AT, reverse: true) { edges { node { fulfillments(first: 3) { trackingInfo(first: 2) { number } } } } } }
       totalWeight currentSubtotalLineItemsQuantity
       currentTotalPriceSet { shopMoney { amount } }
       shippingLine { title discountedPriceSet { shopMoney { amount } } }

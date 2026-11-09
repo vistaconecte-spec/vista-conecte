@@ -76,6 +76,8 @@ console.log('\n3) Normalização do pedido');
       { node: { name: 'Macacão Amplo - Preto / GG', quantity: 1, currentQuantity: 1, unfulfilledQuantity: 0, variant: w(650) } },
     ] },
   });
+  ok('rastreios já usados pela cliente vêm junto (trava de etiqueta repetida)', api.normalizar({ name: '#9327', shippingAddress: {}, shippingLine: {},
+    fulfillments: [{ trackingInfo: [{ number: 'AE1BR' }] }], customer: { orders: { edges: [{ node: { fulfillments: [{ trackingInfo: [{ number: 'AP2BR' }] }] } }] } } }).rastreios, ['AE1BR', 'AP2BR']);
   ok('parcial pesa só o que falta enviar (750 g, 1 peça, 1 item)', [p.peso_g, p.pecas, p.itens.length], [750, 1, 1]);
   ok('1 peça leve sozinha vai no Saco P; acima de 700 g ou 2 peças segue o peso (09/11/2026)', [api.sacoDoPedido(650, 1), api.sacoDoPedido(700, 1), api.sacoDoPedido(750, 1), api.sacoDoPedido(700, 2), api.sacoDoPedido(2000, 1)], ['P', 'P', 'M', 'M', 'GG']);
 }
