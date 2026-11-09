@@ -30,12 +30,13 @@ const pedaco = (ini, fim) => {
   if (a < 0 || b < 0) throw new Error('trecho nao encontrado: ' + ini);
   return main.slice(a, b);
 };
-const { chaveCor, coresCatalogo, coresDoModelo, mesclarModelo } = new Function(`
+const { chaveCor, coresCatalogo, coresDoModelo, mesclarModelo, nomeCorDigitada } = new Function(`
+  ${pedaco('const COR_DIGITADA_NORM', 'function addCor()')}
   ${pedaco('function chaveCor(c)', '// Nome canônico da cor')}
   ${pedaco('function coresCatalogo(def, saved)', '// Cores a exibir/calcular')}
   ${pedaco('function coresDoModelo(def, saved)', '// Necessidade de UMA leva')}
   ${pedaco('function mesclarModelo(nuvem, dom, tocado)', '// Leitura com nova tentativa')}
-  return { chaveCor, coresCatalogo, coresDoModelo, mesclarModelo };
+  return { chaveCor, coresCatalogo, coresDoModelo, mesclarModelo, nomeCorDigitada };
 `)();
 
 const def = { cores: ['Preto', 'Nude', 'Rosa Baby'], tamanhos: ['PP','P','M','G','GG','G1'], aberto: {} };
@@ -58,6 +59,23 @@ const dom = { cores: ['Preto', 'Nude'], coresRemovidas: ['Rosa Baby'], est: {}, 
 ok('mexeu nas etiquetas: retirada sobe', mesclarModelo(nuvem, dom, t(true)).coresRemovidas, ['Rosa Baby']);
 ok('nao mexeu nas etiquetas: retirada da nuvem fica',
   mesclarModelo({ ...nuvem, coresRemovidas: ['Uva'] }, dom, t(false)).coresRemovidas, ['Uva']);
+
+
+// Calca Boho, 09/11/2026: "Preta" digitada com a linha "Preto" (1 peca no M) no estoque
+const boho = { cores: ['Nude', 'Mescla'], aberto: {} };
+const salvoBoho = { cores: ['Nude', 'Mescla', 'Marrom'], est: { Preto: [0, 0, 1, 0, 0, 0] } };
+ok('Preta digitada vira Preto', nomeCorDigitada('Preta', boho, salvoBoho), 'Preto');
+ok('preta minuscula vira Preto mesmo sem linha', nomeCorDigitada('preta', boho, {}), 'Preto');
+ok('grafia do modelo vence (marrom -> Marrom)', nomeCorDigitada('marrom', boho, salvoBoho), 'Marrom');
+ok('cor nova de verdade fica como digitada', nomeCorDigitada('Pistache', boho, salvoBoho), 'Pistache');
+const nuvemBoho = { cores: ['Nude', 'Mescla', 'Marrom'], est: { Nude: [1,0,0,0,0,0], Preto: [0,0,1,0,0,0], Marrom: [0,0,0,0,0,0] }, prod: {} };
+const domBoho = { cores: ['Nude', 'Mescla', 'Pistache'], coresRemovidas: [], est: { Nude: [1,0,0,0,0,0], Pistache: [0,0,0,0,0,0] }, prod: {} };
+const mBoho = mesclarModelo(nuvemBoho, domBoho, t(true));
+ok('linha que nunca foi etiqueta (Preto com estoque) fica', mBoho.est.Preto, [0,0,1,0,0,0]);
+ok('cor tirada (Marrom) sai do estoque', 'Marrom' in mBoho.est, false);
+ok('cor do catalogo tirada sai mesmo fora da nuvem.cores',
+  'Uva' in mesclarModelo({ cores: ['Nude'], est: { Uva: [0,0,0,0,0,0] }, prod: {} }, { cores: ['Nude'], coresRemovidas: ['Uva'], est: {}, prod: {} }, t(true)).est, false);
+ok('tela desatualizada recarrega sozinha', /recarregarQuandoOcioso\(\); \}/.test(main) && /location\.reload\(\);\s*\}, 3000\)/.test(main), true);
 
 const salvar = pedaco('function salvarModelo()', '// Só as cores FIXAS');
 ok('salvarModelo grava coresRemovidas', /coresRemovidas:/.test(salvar), true);

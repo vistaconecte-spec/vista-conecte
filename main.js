@@ -927,13 +927,21 @@ function mesclarModelo(nuvem, dom, tocado) {
   // removida some por linha e o resto da grade continua célula a célula.
   const coresDom    = Array.isArray(dom.cores) ? dom.cores : null;
   const coresMandam = !!tocado.cores && !!coresDom;
+  // Linha de estoque/produção só sai junto com uma cor que ela TIROU: estava cadastrada (na
+  // nuvem ou no catálogo, que vem em coresRemovidas) e não está mais nas etiquetas. Até
+  // 09/11/2026 bastava a linha não estar nas etiquetas: na Calça Boho a linha "Preto", com
+  // 1 peça no M e que nunca foi etiqueta, sumiu quando ela cadastrou "Preta".
+  const kc = c => String(c || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
+  const naTela = new Set((coresDom || []).map(kc));
+  const cadastradas = new Set([...(nuvem.cores || []), ...(dom.coresRemovidas || [])].map(kc));
+  const corSaiu = cor => cadastradas.has(kc(cor)) && !naTela.has(kc(cor));
   const grade = (campo, set) => {
     if (dom[campo] === undefined) return;
     // A tela manda na grade inteira só quando o botão preencheu tudo ('*').
     if (set.has('*')) { r[campo] = dom[campo]; return; }
     const out = {};
     Object.keys(nuvem[campo] || {}).forEach(cor => {
-      if (coresMandam && !coresDom.includes(cor)) return; // cor removida nas etiquetas
+      if (coresMandam && corSaiu(cor)) return; // cor removida nas etiquetas
       out[cor] = [...nuvem[campo][cor]];
     });
     Object.keys(dom[campo] || {}).forEach(cor => {
@@ -11457,10 +11465,35 @@ function fixarCor(btn) {
   autoSave();
 }
 
+// Nome que a cor digitada deve ter no modelo. Em 09/11/2026 a Bárbara digitou "Preta" na
+// Calça Boho, que já tinha a linha "Preto" no estoque (1 peça no M): viraram duas cores, e a
+// do estoque sumiu. Mesma regra do leitor de pedidos (COLOR_NORM em shopify-orders.js) e,
+// se o modelo já conhece a cor com outra caixa/acento (catálogo, cadastro ou linha de
+// estoque/produção), usa a grafia dele.
+const COR_DIGITADA_NORM = { 'preta': 'Preto', 'branca': 'Branco', 'offwhite': 'Off White', 'off': 'Off White', 'verde militar': 'Militar' };
+function nomeCorDigitada(val, def, saved) {
+  const k = chaveCor(val);
+  const alvo = COR_DIGITADA_NORM[k] || val;
+  const ka = chaveCor(alvo);
+  const s = saved || {};
+  const conhecidas = [...((def && def.cores) || []), ...(s.cores || []), ...Object.keys(s.est || {}),
+    ...Object.keys(s.prod || {}), ...Object.keys((def && def.aberto) || {})];
+  return conhecidas.find(c => chaveCor(c) === ka) || alvo;
+}
+
 function addCor() {
   const inp = document.getElementById('nova-cor');
-  const val = inp.value.trim();
-  if (!val) return;
+  const digitado = inp.value.trim();
+  if (!digitado) return;
+  const val = nomeCorDigitada(digitado, MODELOS[modeloAtual], loadLocal('vc:' + modeloAtual));
+  // Já está na lista: não duplica. Se era provisória (veio de pedido), cadastra de vez.
+  const existente = Array.from(document.querySelectorAll('#cores-tags .cor-tag'))
+    .find(t => chaveCor(t.querySelector('span').textContent) === chaveCor(val));
+  if (existente) {
+    inp.value = '';
+    if (existente.dataset.fixa !== '1') fixarCor(existente.querySelector('button'));
+    return;
+  }
   const tag = document.createElement('div');
   tag.className = 'cor-tag';
   tag.dataset.fixa = '1'; // digitada pela dona: é cor do modelo
@@ -15436,8 +15469,30 @@ async function checarVersaoNova() {
     if (!res.ok) return;
     _versaoChecadaEm = Date.now();
     const m = (await res.text()).match(/main\.js\?v=(\d+)/);
-    if (m && m[1] !== APP_VERSAO) { _versaoAvisada = true; mostrarFaixaVersaoNova(m[1]); }
+    if (m && m[1] !== APP_VERSAO) { _versaoAvisada = true; mostrarFaixaVersaoNova(m[1]); recarregarQuandoOcioso(); }
   } catch (_) {}
+}
+
+// A faixa sozinha não bastava: em 09/11/2026, 20 minutos depois da correção das cores, uma
+// tela com o código velho continuava aberta e gravou a Blusa Boho e a Calça Boho do jeito
+// antigo (cor nova sumindo, "Preta" apagando a linha do Preto com 1 peça no estoque). Agora
+// a página recarrega sozinha assim que fica parada: nada digitado esperando, nenhuma
+// gravação na fila e nenhum campo com o cursor dentro (para não engolir o que ela digita).
+function telaOciosaParaRecarregar() {
+  if (estEditado || prodEditado || prod2Editado || cfgEditado || statusTocado) return false;
+  if (_gravacoesPendentes.size || _mesclagensPendentes.size) return false;
+  const a = document.activeElement;
+  if (a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName) && a.type !== 'button') return false;
+  return true;
+}
+let _recarregaTimer = null;
+function recarregarQuandoOcioso() {
+  if (_recarregaTimer) return;
+  _recarregaTimer = setInterval(() => {
+    if (!telaOciosaParaRecarregar()) return;
+    clearInterval(_recarregaTimer);
+    location.reload();
+  }, 3000);
 }
 
 function mostrarFaixaVersaoNova(versaoNova) {
