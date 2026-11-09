@@ -11505,7 +11505,22 @@ function addCor() {
   autoSave();
 }
 
+// Tirar a cor apaga as linhas dela no estoque e nas levas. Com peça lá, pergunta antes: em
+// 09/11/2026 o Azul do Moletom Gola Alta (2 no G) e o "marrom" da Calça Peace (1 no M)
+// sumiram assim e precisaram ser digitados de novo em outra cor.
+function pecasDaCor(saved, cor) {
+  const k = chaveCor(cor);
+  let n = 0;
+  ['est', 'prod', 'prod2'].forEach(campo => Object.entries((saved && saved[campo]) || {}).forEach(([c, arr]) => {
+    if (chaveCor(c) === k) n += (arr || []).reduce((a, b) => a + (Number(b) || 0), 0);
+  }));
+  return n;
+}
 function removerCor(btn) {
+  const cor = btn.parentElement.querySelector('span').textContent;
+  const n = pecasDaCor(loadLocal('vc:' + modeloAtual), cor);
+  if (n > 0 && !confirm(`${cor} tem ${n} peça(s) no estoque ou na produção deste modelo.\n\n`
+    + `Tirar a cor apaga essas peças. Se é só troca de nome, cadastre a cor nova e passe as peças antes.\n\nTirar mesmo assim?`)) return;
   btn.parentElement.remove();
   coresTocadas = true; cfgEditado = true;
   autoSave();

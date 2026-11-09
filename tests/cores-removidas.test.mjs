@@ -77,6 +77,11 @@ ok('cor do catalogo tirada sai mesmo fora da nuvem.cores',
   'Uva' in mesclarModelo({ cores: ['Nude'], est: { Uva: [0,0,0,0,0,0] }, prod: {} }, { cores: ['Nude'], coresRemovidas: ['Uva'], est: {}, prod: {} }, t(true)).est, false);
 ok('tela desatualizada recarrega sozinha', /recarregarQuandoOcioso\(\); \}/.test(main) && /location\.reload\(\);\s*\}, 3000\)/.test(main), true);
 
+ok('tirar cor com peca pergunta antes', /function removerCor[\s\S]{0,300}pecasDaCor[\s\S]{0,300}confirm\(/.test(main), true);
+const { pecasDaCor } = new Function('chaveCor', `${pedaco('function pecasDaCor(saved, cor)', 'function removerCor(')} return { pecasDaCor };`)(chaveCor);
+ok('conta pecas do Azul (2 no G)', pecasDaCor({ est: { Azul: [0,0,0,2,0] }, prod: { Azul: [0,0,0,0,0] } }, 'azul'), 2);
+ok('cor sem peca nao pergunta', pecasDaCor({ est: { Azul: [0,0,0,0,0] } }, 'Azul'), 0);
+
 const salvar = pedaco('function salvarModelo()', '// Só as cores FIXAS');
 ok('salvarModelo grava coresRemovidas', /coresRemovidas:/.test(salvar), true);
 ok('renderModelo nao ignora mais as cores salvas em modelo com tamanhos',
