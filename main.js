@@ -10544,6 +10544,12 @@ async function copiaImprimir(numeros, processadosRecentes = []) {
   .etq{display:none}
   body.f10x15 .etq{display:block;page:etiqueta;break-after:page;page-break-after:always}
   .etq img{display:block;width:100mm;height:150mm;object-fit:contain;margin:0 auto}
+  /* No papel, a imagem ocupa a área imprimível (100vh = página menos margens), não 150 mm fixos.
+     A etiqueta "pulava" (foto da Bárbara, 09/11/2026): com qualquer margem imposta na impressão
+     (diálogo em "Mínimas"/"Personalizadas" ou área não imprimível do driver), os 150 mm não cabiam,
+     o navegador cortava a imagem e o rodapé (Remetente) saía sozinho na etiqueta seguinte, que
+     ia quase em branco. Assim ela encolhe o necessário e nunca passa para a próxima etiqueta. */
+  @media print{.etq img{width:100%;height:calc(100vh - 1px);max-height:150mm}}
   @page etiqueta{size:100mm 150mm;margin:0}
   @media screen{body.f10x15 .etq{border-bottom:1px dashed #000;padding:4mm 0}}
   @media screen{.folha{max-width:190mm;margin:0 auto}}
