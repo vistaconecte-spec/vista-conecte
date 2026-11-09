@@ -4,8 +4,8 @@ const hoje = Date.parse('2026-11-05T12:00:00-03:00');
 const item = (price, quantity = 1, extra = {}) => ({ price, quantity, grams: 400, requires_shipping: true, ...extra });
 const rate = (cep, items, country = 'BR') => ({ destination: { postal_code: cep, country }, items });
 const cota = preco => async () => [{ cliente_paga: preco, prazo_dias: 6 }, { cliente_paga: null }];
-const ops = (extra = {}) => ({ token: 't', agora: hoje, cotarFn: async () => { throw new Error('não devia cotar'); }, ...extra });
-const gratis = async (r, o) => (await tarifas(r, ops(o))).length === 1;
+const ops = (extra = {}) => ({ token: 't', agora: hoje, gratisLigado: true, cotarFn: async () => { throw new Error('não devia cotar'); }, ...extra });
+const gratis = async (r, o) => { const x = await tarifas(r, ops(o)); return x.length === 1 && x[0].total_price === '0'; };
 let n = 0; const ok = (c, m) => { assert.ok(c, m); n++; };
 
 // Sul e Sudeste: 2 peças, sem cotar nada
@@ -41,4 +41,20 @@ ok(!await gratis(rate('01310100', [item(9000, 2)], 'PT')), 'fora do Brasil');
 ok(await gratis(rate('01310100', [item(9000, 2)]), { agora: REGRA.fim }), 'último segundo de 30/11');
 ok(!await gratis(rate('01310100', [item(9000, 2)]), { agora: REGRA.fim + 1000 }), 'depois de 30/11 some sozinho');
 ok((await tarifas(undefined, ops())).length === 0, 'corpo vazio não quebra');
+// Teto do frete (09/11/2026): a cliente paga no máximo R$ 35
+const teto = async (r, o) => { const x = await tarifas(r, ops(o)); return x.length === 1 && x[0].total_price === '3500' ? x[0] : null; };
+const goiania = rate('74280-150', [item(32990, 1, { grams: 2500 }), item(16200, 1, { grams: 1100 })]);
+ok(await teto(goiania, { cotarFn: cota(54.17) }), 'o checkout de Goiânia de 09/11 sai a R$ 35');
+ok(!await gratis(goiania, { cotarFn: cota(54.17) }), 'e não vira frete grátis (frete acima de R$ 30)');
+ok(await teto(rate('74280-150', [item(17500)]), { cotarFn: cota(41) }), '1 peça também tem teto');
+ok(await teto(rate('01310-100', [item(35000, 1, { grams: 3000 })]), { cotarFn: cota(38) }), 'Sudeste com 1 peça pesada também');
+ok(await teto(rate('01310-100', [item(17500, 2)]), { cotarFn: cota(38), gratisLigado: false }), 'teste B: 2 peças em SP sem grátis, mas com teto');
+ok(!(await tarifas(rate('01310-100', [item(9000, 2)]), ops({ cotarFn: cota(22), gratisLigado: false }))).length, 'teste B: frete barato fica só com a Frenet');
+ok(!await teto(rate('74280-150', [item(17500)]), { cotarFn: cota(35) }), 'R$ 35 cravado não precisa de linha');
+ok(await teto(rate('74280-150', [item(17500)]), { cotarFn: cota(120) }), 'R$ 120 ainda entra');
+ok(!await teto(rate('40000-000', [item(17500)]), { cotarFn: cota(245.19) }), 'Loggi fora de rota de R$ 245 não entra');
+ok(!await teto(rate('74280-150', [item(17500)]), { cotarFn: async () => { throw new Error('caiu'); } }), 'Frenet fora do ar: só as linhas dela');
+ok((await teto(rate('74280-150', [item(17500)]), { cotarFn: cota(54) })).description.includes('6 dias úteis'), 'teto mostra o prazo');
+ok(await teto(rate('74280-150', [item(17500)]), { cotarFn: cota(54), agora: REGRA.fim + 86400000 }), 'teto continua depois de 30/11');
+ok(REGRA.gratisLigado === false, 'frete grátis segue desligado (teste B)');
 console.log(`frete-gratis-tarifas: ${n} asserções ok`);

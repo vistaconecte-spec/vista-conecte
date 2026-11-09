@@ -13,9 +13,25 @@
 // devolve dado da loja: só responde sobre o carrinho recebido.
 //
 // Regra da expedição: frete R$ 0 cai em "mais barato entre Loggi e PAC" (regraDoPedido), como os outros grátis.
+//
+// TETO DO FRETE (09/11/2026, opção A da Bárbara): a cliente paga no máximo R$ 35, a loja paga o resto.
+// Veio de um checkout abandonado em Goiânia (Cozy + Pantalona Moletom, 3,6 kg, Loggi R$ 54,17). Vale pra
+// qualquer pedido, 1 peça ou mais, sem data pra acabar. A Frenet não tem teto (o "valor fixo" dela também
+// SOBE o frete barato), então a linha sai daqui: quando o frete mais barato do carrinho passa de R$ 35, entra
+// "Frete com desconto" a R$ 35 ao lado da Loggi e do PAC da Frenet (a Shopify pré-marca a mais barata).
+// O título não cita Loggi nem PAC, então a expedição compra o mais barato (regraDoPedido), que é o que a loja
+// paga. Acima de R$ 120 de frete (CEP fora de rota, Loggi de R$ 139 a 246) não entra: a loja pagaria R$ 85+.
+// Conta de 60 dias (10/09 a 09/11): 44 de 419 pedidos web pagaram mais de R$ 35, R$ 736 acima do teto,
+// ~R$ 370/mês, fora os pedidos que deixavam de ser abandonados.
+//
+// FRETE GRÁTIS DESLIGADO desde 09/11/2026 16h02 (teste B, medição em 12/11): gratisLigado=false. Religar =
+// true aqui + regras 248694/248695 da Frenet + textos do tema e da Vi (backups *-20261109-teste-frete).
 import { cotar, normalizarCep } from './frenet-cotacao.js';
 
 export const REGRA = {
+  gratisLigado: false, // teste B
+  tetoCliente: 35, // a cliente paga no máximo isto
+  tetoAte: 120, // frete acima disto não ganha teto (CEP fora de rota)
   fim: Date.parse('2026-11-30T23:59:59-03:00'),
   minimoPecas: 2,
   tetoSulSudeste: 20000, // a partir daqui quem zera é a Frenet; repetir daria 3 linhas de R$ 0
@@ -30,6 +46,14 @@ const noSulSudeste = cep => {
   return REGRA.faixasCep.some(([de, ate]) => n >= de && n <= ate);
 };
 
+const comTeto = description => [{
+  service_name: 'Frete com desconto',
+  service_code: 'FRETE_TETO_35',
+  total_price: String(REGRA.tetoCliente * 100),
+  currency: 'BRL',
+  description,
+}];
+
 const gratis = description => [{
   service_name: 'Frete grátis',
   service_code: 'FRETE_GRATIS_2_PECAS',
@@ -38,32 +62,39 @@ const gratis = description => [{
   description,
 }];
 
-export async function tarifas(rate, { token, agora = Date.now(), cotarFn = cotar } = {}) {
-  if (agora > REGRA.fim) return [];
+export async function tarifas(rate, { token, agora = Date.now(), cotarFn = cotar, gratisLigado = REGRA.gratisLigado } = {}) {
   const destino = (rate && rate.destination) || {};
   if (String(destino.country || 'BR').toUpperCase() !== 'BR') return [];
   // Brinde de R$ 0 não é peça comprada; conjunto é 1 item e conta 1 (decisão de 03/11/2026).
   const itens = ((rate && rate.items) || []).filter(i => i.requires_shipping !== false && Number(i.price) > 0);
   const pecas = itens.reduce((s, i) => s + (Number(i.quantity) || 0), 0);
   const total = itens.reduce((s, i) => s + Number(i.price) * (Number(i.quantity) || 0), 0);
-  if (pecas < REGRA.minimoPecas) return [];
+  if (!pecas) return [];
+  const promo = gratisLigado && agora <= REGRA.fim && pecas >= REGRA.minimoPecas;
 
-  if (noSulSudeste(destino.postal_code)) {
-    return total > REGRA.tetoSulSudeste ? [] : gratis('Black Friday: 2 peças no Sul e Sudeste');
+  if (promo && noSulSudeste(destino.postal_code) && total <= REGRA.tetoSulSudeste) {
+    return gratis('Black Friday: 2 peças no Sul e Sudeste');
   }
 
   const cep = normalizarCep(destino.postal_code);
-  if (!cep || !token || total >= REGRA.tetoBrasil) return [];
+  if (!cep || !token) return [];
   const gramas = itens.reduce((s, i) => s + (Number(i.grams) || 0) * (Number(i.quantity) || 0), 0);
+  let barata;
   try {
     const opcoes = await cotarFn(token, { cep, valor: total / 100, peso: Math.max(gramas / 1000, 0.35) });
-    const barata = opcoes.find(o => o.cliente_paga != null);
-    if (!barata || barata.cliente_paga >= REGRA.freteMaximo) return [];
-    const prazo = barata.prazo_dias ? `, ${barata.prazo_dias} dias úteis` : '';
-    return gratis(`Black Friday: levando 2 peças${prazo}`);
+    barata = opcoes.find(o => o.cliente_paga != null);
   } catch (e) {
     return [];
   }
+  if (!barata) return [];
+  const prazo = barata.prazo_dias ? `, ${barata.prazo_dias} dias úteis` : '';
+  if (promo && !noSulSudeste(destino.postal_code) && total < REGRA.tetoBrasil && barata.cliente_paga < REGRA.freteMaximo) {
+    return gratis(`Black Friday: levando 2 peças${prazo}`);
+  }
+  if (barata.cliente_paga > REGRA.tetoCliente && barata.cliente_paga <= REGRA.tetoAte) {
+    return comTeto(`Loggi ou Correios${prazo}`);
+  }
+  return [];
 }
 
 // Espera curta: passou disso, a cliente vê Loggi e PAC como sempre em vez de um checkout parado.
