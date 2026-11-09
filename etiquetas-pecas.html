@@ -346,8 +346,14 @@
       const cs = getComputedStyle(e);
       const utilH = e.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom); // px
       const utilW = e.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
-      n.style.height = (b ? utilH * 0.55 : utilH) + 'px'; // "só o nome": o nome fica com a etiqueta toda
+      // "só o nome": o nome fica com quase a etiqueta toda (folga para a tesoura não pegar a letra)
+      n.style.height = (b ? utilH * 0.55 : utilH * 0.85) + 'px';
       const nomePt = caber(n, 40);
+      if (!b) { // folga dos lados também: encolhe até sobrar ~6% da largura
+        let pt = nomePt; n.style.height = 'auto';
+        const larguraTexto = () => { const r = document.createRange(); r.selectNodeContents(n); return r.getBoundingClientRect().width; };
+        while (pt > 5 && larguraTexto() > utilW * 0.94) { pt -= 0.25; n.style.fontSize = pt + 'pt'; }
+      }
       n.style.height = 'auto'; // fonte já escolhida: a caixa abraça o texto e o conjunto fica centrado
       if (!b) return;
       const sobraPx = utilH - n.offsetHeight - parseFloat(getComputedStyle(b).marginTop);
