@@ -10389,7 +10389,9 @@ async function copiaEtiquetasFrenet(numeros, aviso) {
   aviso(`Preparando ${tem.size} etiqueta${tem.size > 1 ? 's' : ''} para imprimir...`);
   const pdfjs = await carregarPdfJs();
   const out = {};
-  for (const numero of numeros.filter(n => tem.has(n))) {
+  const comPdf = numeros.filter(n => tem.has(n));
+  for (const [k, numero] of comPdf.entries()) {
+    if (k % 5 === 0) aviso(`Preparando as etiquetas para imprimir... ${k} de ${comPdf.length}`);
     try {
       const r = await fetch('/api/etiqueta-pdf?numero=' + encodeURIComponent(numero.replace(/\D/g, '')), { cache: 'no-store' });
       if (!r.ok) continue;
