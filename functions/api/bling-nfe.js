@@ -6,7 +6,7 @@
  *                                       cliente já tem nota emitida a partir da data do pedido
  * GET ?acao=diagnostico&pedido=ID     → roda todas as travas de UM pedido, sem efeito
  *                                       (ID do Bling, ou o número do pedido no Bling)
- * GET ?acao=emitir&pedido=ID&confirmar=1
+ * GET ?acao=emitir&pedido=ID&confirmar=1[&ignorar_nota=007658]
  *                                     → se as travas passarem: gera a NF-e a partir do pedido
  *                                       e manda pra SEFAZ. Sem confirmar=1 é só o diagnóstico.
  *                                       &refazer=1 só vale quando a tentativa anterior falhou
@@ -94,10 +94,13 @@ async function notasDaCliente(env, token, pedido) {
   return out;
 }
 
-async function diagnosticar(env, token, ref) {
+async function diagnosticar(env, token, ref, ignorarNota = null) {
   const pedido = await pedidoBling(env, token, ref);
   if (!pedido) return { pedido: null, decisao: decidir(null) };
-  const [order, notas] = await Promise.all([pedidoShopify(env, pedido.numeroLoja), notasDaCliente(env, token, pedido)]);
+  const [order, todas] = await Promise.all([pedidoShopify(env, pedido.numeroLoja), notasDaCliente(env, token, pedido)]);
+  // &ignorar_nota=007658 (09/11/2026): nota da cliente que alguém CONFERIU e é de outro pedido (a 007658 do
+  // #9404 barrava o #9405 da mesma cliente). Só vale para nota ligada a outro pedido da loja.
+  const notas = ignorarNota ? todas.filter(n => !(String(n.numero) === String(ignorarNota) && n.numeroPedidoLoja && String(n.numeroPedidoLoja) !== String(pedido.numeroLoja))) : todas;
   return {
     pedido,
     order,
@@ -212,7 +215,7 @@ export async function onRequestGet({ request, env }) {
       const ref = q.get('pedido');
       if (!ref) return json({ erro: 'falta ?pedido=' }, 400);
       const token = await tokenValido(env);
-      const d = await diagnosticar(env, token, ref);
+      const d = await diagnosticar(env, token, ref, q.get('ignorar_nota'));
       const saida = { decisao: d.decisao, resumo: d.resumo || null };
       if (acao === 'diagnostico' || q.get('confirmar') !== '1' || !d.decisao.emitir) {
         return json({ ...saida, emitido: false, ...(acao === 'emitir' && d.decisao.emitir ? { aviso: 'travas ok; falta &confirmar=1 pra emitir' } : {}) });
