@@ -10320,7 +10320,8 @@ function copiaImprimirProntos() {
     copiaImprimir(todos ? prontos.map(p => p.numero) : comEtiqueta, recentes); return;
   }
   if (comEtiqueta.length || !prontos.length) { copiaImprimir(comEtiqueta, recentes); return; }
-  if (!confirm(`Nenhum pronto tem etiqueta gerada pelo robô nos últimos ${ETQ_FEITO_DIAS} dias.\n\nImprimir a cópia dos ${prontos.length} pedidos prontos?`)) return;
+  const maisRecentes = recentes.length ? `\n\nJunto vão os ${recentes.length} processados nas últimas ${COPIA_PROCESSADOS_H} h, com etiqueta e cópia.` : '';
+  if (!confirm(`Nenhum pronto tem etiqueta gerada pelo robô nos últimos ${ETQ_FEITO_DIAS} dias.\n\nImprimir a cópia dos ${prontos.length} pedidos prontos?${maisRecentes}`)) return;
   copiaImprimir(prontos.map(p => p.numero), recentes);
 }
 
