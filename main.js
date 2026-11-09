@@ -10303,9 +10303,10 @@ function copiaImprimirLote() {
 
 // Botão do card: os prontos que já têm etiqueta do robô (o que a Ju vai embalar). Sem nenhum,
 // oferece todos os prontos, para quando a etiqueta foi feita à mão na Frenet.
+const COPIA_PROCESSADOS_H = 5; // janela dos já processados que voltam na impressão
 function copiaImprimirProntos() {
   const prontos = window._prontosEnvio || [];
-  // Processados nas últimas 18 h (09/11/2026): a Bárbara pagou o carrinho, o robô gerou os códigos e
+  // Processados nas últimas 5 h (09/11/2026, 18 h pedido reduzido para 5 h por ela): a Bárbara pagou o carrinho, o robô gerou os códigos e
   // processou na Shopify, e os 58 pedidos sumiram dos prontos antes de ela imprimir as cópias. Entram
   // os que têm etiqueta baixada pelo robô (o copiaImprimir confere, depois de abrir a janela).
   const recentes = copiaProcessadosRecentes().filter(n => !prontos.some(p => p.numero === n));
@@ -10323,9 +10324,9 @@ function copiaImprimirProntos() {
   copiaImprimir(prontos.map(p => p.numero), recentes);
 }
 
-/** Pedidos com remessa criada na Shopify nas últimas 18 h, do mais antigo para o mais novo. */
+/** Pedidos com remessa criada na Shopify nas últimas 5 h, do mais antigo para o mais novo. */
 function copiaProcessadosRecentes(agora = Date.now()) {
-  const desde = agora - 18 * 3600000, vistos = new Set();
+  const desde = agora - COPIA_PROCESSADOS_H * 3600000, vistos = new Set();
   return (window._shopifyProcessados || [])
     .filter(p => p.enviado_em && Date.parse(p.enviado_em) >= desde)
     .sort((a, b) => Date.parse(a.enviado_em) - Date.parse(b.enviado_em))
@@ -10422,7 +10423,7 @@ async function copiaImprimir(numeros, processadosRecentes = []) {
   if (processadosRecentes.length) {
     try {
       const tem = await etqPdfsDisponiveis(processadosRecentes);
-      const desde = Date.now() - 18 * 3600000;
+      const desde = Date.now() - COPIA_PROCESSADOS_H * 3600000;
       for (const n of processadosRecentes) {
         if (!tem.has(n) || numeros.includes(n)) continue;
         const remessas = (window._shopifyProcessados || []).filter(p => p.numero === n && Date.parse(p.enviado_em) >= desde);
