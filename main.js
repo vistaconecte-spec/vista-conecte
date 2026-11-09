@@ -10315,12 +10315,12 @@ function copiaImprimirProntos() {
   const comEtiqueta = prontos.filter(p => !etqPendentes([p], res).length).map(p => p.numero);
   // 26/10/2026: com 61 prontos e 47 etiquetados só saíam 47 folhas, e a Bárbara precisava de todas
   const semEtiqueta = prontos.length - comEtiqueta.length;
+  const maisRecentes = recentes.length ? `\n\nJunto vão os ${recentes.length} processados nas últimas ${COPIA_PROCESSADOS_H} h, com etiqueta e cópia.` : '';
   if (comEtiqueta.length && semEtiqueta) {
-    const todos = confirm(`${comEtiqueta.length} pedidos têm etiqueta do robô e ${semEtiqueta} ainda não.\n\nOK = imprimir todos os ${prontos.length}\nCancelar = só os ${comEtiqueta.length} com etiqueta`);
+    const todos = confirm(`${comEtiqueta.length} pedidos têm etiqueta do robô e ${semEtiqueta} ainda não.\n\nOK = imprimir todos os ${prontos.length}\nCancelar = só os ${comEtiqueta.length} com etiqueta${maisRecentes}`);
     copiaImprimir(todos ? prontos.map(p => p.numero) : comEtiqueta, recentes); return;
   }
   if (comEtiqueta.length || !prontos.length) { copiaImprimir(comEtiqueta, recentes); return; }
-  const maisRecentes = recentes.length ? `\n\nJunto vão os ${recentes.length} processados nas últimas ${COPIA_PROCESSADOS_H} h, com etiqueta e cópia.` : '';
   if (!confirm(`Nenhum pronto tem etiqueta gerada pelo robô nos últimos ${ETQ_FEITO_DIAS} dias.\n\nImprimir a cópia dos ${prontos.length} pedidos prontos?${maisRecentes}`)) return;
   copiaImprimir(prontos.map(p => p.numero), recentes);
 }
