@@ -60,7 +60,9 @@ export function decidir(pedido, order, notasCliente = []) {
     if (order.cancelled_at) motivos.push('pedido cancelado na Shopify');
     if (order.financial_status !== 'paid') motivos.push(`Shopify não está como pago (${order.financial_status})`);
     if ((order.refunds || []).length) motivos.push('pedido tem reembolso na Shopify');
-    if (order.source_name && order.source_name !== 'web') motivos.push(`pedido não é da loja online (${order.source_name})`);
+    // Rascunho pago (venda da Marcelly pelo WhatsApp) também é venda e tem nota: decisão dela em 09/11/2026
+    // ("tudo que for venda de verdade tem que ter nota"); a Frenet não faz etiqueta sem nota desde 30/10.
+    if (order.source_name && !['web', 'shopify_draft_order'].includes(order.source_name)) motivos.push(`pedido não é da loja online (${order.source_name})`);
     if (ehRetirada(order)) motivos.push('retirada na loja');
     // Pedido editado depois da compra (a Vi troca cor/tamanho na Shopify desde 08/11/2026): o pedido do Bling
     // continua com a peça antiga e o total bate, então a nota sairia com a cor errada.

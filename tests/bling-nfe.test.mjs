@@ -53,7 +53,8 @@ ok('cancelado na Shopify', decidir(pedido(), order({ cancelled_at: '2026-10-14T1
 ok('cancelado sem estorno continua "paid" e mesmo assim bloqueia', motivos(pedido(), order({ cancelled_at: 'x', financial_status: 'paid' }), []), ['pedido cancelado na Shopify']);
 ok('pendente de pagamento', decidir(pedido(), order({ financial_status: 'pending' }), []).emitir, false);
 ok('reembolso parcial', decidir(pedido(), order({ financial_status: 'partially_refunded', refunds: [{ id: 1 }] }), []).emitir, false);
-ok('rascunho da Marcelly', motivos(pedido(), order({ source_name: 'shopify_draft_order' }), []), ['pedido não é da loja online (shopify_draft_order)']);
+ok('rascunho da Marcelly pago também tem nota (09/11/2026)', motivos(pedido(), order({ source_name: 'shopify_draft_order' }), []), []);
+ok('outra origem continua barrada', motivos(pedido(), order({ source_name: '363213029377' }), []), ['pedido não é da loja online (363213029377)']);
 ok('retirada na loja', motivos(pedido(), order({ shipping_lines: [{ title: 'Loja Conecte (retirada)' }] }), []), ['retirada na loja']);
 ok('total diferente', motivos(pedido({ total: 369.47 }), order(), []), ['total diferente: Bling 369.47 x Shopify 299.47']);
 ok('usa o total ATUAL da Shopify (depois de edição)', decidir(pedido({ total: 250 }), order({ total_price: '299.47', current_total_price: '250.00' }), []).emitir, true);
