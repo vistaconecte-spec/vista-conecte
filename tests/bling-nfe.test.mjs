@@ -113,6 +113,7 @@ ok('Conjunto Cozy (moletom) → 6104.22.00', ncmPorNome('Conjunto Cozy Marsala -
 ok('Conjunto Moletom + Flare canelada (misturado) → 6104.22.00', ncmPorNome('Conjunto Moletom Gola Alta + Flare Canelada Marrom'), '6104.22.00');
 ok('Conjunto Canelado → 6104.23.00', ncmPorNome('Conjunto Canelado Telha - P'), '6104.23.00');
 ok('calçados: Flat e Sandália 6402.99.90, Coturno 6402.91.90, Bota sem regra (09/11/2026)', [ncmPorNome('Flat - Preto / 38'), ncmPorNome('Sandália Gladiadora - 40 / Preto'), ncmPorNome('Coturno Maxi - 37'), ncmPorNome('Bota Slip - 36')], ['6402.99.90', '6402.99.90', '6402.91.90', null]);
+ok('Conjunto Urban Slit (saia viscolycra + moletom) → 6104.22.00', ncmPorNome('Conjunto Urban Slit - Preta / M'), '6104.22.00');
 ok('Cropped Frente Única (Suplex) 6106.20.00', ncmPorNome('Cropped Frente Única Preto - M'), '6106.20.00');
 ok('Conjunto Peace → 6104.29.90 (6104.29.00 não existe, rejeição 778 em 03/11/2026)', ncmPorNome('Conjunto Peace Preto - G'), '6104.29.90');
 ok('Calça Pantalona Moletom → 6104.62.00', ncmPorNome('Calça Pantalona Moletom Cinza - M'), '6104.62.00');
