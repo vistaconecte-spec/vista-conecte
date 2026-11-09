@@ -76,6 +76,7 @@ console.log('\n3) Normalização do pedido');
       { node: { name: 'Macacão Amplo - Preto / GG', quantity: 1, currentQuantity: 1, unfulfilledQuantity: 0, variant: w(650) } },
     ] },
   });
+  ok('troca do portal informa a compra original (troca-de-9161)', [api.normalizar({ name: '#9426', tags: ['troca', 'troca-de-9161'], shippingAddress: {}, shippingLine: {} }).troca_de, api.normalizar({ name: '#1', tags: [], shippingAddress: {}, shippingLine: {} }).troca_de], ['#9161', null]);
   ok('rastreios já usados pela cliente vêm junto (trava de etiqueta repetida)', api.normalizar({ name: '#9327', shippingAddress: {}, shippingLine: {},
     fulfillments: [{ trackingInfo: [{ number: 'AE1BR' }] }], customer: { orders: { edges: [{ node: { fulfillments: [{ trackingInfo: [{ number: 'AP2BR' }] }] } }] } } }).rastreios, ['AE1BR', 'AP2BR']);
   ok('parcial pesa só o que falta enviar (750 g, 1 peça, 1 item)', [p.peso_g, p.pecas, p.itens.length], [750, 1, 1]);

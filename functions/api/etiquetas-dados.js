@@ -164,6 +164,9 @@ export function normalizar(o) {
     // Pedido de troca (20/10/2026): a etiqueta do pedido original, de poucos dias antes, não pode
     // contar como "etiqueta repetida" para a mesma cliente (Manuela #9384 foi barrada pela do #9120)
     troca: (o.tags || []).includes('troca'),
+    // Compra original da troca (tag troca-de-9126 do portal): a etiqueta da troca usa a nota dela (09/11/2026,
+    // decisão da Bárbara; a Frenet exige nota desde 30/10 e troca de R$ 0 não tem nota de venda)
+    troca_de: (m => m ? '#' + m[1] : null)((o.tags || []).map(t => /^troca-de-(\d+)$/.exec(t)).find(Boolean)),
     // Observação que a cliente escreveu no checkout (22/10/2026): vai na cópia do pedido que a
     // embalagem recebe junto com a etiqueta ("é presente", "sem nota dentro")
     obs: String(o.note || '').trim().slice(0, 300) || null,
