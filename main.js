@@ -10349,7 +10349,11 @@ async function copiaImprimir(numeros) {
     const d = dados[numero] || {};
     const linhas = copiaLinhas(ped.itens);
     const total = copiaTotalPecas(linhas);
-    const saco = sacoLote[numero] || d.saco;
+    // O menor entre o saco do lote e o da regra atual (09/11/2026): lote gravado antes da correção dos
+    // sacos (parcial pesado inteiro, peça leve sozinha no M) mandava embalar num saco maior que o preciso.
+    // Embalar menor que o declarado na etiqueta não gera divergência na Frenet; maior, sim.
+    const ORDEM_SACO = ['P', 'M', 'G', 'GG'];
+    const saco = [sacoLote[numero], d.saco].filter(s => ORDEM_SACO.includes(s)).sort((a, b) => ORDEM_SACO.indexOf(a) - ORDEM_SACO.indexOf(b))[0] || sacoLote[numero] || d.saco;
     const servico = (feitos[numero] && feitos[numero].servico) || d.metodo;
     const nomeEtq = d.nome || ped.cliente || 'Cliente';
     const avisos = [];
