@@ -956,7 +956,10 @@ function mesclarModelo(nuvem, dom, tocado) {
   const cfgCampos = ['nome', 'tecido', 'consumo', 'componentes', 'obs', 'preco', 'prazo', 'prazo2'];
   const stCampos  = ['status', 'status_at', 'status2', 'status2_at'];
   if (tocado.cfg) cfgCampos.forEach(c => { if (c in dom) r[c] = dom[c]; });
-  if (coresMandam) r.cores = coresDom;
+  if (coresMandam) {
+    r.cores = coresDom;
+    if (Array.isArray(dom.coresRemovidas)) r.coresRemovidas = dom.coresRemovidas;
+  }
   // Etapa só sobe quando a pessoa ESCOLHEU no dropdown. Com qualquer edição de configuração
   // subindo o status junto, a tela velha devolvia "Em corte" da véspera por cima do de hoje.
   if (tocado.status) stCampos.forEach(c => { if (c in dom) r[c] = dom[c]; });
@@ -1104,7 +1107,9 @@ function salvarModelo() {
     componentes: document.getElementById('cfg-componentes').value,
     obs:         document.getElementById('cfg-obs').value,
     cores:       getCoresTags(),
-    est_at:      estEditado  ? new Date().toISOString() : (existente.est_at  || null),
+    // só recalcula quando ela mexeu nas etiquetas; senão fica o que estava salvo
+    coresRemovidas: coresTocadas ? coresRemovidasDaTela(MODELOS[modeloAtual]) : (existente.coresRemovidas || []),
+    est_at:     estEditado  ? new Date().toISOString() : (existente.est_at  || null),
     prod_at:     prodEditado ? new Date().toISOString() : (existente.prod_at || null),
     updated_at:  new Date().toISOString(),
     // Registra timestamp ao entrar em status monitorado. A lista tem que ser a MESMA de
@@ -1152,6 +1157,13 @@ function salvarModelo() {
 // de fora de propósito — ver renderCoresTags.
 function getCoresTags() {
   return Array.from(document.querySelectorAll('#cores-tags .cor-tag[data-fixa="1"] span')).map(s => s.textContent);
+}
+
+// Cores do data.js que não estão mais entre as etiquetas fixas da tela = ela tirou com o ×.
+// Gravadas em `coresRemovidas` para o data.js não devolver a cor (ver coresCatalogo).
+function coresRemovidasDaTela(def) {
+  const naTela = new Set(getCoresTags().map(chaveCor));
+  return ((def && def.cores) || []).filter(c => !naTela.has(chaveCor(c)));
 }
 
 function buildSidebar() {
@@ -11062,10 +11074,11 @@ function renderModelo(key) {
   const tecido = d.tecido || def.tecido;
   const consumo = d.consumo || def.consumo;
   const preco = d.preco || def.preco;
-  // Cores do data.js são a referência; cores extras do localStorage só entram se não houver tamanhos customizados
-  // (modelos com tamanhos customizados como sapatos ignoram cores obsoletas do localStorage).
+  // Cores do data.js (menos as que ela tirou) + as que ela cadastrou. Até 09/11/2026 modelos
+  // com tamanhos próprios (G1, calçado) ignoravam as cadastradas aqui: a cor nova gravava,
+  // mas sumia da aba Configurações e o próximo × a apagava da nuvem.
   // Cor que TEM pedido entra sempre — coresDoModelo garante isso.
-  const cores = coresDoModelo(def, def.tamanhos ? null : d);
+  const cores = coresDoModelo(def, d);
 
   document.getElementById('model-title').textContent = nome;
   document.getElementById('model-sub').textContent = `TECIDO: ${tecido.toUpperCase()} • CONSUMO: ${consumo}M/PEÇA`;
@@ -11107,7 +11120,7 @@ function renderModelo(key) {
 
   // Fixas = as do catálogo do modelo + as que a dona já cadastrou. O resto veio de pedido
   // e fica provisório, para uma leitura errada não virar cor permanente do modelo.
-  const coresFixas = new Set([...(def.cores || []), ...((d.cores) || [])].map(chaveCor));
+  const coresFixas = new Set([...coresCatalogo(def, d), ...((d.cores) || [])].map(chaveCor));
   renderCoresTags(cores, coresFixas);
 
   arqRender(key); // aba ARQUIVOS: croqui, Audaces e medidas da pasta na MODELAGEM
@@ -12423,13 +12436,24 @@ function corCanonica(def, cor) {
   return conhecidas.find(c => chaveCor(c) === k) || cor;
 }
 
+// Cores do data.js que a dona NÃO tirou do modelo. Até 09/11/2026 o × na aba Configurações
+// não adiantava para essas: a cor saía da nuvem, mas o data.js a devolvia no próximo
+// desenho (Rosa Baby da Pantalona Viscolycra). Agora a retirada fica em `coresRemovidas`.
+// Cor retirada que recebe pedido continua aparecendo, como provisória (botão +).
+function coresCatalogo(def, saved) {
+  const fora = new Set(((saved && saved.coresRemovidas) || []).map(chaveCor));
+  return (def.cores || []).filter(c => !fora.has(chaveCor(c)));
+}
+
 // Cores a exibir/calcular num modelo: as do catálogo + as salvas + as que só existem
 // porque CHEGOU PEDIDO nelas (ex.: cor de conjunto que a peça não lista). Sem essa última
 // parte o pedido entra em def.aberto mas some da tela e das contas de produção.
 function coresDoModelo(def, saved) {
   const lista = [], vistas = new Set();
   const add = c => { const k = chaveCor(c); if (!k || vistas.has(k)) return; vistas.add(k); lista.push(c); };
-  (def.cores || []).forEach(add);
+  // mesma conta de coresCatalogo, repetida aqui para a função se bastar (os testes a extraem sozinha)
+  const fora = new Set(((saved && saved.coresRemovidas) || []).map(chaveCor));
+  (def.cores || []).filter(c => !fora.has(chaveCor(c))).forEach(add);
   ((saved && saved.cores) || []).forEach(add);
   Object.entries(def.aberto || {}).forEach(([cor, qt]) => { if ((qt || []).some(v => v > 0)) add(cor); });
   return lista;
@@ -13498,7 +13522,8 @@ function auditarLeituraPedidos() {
 
   // Pedido caiu numa cor que o modelo não tem cadastrada
   for (const [key, def] of Object.entries(MODELOS)) {
-    const cadastradas = new Set([...(def.cores || []), ...((loadLocal('vc:' + key) || {}).cores || [])].map(chaveCor));
+    const salvo = loadLocal('vc:' + key) || {};
+    const cadastradas = new Set([...coresCatalogo(def, salvo), ...(salvo.cores || [])].map(chaveCor));
     Object.entries(def.aberto || {}).forEach(([cor, qt]) => {
       if (!(qt || []).some(v => v > 0)) return;
       if (!cadastradas.has(chaveCor(cor))) {

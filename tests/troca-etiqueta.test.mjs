@@ -309,8 +309,8 @@ ok('provisória oferece CADASTRAR (+), não remover (×)', /onclick="fixarCor\(t
 ok('cor digitada pela dona nasce fixa',
    /tag\.dataset\.fixa = '1'; \/\/ digitada pela dona/.test(main), true);
 ok('fixar a cor grava na hora', /function fixarCor[\s\S]{0,400}autoSave\(\)/.test(main), true);
-ok('as fixas saem do catálogo + do que já estava salvo',
-   /new Set\(\[\.\.\.\(def\.cores \|\| \[\]\), \.\.\.\(\(d\.cores\) \|\| \[\]\)\]\.map\(chaveCor\)\)/.test(main), true);
+ok('as fixas saem do catálogo (menos as tiradas) + do que já estava salvo',
+   /new Set\(\[\.\.\.coresCatalogo\(def, d\), \.\.\.\(\(d\.cores\) \|\| \[\]\)\]\.map\(chaveCor\)\)/.test(main), true);
 
 console.log(`\n${falhas === 0 ? '✓ TODOS OS TESTES PASSARAM' : '✗ ' + falhas + ' FALHA(S)'} — ${total - falhas}/${total}\n`);
 process.exit(falhas === 0 ? 0 : 1);
