@@ -10336,33 +10336,22 @@ function copiaProcessadosRecentes(agora = Date.now()) {
 
 // ─── ETIQUETA DA FRENET INTERCALADA COM A CÓPIA DO PEDIDO (09/11/2026) ──────────
 // A Bárbara imprimia as etiquetas na Frenet e as cópias aqui, em ordens diferentes, e perdia tempo
-// casando uma com a outra. O robô do notebook baixa o PDF 10x15 de cada etiqueta paga e guarda em
-// /api/etiqueta-pdf; aqui cada página vira imagem e entra logo antes da cópia do mesmo pedido.
+// casando uma com a outra. O robô do notebook baixa a etiqueta paga, guarda o PDF e a página já em
+// imagem (PNG 300 dpi) em /api/etiqueta-pdf, e aqui a imagem entra logo antes da cópia do mesmo pedido.
+// Imagem pronta, e não pdf.js no navegador: com 59 etiquetas a aba do painel, em segundo plano atrás da
+// janela de impressão, travou em "Preparando..." (09/11/2026).
 // Pedir pressa ao robô = gravar `impressao-pedido`; ele responde em `etiquetas-pdf.pedido_atendido`.
-const PDFJS_URL = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
-const PDFJS_WORKER = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
-let _pdfjs = null;
-function carregarPdfJs() {
-  if (_pdfjs) return _pdfjs;
-  _pdfjs = new Promise((ok, falha) => {
-    const sc = document.createElement('script');
-    sc.src = PDFJS_URL;
-    sc.onload = () => { window.pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS_WORKER; ok(window.pdfjsLib); };
-    sc.onerror = () => { _pdfjs = null; falha(new Error('não carregou o leitor de PDF')); };
-    document.head.appendChild(sc);
-  });
-  return _pdfjs;
-}
-
-async function etqPdfsDisponiveis(numeros) {
+async function etqImagensDisponiveis(numeros) {
   const r = await fetch('/api/etiqueta-pdf?numeros=' + encodeURIComponent(numeros.join(',')), { cache: 'no-store' });
   const j = await r.json().catch(() => ({}));
-  return new Set((r.ok && j.tem) || []);
+  return new Set((r.ok && j.png) || []);
 }
+// O "imprimir pedidos" também usa para saber quais processados recentes têm etiqueta
+const etqPdfsDisponiveis = etqImagensDisponiveis;
 
-/** { '#9266': [dataURL da página 1, ...] } das etiquetas que o robô já baixou. `aviso(texto)` mostra o andamento. */
+/** { '#9266': [endereço da imagem] } das etiquetas que o robô já baixou. `aviso(texto)` mostra o andamento. */
 async function copiaEtiquetasFrenet(numeros, aviso) {
-  let tem = await etqPdfsDisponiveis(numeros);
+  let tem = await etqImagensDisponiveis(numeros);
   const faltam = numeros.filter(n => !tem.has(n));
   if (faltam.length) {
     const res = await etqLerResultado();
@@ -10380,34 +10369,14 @@ async function copiaEtiquetasFrenet(numeros, aviso) {
           const j = r.ok ? await r.json() : [];
           feito = !!(j[0] && j[0].dados && j[0].dados.pedido_atendido === em);
         } catch (_) {}
-        tem = await etqPdfsDisponiveis(numeros);
+        tem = await etqImagensDisponiveis(numeros);
         if (feito || tem.size === numeros.length) break;
       }
     }
   }
-  if (!tem.size) return {};
-  aviso(`Preparando ${tem.size} etiqueta${tem.size > 1 ? 's' : ''} para imprimir...`);
-  const pdfjs = await carregarPdfJs();
   const out = {};
-  const comPdf = numeros.filter(n => tem.has(n));
-  for (const [k, numero] of comPdf.entries()) {
-    if (k % 5 === 0) aviso(`Preparando as etiquetas para imprimir... ${k} de ${comPdf.length}`);
-    try {
-      const r = await fetch('/api/etiqueta-pdf?numero=' + encodeURIComponent(numero.replace(/\D/g, '')), { cache: 'no-store' });
-      if (!r.ok) continue;
-      const doc = await pdfjs.getDocument({ data: new Uint8Array(await r.arrayBuffer()) }).promise;
-      out[numero] = [];
-      for (let i = 1; i <= doc.numPages; i++) {
-        const pg = await doc.getPage(i);
-        const v1 = pg.getViewport({ scale: 1 });
-        const vp = pg.getViewport({ scale: 1240 / v1.width }); // ~300 dpi em 10,5 cm: código de barras nítido na térmica
-        const cv = document.createElement('canvas');
-        cv.width = Math.round(vp.width); cv.height = Math.round(vp.height);
-        await pg.render({ canvasContext: cv.getContext('2d'), viewport: vp }).promise;
-        out[numero].push(cv.toDataURL('image/png'));
-      }
-    } catch (e) { console.warn('[etiqueta ' + numero + ']', e.message); }
-  }
+  for (const numero of numeros.filter(n => tem.has(n)))
+    out[numero] = [location.origin + '/api/etiqueta-pdf?png=1&numero=' + encodeURIComponent(numero.replace(/\D/g, ''))];
   return out;
 }
 
