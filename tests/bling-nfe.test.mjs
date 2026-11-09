@@ -112,6 +112,8 @@ ok('Calça Flare Canelada → 6104.63.00', ncmPorNome('Calça Flare Canelada Nud
 ok('Conjunto Cozy (moletom) → 6104.22.00', ncmPorNome('Conjunto Cozy Marsala - M'), '6104.22.00');
 ok('Conjunto Moletom + Flare canelada (misturado) → 6104.22.00', ncmPorNome('Conjunto Moletom Gola Alta + Flare Canelada Marrom'), '6104.22.00');
 ok('Conjunto Canelado → 6104.23.00', ncmPorNome('Conjunto Canelado Telha - P'), '6104.23.00');
+ok('calçados: Flat e Sandália 6402.99.90, Coturno 6402.91.90, Bota sem regra (09/11/2026)', [ncmPorNome('Flat - Preto / 38'), ncmPorNome('Sandália Gladiadora - 40 / Preto'), ncmPorNome('Coturno Maxi - 37'), ncmPorNome('Bota Slip - 36')], ['6402.99.90', '6402.99.90', '6402.91.90', null]);
+ok('Cropped Frente Única (Suplex) 6106.20.00', ncmPorNome('Cropped Frente Única Preto - M'), '6106.20.00');
 ok('Conjunto Peace → 6104.29.90 (6104.29.00 não existe, rejeição 778 em 03/11/2026)', ncmPorNome('Conjunto Peace Preto - G'), '6104.29.90');
 ok('Calça Pantalona Moletom → 6104.62.00', ncmPorNome('Calça Pantalona Moletom Cinza - M'), '6104.62.00');
 ok('Calça Pantalona (viscolycra) → 6104.69.00', ncmPorNome('Calça Pantalona - Marsala / M'), '6104.69.00');
@@ -119,11 +121,11 @@ ok('Conjunto Cropped Canelado + Calça Pantalona → 6104.23.00 (03/11/2026)', n
 ok('Moletom Gola Alta → 6110.20.00', ncmPorNome('Moletom Gola Alta Nude - G'), '6110.20.00');
 ok('Casaco Bear → 6102.30.00', ncmPorNome('Casaco Bear Marrom - M'), '6102.30.00');
 ok('Camiseta Oversized → 6109.10.00', ncmPorNome('Camiseta Oversized Black - G'), '6109.10.00');
-ok('calçado de revenda não tem NCM na tabela', ncmPorNome('Coturno Autentic Tamanho:36'), null);
+ok('bota (camurça/pelo) não tem NCM na tabela', ncmPorNome('Bota Aspen Tamanho:36'), null);
 ok('Conjunto Wide (tecido desconhecido) não tem NCM', ncmPorNome('Conjunto Wide Preto'), null);
-const comp = completarNcmItens([{ descricao: 'Macacão Amplo - Marsala / G', classificacaoFiscal: '' }, { descricao: 'Coturno Maxi', classificacaoFiscal: '' }, { descricao: 'X', classificacaoFiscal: '6104.63.00' }]);
+const comp = completarNcmItens([{ descricao: 'Macacão Amplo - Marsala / G', classificacaoFiscal: '' }, { descricao: 'Bota Slip', classificacaoFiscal: '' }, { descricao: 'X', classificacaoFiscal: '6104.63.00' }]);
 ok('completa só o item vazio que está na tabela', comp.itens.map(i => i.classificacaoFiscal), ['6114.30.00', '', '6104.63.00']);
-ok('item fora da tabela vira motivo (nota não sai)', comp.faltando, ['Coturno Maxi']);
+ok('item fora da tabela vira motivo (nota não sai)', comp.faltando, ['Bota Slip']);
 ok('não preenche NCM já existente', completarNcmItens([{ descricao: 'Macacão Amplo', classificacaoFiscal: '6104.43.00' }]).itens[0].classificacaoFiscal, '6104.43.00');
 ok('nota pendente confere a Shopify de novo antes de enviar', f.includes("problemas.push('pedido cancelado na Shopify')") && f.includes('valor da nota'), true);
 ok('agendador segue quando o erro é de um pedido só (nota criada)', w.includes('!d.emitido && !d.nota)'), true);

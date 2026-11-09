@@ -88,9 +88,16 @@ export function ncmPorNome(nome) {
   const n = semAcento(nome);
   const tem = (...ws) => ws.some(w => n.includes(w));
   if (tem('embalagem', 'reenvio', 'reembolso', 'bojo')) return null;
-  if (tem('coturno', 'bota', 'sandalia', 'flat')) return null;
+  // Calçado de revenda (pesquisado na tabela NCM em 09/11/2026, a pedido dela; descrição não diz o material,
+  // vai como sintético com sola de borracha, o comum nesses modelos): Flat e Sandália não cobrem o tornozelo,
+  // o Coturno de cano alto cobre. Bota (camurça/pelo) segue sem regra.
+  if (tem('coturno')) return '6402.91.90';
+  if (tem('flat', 'sandalia')) return '6402.99.90';
+  if (tem('bota')) return null;
   if (tem('top ') || n.startsWith('top')) return null;
-  if (tem('wide', 'conjunto longo', 'conjunto amplo longo', 'vestido midi', 'vestido aiga', 'forrado', 'xadrez', 'cropped frente unica', 'cropped meia manga')) return null;
+  if (tem('wide', 'conjunto longo', 'conjunto amplo longo', 'vestido midi', 'vestido aiga', 'forrado', 'xadrez', 'cropped meia manga')) return null;
+  // Cropped Frente Única é Suplex (malha sintética): blusa de malha, 6106.20.00 (09/11/2026)
+  if (tem('cropped frente unica')) return '6106.20.00';
   let conj = n.startsWith('conjunto') || n.includes(' + ') || (n.includes(' com ') && tem('saia', 'cropped', 'moletom', 'blusa') && !n.startsWith('blusa'));
   if (n.startsWith('blusa com punho') || n.startsWith('blusa gola')) conj = false;
   if (conj) {
