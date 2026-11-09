@@ -66,6 +66,16 @@ export function sacoPorPeso(pesoG) {
   const kg = (Number(pesoG) || 0) / 1000;
   return Object.keys(SACOS).find(k => kg <= SACOS[k].ate);
 }
+/**
+ * Saco do pedido (decisão da Bárbara, 09/11/2026): UMA peça leve sozinha (até 700 g cadastrados:
+ * Macacão Amplo, Vestido Amplo, Vestido FU Longo) vai no Saco P. O peso da Shopify é o cubado da
+ * fatura da Loggi, não o da peça, e por ele o Macacão sozinho caía no Saco M. Duas peças ou mais
+ * seguem pelo peso.
+ */
+export function sacoDoPedido(pesoG, pecas) {
+  if (pecas === 1 && (Number(pesoG) || 0) <= 700) return 'P';
+  return sacoPorPeso(pesoG);
+}
 export function pesoEtiquetaKg(pesoG) {
   // Em gramas inteiros: 0,7 × 20 em ponto flutuante dá 14,000000000000002 e subiria para 0,75.
   const g = Math.round(Number(pesoG) || 0) + 50;
@@ -119,6 +129,7 @@ export function normalizar(o) {
   const aEnviar = linhas.filter(n => pendente(n) > 0);
   const temPeso = aEnviar.length && aEnviar.every(n => gramas(n) != null);
   const peso = Math.round(temPeso ? aEnviar.reduce((t, n) => t + pendente(n) * gramas(n), 0) : (o.totalWeight || 0));
+  const pecasAEnviar = linhas.some(n => n.unfulfilledQuantity != null) ? aEnviar.reduce((t, n) => t + pendente(n), 0) : (o.currentSubtotalLineItemsQuantity || 0);
   return {
     numero: o.name,
     id: String(o.legacyResourceId || ''),
@@ -135,8 +146,8 @@ export function normalizar(o) {
     valor: num(o.currentTotalPriceSet && o.currentTotalPriceSet.shopMoney && o.currentTotalPriceSet.shopMoney.amount),
     peso_g: peso,
     peso_kg: pesoEtiquetaKg(peso),
-    pecas: linhas.some(n => n.unfulfilledQuantity != null) ? aEnviar.reduce((t, n) => t + pendente(n), 0) : (o.currentSubtotalLineItemsQuantity || 0),
-    saco: sacoPorPeso(peso),
+    pecas: pecasAEnviar,
+    saco: sacoDoPedido(peso, pecasAEnviar),
     regra: regraDoPedido(cobrado, sl.title),
     pago: ['PAID', 'PARTIALLY_REFUNDED'].includes(o.displayFinancialStatus) && !o.cancelledAt,
     itens: aEnviar
