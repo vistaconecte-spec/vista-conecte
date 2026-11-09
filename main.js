@@ -10319,6 +10319,81 @@ function copiaImprimirProntos() {
   copiaImprimir(prontos.map(p => p.numero));
 }
 
+// ─── ETIQUETA DA FRENET INTERCALADA COM A CÓPIA DO PEDIDO (09/11/2026) ──────────
+// A Bárbara imprimia as etiquetas na Frenet e as cópias aqui, em ordens diferentes, e perdia tempo
+// casando uma com a outra. O robô do notebook baixa o PDF 10x15 de cada etiqueta paga e guarda em
+// /api/etiqueta-pdf; aqui cada página vira imagem e entra logo antes da cópia do mesmo pedido.
+// Pedir pressa ao robô = gravar `impressao-pedido`; ele responde em `etiquetas-pdf.pedido_atendido`.
+const PDFJS_URL = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+const PDFJS_WORKER = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+let _pdfjs = null;
+function carregarPdfJs() {
+  if (_pdfjs) return _pdfjs;
+  _pdfjs = new Promise((ok, falha) => {
+    const sc = document.createElement('script');
+    sc.src = PDFJS_URL;
+    sc.onload = () => { window.pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS_WORKER; ok(window.pdfjsLib); };
+    sc.onerror = () => { _pdfjs = null; falha(new Error('não carregou o leitor de PDF')); };
+    document.head.appendChild(sc);
+  });
+  return _pdfjs;
+}
+
+async function etqPdfsDisponiveis(numeros) {
+  const r = await fetch('/api/etiqueta-pdf?numeros=' + encodeURIComponent(numeros.join(',')), { cache: 'no-store' });
+  const j = await r.json().catch(() => ({}));
+  return new Set((r.ok && j.tem) || []);
+}
+
+/** { '#9266': [dataURL da página 1, ...] } das etiquetas que o robô já baixou. `aviso(texto)` mostra o andamento. */
+async function copiaEtiquetasFrenet(numeros, aviso) {
+  let tem = await etqPdfsDisponiveis(numeros);
+  const faltam = numeros.filter(n => !tem.has(n));
+  if (faltam.length) {
+    const res = await etqLerResultado();
+    const roboVivo = res && res.robo_visto_em && Date.now() - new Date(res.robo_visto_em).getTime() < 20 * 60000;
+    if (roboVivo) {
+      const em = new Date().toISOString();
+      await salvarNuvemREST('impressao-pedido', { em, numeros: faltam });
+      const ate = Date.now() + 4 * 60000;
+      while (Date.now() < ate) {
+        aviso(`Baixando as etiquetas da Frenet pelo robô do notebook... (${tem.size} de ${numeros.length})`);
+        await new Promise(r => setTimeout(r, 6000));
+        let feito = false;
+        try {
+          const r = await fetch(`${SUPABASE_URL}/rest/v1/vc_modelos?id=eq.etiquetas-pdf&select=dados`, { headers: { apikey: SUPABASE_KEY, Authorization: 'Bearer ' + SUPABASE_KEY }, cache: 'no-store' });
+          const j = r.ok ? await r.json() : [];
+          feito = !!(j[0] && j[0].dados && j[0].dados.pedido_atendido === em);
+        } catch (_) {}
+        tem = await etqPdfsDisponiveis(numeros);
+        if (feito || tem.size === numeros.length) break;
+      }
+    }
+  }
+  if (!tem.size) return {};
+  aviso(`Preparando ${tem.size} etiqueta${tem.size > 1 ? 's' : ''} para imprimir...`);
+  const pdfjs = await carregarPdfJs();
+  const out = {};
+  for (const numero of numeros.filter(n => tem.has(n))) {
+    try {
+      const r = await fetch('/api/etiqueta-pdf?numero=' + encodeURIComponent(numero.replace(/\D/g, '')), { cache: 'no-store' });
+      if (!r.ok) continue;
+      const doc = await pdfjs.getDocument({ data: new Uint8Array(await r.arrayBuffer()) }).promise;
+      out[numero] = [];
+      for (let i = 1; i <= doc.numPages; i++) {
+        const pg = await doc.getPage(i);
+        const v1 = pg.getViewport({ scale: 1 });
+        const vp = pg.getViewport({ scale: 1240 / v1.width }); // ~300 dpi em 10,5 cm: código de barras nítido na térmica
+        const cv = document.createElement('canvas');
+        cv.width = Math.round(vp.width); cv.height = Math.round(vp.height);
+        await pg.render({ canvasContext: cv.getContext('2d'), viewport: vp }).promise;
+        out[numero].push(cv.toDataURL('image/png'));
+      }
+    } catch (e) { console.warn('[etiqueta ' + numero + ']', e.message); }
+  }
+  return out;
+}
+
 async function copiaImprimir(numeros) {
   numeros = [...new Set(numeros || [])];
   if (!numeros.length) { alert('Nenhum pedido para imprimir.'); return; }
@@ -10341,6 +10416,17 @@ async function copiaImprimir(numeros) {
   const sacoLote = {};
   (lote.pedidos || []).forEach(p => { sacoLote[p.numero] = p.saco; });
   const feitos = (loadLocal('vc:etiquetas-resultado') || {}).feitos || {};
+
+  // 10x15 é o padrão: a Bárbara imprime a cópia na mesma impressora térmica da etiqueta (22/10/2026)
+  let formato = '10x15';
+  try { formato = localStorage.getItem('vc:copia-formato') || '10x15'; } catch (_) {}
+  // Etiqueta da Frenet antes da cópia de cada pedido (09/11/2026), só no papel 10x15
+  let etqImgs = {};
+  if (formato === '10x15') {
+    const aviso = t => { try { win.document.open(); win.document.write('<p style="font-family:Arial;padding:20px">' + t + '</p>'); win.document.close(); } catch (_) {} };
+    try { etqImgs = await copiaEtiquetasFrenet(numeros, aviso); } catch (e) { console.warn('[etiquetas Frenet]', e.message); }
+  }
+  const semEtiqueta = formato === '10x15' ? numeros.filter(n => !etqImgs[n]) : [];
 
   const folhas = [], semPecas = [];
   for (const numero of numeros) {
@@ -10378,7 +10464,7 @@ async function copiaImprimir(numeros) {
     }).join('');
 
     const dt = ped.data ? new Date(ped.data).toLocaleDateString('pt-BR') : '';
-    folhas.push(`<section class="folha">
+    folhas.push((etqImgs[numero] || []).map(src => `<section class="etq"><img src="${src}" alt="etiqueta ${esc(numero)}"></section>`).join('') + `<section class="folha">
       <div class="topo">
         <div><div class="marca">Vista Conecte · cópia do pedido</div><div class="num">${esc(numero)}</div></div>
         <div class="meta">${dt ? 'pedido de ' + esc(dt) : ''}${servico ? '<br>' + esc(servico) : ''}</div>
@@ -10408,9 +10494,6 @@ async function copiaImprimir(numeros) {
     return;
   }
 
-  // 10x15 é o padrão: a Bárbara imprime a cópia na mesma impressora térmica da etiqueta (22/10/2026)
-  let formato = '10x15';
-  try { formato = localStorage.getItem('vc:copia-formato') || '10x15'; } catch (_) {}
   const html = `<!DOCTYPE html>
 <html lang="pt-BR"><head><meta charset="UTF-8"><title>Cópia dos pedidos (${folhas.length})</title>
 <style id="pagina"></style>
@@ -10457,6 +10540,12 @@ async function copiaImprimir(numeros) {
   body.f10x15 .t{font-size:13px;width:44px}
   body.f10x15 .q{width:30px}
   body.f10x15 .rodape{font-size:11px}
+  /* Etiqueta da Frenet (PDF 10,5x14,8 cm) numa página própria, sem margem, antes da cópia */
+  .etq{display:none}
+  body.f10x15 .etq{display:block;page:etiqueta;break-after:page;page-break-after:always}
+  .etq img{display:block;width:100mm;height:150mm;object-fit:contain;margin:0 auto}
+  @page etiqueta{size:100mm 150mm;margin:0}
+  @media screen{body.f10x15 .etq{border-bottom:1px dashed #000;padding:4mm 0}}
   @media screen{.folha{max-width:190mm;margin:0 auto}}
   @media print{.barra,.aviso-falta{display:none}}
 </style></head><body class="f${formato}">
@@ -10467,6 +10556,7 @@ async function copiaImprimir(numeros) {
     <button class="imp" onclick="window.print()">Imprimir ${folhas.length} pedido${folhas.length > 1 ? 's' : ''}</button>
   </div>
   ${semPecas.length ? `<div class="aviso-falta">Ficaram de fora (já enviados ou sem peças na tela): ${esc(semPecas.join(', '))}</div>` : ''}
+  ${semEtiqueta.length ? `<div class="aviso-falta">Sem etiqueta da Frenet ainda (pague no carrinho e imprima de novo): ${esc(semEtiqueta.join(', '))}</div>` : ''}
   ${folhas.join('')}
   <script>
     function formato(f) {
