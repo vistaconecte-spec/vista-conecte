@@ -10,8 +10,12 @@
  * tem nome e endereço da cliente, então só sai por esta rota, atrás do login ou do X-VC-Token.
  *
  *   POST ?numero=9266   corpo application/pdf     → grava etiquetas/9266.pdf (substitui)
- *   GET  ?numero=9266                             → o PDF (404 se não tem)
- *   GET  ?numeros=9266,9281                       → { tem: ['#9266'] }
+ *   POST ?numero=9266&png=1  corpo image/png      → grava etiquetas/9266.png, a página já em imagem
+ *   GET  ?numero=9266[&png=1]                     → o PDF ou a imagem (404 se não tem)
+ *   GET  ?numeros=9266,9281                       → { tem: ['#9266'], png: ['#9266'] }
+ *
+ * A imagem existe porque desenhar 59 PDFs com o pdf.js na aba do painel travou (09/11/2026): a aba fica
+ * em segundo plano enquanto a janela de impressão está na frente, e o navegador quase para o trabalho dela.
  */
 const SB_URL = 'https://hckzsblwyabmhzbjdjgx.supabase.co';
 const BUCKET = 'etiquetas';
@@ -36,10 +40,11 @@ export async function onRequest({ request, env }) {
   if (request.method === 'POST') {
     const numero = soNumero(q.get('numero'));
     if (!numero) return json({ erro: 'informe ?numero=' }, 400);
+    const png = q.get('png') === '1';
     const pdf = await request.arrayBuffer();
-    if (pdf.byteLength < 500 || pdf.byteLength > 5e6) return json({ erro: 'PDF vazio ou grande demais' }, 400);
-    const subir = () => fetch(`${SB_URL}/storage/v1/object/${BUCKET}/${numero}.pdf`, {
-      method: 'POST', headers: { ...auth, 'Content-Type': 'application/pdf', 'x-upsert': 'true' }, body: pdf,
+    if (pdf.byteLength < 500 || pdf.byteLength > 5e6) return json({ erro: 'arquivo vazio ou grande demais' }, 400);
+    const subir = () => fetch(`${SB_URL}/storage/v1/object/${BUCKET}/${numero}.${png ? 'png' : 'pdf'}`, {
+      method: 'POST', headers: { ...auth, 'Content-Type': png ? 'image/png' : 'application/pdf', 'x-upsert': 'true' }, body: pdf,
     });
     let r = await subir();
     if (!r.ok && /bucket/i.test(await r.clone().text())) { await criarBucket(env); r = await subir(); }
@@ -56,14 +61,16 @@ export async function onRequest({ request, env }) {
       method: 'POST', headers: { ...auth, 'Content-Type': 'application/json' },
       body: JSON.stringify({ prefix: '', limit: 2000, sortBy: { column: 'name', order: 'asc' } }),
     });
-    if (!r.ok) return json({ tem: [] });
-    const tem = (await r.json()).map(o => soNumero(o.name)).filter(n => pedidos.has(n)).map(n => '#' + n);
-    return json({ tem });
+    if (!r.ok) return json({ tem: [], png: [] });
+    const nomes = (await r.json()).map(o => String(o.name || ''));
+    const de = ext => nomes.filter(n => n.endsWith('.' + ext)).map(soNumero).filter(n => pedidos.has(n)).map(n => '#' + n);
+    return json({ tem: de('pdf'), png: de('png') });
   }
 
   const numero = soNumero(q.get('numero'));
   if (!numero) return json({ erro: 'informe ?numero= ou ?numeros=' }, 400);
-  const r = await fetch(`${SB_URL}/storage/v1/object/${BUCKET}/${numero}.pdf`, { headers: auth });
+  const png = q.get('png') === '1';
+  const r = await fetch(`${SB_URL}/storage/v1/object/${BUCKET}/${numero}.${png ? 'png' : 'pdf'}`, { headers: auth });
   if (!r.ok) return json({ erro: 'sem etiqueta para #' + numero }, 404);
-  return new Response(r.body, { headers: { 'Content-Type': 'application/pdf', 'Cache-Control': 'private, max-age=300' } });
+  return new Response(r.body, { headers: { 'Content-Type': png ? 'image/png' : 'application/pdf', 'Cache-Control': 'private, max-age=300' } });
 }
