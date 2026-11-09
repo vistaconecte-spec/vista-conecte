@@ -140,8 +140,7 @@ console.log('\n5) Cópia do pedido para a embalagem');
 }
 
 ok('impressão 10x15 intercala a etiqueta da Frenet antes da cópia do pedido (09/11/2026)',
-  [/async function copiaEtiquetasFrenet/.test(main), /etqImgs\[numero\][^
-]*class="etq"/.test(main), /@page etiqueta\{size:100mm 150mm;margin:0\}/.test(main), /salvarNuvemREST\('impressao-pedido'/.test(main)], [true, true, true, true]);
+  [/async function copiaEtiquetasFrenet/.test(main), /etqImgs\[numero\][^\n]*class="etq"/.test(main), /@page etiqueta\{size:100mm 150mm;margin:0\}/.test(main), /salvarNuvemREST\('impressao-pedido'/.test(main)], [true, true, true, true]);
 ok('/api/etiqueta-pdf só por login ou token: não está liberado para oficina/modelagem', /etiqueta-pdf/.test(mw), false);
 
 console.log(`\n${total - falhas}/${total} ok${falhas ? `, ${falhas} falha(s)` : ''}`);
