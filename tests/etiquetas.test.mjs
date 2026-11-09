@@ -64,6 +64,21 @@ console.log('\n3) Normalização do pedido');
   ok('saco M, peso 0,7 kg, frete grátis = mais barato, pago e não enviado', [p.saco, p.peso_kg, p.regra, p.pago, p.enviado], ['M', 0.7, 'mais_barato', true, false]);
 }
 
+{
+  // Parcial: a Caroline #8956 (09/11/2026) tinha só o Conjunto Canelado a enviar e ia no Saco GG
+  const w = g => ({ inventoryItem: { measurement: { weight: { value: g, unit: 'GRAMS' } } } });
+  const p = api.normalizar({
+    name: '#8956', displayFinancialStatus: 'PAID', displayFulfillmentStatus: 'PARTIALLY_FULFILLED', totalWeight: 2100, currentSubtotalLineItemsQuantity: 3,
+    shippingAddress: { name: 'Caroline', address1: 'Rua X 1', city: 'São Paulo', provinceCode: 'SP', zip: '03312001' }, shippingLine: { title: 'Loggi' },
+    lineItems: { edges: [
+      { node: { name: 'Conjunto Canelado - Preto / GG', quantity: 1, currentQuantity: 1, unfulfilledQuantity: 1, variant: w(750) } },
+      { node: { name: 'Conjunto Pantalona com Cropped', quantity: 1, currentQuantity: 1, unfulfilledQuantity: 0, variant: w(2200) } },
+      { node: { name: 'Macacão Amplo - Preto / GG', quantity: 1, currentQuantity: 1, unfulfilledQuantity: 0, variant: w(650) } },
+    ] },
+  });
+  ok('parcial pesa só o que falta enviar (750 g, saco M, 1 peça, 1 item)', [p.peso_g, p.saco, p.pecas, p.itens.length], [750, 'M', 1, 1]);
+}
+
 console.log('\n4) Janela no painel');
 {
   const i = main.indexOf('const ETQ_SACOS'), f = main.indexOf('async function etqLerResultado');

@@ -109,7 +109,16 @@ export function normalizar(o) {
     .map(e => e.node).find(n => n.purpose === 'TAX' || /CPF|TAX_CREDENTIAL/i.test(n.key || ''));
   const sl = o.shippingLine || {};
   const cobrado = num(sl.discountedPriceSet && sl.discountedPriceSet.shopMoney && sl.discountedPriceSet.shopMoney.amount);
-  const peso = Math.round(o.totalWeight || 0);
+  // Pedido PARCIAL (09/11/2026): o totalWeight é do pedido inteiro, inclusive o que já saiu. A Caroline
+  // #8956 tinha só um Conjunto Canelado (750 g) a enviar e ia no Saco GG pelos 2.100 g do pedido todo.
+  // Pesa só o que falta enviar quando todo item pendente tem peso cadastrado.
+  const linhas = ((o.lineItems && o.lineItems.edges) || []).map(e => e.node);
+  const pendente = n => Math.min(n.currentQuantity ?? n.quantity, n.unfulfilledQuantity ?? (n.currentQuantity ?? n.quantity));
+  const gramas = n => { const w = n.variant && n.variant.inventoryItem && n.variant.inventoryItem.measurement && n.variant.inventoryItem.measurement.weight;
+    if (!w || w.value == null) return null; return w.unit === 'KILOGRAMS' ? w.value * 1000 : w.unit === 'POUNDS' ? w.value * 453.6 : w.unit === 'OUNCES' ? w.value * 28.35 : w.value; };
+  const aEnviar = linhas.filter(n => pendente(n) > 0);
+  const temPeso = aEnviar.length && aEnviar.every(n => gramas(n) != null);
+  const peso = Math.round(temPeso ? aEnviar.reduce((t, n) => t + pendente(n) * gramas(n), 0) : (o.totalWeight || 0));
   return {
     numero: o.name,
     id: String(o.legacyResourceId || ''),
@@ -126,15 +135,14 @@ export function normalizar(o) {
     valor: num(o.currentTotalPriceSet && o.currentTotalPriceSet.shopMoney && o.currentTotalPriceSet.shopMoney.amount),
     peso_g: peso,
     peso_kg: pesoEtiquetaKg(peso),
-    pecas: o.currentSubtotalLineItemsQuantity || 0,
+    pecas: linhas.some(n => n.unfulfilledQuantity != null) ? aEnviar.reduce((t, n) => t + pendente(n), 0) : (o.currentSubtotalLineItemsQuantity || 0),
     saco: sacoPorPeso(peso),
     regra: regraDoPedido(cobrado, sl.title),
     pago: ['PAID', 'PARTIALLY_REFUNDED'].includes(o.displayFinancialStatus) && !o.cancelledAt,
-    itens: ((o.lineItems && o.lineItems.edges) || []).map(e => e.node)
-      .filter(n => (n.currentQuantity ?? n.quantity) > 0)
+    itens: aEnviar
       .map(n => ({
         nome: String(n.name || '').slice(0, 60),
-        qtd: n.currentQuantity ?? n.quantity,
+        qtd: pendente(n),
         preco: num(n.discountedUnitPriceAfterAllDiscountsSet && n.discountedUnitPriceAfterAllDiscountsSet.shopMoney && n.discountedUnitPriceAfterAllDiscountsSet.shopMoney.amount),
         // Troca de R$ 0 (26/10/2026): declaração com preço zero a Frenet recusa (400); o robô declara o preço de tabela
         preco_original: num(n.originalUnitPriceSet && n.originalUnitPriceSet.shopMoney && n.originalUnitPriceSet.shopMoney.amount),
@@ -160,7 +168,7 @@ const QUERY = `query($q: String) {
       shippingLine { title discountedPriceSet { shopMoney { amount } } }
       shippingAddress { name firstName lastName address1 address2 city provinceCode zip phone }
       localizationExtensions(first: 5) { edges { node { key purpose value } } }
-      lineItems(first: 30) { edges { node { name quantity currentQuantity discountedUnitPriceAfterAllDiscountsSet { shopMoney { amount } } originalUnitPriceSet { shopMoney { amount } } } } }
+      lineItems(first: 30) { edges { node { name quantity currentQuantity unfulfilledQuantity variant { inventoryItem { measurement { weight { value unit } } } } discountedUnitPriceAfterAllDiscountsSet { shopMoney { amount } } originalUnitPriceSet { shopMoney { amount } } } } }
     } }
   }
 }`;
