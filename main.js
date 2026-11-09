@@ -10305,18 +10305,31 @@ function copiaImprimirLote() {
 // oferece todos os prontos, para quando a etiqueta foi feita à mão na Frenet.
 function copiaImprimirProntos() {
   const prontos = window._prontosEnvio || [];
-  if (!prontos.length) { alert('Nenhum pedido pronto para envio agora.'); return; }
+  // Processados nas últimas 18 h (09/11/2026): a Bárbara pagou o carrinho, o robô gerou os códigos e
+  // processou na Shopify, e os 58 pedidos sumiram dos prontos antes de ela imprimir as cópias. Entram
+  // os que têm etiqueta baixada pelo robô (o copiaImprimir confere, depois de abrir a janela).
+  const recentes = copiaProcessadosRecentes().filter(n => !prontos.some(p => p.numero === n));
+  if (!prontos.length && !recentes.length) { alert('Nenhum pedido pronto para envio agora.'); return; }
   const res = loadLocal('vc:etiquetas-resultado') || {};
   const comEtiqueta = prontos.filter(p => !etqPendentes([p], res).length).map(p => p.numero);
   // 26/10/2026: com 61 prontos e 47 etiquetados só saíam 47 folhas, e a Bárbara precisava de todas
   const semEtiqueta = prontos.length - comEtiqueta.length;
   if (comEtiqueta.length && semEtiqueta) {
     const todos = confirm(`${comEtiqueta.length} pedidos têm etiqueta do robô e ${semEtiqueta} ainda não.\n\nOK = imprimir todos os ${prontos.length}\nCancelar = só os ${comEtiqueta.length} com etiqueta`);
-    copiaImprimir(todos ? prontos.map(p => p.numero) : comEtiqueta); return;
+    copiaImprimir(todos ? prontos.map(p => p.numero) : comEtiqueta, recentes); return;
   }
-  if (comEtiqueta.length) { copiaImprimir(comEtiqueta); return; }
+  if (comEtiqueta.length || !prontos.length) { copiaImprimir(comEtiqueta, recentes); return; }
   if (!confirm(`Nenhum pronto tem etiqueta gerada pelo robô nos últimos ${ETQ_FEITO_DIAS} dias.\n\nImprimir a cópia dos ${prontos.length} pedidos prontos?`)) return;
-  copiaImprimir(prontos.map(p => p.numero));
+  copiaImprimir(prontos.map(p => p.numero), recentes);
+}
+
+/** Pedidos com remessa criada na Shopify nas últimas 18 h, do mais antigo para o mais novo. */
+function copiaProcessadosRecentes(agora = Date.now()) {
+  const desde = agora - 18 * 3600000, vistos = new Set();
+  return (window._shopifyProcessados || [])
+    .filter(p => p.enviado_em && Date.parse(p.enviado_em) >= desde)
+    .sort((a, b) => Date.parse(a.enviado_em) - Date.parse(b.enviado_em))
+    .map(p => p.numero).filter(n => !vistos.has(n) && vistos.add(n));
 }
 
 // ─── ETIQUETA DA FRENET INTERCALADA COM A CÓPIA DO PEDIDO (09/11/2026) ──────────
@@ -10394,9 +10407,9 @@ async function copiaEtiquetasFrenet(numeros, aviso) {
   return out;
 }
 
-async function copiaImprimir(numeros) {
+async function copiaImprimir(numeros, processadosRecentes = []) {
   numeros = [...new Set(numeros || [])];
-  if (!numeros.length) { alert('Nenhum pedido para imprimir.'); return; }
+  if (!numeros.length && !processadosRecentes.length) { alert('Nenhum pedido para imprimir.'); return; }
   // A janela abre já no clique: aberta depois do fetch, o navegador bloqueia como pop-up
   const win = window.open('', '_blank');
   if (!win) { alert('O navegador bloqueou a janela de impressão. Libere os pop-ups do painel e tente de novo.'); return; }
@@ -10405,6 +10418,20 @@ async function copiaImprimir(numeros) {
   const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   const detalhe = {};
   (window._shopifyDetalhados || []).forEach(p => { detalhe[p.numero] = p; });
+  // Já processados (09/11/2026): entram só os que têm etiqueta baixada pelo robô, com as peças da remessa
+  if (processadosRecentes.length) {
+    try {
+      const tem = await etqPdfsDisponiveis(processadosRecentes);
+      const desde = Date.now() - 18 * 3600000;
+      for (const n of processadosRecentes) {
+        if (!tem.has(n) || numeros.includes(n)) continue;
+        const remessas = (window._shopifyProcessados || []).filter(p => p.numero === n && Date.parse(p.enviado_em) >= desde);
+        if (!detalhe[n]) detalhe[n] = { numero: n, data: null, itens: remessas.flatMap(r => r.itens || []) };
+        numeros.push(n);
+      }
+    } catch (e) { console.warn('[processados recentes]', e.message); }
+  }
+  if (!numeros.length) { win.document.open(); win.document.write('<p style="font-family:Arial;padding:20px">Nenhum pedido para imprimir.</p>'); win.document.close(); return; }
   const dados = {};
   try {
     Object.assign(dados, await etqBuscarDados(numeros));
