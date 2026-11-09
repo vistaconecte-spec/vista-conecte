@@ -141,11 +141,12 @@
   const APELIDO = {
     'calca-pantalona-viscolycra': 'PANTALONA VISCOLYCRA',
     'calca-pantalona': 'PANTALONA MOLETOM',
+    'calca-bolso-frontal': 'CALÇA BOLSO FRONTAL MOLETOM',
     'macacao-amplo': 'MACACÃO', // como nas etiquetas da arara (08/11/2026)
   };
   // Palavras que não podem ficar em linhas separadas quando o nome quebra (o espaço vira
   // espaço que não quebra): sem isto saía "VESTIDO / FRENTE / ÚNICA LONGO".
-  const JUNTAS = [/FRENTE ÚNICA/g];
+  const JUNTAS = [/FRENTE ÚNICA/g, /BOLSO FRONTAL/g];
   const juntar = t => JUNTAS.reduce((s, re) => s.replace(re, m => m.replace(/ /g, '\u00A0')), t);
   const INICIAL = 'calca-pantalona-viscolycra';
   // Papéis (mm). margem = sobra em volta, que a impressora não alcança.
