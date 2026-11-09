@@ -14,15 +14,18 @@
 //
 // Regra da expedição: frete R$ 0 cai em "mais barato entre Loggi e PAC" (regraDoPedido), como os outros grátis.
 //
-// TETO DO FRETE (09/11/2026, opção A da Bárbara): a cliente paga no máximo R$ 35, a loja paga o resto.
+// TETO DO FRETE (09/11/2026): no Sul, Sudeste e Centro-Oeste a cliente paga no máximo R$ 35, a loja paga o resto.
 // Veio de um checkout abandonado em Goiânia (Cozy + Pantalona Moletom, 3,6 kg, Loggi R$ 54,17). Vale pra
 // qualquer pedido, 1 peça ou mais, sem data pra acabar. A Frenet não tem teto (o "valor fixo" dela também
 // SOBE o frete barato), então a linha sai daqui: quando o frete mais barato do carrinho passa de R$ 35, entra
 // "Frete com desconto" a R$ 35 ao lado da Loggi e do PAC da Frenet (a Shopify pré-marca a mais barata).
 // O título não cita Loggi nem PAC, então a expedição compra o mais barato (regraDoPedido), que é o que a loja
-// paga. Acima de R$ 120 de frete (CEP fora de rota, Loggi de R$ 139 a 246) não entra: a loja pagaria R$ 85+.
-// Conta de 60 dias (10/09 a 09/11): 44 de 419 pedidos web pagaram mais de R$ 35, R$ 736 acima do teto,
-// ~R$ 370/mês, fora os pedidos que deixavam de ser abandonados.
+// paga. Acima de R$ 80 de frete (CEP fora de rota, Loggi de R$ 139 a 246) não entra.
+// Brasil todo foi barrado por ela no mesmo dia. Decisão final pela conversão do checkout (10/09 a 09/11,
+// pedidos x abandonos que viram o frete): Sul/Sudeste com frete de R$ 35 a 80 converte 33% contra 54% com
+// frete barato; Centro-Oeste 45% contra 60%. Nordeste e Norte de R$ 35 a 80 convertem igual ao frete barato
+// (47% x 48%): teto lá só dá dinheiro sem trazer venda. Frete acima de R$ 80 (fora de rota) também não entra.
+// Custo nos pedidos que já vinham ~R$ 70/mês; ganho esperado ~3 vendas/mês. Medir em 09/12/2026.
 //
 // FRETE GRÁTIS DESLIGADO desde 09/11/2026 16h02 (teste B, medição em 12/11): gratisLigado=false. Religar =
 // true aqui + regras 248694/248695 da Frenet + textos do tema e da Vi (backups *-20261109-teste-frete).
@@ -31,7 +34,9 @@ import { cotar, normalizarCep } from './frenet-cotacao.js';
 export const REGRA = {
   gratisLigado: false, // teste B
   tetoCliente: 35, // a cliente paga no máximo isto
-  tetoAte: 120, // frete acima disto não ganha teto (CEP fora de rota)
+  tetoAte: 80, // frete acima disto não ganha teto (CEP fora de rota)
+  // Sul, Sudeste e Centro-Oeste (DF/GO 70000-76799, MT/MS 78000-79999); RO 76800-76999 e TO 77xxx são Norte
+  faixasTeto: [[1000000, 39999999], [70000000, 76799999], [78000000, 99999999]],
   fim: Date.parse('2026-11-30T23:59:59-03:00'),
   minimoPecas: 2,
   tetoSulSudeste: 20000, // a partir daqui quem zera é a Frenet; repetir daria 3 linhas de R$ 0
@@ -53,6 +58,11 @@ const comTeto = description => [{
   currency: 'BRL',
   description,
 }];
+
+const temTeto = cep => {
+  const n = parseInt(String(cep || '').replace(/\D/g, '').padEnd(8, '0').slice(0, 8), 10);
+  return REGRA.faixasTeto.some(([de, ate]) => n >= de && n <= ate);
+};
 
 const gratis = description => [{
   service_name: 'Frete grátis',
@@ -78,6 +88,7 @@ export async function tarifas(rate, { token, agora = Date.now(), cotarFn = cotar
 
   const cep = normalizarCep(destino.postal_code);
   if (!cep || !token) return [];
+  if (!promo && !temTeto(cep)) return []; // nada a oferecer: nem cota
   const gramas = itens.reduce((s, i) => s + (Number(i.grams) || 0) * (Number(i.quantity) || 0), 0);
   let barata;
   try {
@@ -91,7 +102,7 @@ export async function tarifas(rate, { token, agora = Date.now(), cotarFn = cotar
   if (promo && !noSulSudeste(destino.postal_code) && total < REGRA.tetoBrasil && barata.cliente_paga < REGRA.freteMaximo) {
     return gratis(`Black Friday: levando 2 peças${prazo}`);
   }
-  if (barata.cliente_paga > REGRA.tetoCliente && barata.cliente_paga <= REGRA.tetoAte) {
+  if (temTeto(cep) && barata.cliente_paga > REGRA.tetoCliente && barata.cliente_paga <= REGRA.tetoAte) {
     return comTeto(`Loggi ou Correios${prazo}`);
   }
   return [];
