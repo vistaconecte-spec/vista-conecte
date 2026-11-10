@@ -10326,20 +10326,24 @@ function copiaSelecaoAbrir(prontos, recentes, comEtiqueta) {
   const linha = (grupo, numero, cliente, info, tag, marcado) => `<label style="display:flex;align-items:center;gap:10px;padding:7px 4px;border-bottom:1px solid var(--border);cursor:pointer">
       <input type="checkbox" class="copia-marca" data-grupo="${grupo}" data-numero="${esc(numero)}"${marcado ? ' checked' : ''}>
       <span style="font-weight:700;min-width:58px">${esc(numero)}</span>
-      <span style="flex:1;min-width:0">${esc(cliente)}<span style="display:block;font-size:10px;color:var(--text-ter)">${esc(info)}</span></span>
+      <span style="flex:1;min-width:0"><span class="copia-nome" data-numero="${esc(numero)}" style="font-weight:600">${esc(cliente)}</span><span style="display:block;font-size:11px;color:var(--text-sec);white-space:pre-line">${esc(info)}</span></span>
       ${tag}</label>`;
   const tagEtq = tem => tem
     ? '<span style="font-size:10px;padding:2px 6px;border-radius:8px;background:#dcfce7;color:#166534;white-space:nowrap">etiqueta do robô</span>'
     : '<span style="font-size:10px;padding:2px 6px;border-radius:8px;background:#f3f4f6;color:#6b7280;white-space:nowrap">sem etiqueta</span>';
+  // 10/11/2026, ela: "tem que ter o nome e o que é o pedido". Peças pelo mesmo copiaLinhas da folha impressa.
+  const resumoItens = itens => { try { return copiaResumoItens(itens); } catch (_) { return ''; } };
   const blocoProntos = prontos.map(p => linha('pronto', p.numero, p.cliente,
-    `${p.data ? new Date(p.data).toLocaleDateString('pt-BR') + ' · ' : ''}${p.pecas} peça${p.pecas > 1 ? 's' : ''}${p.parcial ? ' · envio parcial' : ''}`,
+    [resumoItens(p.itens), `${p.data ? new Date(p.data).toLocaleDateString('pt-BR') + ' · ' : ''}${p.pecas} peça${p.pecas > 1 ? 's' : ''}${p.parcial ? ' · envio parcial' : ''}`].filter(Boolean).join('\n'),
     tagEtq(comEtiqueta.has(p.numero)), marcarProntos(p.numero))).join('');
   const blocoRecentes = recentes.map(n => {
     const rem = (window._shopifyProcessados || []).filter(p => p.numero === n && Date.parse(p.enviado_em) >= desde);
-    const pecas = rem.reduce((s, r) => s + (r.itens || []).reduce((t, i) => t + (i.qtd || 1), 0), 0);
+    const itens = rem.flatMap(r => r.itens || []);
+    const pecas = itens.reduce((t, i) => t + (i.qtd || 1), 0);
     const det = (window._shopifyDetalhados || []).find(p => p.numero === n);
-    return linha('recente', n, det && det.cliente ? det.cliente : 'já processado',
-      `processado às ${hora(rem.length ? rem[rem.length - 1].enviado_em : '')} · ${pecas} peça${pecas > 1 ? 's' : ''}`, tagEtq(true), true);
+    // Processado sai da lista de abertos: o nome vem do /api/etiquetas-dados logo depois de abrir (copia-nome)
+    return linha('recente', n, det && det.cliente ? det.cliente : 'carregando o nome...',
+      [resumoItens(itens), `processado às ${hora(rem.length ? rem[rem.length - 1].enviado_em : '')} · ${pecas} peça${pecas > 1 ? 's' : ''}`].filter(Boolean).join('\n'), tagEtq(true), true);
   }).join('');
   const titulo = t => `<div style="margin:14px 0 4px;font-size:10px;font-weight:700;text-transform:uppercase;color:var(--text-ter)">${t}</div>`;
 
@@ -10393,6 +10397,21 @@ function copiaSelecaoAbrir(prontos, recentes, comEtiqueta) {
   };
   contar();
   m.style.display = 'flex';
+  // Nome dos já processados (e de quem veio sem nome): mesmo endpoint da janela de etiquetas
+  const semNome = [...m.querySelectorAll('.copia-nome')].filter(s => /carregando/.test(s.textContent)).map(s => s.dataset.numero);
+  if (semNome.length) {
+    etqBuscarDados(semNome).then(dados => {
+      m.querySelectorAll('.copia-nome').forEach(s => { const d = dados[s.dataset.numero]; if (d && d.nome) s.textContent = d.nome; else if (/carregando/.test(s.textContent)) s.textContent = 'já processado'; });
+    }).catch(() => { m.querySelectorAll('.copia-nome').forEach(s => { if (/carregando/.test(s.textContent)) s.textContent = 'já processado'; }); });
+  }
+}
+
+/** Peças do pedido em uma linha: "Macacão Amplo Preto PP · 2× Vestido Amplo Marrom P". Pura (testes). */
+function copiaResumoItens(itens) {
+  return copiaLinhas(itens).map(l => {
+    const tam = l.pecas[0] && l.pecas[0].tam && l.pecas[0].tam !== '—' ? ' ' + l.pecas[0].tam : '';
+    return `${l.qtd > 1 ? l.qtd + '× ' : ''}${l.nome}${l.cor ? ' ' + l.cor : ''}${tam}`;
+  }).join(' · ');
 }
 
 /** Pedidos com remessa criada na Shopify nas últimas 5 h, do mais antigo para o mais novo. */
