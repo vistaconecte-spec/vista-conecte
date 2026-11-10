@@ -19,7 +19,8 @@ export function resumo(p) {
     data: p.date_approved || p.date_created,
     valor: p.transaction_amount,
     status: p.status,
-    descricao: p.description || null,
+    descricao: p.description
+      || (((p.additional_info && p.additional_info.items) || []).map(i => i.title).filter(Boolean).join(' + ') || null),
     tipo: p.operation_type || null,
     meio: p.payment_method_id || null,
     recebedor: col.long_name || (p.collector && (p.collector.nickname || p.collector.first_name)) || null,
