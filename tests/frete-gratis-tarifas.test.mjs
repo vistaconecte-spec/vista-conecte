@@ -67,5 +67,5 @@ ok(!await teto(rate('40000-000', [item(17500)]), { cotarFn: cota(245.19) }), 'Lo
 ok(!await teto(rate('74280-150', [item(17500)]), { cotarFn: async () => { throw new Error('caiu'); } }), 'Frenet fora do ar: só as linhas dela');
 ok((await teto(rate('74280-150', [item(17500)]), { cotarFn: cota(54) })).description.includes('6 dias úteis'), 'teto mostra o prazo');
 ok(await teto(rate('74280-150', [item(17500)]), { cotarFn: cota(54), agora: REGRA.fim + 86400000 }), 'teto continua depois de 30/11');
-ok(REGRA.gratisLigado === false, 'frete grátis segue desligado (teste B)');
+ok(REGRA.gratisLigado === true, 'frete grátis religado depois do teste B (10/11)');
 console.log(`frete-gratis-tarifas: ${n} asserções ok`);

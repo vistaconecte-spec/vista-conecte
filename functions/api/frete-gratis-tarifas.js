@@ -27,12 +27,13 @@
 // (47% x 48%): teto lá só dá dinheiro sem trazer venda. Frete acima de R$ 80 (fora de rota) também não entra.
 // Custo nos pedidos que já vinham ~R$ 70/mês; ganho esperado ~3 vendas/mês. Medir em 09/12/2026.
 //
-// FRETE GRÁTIS DESLIGADO desde 09/11/2026 16h02 (teste B, medição em 12/11): gratisLigado=false. Religar =
-// true aqui + regras 248694/248695 da Frenet + textos do tema e da Vi (backups *-20261109-teste-frete).
+// Teste B (frete grátis desligado de 09/11 16h02 a 10/11 ~16h): carrinho→checkout caiu de ~40% pra 29% e o dia
+// deu prejuízo; religado a pedido dela. Desligar de novo = false aqui + regras 248694/248695 da Frenet + textos
+// do tema e da Vi (backups *-20261109-teste-frete).
 import { cotar, normalizarCep } from './frenet-cotacao.js';
 
 export const REGRA = {
-  gratisLigado: false, // teste B
+  gratisLigado: true,
   tetoCliente: 35, // a cliente paga no máximo isto
   tetoAte: 80, // frete acima disto não ganha teto (CEP fora de rota)
   // Sul, Sudeste e Centro-Oeste (DF/GO 70000-76799, MT/MS 78000-79999); RO 76800-76999 e TO 77xxx são Norte
