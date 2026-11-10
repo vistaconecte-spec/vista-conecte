@@ -10301,8 +10301,9 @@ function copiaImprimirLote() {
   copiaImprimir((res.itens || []).filter(i => i.ok).map(i => i.numero));
 }
 
-// Botão do card: os prontos que já têm etiqueta do robô (o que a Ju vai embalar). Sem nenhum,
-// oferece todos os prontos, para quando a etiqueta foi feita à mão na Frenet.
+// Botão do card "imprimir pedidos": abre uma janela com a lista para marcar o que imprimir (10/11/2026,
+// pedido dela: os avisos de OK/Cancelar não deixavam escolher). Vêm marcados os prontos com etiqueta do
+// robô (ou todos, se nenhum tem) e os processados nas últimas 5 h.
 const COPIA_PROCESSADOS_H = 5; // janela dos já processados que voltam na impressão
 function copiaImprimirProntos() {
   const prontos = window._prontosEnvio || [];
@@ -10312,17 +10313,86 @@ function copiaImprimirProntos() {
   const recentes = copiaProcessadosRecentes().filter(n => !prontos.some(p => p.numero === n));
   if (!prontos.length && !recentes.length) { alert('Nenhum pedido pronto para envio agora.'); return; }
   const res = loadLocal('vc:etiquetas-resultado') || {};
-  const comEtiqueta = prontos.filter(p => !etqPendentes([p], res).length).map(p => p.numero);
-  // 26/10/2026: com 61 prontos e 47 etiquetados só saíam 47 folhas, e a Bárbara precisava de todas
-  const semEtiqueta = prontos.length - comEtiqueta.length;
-  const maisRecentes = recentes.length ? `\n\nJunto vão os ${recentes.length} processados nas últimas ${COPIA_PROCESSADOS_H} h, com etiqueta e cópia.` : '';
-  if (comEtiqueta.length && semEtiqueta) {
-    const todos = confirm(`${comEtiqueta.length} pedidos têm etiqueta do robô e ${semEtiqueta} ainda não.\n\nOK = imprimir todos os ${prontos.length}\nCancelar = só os ${comEtiqueta.length} com etiqueta${maisRecentes}`);
-    copiaImprimir(todos ? prontos.map(p => p.numero) : comEtiqueta, recentes); return;
+  const comEtiqueta = new Set(prontos.filter(p => !etqPendentes([p], res).length).map(p => p.numero));
+  copiaSelecaoAbrir(prontos, recentes, comEtiqueta);
+}
+
+/** Janela de escolha do que imprimir. `comEtiqueta` = Set dos prontos com etiqueta do robô. */
+function copiaSelecaoAbrir(prontos, recentes, comEtiqueta) {
+  const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const marcarProntos = n => comEtiqueta.size ? comEtiqueta.has(n) : true;
+  const desde = Date.now() - COPIA_PROCESSADOS_H * 3600000;
+  const hora = t => { const d = new Date(t); return isNaN(d) ? '' : d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }); };
+  const linha = (grupo, numero, cliente, info, tag, marcado) => `<label style="display:flex;align-items:center;gap:10px;padding:7px 4px;border-bottom:1px solid var(--border);cursor:pointer">
+      <input type="checkbox" class="copia-marca" data-grupo="${grupo}" data-numero="${esc(numero)}"${marcado ? ' checked' : ''}>
+      <span style="font-weight:700;min-width:58px">${esc(numero)}</span>
+      <span style="flex:1;min-width:0">${esc(cliente)}<span style="display:block;font-size:10px;color:var(--text-ter)">${esc(info)}</span></span>
+      ${tag}</label>`;
+  const tagEtq = tem => tem
+    ? '<span style="font-size:10px;padding:2px 6px;border-radius:8px;background:#dcfce7;color:#166534;white-space:nowrap">etiqueta do robô</span>'
+    : '<span style="font-size:10px;padding:2px 6px;border-radius:8px;background:#f3f4f6;color:#6b7280;white-space:nowrap">sem etiqueta</span>';
+  const blocoProntos = prontos.map(p => linha('pronto', p.numero, p.cliente,
+    `${p.data ? new Date(p.data).toLocaleDateString('pt-BR') + ' · ' : ''}${p.pecas} peça${p.pecas > 1 ? 's' : ''}${p.parcial ? ' · envio parcial' : ''}`,
+    tagEtq(comEtiqueta.has(p.numero)), marcarProntos(p.numero))).join('');
+  const blocoRecentes = recentes.map(n => {
+    const rem = (window._shopifyProcessados || []).filter(p => p.numero === n && Date.parse(p.enviado_em) >= desde);
+    const pecas = rem.reduce((s, r) => s + (r.itens || []).reduce((t, i) => t + (i.qtd || 1), 0), 0);
+    const det = (window._shopifyDetalhados || []).find(p => p.numero === n);
+    return linha('recente', n, det && det.cliente ? det.cliente : 'já processado',
+      `processado às ${hora(rem.length ? rem[rem.length - 1].enviado_em : '')} · ${pecas} peça${pecas > 1 ? 's' : ''}`, tagEtq(true), true);
+  }).join('');
+  const titulo = t => `<div style="margin:14px 0 4px;font-size:10px;font-weight:700;text-transform:uppercase;color:var(--text-ter)">${t}</div>`;
+
+  let m = document.getElementById('modal-copia');
+  if (!m) {
+    m = document.createElement('div');
+    m.id = 'modal-copia';
+    m.style.cssText = 'display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9999;align-items:center;justify-content:center;padding:16px';
+    m.addEventListener('click', e => { if (e.target === m) m.style.display = 'none'; });
+    document.body.appendChild(m);
   }
-  if (comEtiqueta.length || !prontos.length) { copiaImprimir(comEtiqueta, recentes); return; }
-  if (!confirm(`Nenhum pronto tem etiqueta gerada pelo robô nos últimos ${ETQ_FEITO_DIAS} dias.\n\nImprimir a cópia dos ${prontos.length} pedidos prontos?${maisRecentes}`)) return;
-  copiaImprimir(prontos.map(p => p.numero), recentes);
+  m.innerHTML = `<div style="background:var(--surface);border-radius:12px;max-width:620px;width:100%;max-height:90vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.3)">
+    <div style="padding:18px 22px 6px;display:flex;align-items:center;gap:10px">
+      <i class="ti ti-printer" style="font-size:22px;color:#16a34a"></i>
+      <span style="font-weight:700;font-size:16px">Imprimir pedidos</span>
+      <button id="copia-fechar" title="Fechar" style="margin-left:auto;background:none;border:none;cursor:pointer;font-size:20px;line-height:1;color:var(--text-ter);padding:4px 6px">&times;</button>
+    </div>
+    <div style="padding:0 22px;font-size:12px;color:var(--text-sec)">Marque os pedidos que vão sair na impressão. No papel 10x15 cada pedido sai com a etiqueta da Frenet antes da cópia, quando o robô já tem a etiqueta paga.</div>
+    <div style="padding:0 22px 4px;display:flex;gap:14px;font-size:12px;margin-top:8px">
+      <a href="#" id="copia-todos" style="color:var(--text-sec)">marcar todos</a>
+      <a href="#" id="copia-nenhum" style="color:var(--text-sec)">desmarcar todos</a>
+    </div>
+    <div id="copia-lista" style="padding:0 22px;overflow-y:auto;font-size:13px">
+      ${prontos.length ? titulo(`Prontos para envio (${prontos.length})`) + blocoProntos : ''}
+      ${recentes.length ? titulo(`Processados nas últimas ${COPIA_PROCESSADOS_H} h (${recentes.length})`) + blocoRecentes
+        + '<div style="font-size:10px;color:var(--text-ter);padding:4px">Destes só sai quem já tem a etiqueta baixada pelo robô.</div>' : ''}
+    </div>
+    <div style="padding:14px 22px;display:flex;gap:10px;justify-content:flex-end;border-top:1px solid var(--border);margin-top:10px">
+      <button class="btn-outline" id="copia-cancelar">Cancelar</button>
+      <button id="copia-ok" style="background:#16a34a;color:#fff;border:none;border-radius:8px;padding:8px 16px;font-weight:600;cursor:pointer"></button>
+    </div>
+  </div>`;
+  const marcas = () => [...m.querySelectorAll('.copia-marca')];
+  const contar = () => {
+    const n = marcas().filter(c => c.checked).length;
+    const b = m.querySelector('#copia-ok');
+    b.textContent = n ? `Imprimir ${n} pedido${n > 1 ? 's' : ''}` : 'Imprimir';
+    b.disabled = !n; b.style.opacity = n ? '1' : '.5';
+  };
+  marcas().forEach(c => c.addEventListener('change', contar));
+  m.querySelector('#copia-todos').onclick = e => { e.preventDefault(); marcas().forEach(c => { c.checked = true; }); contar(); };
+  m.querySelector('#copia-nenhum').onclick = e => { e.preventDefault(); marcas().forEach(c => { c.checked = false; }); contar(); };
+  m.querySelector('#copia-fechar').onclick = m.querySelector('#copia-cancelar').onclick = () => { m.style.display = 'none'; };
+  // copiaImprimir abre a janela antes de qualquer await, ainda dentro deste clique (senão vira pop-up bloqueado)
+  m.querySelector('#copia-ok').onclick = () => {
+    const sel = g => marcas().filter(c => c.checked && c.dataset.grupo === g).map(c => c.dataset.numero);
+    const p = sel('pronto'), r = sel('recente');
+    if (!p.length && !r.length) return;
+    m.style.display = 'none';
+    copiaImprimir(p, r);
+  };
+  contar();
+  m.style.display = 'flex';
 }
 
 /** Pedidos com remessa criada na Shopify nas últimas 5 h, do mais antigo para o mais novo. */
