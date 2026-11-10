@@ -16,6 +16,11 @@
  * GET ?acao=reenviar&pedido=ID&confirmar=1[&endereco=&numero=&complemento=&bairro=]
  *                                     → nota pendente que falhou no envio ou rejeitada pela SEFAZ: corrige o
  *                                       endereço se vier, manda de novo e devolve a resposta (o motivo).
+ * GET ?acao=parcial&pedido=ID&linhas=LINHA_SHOPIFY[,LINHA][&confirmar=1]
+ *                                     → nota de VENDA só das linhas da Shopify indicadas (peça que ainda falta
+ *                                       enviar), pelo valor pago nela (preço menos o desconto da linha), sem
+ *                                       frete. Pra pedido travado por troca/reembolso que nunca teve nota.
+ *                                       Sem confirmar=1 é só a prévia.
  * GET ?acao=get&caminho=/pedidos/vendas/123
  *                                     → GET cru na API do Bling, pra conferir formato. Só GET.
  *
@@ -23,7 +28,7 @@
  * chamar isto pedido a pedido, parando no primeiro erro inesperado.
  */
 import { bling, tokenValido, statusToken, json, esperar, PAUSA_MS } from '../_bling.js';
-import { decidir, idDaResposta, soDigitos, lerTrava, travar, gravarTrava, travasExistentes, completarNcmItens, pedidosComNotaRecentes, LOJA_SHOPIFY_BLING, SITUACAO_EM_ABERTO } from '../_bling-nfe.js';
+import { decidir, idDaResposta, soDigitos, lerTrava, travar, gravarTrava, travasExistentes, completarNcmItens, ncmPorNome, pedidosComNotaRecentes, LOJA_SHOPIFY_BLING, SITUACAO_EM_ABERTO } from '../_bling-nfe.js';
 
 const DATA = /^\d{4}-\d{2}-\d{2}$/;
 const semAcentoLower = t => String(t || '').normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
@@ -266,6 +271,73 @@ export async function onRequestGet({ request, env }) {
       return json(await registrarNota(env, idPedido, idNota, doc, saida, nota));
     }
 
+    if (acao === 'parcial') {
+      // Nota de UMA parte do pedido (10/11/2026, decisão dela no #8956 da Caroline): pedido de agosto, nunca
+      // teve nota, duas remessas já saíram e a troca do Boho deixou o pedido travado (reembolso + itens mudados).
+      // Ela escolheu nota de venda só da peça que falta enviar, pelo valor que a cliente pagou nela.
+      const ref = q.get('pedido');
+      const linhas = String(q.get('linhas') || '').split(',').map(x => x.trim()).filter(Boolean);
+      if (!ref || !linhas.length) return json({ erro: 'precisa de ?pedido=ID_DO_BLING&linhas=ID_DA_LINHA_NA_SHOPIFY' }, 400);
+      const token = await tokenValido(env);
+      const d = await diagnosticar(env, token, ref, q.get('ignorar_nota'));
+      if (!d.pedido) return json({ erro: 'pedido não encontrado no Bling' }, 404);
+      // Continuam valendo todas as travas, menos as três que a nota parcial existe pra contornar
+      const IGNORA = /^(pedido tem reembolso|itens do pedido mudaram|total diferente)/;
+      const motivos = d.decisao.motivos.filter(m => !IGNORA.test(m));
+      const order = d.order;
+      const itens = [];
+      for (const id of linhas) {
+        const l = order && (order.line_items || []).find(x => String(x.id) === id);
+        if (!l) { motivos.push(`linha ${id} não está no pedido da Shopify`); continue; }
+        const qtd = Number(l.fulfillable_quantity) || 0;
+        if (qtd <= 0) { motivos.push(`${l.title} já foi enviada ou saiu do pedido`); continue; }
+        const descLinha = (l.discount_allocations || []).reduce((t, a) => t + parseFloat(a.amount || 0), 0) * qtd / (Number(l.quantity) || 1);
+        const valor = Math.round((parseFloat(l.price) * qtd - descLinha) / qtd * 100) / 100;
+        const descricao = `${l.title}${l.variant_title ? ' - ' + l.variant_title : ''}`;
+        const ncm = ncmPorNome(descricao);
+        if (!ncm) motivos.push('sem NCM na tabela: ' + descricao);
+        if (!(valor > 0)) motivos.push('valor zero: ' + descricao);
+        itens.push({ codigo: l.sku || `SHP${l.variant_id}`, descricao, unidade: 'UN', quantidade: qtd, valor, tipo: 'P', classificacaoFiscal: ncm, origem: 0 });
+      }
+      const total = Math.round(itens.reduce((t, i) => t + i.valor * i.quantidade, 0) * 100) / 100;
+      const saida = { decisao: { emitir: !motivos.length, motivos }, resumo: d.resumo, itens, total };
+      if (motivos.length || q.get('confirmar') !== '1') {
+        return json({ ...saida, emitido: false, ...(motivos.length ? {} : { aviso: 'travas ok; falta &confirmar=1 pra emitir' }) });
+      }
+
+      const idPedido = d.pedido.id;
+      const doc = { pedido: idPedido, numero: d.pedido.numero, shopify: order.name, total, parcial: true, linhas, status: 'travado', inicio: new Date().toISOString() };
+      if (!(await travar(env, idPedido, doc))) {
+        return json({ ...saida, emitido: false, erro: 'este pedido já tem registro de nota (ou está sendo emitido agora)', anterior: await lerTrava(env, idPedido) }, 409);
+      }
+      const agoraSP = new Date(Date.now() - 3 * 3600e3).toISOString().replace('T', ' ').slice(0, 19);
+      const parcela = (d.pedido.parcelas || [])[0];
+      const corpo = {
+        tipo: 1, finalidade: 1, dataOperacao: agoraSP,
+        contato: { id: d.pedido.contato.id },
+        naturezaOperacao: { id: 15105422348 }, // a mesma das notas automáticas e das manuais
+        loja: { id: LOJA_SHOPIFY_BLING },
+        numeroPedidoLoja: String(d.pedido.numeroLoja),
+        itens,
+        parcelas: [{ data: agoraSP.slice(0, 10), valor: total, formaPagamento: { id: parcela && parcela.formaPagamento ? parcela.formaPagamento.id : 6170772 } }],
+        transporte: { fretePorConta: 1, frete: 0, ...(d.pedido.transporte && d.pedido.transporte.etiqueta ? { etiqueta: d.pedido.transporte.etiqueta } : {}) },
+      };
+      let idNota;
+      try {
+        await esperar(PAUSA_MS);
+        idNota = idDaResposta(await bling(env, '/nfe', { method: 'POST', body: corpo, token }));
+        if (!idNota) throw new Error('Bling não devolveu o id da nota');
+      } catch (e) {
+        await gravarTrava(env, idPedido, { ...doc, status: 'falhou-ao-gerar', erro: e.message });
+        return json({ ...saida, emitido: false, erro: 'falhou ao criar a nota (conferir no Bling se nasceu pendente): ' + e.message }, 502);
+      }
+      await esperar(PAUSA_MS * 2);
+      let nota = null;
+      try { nota = (await bling(env, `/nfe/${idNota}`, { token })).data; } catch { /* confere abaixo */ }
+      if (nota && nota.situacao === 1) return json(await enviarNota(env, token, idPedido, idNota, doc, saida));
+      return json(await registrarNota(env, idPedido, idNota, doc, saida, nota));
+    }
+
     if (acao === 'enviar') {
       // Manda pra SEFAZ uma nota que ficou PENDENTE no Bling (ex.: criada sem NCM e corrigida
       // à mão depois). Só aceita nota ainda pendente.
@@ -319,7 +391,7 @@ export async function onRequestGet({ request, env }) {
       return json({ ...r, resposta, endereco_corrigido: end, ncm_corrigido: trocaNcm, valor_antes: nota.valorNota, valor_depois: depois && depois.valorNota });
     }
 
-    return json({ erro: 'acao desconhecida (status, previa, diagnostico, emitir, enviar, reenviar, get)' }, 400);
+    return json({ erro: 'acao desconhecida (status, previa, diagnostico, emitir, parcial, enviar, reenviar, get)' }, 400);
   } catch (e) {
     return json({ erro: e.message, status: e.status || null }, e.status && e.status < 500 ? e.status : 502);
   }
