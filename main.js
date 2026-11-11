@@ -2355,9 +2355,10 @@ function atdShowSub(sub) {
     // Caixa do WhatsApp oficial (/whatsapp.html). Carrega uma vez só; depois ela se atualiza
     // sozinha, e para de buscar enquanto a pílula está escondida.
     const f = document.getElementById('whats-frame');
-    if (f && !f.getAttribute('src')) f.setAttribute('src', '/whatsapp.html?embed=1&v=2026110302');
+    if (f && !f.getAttribute('src')) f.setAttribute('src', WHATS_FRAME_SRC);
   }
 }
+const WHATS_FRAME_SRC = '/whatsapp.html?embed=1&v=2026111101';
 
 // ── Aviso de cliente esperando a equipe (Vi - atendimento) ──────────────────
 // Passo 1 da equipe sair da caixa do Wati (pedido da Bárbara em 21/10/2026): lá a mensagem nova só era vista
@@ -3026,6 +3027,7 @@ async function csAbrirAbertos() {
           <span style="color:${c.aberto_ha_dias >= 7 ? '#dc2626' : 'var(--text-ter)'};font-weight:600">${c.aberto_ha_dias === 0 ? 'hoje' : `há ${c.aberto_ha_dias} dia${c.aberto_ha_dias > 1 ? 's' : ''}`}</span>
           ${c.dinheiro ? '<span style="font-size:10px;font-weight:700;color:#b45309">DINHEIRO</span>' : ''}
           <span style="margin-left:auto;display:flex;gap:6px">
+            ${c.wa_id ? `<button class="btn-outline" style="font-size:11px;padding:3px 10px" onclick="csAbrirConversa('${String(c.wa_id).replace(/\D/g, '')}')">Abrir conversa</button>` : ''}
             <button class="btn-outline" style="font-size:11px;padding:3px 10px" onclick="csAbrirCaso(${c.caso_id})">Abrir no assistente</button>
             ${c.pode_fechar ? `<button class="btn-outline" style="font-size:11px;padding:3px 10px" onclick="csFecharDaLista(${c.caso_id})">Fechar</button>` : ''}
           </span>
@@ -3033,6 +3035,17 @@ async function csAbrirAbertos() {
         <div style="margin-top:3px;color:var(--text-sec)">${csEsc(c.resumo)}</div>
       </div>`).join('') + '</div>';
   } catch (e) { box.innerHTML = `<div style="font-size:12px;color:#b91c1c">falhou: ${csEsc(e.message)}</div>`; }
+}
+
+// Botão "Abrir conversa" (Bárbara, 11/11/2026): troca para a pílula da Vi - atendimento e abre o chat da cliente.
+// Se a caixa ainda não carregou, o pedido vai na URL (?abrir=); se já está aberta, por postMessage.
+function csAbrirConversa(tel) {
+  const f = document.getElementById('whats-frame');
+  if (!f) return;
+  const novo = !f.getAttribute('src');
+  if (novo) f.setAttribute('src', WHATS_FRAME_SRC + '&abrir=' + encodeURIComponent(tel));
+  atdShowSub('whats');
+  if (!novo && f.contentWindow) f.contentWindow.postMessage({ tipo: 'abrir-conversa', tel }, location.origin);
 }
 
 function csAbrirCaso(id) {

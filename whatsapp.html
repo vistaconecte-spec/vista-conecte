@@ -703,6 +703,27 @@ async function enviarComAnexo(legenda) {
 }
 
 // ── Atualização: só enquanto a tela está à vista, e só o que mudou ──────────
+// Abrir uma conversa pelo telefone: botão "Abrir conversa" dos casos em aberto no Assistente (Bárbara, 11/11/2026).
+// A busca do servidor já casa os 8 últimos dígitos, então acha o número com e sem o 9. Cliente sem conversa na lista
+// (só tem histórico da época do Wati) abre do mesmo jeito: lerConversa busca pelas variantes do telefone.
+async function abrirPorTelefone(tel) {
+  const dig = String(tel || '').replace(/\D/g, '');
+  if (dig.length < 8) return;
+  const fim = dig.slice(-8);
+  let c = null;
+  try {
+    const d = await api({ acao: 'conversas', busca: dig });
+    c = (d.conversas || []).filter(x => String(x.telefone || '').replace(/\D/g, '').endsWith(fim))
+      .sort((a, b) => (a.ultima_em < b.ultima_em ? 1 : -1))[0] || null;
+  } catch (e) {}
+  if (c) est.conversas.set(c.chave, c);
+  abrir(c || { telefone: dig, nome: '' });
+}
+window.addEventListener('message', e => {
+  if (e.origin === location.origin && e.data && e.data.tipo === 'abrir-conversa') abrirPorTelefone(e.data.tel);
+});
+{ const t = new URLSearchParams(location.search).get('abrir'); if (t) abrirPorTelefone(t); }
+
 carregarLista(true);
 setInterval(() => { if (visivel()) carregarLista(false); }, 15000);
 setInterval(() => { if (visivel() && est.aberta) carregarConversa(); }, 6000);
