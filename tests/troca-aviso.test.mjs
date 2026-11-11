@@ -33,13 +33,15 @@ console.log('\n1) Texto e telefone');
   ok('nunca falou: fora', dentroDaJanela(null, agora), false);
 }
 
-function cenario({ ultima, templateStatus, jaEnviado = false, outraPeca = false }) {
+function cenario({ ultima, templateStatus, jaEnviado = false, outraPeca = false, continuidade = false, jaAberta = false }) {
   const chamadas = [];
   globalThis.fetch = async (url, opts = {}) => {
     const u = String(url);
     chamadas.push({ u, metodo: opts.method || 'GET', corpo: opts.body });
     if (u.includes('graphql.json')) return new Response(JSON.stringify({ data: { orders: { nodes: [{ name: '#9250', phone: null, shippingAddress: { firstName: 'Lais', name: 'Lais Jarilho', phone: '+55 11 98507-4682' }, customer: null }] } } }));
+    if (u.includes('msg_id=eq.troca_abrir_')) return new Response(JSON.stringify(jaAberta ? [{ msg_id: 'troca_abrir_9250' }] : []));
     if (u.includes('msg_id=eq.')) return new Response(JSON.stringify(jaEnviado ? [{ msg_id: 'x', created_at: '2026-10-20T10:00:00Z' }] : []));
+    if (u.includes('/message_templates') && u.includes('continuidade')) return new Response(JSON.stringify({ data: continuidade ? [{ name: 'continuidade_solicitacao_v1', language: 'pt_BR', status: 'APPROVED', components: [{ type: 'BODY', text: 'Olá, {{1}}! Estamos dando continuidade à sua solicitação: {{2}}.' }] }] : [] }));
     if (u.includes('msg_id=like.troca_codigo_') && u.includes('4665143571')) return new Response(JSON.stringify(outraPeca ? [{ msg_id: 'troca_codigo_retorno:p0', created_at: '2026-10-28T20:16:46Z' }] : []));
     if (u.includes('role=eq.user')) return new Response(JSON.stringify(ultima ? [{ wa_id: '5511985074682', created_at: ultima }] : []));
     if (u.includes('/message_templates')) return new Response(JSON.stringify({ data: templateStatus ? [{ name: 'troca_autorizacao_postagem_v1', language: 'pt_BR', status: templateStatus, components: [{ type: 'BODY', text: 'Oii {{1}}, pedido {{2}}, autorização {{3}}, válido até {{4}}.' }] }] : [] }));
@@ -66,6 +68,18 @@ console.log('\n2) Envio');
   const j = await chamar();
   ok('fora das 24 h e modelo recusado: não manda e devolve a mensagem', [j.enviado, j.motivo, /4665143571/.test(j.mensagem || '')], [false, 'fora_da_janela', true]);
   ok('não mandou nada pela Meta', envios(ch).length, 0);
+}
+{
+  const ch = cenario({ ultima: new Date(Date.now() - 40 * 3600e3).toISOString(), templateStatus: 'REJECTED', continuidade: true });
+  const j = await chamar();
+  const t = (envios(ch)[0] || {}).template || {};
+  ok('fora das 24 h sem modelo da troca: abre a conversa pelo modelo de continuidade (11/11)', [j.enviado, j.conversa_aberta, t.name, t.components && t.components[0].parameters.map(p => p.text)], [false, true, 'continuidade_solicitacao_v1', ['Lais', 'troca do pedido #9250']]);
+  ok('grava no histórico da Vi que o código chega quando ela responder', ch.some(c => c.metodo === 'POST' && /troca_abrir_9250/.test(c.corpo || '') && /código chega sozinho/.test(c.corpo || '')), true);
+}
+{
+  const ch = cenario({ ultima: new Date(Date.now() - 40 * 3600e3).toISOString(), templateStatus: 'REJECTED', continuidade: true, jaAberta: true });
+  const j = await chamar();
+  ok('a mensagem de abrir a conversa vai uma vez só por pedido', [j.conversa_aberta, envios(ch).length], ['ja_pedida', 0]);
 }
 {
   const ch = cenario({ ultima: null, templateStatus: 'APPROVED' });

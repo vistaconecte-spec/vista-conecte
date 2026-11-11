@@ -12,6 +12,11 @@
  *  - fora da janela, se o modelo `troca_autorizacao_postagem_v1` já estiver aprovado, vai por ele;
  *  - senão devolve { enviado:false, motivo:'fora_da_janela', mensagem } e o cartão mostra a
  *    mensagem pronta para a Marcelly.
+ *  - 11/11/2026 (Bárbara: "isso já precisaria estar automático"): fora da janela e sem o modelo da
+ *    troca, manda UMA vez por pedido o modelo aprovado continuidade_solicitacao_v1 ("é só responder
+ *    esta mensagem"). Quando ela responde a janela abre e o robô, que repete de 15 em 15 min, manda o
+ *    código. A Meta recusou na hora mais dois textos do código (troca_codigo_postagem_v2 e
+ *    pedido_autorizacao_postagem_v3), sempre como "categoria incorreta".
  * Sai pela Meta como mensagem da loja (_whatsapp.js, desde 26/10/2026; antes pelo token de API do
  * Wati): a Vi NÃO trata como atendente (não pausa).
  * Grava no histórico da Vi (wati_ia_mensagens) para ela saber o que foi mandado e nunca mandar duas.
@@ -23,6 +28,7 @@ import { enviarTextoDaLoja, enviarModeloDaLoja } from '../_whatsapp.js';
 const API_VERSION = '2026-04';
 const SB_URL = 'https://hckzsblwyabmhzbjdjgx.supabase.co';
 export const TEMPLATE_TROCA = 'troca_autorizacao_postagem_v1';
+export const TEMPLATE_ABRIR = 'continuidade_solicitacao_v1'; // params nome, assunto (aprovado, utility)
 const JANELA_MS = 24 * 3600e3 - 15 * 60e3; // margem de 15 min antes de fechar
 
 const json = (o, status = 200) => new Response(JSON.stringify(o), { status, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } });
@@ -100,7 +106,10 @@ export async function onRequestPost({ env, request }) {
       // Fora das 24 h: só pelo modelo aprovado (variáveis: nome, pedido, autorização, validade)
       const dia = b.validade ? new Date(b.validade).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' }) : '';
       const s = await enviarModeloDaLoja(env, wa, TEMPLATE_TROCA, [nome || 'cliente', num, codigo, dia]);
-      if (s.erro === 'modelo') return json({ enviado: false, motivo: 'fora_da_janela', mensagem: texto });
+      if (s.erro === 'modelo') {
+        const aberta = await abrirConversa(env, sbH, wa, nome, o.name);
+        return json({ enviado: false, motivo: 'fora_da_janela', conversa_aberta: aberta, mensagem: texto });
+      }
       if (s.erro) return json({ enviado: false, motivo: 'meta_recusou', detalhe: s.detalhe || s.erro, mensagem: texto });
       via = 'modelo';
     }
@@ -113,6 +122,21 @@ export async function onRequestPost({ env, request }) {
   } catch (e) {
     return json({ enviado: false, motivo: 'erro', detalhe: e.message }, 502);
   }
+}
+
+// Uma vez por pedido: o modelo aprovado de continuidade, para a cliente responder e a janela abrir.
+// Devolve true (mandou agora), 'ja_pedida' (já tinha mandado) ou false (a Meta não aceitou).
+async function abrirConversa(env, sbH, wa, nome, pedido) {
+  const id = 'troca_abrir_' + String(pedido).replace(/\D/g, '');
+  const ja = await (await fetch(`${SB_URL}/rest/v1/wati_ia_mensagens?msg_id=eq.${id}&select=msg_id`, { headers: sbH })).json();
+  if (Array.isArray(ja) && ja.length) return 'ja_pedida';
+  const s = await enviarModeloDaLoja(env, wa, TEMPLATE_ABRIR, [nome || 'cliente', `troca do pedido ${pedido}`]);
+  if (s.erro) return false;
+  await fetch(`${SB_URL}/rest/v1/wati_ia_mensagens`, {
+    method: 'POST', headers: { ...sbH, Prefer: 'return=minimal' },
+    body: JSON.stringify({ msg_id: id, wa_id: wa, role: 'assistant', texto: `${s.texto || ''}\n[contexto interno: mensagem automática para reabrir a conversa, porque o código de postagem da troca do pedido ${pedido} já saiu e o WhatsApp não deixa mandar fora das 24 h. Quando ela responder, o código chega sozinho em poucos minutos numa mensagem da loja. Não invente nem repita código.]` }),
+  }).catch(() => {});
+  return true;
 }
 
 // Troca (lista retorno) ou devolução (lista estorno: crédito ou dinheiro), pelo item da reversa
