@@ -357,7 +357,9 @@ ok('Abrir manda o caso para o chat', /function csAbrirCaso\(id\) \{[\s\S]{0,160}
 
 console.log('\nCaso aberto sempre diz se o pedido foi processado e a etapa da peça (Bárbara, 30/10/2026, caso 661)');
 ok('status vai num cartão fixo e a IA não repete', /cartão fixo da tela acima da sua resposta: NÃO escreva status/.test(C.SISTEMA), true);
-ok('caso curto: Quadro e O que fazer com no máximo 3', /\*\*Quadro\*\*: no máximo 3 itens/.test(C.SISTEMA) && /\*\*O que fazer\*\*: no máximo 3 passos/.test(C.SISTEMA), true);
+// 11/11/2026 (caso 708 "não entendi nada do contexto"): resumo do caso inteiro, o erro e a próxima ação
+ok('caso aberto: Resumo do caso, O que deu errado e Próxima ação', /\*\*Resumo do caso\*\*/.test(C.SISTEMA) && /\*\*O que deu errado\*\*/.test(C.SISTEMA) && /\*\*Próxima ação\*\*: [^\n]*no máximo 3 passos/.test(C.SISTEMA), true);
+ok('abrir_caso lê o caso inteiro (150 mensagens e resumo de 3000)', /conversaWhatsapp\(env, wa, 150\)/.test(apiTxt) && /conversaParaAssistente\(msgs, 150\)/.test(apiTxt) && /resumo: String\(caso\.resumo \|\| ''\)\.slice\(0, 3000\)/.test(apiTxt), true);
 ok('a resposta desenha o cartão e guarda para recarregar', /div\.innerHTML = csCartaoStatus\(status, ultimo\) \+ csMd\(texto\)/.test(main) && /csBolha\(b\.quem, b\.texto, b\.acoes, b\.res, b\.status, b\.ultimo\)/.test(main), true);
 {
   const ini = main.indexOf('function csStatusPedido(');

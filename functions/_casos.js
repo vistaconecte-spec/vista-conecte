@@ -310,6 +310,8 @@ export function resumoDoCaso(c, agora = Date.now()) {
 }
 
 const MARCA_INTERNA = '[contexto interno';
+// 40 cortava o começo de caso longo (#708, aberto em 15/10: a troca combinada no dia da compra tinha sumido da
+// leitura). O abrir_caso agora passa 150; a lista do dia continua com o padrão.
 export function conversaParaAssistente(msgs, limite = 40) {
   return (msgs || [])
     .filter(m => !(m.role === 'assistant' && String(m.texto || '').startsWith(MARCA_INTERNA)))
@@ -374,10 +376,11 @@ Resposta à Marcelly
   - linha em branco entre blocos; nada de parágrafo corrido.
 - Lista do dia: mostre primeiro o bloco "Fazer agora" com no máximo 5 itens (cliente esperando resposta, prazo que vence hoje ou amanhã, risco de perder dinheiro ou peça). Os outros casos vão em blocos curtos por tipo, uma linha cada, com cliente, pedido e SEMPRE o status da peça tirado do campo producao (pronto para envio, falta tal peça em tal etapa, não está na produção e qual cor tem em estoque, ou já enviado). Pedido atrasado sem status não ajuda a Marcelly. Termine dizendo por qual começar e pergunte se pode abrir esse caso.
 - Quando a Marcelly pedir para abrir um caso, chame abrir_caso de novo mesmo que ele já tenha sido aberto antes nesta conversa: o pedido e a conversa podem ter mudado.
-- Caso aberto: SEJA OBJETIVA, a Marcelly lê rápido (Bárbara, 30/10/2026: "muita informação"). O status de cada pedido (enviado ou não, rastreio, etapa de cada peça) já aparece num cartão fixo da tela acima da sua resposta: NÃO escreva status, rastreio, data de etiqueta nem etapa de peça. Escreva só:
-  - **Quadro**: no máximo 3 itens de uma linha cada: o que a cliente quer, o que falta resolver, e o prazo ou risco. Se o pedido do caso não bate com a conversa, isso entra como um desses itens, em uma linha.
-  - **O que fazer**: no máximo 3 passos numerados ("1. "), uma frase cada, começando pelo verbo.
-  - Valores, itens do pedido e histórico só se mudarem a decisão. Nada de bloco "Atenção", explicação de regra ou repetição.
+- Caso aberto: leia o caso INTEIRO antes de responder, o resumo do CRM do começo ao fim (cada "+ [data]" é um acontecimento novo) e a conversa toda, do primeiro dia do caso até hoje. Quem abre o caso não acompanhou a história e precisa entender sem abrir a conversa (Bárbara, 11/11/2026: "abri esse caso e não entendi nada do contexto"). O status de cada pedido (enviado ou não, rastreio, etapa de cada peça) já aparece num cartão fixo da tela acima da sua resposta: NÃO escreva status, rastreio, data de etiqueta nem etapa de peça. Escreva três blocos, nesta ordem:
+  - **Resumo do caso**: de 3 a 5 itens curtos, em ordem de data (dd/mm no começo de cada um): o que a cliente comprou ou pediu, o que a loja combinou ou prometeu, o que aconteceu depois e onde está hoje. Cite o pedido de cada peça quando houver mais de um. Se a conversa fala de um pedido que não existe ou não bate com o caso, diga isso aqui.
+  - **O que deu errado**: uma ou duas linhas com a falha de verdade e em que ponto ela aconteceu (atendimento da Vi, equipe, produção, expedição, transportadora, site, ou a própria cliente), tirada dos fatos e com a data. Se nada deu errado e é só espera, diga isso. Sem culpar pessoa pelo nome.
+  - **Próxima ação**: o que fazer agora com esta cliente, em no máximo 3 passos numerados ("1. "), uma frase cada, começando pelo verbo e dizendo quem faz (Marcelly, expedição, Bárbara). Se a cliente está esperando resposta, o primeiro passo é responder e a mensagem já vai pronta na ação.
+  - Sem bloco "Atenção", sem explicação de regra e sem repetir o mesmo fato em dois blocos.
   - As ações prontas em acoes. Se a cliente está esperando resposta, já deixe a mensagem para ela escrita na ação.
   - PEDIDO JÁ ENVIADO (envio fulfilled) em caso de prazo, atraso, viagem ou rastreio: o caso está resolvido até a cliente voltar e questionar (Bárbara, 30/10/2026). Não proponha mensagem à cliente, nem se a equipe prometeu troca ou vale caso não chegasse a tempo: se ela quiser, ela volta. Proponha só anotar ("pedido enviado em dd/mm, rastreio X; fechado até a cliente voltar") e fechar, nessa ordem. Exceção: a última fala é da cliente e ninguém da loja respondeu depois; aí responda o que ela perguntou. Troca, defeito, peça errada ou dinheiro pendente seguem o caminho normal.
 - Use primeiro nome da cliente, número do pedido e final do telefone. Nada de e-mail, CPF, chave Pix ou telefone completo.

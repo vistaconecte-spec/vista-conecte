@@ -207,8 +207,9 @@ async function abrirCaso(env, { caso_id, wa_id, pedido }, agora = Date.now()) {
   const wa = (caso && caso.wa_id) || String(wa_id || '').replace(/\D/g, '');
   if (!caso && !wa && !pedido) return { encontrado: false, motivo: 'nada para buscar' };
   // Conversa do WhatsApp (tem documento, foto, áudio e template); o histórico da Vi sozinho só entra se ela falhar.
-  const doZap = wa ? await conversaWhatsapp(env, wa, 60) : null;
-  const msgs = doZap || (wa ? (await db.get(`wati_ia_mensagens?wa_id=eq.${wa}&order=created_at.desc&limit=60&select=role,texto,created_at`)).reverse() : []);
+  // 150 mensagens: o caso inteiro, desde o primeiro dia (Bárbara, 11/11/2026, caso 708 sem contexto com 60)
+  const doZap = wa ? await conversaWhatsapp(env, wa, 150) : null;
+  const msgs = doZap || (wa ? (await db.get(`wati_ia_mensagens?wa_id=eq.${wa}&order=created_at.desc&limit=150&select=role,texto,created_at`)).reverse() : []);
   const daCliente = msgs.filter(m => m.role === 'user').map(m => m.texto).join('\n');
   const numeros = numerosDePedido(pedido || (caso && caso.pedido), caso && caso.resumo, daCliente).slice(0, 2);
   const pedidos = [];
@@ -217,12 +218,12 @@ async function abrirCaso(env, { caso_id, wa_id, pedido }, agora = Date.now()) {
   const id = caso && caso.id;
   return {
     hoje: hojeTexto(agora), agora_brt: brt(agora),
-    caso: caso ? { ...resumoDoCaso(caso, agora), resumo: String(caso.resumo || '').slice(0, 1500) } : null,
+    caso: caso ? { ...resumoDoCaso(caso, agora), aberto_em_brt: brt(caso.criado_at), resumo: String(caso.resumo || '').slice(0, 3000) } : null,
     aviso_caso: caso ? null : 'sem caso no CRM para este contato; se a Marcelly agir, o painel abre um',
     wa_id: wa || null, final_tel: finalTel(wa),
     janela_24h: janelaAberta(msgs, agora),
     conversa_fonte: doZap ? 'WhatsApp (completa, com documentos e imagens)' : 'histórico da Vi (só texto; documento e imagem enviados podem faltar)',
-    conversa: conversaParaAssistente(msgs),
+    conversa: conversaParaAssistente(msgs, 150),
     promessas_da_equipe: promessasDaEquipe(msgs, { agora }),
     pedidos,
     feito_pelo_painel: id ? log.acoes.filter(a => Number(a.caso_id) === Number(id)).map(a => ({ tipo: a.tipo, em: a.em, texto: String(a.texto || '').slice(0, 200) })) : [],
