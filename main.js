@@ -1767,7 +1767,7 @@ function trcCartaoHtml(t0, etapa) {
   } else if (etapa === 'pagar') {
     acao = `<div class="trc-aviso" style="color:${st.cor || 'var(--text-ter)'}">${esc(st.txt)}</div>`
       + `<a class="trc-link" href="https://painel.frenet.com.br/shoppingcart/index" target="_blank" rel="noopener"><i class="ti ti-external-link"></i> abrir carrinho da Frenet</a>`
-      + `<div class="trc-dica">depois de pago, o código aparece aqui sozinho</div>`
+      + `<div class="trc-dica">o robô paga sozinho com o saldo da Frenet e o código aparece aqui; se faltar saldo, a Bárbara recebe aviso</div>`
       + `<div class="trc-dica"><i class="ti ti-bell-off"></i> a cliente ainda não recebeu o código da devolução</div>`;
   } else if (etapa === 'esperando') {
     const rs = trcRastreio(t), venc = trcVencimento(t);
@@ -2065,7 +2065,7 @@ function devCartaoHtml(t0, etapa) {
   } else if (etapa === 'pagar') {
     acao = `<div class="trc-aviso" style="color:${st.cor || 'var(--text-ter)'}">${esc(st.txt)}</div>`
       + `<a class="trc-link" href="https://painel.frenet.com.br/shoppingcart/index" target="_blank" rel="noopener"><i class="ti ti-external-link"></i> abrir carrinho da Frenet</a>`
-      + `<div class="trc-dica">depois de pago, o código aparece aqui sozinho</div>`
+      + `<div class="trc-dica">o robô paga sozinho com o saldo da Frenet e o código aparece aqui; se faltar saldo, a Bárbara recebe aviso</div>`
       + `<div class="trc-dica"><i class="ti ti-bell-off"></i> a cliente ainda não recebeu o código da devolução</div>`;
   } else if (etapa === 'esperando') {
     const rs = trcRastreio(t, 'estorno'), venc = trcVencimento(t, Date.now(), 'estorno');
