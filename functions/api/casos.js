@@ -20,7 +20,7 @@
 import {
   soLeitura, MODELO, DOC_LOG, TEMPLATE_CONTINUIDADE, TEMPLATE_ALERTA, CATEGORIAS_DINHEIRO,
   SISTEMA, FERRAMENTAS, FERRAMENTAS_SERVIDOR, problemasDoTexto, prometeDinheiro, janelaAberta, revisarResposta,
-  semResposta, promessasDaEquipe, pagoPorItem, numerosDePedido, prazoDoPedido, logVazio, podeFechar, podeFecharPelaConversa, casoDeDinheiro, semEscapeUnicode, aprovacaoLiberada, novoId,
+  semResposta, promessasDaEquipe, pagoPorItem, numerosDePedido, pedidoEhDaCliente, emailsDoTexto, devolucoesDoPainel, prazoDoPedido, logVazio, podeFechar, podeFecharPelaConversa, casoDeDinheiro, semEscapeUnicode, aprovacaoLiberada, novoId,
   primeiroNome, finalTel, resumoDoCaso, conversaParaAssistente, hojeTexto, brt, metaParaMsg,
 } from '../_casos.js';
 import { variantes, mesclar, enviarTextoDaLoja, enviarArquivoDaLoja, enviarModeloDaLoja } from '../_whatsapp.js';
@@ -95,7 +95,7 @@ const shop = (env, caminho, init = {}) => fetch(`https://${env.SHOPIFY_STORE_DOM
   ...init, headers: { 'X-Shopify-Access-Token': env.SHOPIFY_ADMIN_TOKEN, 'Content-Type': 'application/json' },
 });
 
-const CAMPOS_PEDIDO = 'id,name,created_at,financial_status,fulfillment_status,cancelled_at,total_price,subtotal_price,line_items,shipping_lines,fulfillments,note,tags,refunds,payment_gateway_names';
+const CAMPOS_PEDIDO = 'id,name,created_at,financial_status,fulfillment_status,cancelled_at,total_price,subtotal_price,line_items,shipping_lines,fulfillments,note,tags,refunds,payment_gateway_names,email,phone,customer,shipping_address,billing_address';
 
 async function pedidoBruto(env, numero) {
   const n = String(numero || '').replace(/\D/g, '');
@@ -119,9 +119,14 @@ async function pagamentoMP(env, ref) {
     estornos: (p.refunds || []).map(x => ({ em: x.date_created, valor: x.amount, status: x.status })) };
 }
 
-async function buscarPedido(env, numero, agora = Date.now()) {
+// ctx ({ wa, emails }) só no abrir_caso: diz se o pedido é da cliente do caso e devolve o e-mail dela em _email,
+// que o abrirCaso usa para achar os outros pedidos e tira antes de mandar para a IA.
+async function buscarPedido(env, numero, agora = Date.now(), ctx = null) {
   const o = await pedidoBruto(env, numero);
   if (!o) return { encontrado: false, numero };
+  const dona = ctx ? pedidoEhDaCliente(o, ctx) : null;
+  if (ctx && !dona) return { encontrado: true, numero: o.name, de_outra_cliente: primeiroNome((o.customer && o.customer.first_name) || ''),
+    aviso: 'Este pedido é de OUTRA cliente (telefone e e-mail não batem). Não proponha nada nele; diga que o número citado não é dela.' };
   let pagoEm = null, ref = null;
   try {
     const t = await shop(env, `orders/${o.id}/transactions.json`);
@@ -152,7 +157,26 @@ async function buscarPedido(env, numero, agora = Date.now()) {
     prazo: o.financial_status === 'paid' || o.financial_status === 'partially_refunded'
       ? prazoDoPedido(pagoEm || o.created_at, agora, ((o.fulfillments || [])[0] || {}).created_at || null) : null,
     aviso: 'A data de etiqueta é a de quando a etiqueta foi gerada, não a da coleta.',
+    ...(ctx ? { da_cliente: true, _email: String(o.email || (o.customer && o.customer.email) || '').toLowerCase() || null } : {}),
   };
+}
+
+// Os outros pedidos da cliente, achados pelo e-mail, em versão curta (sem transação, Mercado Pago nem nota).
+async function outrosPedidos(env, emails, jaTem) {
+  const out = [];
+  for (const e of emails.slice(0, 2)) {
+    const r = await shop(env, `orders.json?status=any&email=${encodeURIComponent(e)}&limit=8&fields=name,created_at,financial_status,fulfillment_status,cancelled_at,total_price,line_items,fulfillments,refunds`).catch(() => null);
+    if (!r || !r.ok) continue;
+    for (const o of ((await r.json()).orders || [])) {
+      if (jaTem.has(o.name) || out.some(x => x.numero === o.name)) continue;
+      out.push({ numero: o.name, criado_em: o.created_at, pagamento: o.financial_status, cancelado_em: o.cancelled_at, total: o.total_price,
+        envio: o.fulfillment_status || 'não enviado', itens: (o.line_items || []).map(i => `${i.quantity}x ${i.title}${i.variant_title ? ' (' + i.variant_title + ')' : ''}`),
+        pago_por_item: (o.line_items || []).map(pagoPorItem),
+        etiquetas: (o.fulfillments || []).map(f => ({ em: f.created_at, rastreio: f.tracking_number })),
+        estornado: (o.refunds || []).reduce((s, x) => s + (x.transactions || []).reduce((t, y) => t + (parseFloat(y.amount) || 0), 0), 0) });
+    }
+  }
+  return out.slice(0, 6);
 }
 
 // ── Ferramentas do servidor ─────────────────────────────────────────────────────
@@ -211,9 +235,19 @@ async function abrirCaso(env, { caso_id, wa_id, pedido }, agora = Date.now()) {
   const doZap = wa ? await conversaWhatsapp(env, wa, 150) : null;
   const msgs = doZap || (wa ? (await db.get(`wati_ia_mensagens?wa_id=eq.${wa}&order=created_at.desc&limit=150&select=role,texto,created_at`)).reverse() : []);
   const daCliente = msgs.filter(m => m.role === 'user').map(m => m.texto).join('\n');
-  const numeros = numerosDePedido(pedido || (caso && caso.pedido), caso && caso.resumo, daCliente).slice(0, 2);
+  // Até 4 números citados, cada um conferido contra a cliente; depois os outros pedidos dela pelo e-mail e o que o
+  // painel sabe de devolução e estorno (Bárbara, 11/11/2026: o Assistente precisa da mesma leitura do caso 708).
+  const numeros = numerosDePedido(pedido || (caso && caso.pedido), caso && caso.resumo, daCliente).slice(0, 4);
+  const ctx = { wa, emails: emailsDoTexto(daCliente) };
   const pedidos = [];
-  for (const n of numeros) { try { pedidos.push(await buscarPedido(env, n, agora)); } catch (e) { pedidos.push({ numero: n, erro: e.message }); } }
+  for (const n of numeros) { try { pedidos.push(await buscarPedido(env, n, agora, ctx)); } catch (e) { pedidos.push({ numero: n, erro: e.message }); } }
+  const emails = [...new Set([...pedidos.map(p => p._email).filter(Boolean), ...ctx.emails])];
+  pedidos.forEach(p => { delete p._email; });
+  const outros = await outrosPedidos(env, emails, new Set(pedidos.map(p => p.numero))).catch(() => []);
+  const daCli = [...pedidos.filter(p => p.da_cliente).map(p => p.numero), ...outros.map(p => p.numero)];
+  const devolucoes = await sb(env, true).get('vc_modelos?id=in.(retorno,estorno)&select=id,dados')
+    .then(l => devolucoesDoPainel((l.find(x => x.id === 'retorno') || {}).dados, (l.find(x => x.id === 'estorno') || {}).dados, daCli))
+    .catch(() => null);
   const log = await lerLog(env);
   const id = caso && caso.id;
   return {
@@ -226,6 +260,8 @@ async function abrirCaso(env, { caso_id, wa_id, pedido }, agora = Date.now()) {
     conversa: conversaParaAssistente(msgs, 150),
     promessas_da_equipe: promessasDaEquipe(msgs, { agora }),
     pedidos,
+    outros_pedidos_da_cliente: outros,
+    devolucoes_no_painel: devolucoes,
     feito_pelo_painel: id ? log.acoes.filter(a => Number(a.caso_id) === Number(id)).map(a => ({ tipo: a.tipo, em: a.em, texto: String(a.texto || '').slice(0, 200) })) : [],
     aprovacoes: id ? log.aprovacoes.filter(a => Number(a.caso_id) === Number(id)).map(a => ({ categoria: a.categoria, valor: a.valor, status: a.status, nota: a.nota || null })) : [],
     pode_fechar: id ? podeFechar(id, log) : { ok: false, motivo: 'sem caso' },

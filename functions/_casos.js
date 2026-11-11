@@ -202,6 +202,43 @@ export function promessasDaEquipe(msgs, { agora = Date.now(), dias = 7 } = {}) {
 
 // Números de pedido citados. O campo `pedido` do caso aceita o número solto ("9142");
 // no resto (resumo, mensagens) só vale com "#" ou "pedido" na frente, senão CEP e valor viram pedido.
+// Dono do pedido (caso 708, 11/11/2026): a cliente digitou #9338, que é de outra pessoa, e o caso mandava reembolsar
+// esse pedido. É dela se o telefone do pedido bate com o WhatsApp (8 últimos dígitos, com ou sem o 9) ou se o e-mail
+// do pedido é um que ela usou.
+const fim8 = t => String(t || '').replace(/\D/g, '').slice(-8);
+export function pedidoEhDaCliente(o, { wa, emails = [] } = {}) {
+  if (!o) return false;
+  const alvo = fim8(wa);
+  const tels = [o.phone, o.customer && o.customer.phone, o.billing_address && o.billing_address.phone,
+    o.shipping_address && o.shipping_address.phone].map(fim8).filter(t => t.length === 8);
+  if (alvo.length === 8 && tels.includes(alvo)) return true;
+  const em = String(o.email || (o.customer && o.customer.email) || '').trim().toLowerCase();
+  return !!em && emails.map(e => String(e).toLowerCase()).includes(em);
+}
+export const emailsDoTexto = t => [...new Set((String(t || '').match(/[\w.+-]+@[\w-]+(?:\.[\w-]+)+/g) || []).map(e => e.toLowerCase()))];
+
+// Devolução e estorno que o painel conhece (listas 'retorno' e 'estorno' do vc_modelos), só dos pedidos da cliente.
+// A Vi e o CRM não sabem que a peça chegou; o caso 708 ficou 20 dias com a devolução na loja e o reembolso parado.
+export function devolucoesDoPainel(retorno, estorno, numeros) {
+  const quer = new Set((numeros || []).map(n => String(n).replace(/\D/g, '')).filter(Boolean));
+  const nums = s => (String(s || '').match(/\d{4,5}/g) || []);
+  const out = [];
+  for (const r of ((retorno && retorno.itens) || [])) {
+    const n = String(r.pedido || '').replace(/\D/g, '');
+    if (!quer.has(n)) continue;
+    out.push({ lista: 'troca ou devolução', pedido: '#' + n, status: r.status || null, pecas: r.produtos || null,
+      chegou_na_loja: !!r.chegou_reversa, chegou_em: r.data_chegada_reversa || null,
+      pedido_de_troca: r.pedido_troca || null, observacao: String(r.obs || '').slice(0, 300) });
+  }
+  for (const e of ((estorno && estorno.itens) || [])) {
+    const n = nums(`${e.pecas} ${e.motivo}`).find(x => quer.has(x));
+    if (!n) continue;
+    out.push({ lista: 'estorno ou crédito', pedido: '#' + n, etapa: e.etapa || null, forma: e.forma || null, valor: e.valor ?? null,
+      pecas: e.pecas || null, chegou_em: e.chegou_em || null, motivo: String(e.motivo || '').slice(0, 200) });
+  }
+  return out;
+}
+
 export function numerosDePedido(campoPedido, ...textos) {
   const achados = [];
   const por = (s, re) => { for (const m of String(s || '').matchAll(re)) if (!achados.includes(m[1])) achados.push(m[1]); };
@@ -377,8 +414,9 @@ Resposta à Marcelly
 - Lista do dia: mostre primeiro o bloco "Fazer agora" com no máximo 5 itens (cliente esperando resposta, prazo que vence hoje ou amanhã, risco de perder dinheiro ou peça). Os outros casos vão em blocos curtos por tipo, uma linha cada, com cliente, pedido e SEMPRE o status da peça tirado do campo producao (pronto para envio, falta tal peça em tal etapa, não está na produção e qual cor tem em estoque, ou já enviado). Pedido atrasado sem status não ajuda a Marcelly. Termine dizendo por qual começar e pergunte se pode abrir esse caso.
 - Quando a Marcelly pedir para abrir um caso, chame abrir_caso de novo mesmo que ele já tenha sido aberto antes nesta conversa: o pedido e a conversa podem ter mudado.
 - Caso aberto: leia o caso INTEIRO antes de responder, o resumo do CRM do começo ao fim (cada "+ [data]" é um acontecimento novo) e a conversa toda, do primeiro dia do caso até hoje. Quem abre o caso não acompanhou a história e precisa entender sem abrir a conversa (Bárbara, 11/11/2026: "abri esse caso e não entendi nada do contexto"). O status de cada pedido (enviado ou não, rastreio, etapa de cada peça) já aparece num cartão fixo da tela acima da sua resposta: NÃO escreva status, rastreio, data de etiqueta nem etapa de peça. Escreva três blocos, nesta ordem:
-  - **Resumo do caso**: de 3 a 5 itens curtos, em ordem de data (dd/mm no começo de cada um): o que a cliente comprou ou pediu, o que a loja combinou ou prometeu, o que aconteceu depois e onde está hoje. Cite o pedido de cada peça quando houver mais de um. Se a conversa fala de um pedido que não existe ou não bate com o caso, diga isso aqui.
-  - **O que deu errado**: uma ou duas linhas com a falha de verdade e em que ponto ela aconteceu (atendimento da Vi, equipe, produção, expedição, transportadora, site, ou a própria cliente), tirada dos fatos e com a data. Se nada deu errado e é só espera, diga isso. Sem culpar pessoa pelo nome.
+  - **Resumo do caso**: no máximo 4 itens curtos. Comece dizendo quantos pedidos a cliente tem (pedidos com da_cliente mais outros_pedidos_da_cliente) e conte um item por pedido que tem pendência, com a data no começo: o que ela comprou ou pediu, o que a loja combinou, o que aconteceu e onde está hoje. Pedido dela sem pendência entra numa linha só. Pedido com de_outra_cliente não é dela: diga em uma linha que o número citado é de outra cliente e nunca proponha nada nele.
+  - devolucoes_no_painel diz se a peça devolvida chegou na loja (chegou_em) e se já houve estorno ou crédito. Peça que chegou sem estorno nem crédito é reembolso pendente: diga desde quando e o valor somando o pago_por_item das peças que voltaram (valor pago, com desconto). Cartão marcado resolvido sem estorno nem crédito é erro, diga isso.
+  - **O que deu errado**: uma ou duas linhas com a falha de verdade, a data e em que ponto ela aconteceu (atendimento da Vi, equipe, produção, expedição, transportadora, site, ou a própria cliente). Quando a Vi ou a equipe disse que fez algo (ajustei, corrigi, troquei, estornei, enviei) e os dados mostram que não aconteceu, esse é o erro: diga o que foi dito, quando, e o que aconteceu de verdade. Se nada deu errado e é só espera, diga isso. Sem culpar pessoa pelo nome.
   - **Próxima ação**: o que fazer agora com esta cliente, em no máximo 3 passos numerados ("1. "), uma frase cada, começando pelo verbo e dizendo quem faz (Marcelly, expedição, Bárbara). Se a cliente está esperando resposta, o primeiro passo é responder e a mensagem já vai pronta na ação.
   - Sem bloco "Atenção", sem explicação de regra e sem repetir o mesmo fato em dois blocos.
   - As ações prontas em acoes. Se a cliente está esperando resposta, já deixe a mensagem para ela escrita na ação.
