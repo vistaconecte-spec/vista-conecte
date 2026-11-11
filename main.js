@@ -1739,19 +1739,29 @@ function trcProducaoHtml(t) {
       : linha('#dc2626', 'ti-alert-triangle', `${esc(f.peca)} não está na produção`)).join('');
   return '';
 }
-function trcCartaoHtml(t, etapa) {
+// 11/11/2026 (Bárbara: "1 card pra cada modelo não faz sentido"): as peças da mesma solicitação que
+// estão na mesma etapa viram UM cartão. Os dados continuam por peça (robô, pedido de troca, rastreio);
+// os botões do cartão valem para todas as peças dele (trcLote).
+function trcGrupoChave(t) {
+  if (t.portal_id) return t.portal_id;
+  const n = String(t.pedido || '').replace(/\D/g, '');
+  return n ? 'manual:' + n + ':' + String(t.cliente || '').trim().toLowerCase() : 'item:' + t.id;
+}
+function trcCartaoHtml(t0, etapa) {
   const esc = v => String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
-  const dias = retDiasNaFila(t);
+  const ts = Array.isArray(t0) ? t0 : [t0], t = ts[0], ids = ts.map(x => x.id).join(','), varias = ts.length > 1;
+  const unicos = f => [...new Set(ts.map(f).filter(Boolean))];
+  const dias = Math.max(...ts.map(retDiasNaFila));
   const bucket = retBucket(dias);
   const fechada = t.status === 'resolvido';
   const selo = (!fechada && dias >= 2) ? `<span class="trc-dias" style="background:${bucket.bar}">${dias}d</span>` : '';
   const st = revStatus('retorno', t);
-  const inp = (campo, ph) => `<input class="trc-inp" placeholder="${ph}" onchange="trcCampo('${t.id}','${campo}',this.value)">`;
+  const inp = (campo, ph) => `<input class="trc-inp" placeholder="${ph}" onchange="trcCampo('${ids}','${campo}',this.value)">`;
   const btn = (fn, ico, txt) => `<button class="trc-btn" onclick="${fn}"><i class="ti ${ico}"></i> ${txt}</button>`;
   let acao = '';
   if (etapa === 'pedido') {
     acao = (st.txt ? `<div class="trc-aviso" style="color:${st.cor || 'var(--text-ter)'}">${esc(st.txt)}</div>` : '')
-      + (revNumeroPedido('retorno', t) ? btn(`trcPedirReversa('${t.id}')`, 'ti-truck-return', 'pedir reversa') : '<div class="trc-aviso">sem número de pedido</div>')
+      + (revNumeroPedido('retorno', t) ? btn(`trcLote('reversa','${ids}',this)`, 'ti-truck-return', 'pedir reversa') : '<div class="trc-aviso">sem número de pedido</div>')
       + inp('codigo_logistica_reversa', 'ou cole o código da reversa');
   } else if (etapa === 'pagar') {
     acao = `<div class="trc-aviso" style="color:${st.cor || 'var(--text-ter)'}">${esc(st.txt)}</div>`
@@ -1759,11 +1769,11 @@ function trcCartaoHtml(t, etapa) {
       + `<div class="trc-dica">depois de pago, o código aparece aqui sozinho</div>`;
   } else if (etapa === 'esperando') {
     const rs = trcRastreio(t), venc = trcVencimento(t);
-    acao = `<div class="trc-cod">reversa <b>${esc(t.codigo_logistica_reversa)}</b></div>`
+    acao = `<div class="trc-cod">reversa <b>${unicos(x => x.codigo_logistica_reversa).map(esc).join(', ')}</b></div>`
       + (rs && rs.postado ? `<div class="trc-aviso" style="color:#5a3e9e"><i class="ti ti-truck"></i> postada${rs.postado_visto_em ? ' (vista em ' + new Date(rs.postado_visto_em).toLocaleDateString('pt-BR') + ')' : ''}, a caminho${rs.ocorrencia ? ' · ' + esc(rs.ocorrencia) : ''}</div>` : '')
       + (venc ? `<div class="trc-aviso" style="color:${venc.cor}"><i class="ti ti-clock-exclamation"></i> ${esc(venc.txt)}</div>` : '')
       + trcAvisoHtml(t)
-      + btn(`trcChegou('${t.id}')`, 'ti-package-import', 'chegou');
+      + btn(`trcLote('chegou','${ids}',this)`, 'ti-package-import', varias ? 'chegou tudo' : 'chegou');
   } else if (etapa === 'chegou') {
     const quando = t.data_chegada_reversa ? t.data_chegada_reversa.split('-').reverse().join('/') : '';
     acao = t.chegada_por_rastreio
@@ -1771,29 +1781,32 @@ function trcCartaoHtml(t, etapa) {
       : `<div class="trc-cod">chegou ${esc(quando)}</div>`;
     if (t.pedido_troca_id && !t.pedido_troca_manual && !t.conferido_em && !t.recusada_em) {
       acao += `<div class="trc-dica">abra o pacote: sem uso e com etiqueta?</div>`
-        + btn(`trcConferido('${t.id}', this)`, 'ti-circle-check', 'conferido')
-        + `<button class="trc-btn trc-btn-sec" onclick="trcRecusar('${t.id}')"><i class="ti ti-circle-x"></i> recusar</button>`;
+        + btn(`trcLote('conferido','${ids}',this)`, 'ti-circle-check', 'conferido')
+        + `<button class="trc-btn trc-btn-sec" onclick="trcLote('recusar','${ids}',this)"><i class="ti ti-circle-x"></i> recusar</button>`;
     } else if (t.recusada_em) {
       acao += `<div class="trc-aviso" style="color:#dc2626">peça recusada: a Marcelly fala com a cliente</div>`
-        + `<button class="trc-btn trc-btn-sec" onclick="trcDesfazerRecusa('${t.id}')"><i class="ti ti-arrow-back-up"></i> desfazer</button>`;
+        + `<button class="trc-btn trc-btn-sec" onclick="trcLote('desfazer','${ids}',this)"><i class="ti ti-arrow-back-up"></i> desfazer</button>`;
     } else {
       acao += (t.conferido_em ? `<div class="trc-dica">conferida, ${esc(t.pedido_troca || 'pedido de troca')} liberado para envio</div>` : '')
         + inp('codigo_reenvio', 'código do reenvio da peça nova');
     }
   } else {
-    acao = (t.codigo_reenvio ? `<div class="trc-cod">reenvio <b>${esc(t.codigo_reenvio)}</b></div>` : '')
-      + (fechada ? `<div class="trc-dica">concluída ${t.resolvido_em ? new Date(t.resolvido_em).toLocaleDateString('pt-BR') : ''}</div>` : btn(`retToggle('${t.id}')`, 'ti-check', 'concluir'));
+    const reenvio = unicos(x => x.codigo_reenvio);
+    acao = (reenvio.length ? `<div class="trc-cod">reenvio <b>${reenvio.map(esc).join(', ')}</b></div>` : '')
+      + (fechada ? `<div class="trc-dica">concluída ${t.resolvido_em ? new Date(t.resolvido_em).toLocaleDateString('pt-BR') : ''}</div>` : btn(`trcLote('concluir','${ids}',this)`, 'ti-check', 'concluir'));
   }
   const vencCor = etapa === 'esperando' ? (trcVencimento(t) || {}).cor : null;
   return `<div class="trc-card${fechada ? ' trc-fechada' : ''}${vencCor ? ' trc-alerta' : ''}" style="border-left-color:${vencCor || bucket.bar}${vencCor ? ';background:' + (vencCor === '#dc2626' ? 'rgba(220,38,38,.07)' : 'rgba(224,137,43,.09)') : ''}">
-    <div class="trc-topo"><b title="${esc(t.cliente)}">${esc(t.cliente) || '(sem nome)'}</b>${selo}<button class="trc-x" title="excluir esta troca" onclick="retDel('${t.id}')">×</button></div>
-    <div class="trc-ped">${esc(t.pedido || '')}${t.obs ? ` · troca por <b>${esc(t.obs)}</b>` : ''}${t.portal_id ? ' · <span class="trc-tag">portal</span>' : ''}</div>
-    <div class="trc-prod" title="${esc(t.produtos)}">${esc(t.produtos)}</div>
-    ${t.pedido_troca && !t.pedido_troca_manual ? `<div class="trc-pt"><i class="ti ${t.conferido_em ? 'ti-lock-open' : 'ti-lock'}"></i> peça nova no pedido <b>${esc(t.pedido_troca)}</b>${t.conferido_em ? ' (liberado)' : ' (travado)'}${t.pedido_troca_envio ? ', ' + esc(t.pedido_troca_envio) : ''}</div>` : ''}
-    ${t.pedido_troca_manual ? `<div class="trc-pt" style="color:${t.pedido_troca_enviado ? '#3aa76d' : '#5a3e9e'}"><i class="ti ti-file-check"></i> pedido de troca <b>${esc(t.pedido_troca)}</b> ${t.pedido_troca_enviado ? 'enviado' : (t.pedido_troca_envio ? esc(t.pedido_troca_envio) : 'criado, ainda não enviado')}</div>` : ''}
-    ${trcProducaoHtml(t)}
-    ${!t.portal_id && t.pedido_troca_ausente && !t.pedido_troca ? `<div class="trc-pt" style="color:#dc2626"><i class="ti ti-alert-triangle"></i> sem pedido de troca na Shopify: a Marcelly precisa criar</div>` : ''}
-    ${!t.pedido_troca && t.erro_pedido_troca ? `<div class="trc-pt" style="color:#dc2626" title="${esc(t.erro_pedido_troca)}"><i class="ti ti-alert-triangle"></i> pedido de troca não foi criado ${btn(`trcCriarPedido('${t.id}', this)`, 'ti-plus', 'criar agora')}</div>` : ''}
+    <div class="trc-topo"><b title="${esc(t.cliente)}">${esc(t.cliente) || '(sem nome)'}</b>${selo}<button class="trc-x" title="${varias ? 'excluir as ' + ts.length + ' peças desta troca' : 'excluir esta troca'}" onclick="trcLote('excluir','${ids}',this)">×</button></div>
+    <div class="trc-ped">${esc(t.pedido || '')}${!varias && t.obs ? ` · troca por <b>${esc(t.obs)}</b>` : ''}${varias ? ` · <b>${ts.length} peças</b>` : ''}${t.portal_id ? ' · <span class="trc-tag">portal</span>' : ''}</div>
+    ${varias
+      ? `<div class="trc-prods">${ts.map(x => `<div class="trc-prod trc-prod-linha" title="${esc(x.produtos)}">${esc(x.produtos)}<button class="trc-x" title="tirar só esta peça" onclick="retDel('${x.id}')">×</button></div>`).join('')}</div>`
+      : `<div class="trc-prod" title="${esc(t.produtos)}">${esc(t.produtos)}</div>`}
+    ${unicos(x => x.pedido_troca && !x.pedido_troca_manual ? `<div class="trc-pt"><i class="ti ${x.conferido_em ? 'ti-lock-open' : 'ti-lock'}"></i> peça nova no pedido <b>${esc(x.pedido_troca)}</b>${x.conferido_em ? ' (liberado)' : ' (travado)'}${x.pedido_troca_envio ? ', ' + esc(x.pedido_troca_envio) : ''}</div>` : '').join('')}
+    ${unicos(x => x.pedido_troca_manual ? `<div class="trc-pt" style="color:${x.pedido_troca_enviado ? '#3aa76d' : '#5a3e9e'}"><i class="ti ti-file-check"></i> pedido de troca <b>${esc(x.pedido_troca)}</b> ${x.pedido_troca_enviado ? 'enviado' : (x.pedido_troca_envio ? esc(x.pedido_troca_envio) : 'criado, ainda não enviado')}</div>` : '').join('')}
+    ${unicos(x => trcProducaoHtml(x)).join('')}
+    ${ts.some(x => !x.portal_id && x.pedido_troca_ausente && !x.pedido_troca) ? `<div class="trc-pt" style="color:#dc2626"><i class="ti ti-alert-triangle"></i> sem pedido de troca na Shopify: a Marcelly precisa criar</div>` : ''}
+    ${ts.some(x => !x.pedido_troca && x.erro_pedido_troca) ? `<div class="trc-pt" style="color:#dc2626" title="${esc(t.erro_pedido_troca)}"><i class="ti ti-alert-triangle"></i> pedido de troca não foi criado ${btn(`trcLote('criar','${ts.filter(x => !x.pedido_troca && x.erro_pedido_troca).map(x => x.id).join(',')}',this)`, 'ti-plus', 'criar agora')}</div>` : ''}
     <div class="trc-acao">${acao}</div>
   </div>`;
 }
@@ -1803,22 +1816,55 @@ function trcRender() {
   const itens = retGetConfig().itens.filter(trcNoQuadro).map(t => ({ t, etapa: trcEtapa(t), dias: retDiasNaFila(t) }));
   const cols = TRC_ETAPAS.map(([k, rotulo, passo, cor]) => {
     const da = itens.filter(x => x.etapa === k).sort((a, b) => (a.t.status === 'resolvido') - (b.t.status === 'resolvido') || b.dias - a.dias);
+    const grupos = new Map();
+    for (const x of da) {
+      const g = trcGrupoChave(x.t) + '|' + (x.t.status === 'resolvido');
+      if (!grupos.has(g)) grupos.set(g, []);
+      grupos.get(g).push(x.t);
+    }
     return `<div class="trc-col">
-      <div class="trc-col-topo" style="border-top-color:${cor}"><span>${rotulo}</span><b>${da.length}</b></div>
+      <div class="trc-col-topo" style="border-top-color:${cor}"><span>${rotulo}</span><b>${grupos.size}</b></div>
       <div class="trc-col-passo">${passo}</div>
-      ${da.map(x => trcCartaoHtml(x.t, k)).join('') || '<div class="trc-vazio">nada aqui</div>'}
+      ${[...grupos.values()].map(ts => trcCartaoHtml(ts, k)).join('') || '<div class="trc-vazio">nada aqui</div>'}
     </div>`;
   }).join('');
   board.innerHTML = cols;
   const abertas = itens.filter(x => x.t.status !== 'resolvido');
-  const pagar = abertas.filter(x => x.etapa === 'pagar').length, chegou = abertas.filter(x => x.etapa === 'chegou').length;
+  // contagem por solicitação, igual aos cartões
+  const nGrupos = lista => new Set(lista.map(x => trcGrupoChave(x.t))).size;
+  const pagar = nGrupos(abertas.filter(x => x.etapa === 'pagar')), chegou = nGrupos(abertas.filter(x => x.etapa === 'chegou'));
   const el = document.getElementById('trc-resumo');
-  if (el) el.textContent = `${abertas.length} em aberto` + (pagar ? ` · ${pagar} reversa${pagar > 1 ? 's' : ''} pra pagar` : '') + (chegou ? ` · ${chegou} esperando a peça nova` : '');
+  if (el) el.textContent = `${nGrupos(abertas)} em aberto` + (pagar ? ` · ${pagar} reversa${pagar > 1 ? 's' : ''} pra pagar` : '') + (chegou ? ` · ${chegou} esperando a peça nova` : '');
 }
-function trcCampo(id, campo, valor) {
+function trcCampo(ids, campo, valor) {
   const v = String(valor || '').trim();
   if (!v) return;
-  retEdit(id, campo, v);
+  String(ids).split(',').filter(Boolean).forEach(id => retEdit(id, campo, v));
+  atdSyncViews();
+}
+// Botões do cartão agrupado: a mesma ação em todas as peças, uma confirmação só
+async function trcLote(acao, ids, btn) {
+  const lista = String(ids || '').split(',').filter(Boolean);
+  if (!lista.length) return;
+  if (acao === 'excluir' && !confirm(lista.length > 1 ? `Excluir as ${lista.length} peças desta troca?` : 'Excluir esse registro de troca?')) return;
+  if (acao === 'recusar' && !confirm('Recusar a peça devolvida? O pedido de troca continua travado e o caso fica para a Marcelly falar com a cliente.')) return;
+  if (btn && btn.tagName === 'BUTTON' && acao !== 'excluir') btn.disabled = true;
+  const liberados = new Set(); // o pedido de troca é um só para as peças da solicitação: libera uma vez
+  for (const id of lista) {
+    const t = retGetConfig().itens.find(x => x.id === id);
+    if (!t) continue;
+    if (acao === 'reversa') await revPedir('retorno', id);
+    else if (acao === 'chegou') trcChegou(id);
+    else if (acao === 'concluir') retToggle(id);
+    else if (acao === 'recusar') retEdit(id, 'recusada_em', new Date().toISOString());
+    else if (acao === 'desfazer') retEdit(id, 'recusada_em', '');
+    else if (acao === 'criar') await trcCriarPedido(id, btn);
+    else if (acao === 'conferido') {
+      if (t.pedido_troca_id && liberados.has(t.pedido_troca_id)) { retEdit(id, 'conferido_em', new Date().toISOString()); continue; }
+      await trcConferido(id, btn);
+      if (t.pedido_troca_id && retGetConfig().itens.find(x => x.id === id)?.conferido_em) liberados.add(t.pedido_troca_id);
+    } else if (acao === 'excluir') retDel(id, true);
+  }
   atdSyncViews();
 }
 function trcPedirReversa(id) { revPedir('retorno', id); }
@@ -3305,8 +3351,8 @@ function retEdit(id, campo, val) {
   t[campo] = val;
   retSalvar(cfg);
 }
-function retDel(id) {
-  if (!confirm('Excluir esse registro de troca?')) return;
+function retDel(id, confirmado) {
+  if (!confirmado && !confirm('Excluir esse registro de troca?')) return;
   const cfg = retGetConfig();
   cfg.itens = cfg.itens.filter(x => x.id !== id);
   // sem isto a mesclagem traria o item de volta pela nuvem

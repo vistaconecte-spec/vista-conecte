@@ -1486,3 +1486,7 @@ table.est-tab td > div > input { min-width: 0; flex: 1 1 auto; }
 .trc-btn-sec { background: #fff; color: var(--text); border: 1px solid var(--border); }
 .trc-x { margin-left: auto; flex: 0 0 auto; background: none; border: 0; color: var(--text-ter); font-size: 15px; line-height: 1; cursor: pointer; padding: 0 2px; }
 .trc-x:hover { color: #dc2626; }
+.trc-prods { margin: 5px 0 7px; }
+.trc-prod-linha { position: relative; padding: 4px 18px 4px 0; margin: 0; -webkit-line-clamp: 3; }
+.trc-prod-linha + .trc-prod-linha { border-top: 1px dashed var(--border); }
+.trc-prod-linha .trc-x { position: absolute; right: 0; top: 3px; font-size: 13px; }
