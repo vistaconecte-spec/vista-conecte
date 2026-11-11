@@ -103,6 +103,11 @@ console.log('\n6) Crédito na loja como saldo (22/10/2026)');
   ok('explica como entrar na conta', [/ícone de pessoa/.test(m), /código que chega no seu e-mail/.test(m)], [true, true]);
   ok('sem travessão, sem dois-pontos', [/—/.test(m), /:/.test(m)], [false, false]);
   ok('nome do cadastro novo', C.nomeCadastro('Karina Lam Souza'), { firstName: 'Karina', lastName: 'Lam Souza' });
+  const { resumoUso } = await import('../functions/api/credito-uso.js');
+  ok('uso do crédito: soma o que entrou, o que ela gastou e o que venceu (11/11)', resumoUso([{ balance: { amount: '30.00' }, transactions: { nodes: [
+    { __typename: 'StoreCreditAccountCreditTransaction', amount: { amount: '151.20' }, createdAt: '2026-11-01' },
+    { __typename: 'StoreCreditAccountDebitTransaction', amount: { amount: '-121.20' }, createdAt: '2026-11-05' }] } }]),
+    { saldo: 30, creditado: 151.2, usado: 121.2, expirado: 0, ultimo_uso: '2026-11-05' });
   ok('campos do modelo do crédito (11/11)', C.camposModeloCredito({ nome: 'Bianca Miranda', pedido: '#9065', valor: 151.2, ate: '2027-02-09T17:06:07Z' }), ['Bianca', '#9065', '151,20', '09/02/2027']);
 
   const chamadas = [];

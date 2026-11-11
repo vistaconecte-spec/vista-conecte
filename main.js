@@ -1762,11 +1762,13 @@ function trcCartaoHtml(t0, etapa) {
   if (etapa === 'pedido') {
     acao = (st.txt ? `<div class="trc-aviso" style="color:${st.cor || 'var(--text-ter)'}">${esc(st.txt)}</div>` : '')
       + (revNumeroPedido('retorno', t) ? btn(`trcLote('reversa','${ids}',this)`, 'ti-truck-return', 'pedir reversa') : '<div class="trc-aviso">sem número de pedido</div>')
-      + inp('codigo_logistica_reversa', 'ou cole o código da reversa');
+      + inp('codigo_logistica_reversa', 'ou cole o código da reversa')
+      + `<div class="trc-dica"><i class="ti ti-bell-off"></i> a cliente ainda não recebeu o código da devolução</div>`;
   } else if (etapa === 'pagar') {
     acao = `<div class="trc-aviso" style="color:${st.cor || 'var(--text-ter)'}">${esc(st.txt)}</div>`
       + `<a class="trc-link" href="https://painel.frenet.com.br/shoppingcart/index" target="_blank" rel="noopener"><i class="ti ti-external-link"></i> abrir carrinho da Frenet</a>`
-      + `<div class="trc-dica">depois de pago, o código aparece aqui sozinho</div>`;
+      + `<div class="trc-dica">depois de pago, o código aparece aqui sozinho</div>`
+      + `<div class="trc-dica"><i class="ti ti-bell-off"></i> a cliente ainda não recebeu o código da devolução</div>`;
   } else if (etapa === 'esperando') {
     const rs = trcRastreio(t), venc = trcVencimento(t);
     acao = `<div class="trc-cod">reversa <b>${unicos(x => x.codigo_logistica_reversa).map(esc).join(', ')}</b></div>`
@@ -1802,9 +1804,10 @@ function trcCartaoHtml(t0, etapa) {
     ${varias
       ? `<div class="trc-prods">${ts.map(x => `<div class="trc-prod trc-prod-linha" title="${esc(x.produtos)}">${esc(x.produtos)}<button class="trc-x" title="tirar só esta peça" onclick="retDel('${x.id}')">×</button></div>`).join('')}</div>`
       : `<div class="trc-prod" title="${esc(t.produtos)}">${esc(t.produtos)}</div>`}
-    ${unicos(x => x.pedido_troca && !x.pedido_troca_manual ? `<div class="trc-pt"><i class="ti ${x.conferido_em ? 'ti-lock-open' : 'ti-lock'}"></i> peça nova no pedido <b>${esc(x.pedido_troca)}</b>${x.conferido_em ? ' (liberado)' : ' (travado)'}${x.pedido_troca_envio ? ', ' + esc(x.pedido_troca_envio) : ''}</div>` : '').join('')}
+    ${unicos(x => x.pedido_troca && !x.pedido_troca_manual ? `<div class="trc-pt"><i class="ti ${x.conferido_em ? 'ti-lock-open' : 'ti-lock'}"></i> pedido de troca <b>${esc(x.pedido_troca)}</b> criado na Shopify, ${x.conferido_em ? 'liberado para envio' : 'travado até a peça antiga chegar'}${x.pedido_troca_envio ? ', ' + esc(x.pedido_troca_envio) : ''}</div>` : '').join('')}
     ${unicos(x => x.pedido_troca_manual ? `<div class="trc-pt" style="color:${x.pedido_troca_enviado ? '#3aa76d' : '#5a3e9e'}"><i class="ti ti-file-check"></i> pedido de troca <b>${esc(x.pedido_troca)}</b> ${x.pedido_troca_enviado ? 'enviado' : (x.pedido_troca_envio ? esc(x.pedido_troca_envio) : 'criado, ainda não enviado')}</div>` : '').join('')}
     ${unicos(x => trcProducaoHtml(x)).join('')}
+    ${ts.some(x => x.portal_id && !x.pedido_troca && !x.erro_pedido_troca) ? `<div class="trc-pt" style="color:#dc2626"><i class="ti ti-alert-triangle"></i> pedido de troca ainda não criado na Shopify</div>` : ''}
     ${ts.some(x => !x.portal_id && x.pedido_troca_ausente && !x.pedido_troca) ? `<div class="trc-pt" style="color:#dc2626"><i class="ti ti-alert-triangle"></i> sem pedido de troca na Shopify: a Marcelly precisa criar</div>` : ''}
     ${ts.some(x => !x.pedido_troca && x.erro_pedido_troca) ? `<div class="trc-pt" style="color:#dc2626" title="${esc(t.erro_pedido_troca)}"><i class="ti ti-alert-triangle"></i> pedido de troca não foi criado ${btn(`trcLote('criar','${ts.filter(x => !x.pedido_troca && x.erro_pedido_troca).map(x => x.id).join(',')}',this)`, 'ti-plus', 'criar agora')}</div>` : ''}
     <div class="trc-acao">${acao}</div>
@@ -1880,7 +1883,10 @@ function trcAvisoHtml(t, lista = 'retorno') {
   // etiqueta comum (11/11/2026): o robô não manda, a equipe baixa o PDF e manda no chat da cliente
   if (r.comum) return `<div class="trc-dica"><i class="ti ti-file-type-pdf"></i> etiqueta comum: o PDF vai pela equipe no chat da cliente</div>`;
   if (r.whatsapp_em) return `<div class="trc-dica"><i class="ti ti-brand-whatsapp"></i> código enviado no WhatsApp em ${new Date(r.whatsapp_em).toLocaleDateString('pt-BR')}</div>`;
-  if (r.whatsapp_texto) return `<div class="trc-aviso" style="color:#b45309"><i class="ti ti-brand-whatsapp"></i> ${r.whatsapp_motivo === 'fora_da_janela' ? 'cliente fora das 24 h do WhatsApp: pedimos pra ela responder e o código sai sozinho quando ela responder' : 'o WhatsApp não saiu'}</div>`
+  const fora = r.whatsapp_motivo === 'fora_da_janela';
+  if (r.whatsapp_texto) return `<div class="trc-aviso" style="color:#b45309"><i class="ti ti-brand-whatsapp"></i> ${!fora ? 'o WhatsApp com o código não saiu'
+      : r.conversa_aberta_em ? `a cliente ainda não recebeu o código: está fora das 24 h do WhatsApp, mandamos em ${new Date(r.conversa_aberta_em).toLocaleDateString('pt-BR')} uma mensagem pra ela responder e o código vai sozinho quando ela responder`
+      : 'a cliente ainda não recebeu o código: está fora das 24 h do WhatsApp, a mensagem pra ela responder sai na próxima tentativa'}</div>`
     + `<button class="trc-btn trc-btn-sec" onclick="trcCopiarAviso('${t.id}', this, '${lista}')"><i class="ti ti-copy"></i> copiar mensagem</button>`;
   return `<div class="trc-dica"><i class="ti ti-brand-whatsapp"></i> WhatsApp com o código sai entre 8h e 21h</div>`;
 }
@@ -2054,11 +2060,13 @@ function devCartaoHtml(t0, etapa) {
     acao = (st.txt ? `<div class="trc-aviso" style="color:${st.cor || 'var(--text-ter)'}">${esc(st.txt)}</div>` : '')
       + (pedido ? btn(`devPedirReversa('${ids}')`, 'ti-truck-return', 'pedir reversa') : '<div class="trc-aviso">sem número de pedido</div>')
       + inp('ou cole o código da reversa')
-      + `<button class="trc-btn trc-btn-sec" onclick="valeChegou('${ids}')"><i class="ti ti-package-import"></i> ${varias ? 'chegou tudo' : 'chegou'}</button>`;
+      + `<button class="trc-btn trc-btn-sec" onclick="valeChegou('${ids}')"><i class="ti ti-package-import"></i> ${varias ? 'chegou tudo' : 'chegou'}</button>`
+      + `<div class="trc-dica"><i class="ti ti-bell-off"></i> a cliente ainda não recebeu o código da devolução</div>`;
   } else if (etapa === 'pagar') {
     acao = `<div class="trc-aviso" style="color:${st.cor || 'var(--text-ter)'}">${esc(st.txt)}</div>`
       + `<a class="trc-link" href="https://painel.frenet.com.br/shoppingcart/index" target="_blank" rel="noopener"><i class="ti ti-external-link"></i> abrir carrinho da Frenet</a>`
-      + `<div class="trc-dica">depois de pago, o código aparece aqui sozinho</div>`;
+      + `<div class="trc-dica">depois de pago, o código aparece aqui sozinho</div>`
+      + `<div class="trc-dica"><i class="ti ti-bell-off"></i> a cliente ainda não recebeu o código da devolução</div>`;
   } else if (etapa === 'esperando') {
     const rs = trcRastreio(t, 'estorno'), venc = trcVencimento(t, Date.now(), 'estorno');
     acao = `<div class="trc-cod">reversa <b>${unicos(x => x.codigo_devolucao).map(esc).join(', ')}</b></div>`
@@ -2072,14 +2080,14 @@ function devCartaoHtml(t0, etapa) {
       ? `<div class="trc-aviso" style="color:#c99a3c"><i class="ti ti-package"></i> entregue pelos Correios em ${esc(quando)}, abra e confira</div>`
       : `<div class="trc-cod">chegou ${esc(quando)}</div>`;
     if (credito) {
-      acao += `<div style="display:flex;gap:4px;flex-wrap:wrap">${valeAcaoHtml(t, ids, total)}</div>`;
+      acao += devCreditoInfoHtml(t) + `<div style="display:flex;gap:4px;flex-wrap:wrap">${valeAcaoHtml(t, ids, total)}</div>`;
     } else {
       acao += `<div class="trc-aviso" style="color:#b45309"><i class="ti ti-cash"></i> estorno de ${reais(total)} pendente com a Bárbara</div>`
         + btn(`devEstornoFeito('${ids}')`, 'ti-check', 'estorno feito');
     }
   } else {
     acao = credito
-      ? `<div class="trc-dica">${t.credito_lancado_em ? 'crédito de ' + reais(t.credito_valor || t.valor) + ' na conta' + (t.credito_ate ? ', até ' + new Date(t.credito_ate).toLocaleDateString('pt-BR') : '') : t.vale_codigo ? 'vale ' + esc(t.vale_codigo) + ' enviado' : 'concluída'}${!t.credito_lancado_em && t.vale_enviado_em ? ' em ' + new Date(t.vale_enviado_em).toLocaleDateString('pt-BR') : ''}</div>`
+      ? `<div class="trc-dica">${t.credito_lancado_em ? 'crédito de ' + reais(t.credito_valor || t.valor) + ' na conta' + (t.credito_ate ? ', até ' + new Date(t.credito_ate).toLocaleDateString('pt-BR') : '') : t.vale_codigo ? 'vale ' + esc(t.vale_codigo) + ' enviado' : 'concluída'}${!t.credito_lancado_em && t.vale_enviado_em ? ' em ' + new Date(t.vale_enviado_em).toLocaleDateString('pt-BR') : ''}</div>` + devCreditoInfoHtml(t)
       : `<div class="trc-dica">estorno feito${t.estorno_feito_em ? ' em ' + new Date(t.estorno_feito_em).toLocaleDateString('pt-BR') : ''}</div>`;
   }
   const vencCor = etapa === 'esperando' ? (trcVencimento(t, Date.now(), 'estorno') || {}).cor : null;
@@ -2092,6 +2100,45 @@ function devCartaoHtml(t0, etapa) {
     ${unicos(x => x.motivo).map(m => `<div class="trc-dica" title="${esc(m)}">${esc(String(m).slice(0, 70))}</div>`).join('')}
     <div class="trc-acao">${acao}</div>
   </div>`;
+}
+// 11/11/2026 (Bárbara: "no card precisa ter se a cliente recebeu a notificação... se o crédito já foi
+// usado"). E-mail: a Shopify manda quando o crédito é lançado (notify). WhatsApp: credito_whatsapp_em
+// quando saiu pelo sistema, vale_enviado_em quando a equipe marcou "enviado". Uso: /api/credito-uso.
+window._creditoUso = window._creditoUso || {};
+let _creditoUsoEm = 0, _creditoUsoCarregando = false;
+function devCreditoUsoTexto(t) {
+  if (!t.credito_lancado_em) return '';
+  const u = window._creditoUso[revNumeroPedido('estorno', t)];
+  const reais = v => 'R$ ' + (Number(v) || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 });
+  if (u === undefined) return 'conferindo se ela já usou o crédito...';
+  if (u === null) return 'não achei a conta de crédito dela na Shopify';
+  if (u.usado > 0) return `já usou ${reais(u.usado)} do crédito${u.ultimo_uso ? ' (última compra em ' + new Date(u.ultimo_uso).toLocaleDateString('pt-BR') + ')' : ''}, sobra ${reais(u.saldo)}`;
+  if (u.expirado > 0 && !(u.saldo > 0)) return `o crédito venceu sem uso (${reais(u.expirado)})`;
+  return `ainda não usou o crédito, ${reais(u.saldo)} na conta`;
+}
+function devCreditoInfoHtml(t) {
+  if (!t.credito_lancado_em) return '';
+  const dia = v => new Date(v).toLocaleDateString('pt-BR');
+  const zap = t.credito_whatsapp_em || (!t.credito_msg && t.vale_enviado_em);
+  const usou = window._creditoUso[revNumeroPedido('estorno', t)];
+  return `<div class="trc-dica"><i class="ti ti-mail"></i> e-mail da Shopify com o crédito em ${dia(t.credito_lancado_em)}</div>`
+    + (zap ? `<div class="trc-dica"><i class="ti ti-brand-whatsapp"></i> aviso do crédito no WhatsApp em ${dia(zap)}${t.credito_whatsapp_em ? '' : ' (marcado pela equipe)'}</div>`
+      : `<div class="trc-aviso" style="color:#b45309"><i class="ti ti-brand-whatsapp"></i> o aviso do crédito ainda não foi no WhatsApp</div>`)
+    + `<div class="trc-dica" style="${usou && usou.usado > 0 ? 'color:#3aa76d;font-weight:600' : ''}"><i class="ti ti-wallet"></i> ${devCreditoUsoTexto(t)}</div>`;
+}
+async function devCarregarUso(forcar) {
+  if (_creditoUsoCarregando || (!forcar && Date.now() - _creditoUsoEm < 5 * 60000)) return;
+  const pedidos = [...new Set(estGetConfig().itens.filter(t => t.credito_lancado_em).map(t => revNumeroPedido('estorno', t)).filter(Boolean))];
+  if (!pedidos.length) return;
+  _creditoUsoCarregando = true; _creditoUsoEm = Date.now();
+  try {
+    for (let i = 0; i < pedidos.length; i += 50) {
+      const r = await fetch('/api/credito-uso', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pedidos: pedidos.slice(i, i + 50) }) });
+      const j = await r.json();
+      if (r.ok && j.uso) Object.assign(window._creditoUso, j.uso);
+    }
+  } catch (e) {} finally { _creditoUsoCarregando = false; }
+  if (_trcSecao === 'dev') devRender();
 }
 function devRender() {
   const board = document.getElementById('dev-board');
@@ -2108,6 +2155,7 @@ function devRender() {
     </div>`;
   }).join('');
   devRenderArquivadas();
+  devCarregarUso();
   const abertas = itens.filter(x => !estConcluida(x.t));
   const pend = abertas.filter(x => x.etapa === 'chegou_dinheiro');
   const nGrupos = lista => new Set(lista.map(x => devGrupoChave(x.t, x.etapa))).size, nPend = nGrupos(pend);
@@ -2139,7 +2187,7 @@ function devRenderArquivadas() {
   box.style.display = arq.length ? '' : 'none';
   box.innerHTML = `<summary><i class="ti ti-archive"></i> concluídas · ${arq.length}</summary>` + arq.map(t => `<div class="dev-arq-linha">
       <div><b>${esc(t.cliente) || '(sem nome)'}</b> · ${esc(revNumeroPedido('estorno', t))} · ${valeEhCredito(t) ? 'crédito' : 'dinheiro'} R$ ${(Number(t.credito_valor || t.valor) || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-        <div class="trc-dica">${esc(como(t))}</div></div>
+        <div class="trc-dica">${esc(como(t))}</div>${t.credito_lancado_em ? `<div class="trc-dica"><i class="ti ti-wallet"></i> ${esc(devCreditoUsoTexto(t))}</div>` : ''}</div>
       <button class="trc-btn trc-btn-sec" onclick="devReabrir('${t.id}')">reabrir</button>
     </div>`).join('');
   box.open = aberto;
@@ -3754,6 +3802,7 @@ Vai entrar ${reais(total)} de saldo na conta de ${t.cliente || 'a cliente'}, vá
     const agora = new Date().toISOString();
     for (const x0 of ts) valeAlterar(x0.id, x => {
       Object.assign(x, { credito_lancado_em: x.credito_lancado_em || agora, credito_valor: ts.length > 1 ? x.valor : (j.valor || x.valor), credito_ate: j.ate || x.credito_ate || null, conferido_em: x.conferido_em || agora });
+      if (j.whatsapp && j.whatsapp.enviado) x.credito_whatsapp_em = agora;
       if (j.ja_existia || (j.whatsapp && j.whatsapp.enviado)) { delete x.credito_msg; x.vale_enviado_em = x.vale_enviado_em || agora; x.etapa = 'concluido'; x.etapa_em = agora; }
       else x.credito_msg = j.mensagem; // WhatsApp fora das 24 h: a Marcelly copia e manda
     });
@@ -3775,6 +3824,8 @@ async function valeCreditoAviso(ids, btn) {
     const j = await r.json();
     if (!r.ok || !j.ok) throw new Error(j.erro || 'HTTP ' + r.status);
     if (!(j.whatsapp && j.whatsapp.enviado)) throw new Error(j.whatsapp && j.whatsapp.motivo === 'fora_da_janela' ? 'o modelo do crédito ainda não foi aprovado pela Meta, copie a mensagem' : 'a Meta recusou, copie a mensagem');
+    const quando = new Date().toISOString();
+    for (const x0 of ts) valeAlterar(x0.id, x => { x.credito_whatsapp_em = quando; });
     valeEnviado(ids);
   } catch (e) {
     alert('O aviso não saiu: ' + e.message);
