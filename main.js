@@ -1877,6 +1877,8 @@ function trcAvisoInfo(t, lista = 'retorno') {
 function trcAvisoHtml(t, lista = 'retorno') {
   const r = trcAvisoInfo(t, lista);
   if (!r) return '';
+  // etiqueta comum (11/11/2026): o robô não manda, a equipe baixa o PDF e manda no chat da cliente
+  if (r.comum) return `<div class="trc-dica"><i class="ti ti-file-type-pdf"></i> etiqueta comum: o PDF vai pela equipe no chat da cliente</div>`;
   if (r.whatsapp_em) return `<div class="trc-dica"><i class="ti ti-brand-whatsapp"></i> código enviado no WhatsApp em ${new Date(r.whatsapp_em).toLocaleDateString('pt-BR')}</div>`;
   if (r.whatsapp_texto) return `<div class="trc-aviso" style="color:#b45309"><i class="ti ti-brand-whatsapp"></i> ${r.whatsapp_motivo === 'fora_da_janela' ? 'cliente fora das 24 h do WhatsApp, o sistema tenta de novo de hora em hora' : 'o WhatsApp não saiu'}</div>`
     + `<button class="trc-btn trc-btn-sec" onclick="trcCopiarAviso('${t.id}', this, '${lista}')"><i class="ti ti-copy"></i> copiar mensagem</button>`;
