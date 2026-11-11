@@ -2029,9 +2029,17 @@ function devEtapa(t) {
 function devNoQuadro(t) {
   return !t.arquivada && !estConcluida(t);
 }
-function devCartaoHtml(t, etapa) {
+// 11/11/2026: igual às trocas, as peças da mesma solicitação na mesma etapa viram um cartão só; no
+// crédito, um saldo só com a soma (valeCredito) e um aviso só para a cliente.
+function devGrupoChave(t, etapa) {
+  return [trcGrupoChave(t), valeEhCredito(t) ? 'credito' : 'dinheiro', etapa, valeEhCredito(t) ? valeEtapa(t) : ''].join('|');
+}
+function devCartaoHtml(t0, etapa) {
   const esc = v => String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
-  const dias = estDiasNaFila(t);
+  const ts = Array.isArray(t0) ? t0 : [t0], t = ts[0], ids = ts.map(x => x.id).join(','), varias = ts.length > 1;
+  const unicos = f => [...new Set(ts.map(f).filter(Boolean))];
+  const total = Math.round(ts.reduce((s, x) => s + (Number(x.valor) || 0), 0) * 100) / 100;
+  const dias = Math.max(...ts.map(estDiasNaFila));
   const bucket = retBucket(dias);
   const fechada = estConcluida(t);
   const credito = valeEhCredito(t);
@@ -2039,35 +2047,35 @@ function devCartaoHtml(t, etapa) {
   const selo = (!fechada && dias >= 2) ? `<span class="trc-dias" style="background:${bucket.bar}">${dias}d</span>` : '';
   const st = revStatus('estorno', t);
   const btn = (fn, ico, txt) => `<button class="trc-btn" onclick="${fn}"><i class="ti ${ico}"></i> ${txt}</button>`;
-  const inp = (ph) => `<input class="trc-inp" placeholder="${ph}" onchange="devCodigo('${t.id}', this.value)">`;
+  const inp = (ph) => `<input class="trc-inp" placeholder="${ph}" onchange="devCodigo('${ids}', this.value)">`;
   const pedido = revNumeroPedido('estorno', t);
   let acao = '';
   if (etapa === 'pedido') {
     acao = (st.txt ? `<div class="trc-aviso" style="color:${st.cor || 'var(--text-ter)'}">${esc(st.txt)}</div>` : '')
-      + (pedido ? btn(`revPedir('estorno','${t.id}')`, 'ti-truck-return', 'pedir reversa') : '<div class="trc-aviso">sem número de pedido</div>')
+      + (pedido ? btn(`devPedirReversa('${ids}')`, 'ti-truck-return', 'pedir reversa') : '<div class="trc-aviso">sem número de pedido</div>')
       + inp('ou cole o código da reversa')
-      + `<button class="trc-btn trc-btn-sec" onclick="valeChegou('${t.id}')"><i class="ti ti-package-import"></i> chegou</button>`;
+      + `<button class="trc-btn trc-btn-sec" onclick="valeChegou('${ids}')"><i class="ti ti-package-import"></i> ${varias ? 'chegou tudo' : 'chegou'}</button>`;
   } else if (etapa === 'pagar') {
     acao = `<div class="trc-aviso" style="color:${st.cor || 'var(--text-ter)'}">${esc(st.txt)}</div>`
       + `<a class="trc-link" href="https://painel.frenet.com.br/shoppingcart/index" target="_blank" rel="noopener"><i class="ti ti-external-link"></i> abrir carrinho da Frenet</a>`
       + `<div class="trc-dica">depois de pago, o código aparece aqui sozinho</div>`;
   } else if (etapa === 'esperando') {
     const rs = trcRastreio(t, 'estorno'), venc = trcVencimento(t, Date.now(), 'estorno');
-    acao = `<div class="trc-cod">reversa <b>${esc(t.codigo_devolucao)}</b></div>`
+    acao = `<div class="trc-cod">reversa <b>${unicos(x => x.codigo_devolucao).map(esc).join(', ')}</b></div>`
       + (rs && rs.postado ? `<div class="trc-aviso" style="color:#5a3e9e"><i class="ti ti-truck"></i> postada, a caminho${rs.ocorrencia ? ' · ' + esc(rs.ocorrencia) : ''}</div>` : '')
       + (venc ? `<div class="trc-aviso" style="color:${venc.cor}"><i class="ti ti-clock-exclamation"></i> ${esc(venc.txt)}</div>` : '')
       + trcAvisoHtml(t, 'estorno')
-      + btn(`valeChegou('${t.id}')`, 'ti-package-import', 'chegou');
+      + btn(`valeChegou('${ids}')`, 'ti-package-import', varias ? 'chegou tudo' : 'chegou');
   } else if (etapa === 'chegou_credito' || etapa === 'chegou_dinheiro') {
     const quando = t.chegou_em ? new Date(t.chegou_em).toLocaleDateString('pt-BR') : '';
     acao = t.chegada_por_rastreio
       ? `<div class="trc-aviso" style="color:#c99a3c"><i class="ti ti-package"></i> entregue pelos Correios em ${esc(quando)}, abra e confira</div>`
       : `<div class="trc-cod">chegou ${esc(quando)}</div>`;
     if (credito) {
-      acao += `<div style="display:flex;gap:4px;flex-wrap:wrap">${valeAcaoHtml(t)}</div>`;
+      acao += `<div style="display:flex;gap:4px;flex-wrap:wrap">${valeAcaoHtml(t, ids, total)}</div>`;
     } else {
-      acao += `<div class="trc-aviso" style="color:#b45309"><i class="ti ti-cash"></i> estorno de ${reais(t.valor)} pendente com a Bárbara</div>`
-        + btn(`devEstornoFeito('${t.id}')`, 'ti-check', 'estorno feito');
+      acao += `<div class="trc-aviso" style="color:#b45309"><i class="ti ti-cash"></i> estorno de ${reais(total)} pendente com a Bárbara</div>`
+        + btn(`devEstornoFeito('${ids}')`, 'ti-check', 'estorno feito');
     }
   } else {
     acao = credito
@@ -2076,10 +2084,12 @@ function devCartaoHtml(t, etapa) {
   }
   const vencCor = etapa === 'esperando' ? (trcVencimento(t, Date.now(), 'estorno') || {}).cor : null;
   return `<div class="trc-card${fechada ? ' trc-fechada' : ''}" style="border-left-color:${vencCor || bucket.bar}${vencCor ? ';background:' + (vencCor === '#dc2626' ? 'rgba(220,38,38,.07)' : 'rgba(224,137,43,.09)') : ''}">
-    <div class="trc-topo"><b title="${esc(t.cliente)}">${esc(t.cliente) || '(sem nome)'}</b>${selo}<button class="trc-x" title="excluir esta devolução" onclick="estDel('${t.id}')">×</button></div>
-    <div class="trc-ped">${esc(pedido)}${pedido ? ' · ' : ''}<span class="trc-tag" style="${credito ? '' : 'color:#b45309;background:rgba(224,137,43,.12)'}">${credito ? 'crédito' : 'dinheiro'}</span> · <b>${reais(t.valor)}</b>${t.portal_id ? ' · <span class="trc-tag">portal</span>' : ''}</div>
-    <div class="trc-prod" title="${esc(t.pecas)}">${esc(t.pecas)}</div>
-    ${t.motivo ? `<div class="trc-dica" title="${esc(t.motivo)}">${esc(String(t.motivo).slice(0, 70))}</div>` : ''}
+    <div class="trc-topo"><b title="${esc(t.cliente)}">${esc(t.cliente) || '(sem nome)'}</b>${selo}<button class="trc-x" title="${varias ? 'excluir as ' + ts.length + ' peças desta devolução' : 'excluir esta devolução'}" onclick="devExcluir('${ids}')">×</button></div>
+    <div class="trc-ped">${esc(pedido)}${pedido ? ' · ' : ''}<span class="trc-tag" style="${credito ? '' : 'color:#b45309;background:rgba(224,137,43,.12)'}">${credito ? 'crédito' : 'dinheiro'}</span> · <b>${reais(total)}</b>${varias ? ` · <b>${ts.length} peças</b>` : ''}${t.portal_id ? ' · <span class="trc-tag">portal</span>' : ''}</div>
+    ${varias
+      ? `<div class="trc-prods">${ts.map(x => `<div class="trc-prod trc-prod-linha" title="${esc(x.pecas)}">${esc(x.pecas)} · ${reais(x.valor)}<button class="trc-x" title="tirar só esta peça" onclick="estDel('${x.id}')">×</button></div>`).join('')}</div>`
+      : `<div class="trc-prod" title="${esc(t.pecas)}">${esc(t.pecas)}</div>`}
+    ${unicos(x => x.motivo).map(m => `<div class="trc-dica" title="${esc(m)}">${esc(String(m).slice(0, 70))}</div>`).join('')}
     <div class="trc-acao">${acao}</div>
   </div>`;
 }
@@ -2089,23 +2099,32 @@ function devRender() {
   const itens = estGetConfig().itens.filter(devNoQuadro).map(t => ({ t, etapa: devEtapa(t), dias: estDiasNaFila(t) }));
   board.innerHTML = DEV_ETAPAS.map(([k, rotulo, passo, cor]) => {
     const da = itens.filter(x => x.etapa === k).sort((a, b) => estConcluida(a.t) - estConcluida(b.t) || b.dias - a.dias);
+    const grupos = new Map();
+    for (const x of da) { const g = devGrupoChave(x.t, k); if (!grupos.has(g)) grupos.set(g, []); grupos.get(g).push(x.t); }
     return `<div class="trc-col">
-      <div class="trc-col-topo" style="border-top-color:${cor}"><span>${rotulo}</span><b>${da.length}</b></div>
+      <div class="trc-col-topo" style="border-top-color:${cor}"><span>${rotulo}</span><b>${grupos.size}</b></div>
       <div class="trc-col-passo">${passo}</div>
-      ${da.map(x => devCartaoHtml(x.t, k)).join('') || '<div class="trc-vazio">nada aqui</div>'}
+      ${[...grupos.values()].map(ts => devCartaoHtml(ts, k)).join('') || '<div class="trc-vazio">nada aqui</div>'}
     </div>`;
   }).join('');
   devRenderArquivadas();
   const abertas = itens.filter(x => !estConcluida(x.t));
   const pend = abertas.filter(x => x.etapa === 'chegou_dinheiro');
+  const nGrupos = lista => new Set(lista.map(x => devGrupoChave(x.t, x.etapa))).size, nPend = nGrupos(pend);
   const el = document.getElementById('dev-resumo');
-  if (el) el.textContent = `${abertas.length} em aberto` + (pend.length ? ` · ${pend.length} estorno${pend.length > 1 ? 's' : ''} pendente${pend.length > 1 ? 's' : ''} com a Bárbara (${pend.reduce((s, x) => s + (Number(x.t.valor) || 0), 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })})` : '');
+  if (el) el.textContent = `${nGrupos(abertas)} em aberto` + (nPend ? ` · ${nPend} estorno${nPend > 1 ? 's' : ''} pendente${nPend > 1 ? 's' : ''} com a Bárbara (${pend.reduce((s, x) => s + (Number(x.t.valor) || 0), 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })})` : '');
 }
-function devCodigo(id, valor) {
+function devCodigo(ids, valor) {
   const v = String(valor || '').trim();
   if (!v) return;
-  estEdit(id, 'codigo_devolucao', v);
+  valeIds(ids).forEach(id => estEdit(id, 'codigo_devolucao', v));
   atdSyncViews();
+}
+async function devPedirReversa(ids) { for (const id of valeIds(ids)) await revPedir('estorno', id); }
+function devExcluir(ids) {
+  const lista = valeIds(ids);
+  if (!confirm(lista.length > 1 ? `Excluir as ${lista.length} peças desta devolução?` : 'Excluir esse registro de devolução?')) return;
+  lista.forEach(id => estDel(id, true));
 }
 function devRenderArquivadas() {
   const box = document.getElementById('dev-arquivadas');
@@ -2129,10 +2148,12 @@ function devReabrir(id) {
   if (!confirm('Reabrir esta devolução e voltar com ela para o quadro?')) return;
   valeAlterar(id, x => { delete x.arquivada; delete x.motivo_fechamento; delete x.status; delete x.etapa; delete x.estorno_feito_em; });
 }
-function devEstornoFeito(id) {
-  const t = estGetConfig().itens.find(x => x.id === id); if (!t) return;
-  if (!confirm(`Confirma que o estorno de ${(Number(t.valor) || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} para ${t.cliente || 'a cliente'} já foi feito?`)) return;
-  valeAlterar(id, x => { x.estorno_feito_em = new Date().toISOString(); x.etapa = 'concluido'; x.etapa_em = x.estorno_feito_em; });
+function devEstornoFeito(ids) {
+  const ts = valeIds(ids).map(id => estGetConfig().itens.find(x => x.id === id)).filter(Boolean);
+  const t = ts[0]; if (!t) return;
+  const total = ts.reduce((s, x) => s + (Number(x.valor) || 0), 0);
+  if (!confirm(`Confirma que o estorno de ${total.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} para ${t.cliente || 'a cliente'} já foi feito?`)) return;
+  for (const x0 of ts) valeAlterar(x0.id, x => { x.estorno_feito_em = new Date().toISOString(); x.etapa = 'concluido'; x.etapa_em = x.estorno_feito_em; });
 }
 function abrirTrocas(item, secao) {
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
@@ -3526,8 +3547,8 @@ function estEdit(id, campo, val) {
     if (totalEl) totalEl.textContent = 'R$ ' + total.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   }
 }
-function estDel(id) {
-  if (!confirm('Excluir esse registro de devolução?')) return;
+function estDel(id, confirmado) {
+  if (!confirmado && !confirm('Excluir esse registro de devolução?')) return;
   const cfg = estGetConfig();
   cfg.itens = cfg.itens.filter(x => x.id !== id);
   // sem isto a mesclagem traria o item de volta pela nuvem
@@ -3668,16 +3689,16 @@ function valeEtapa(t) {
   if (t.chegou_em) return 'chegou';
   return 'esperando';
 }
-function valeAcaoHtml(t) {
+function valeAcaoHtml(t, ids = t.id, total = t.valor) {
   if (!valeEhCredito(t)) return '';
   const e = valeEtapa(t);
   const css = 'flex:0 0 auto;white-space:nowrap;font-size:11px;font-weight:600;background:#fff;border:1px solid var(--border);border-radius:5px;cursor:pointer;color:var(--gold-dark);padding:0 7px;height:28px';
-  const b = (fn, ico, txt, tit) => `<button onclick="${fn}('${t.id}', this)" title="${tit}" style="${css}"><i class="ti ${ico}"></i> ${txt}</button>`;
+  const b = (fn, ico, txt, tit) => `<button onclick="${fn}('${ids}', this)" title="${tit}" style="${css}"><i class="ti ${ico}"></i> ${txt}</button>`;
   const reais = v => 'R$ ' + (Number(v) || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 });
   if (e === 'esperando') return b('valeChegou', 'ti-package-import', 'chegou', 'A peça chegou aqui: libera o vale');
   // 22/10/2026: o crédito é SALDO na conta da cliente (não mais cupom de uso único). A equipe
   // confere a peça e um clique lança o saldo, cria o cadastro se preciso e avisa a cliente.
-  if (e === 'chegou') return b('valeCredito', 'ti-coin', 'conferido, lançar crédito', `Depois de conferir a peça: lança ${reais(t.valor)} de saldo na conta da cliente, válido por 90 dias`);
+  if (e === 'chegou') return b('valeCredito', 'ti-coin', 'conferido, lançar crédito', `Depois de conferir a peça: lança ${reais(total)} de saldo na conta da cliente, válido por 90 dias`);
   if (e === 'gerado') return (t.credito_lancado_em ? b('valeCreditoAviso', 'ti-brand-whatsapp', 'mandar', 'Manda o aviso do crédito pelo WhatsApp da loja (fora das 24 h vai pelo modelo aprovado)') : '')
     + b('valeCopiar', 'ti-copy', 'copiar msg', t.credito_lancado_em ? 'O WhatsApp não saiu sozinho: copia a mensagem do crédito para mandar' : `Copia a mensagem com o vale ${t.vale_codigo} para mandar no WhatsApp`)
     + b('valeEnviado', 'ti-check', 'enviado', 'Marcar que o vale já foi mandado para a cliente');
@@ -3693,8 +3714,10 @@ function valeAlterar(id, fn) {
   atdSyncViews();
   return t;
 }
-function valeChegou(id) {
-  valeAlterar(id, t => { t.chegou_em = new Date().toISOString(); if (!t.etapa || t.etapa === 'novo') { t.etapa = 'andamento'; t.etapa_em = t.chegou_em; } });
+// ids: uma peça ou as peças do card agrupado, separadas por vírgula (11/11/2026)
+const valeIds = ids => String(ids || '').split(',').filter(Boolean);
+function valeChegou(ids) {
+  for (const id of valeIds(ids)) valeAlterar(id, t => { t.chegou_em = new Date().toISOString(); if (!t.etapa || t.etapa === 'novo') { t.etapa = 'andamento'; t.etapa_em = t.chegou_em; } });
 }
 async function valeGerar(id, btn) {
   const t = estGetConfig().itens.find(x => x.id === id); if (!t) return;
@@ -3711,22 +3734,26 @@ async function valeGerar(id, btn) {
     atdSyncViews();
   }
 }
-async function valeCredito(id, btn) {
-  const t = estGetConfig().itens.find(x => x.id === id); if (!t) return;
+// Peças da mesma solicitação (card agrupado): UM crédito com a soma e um aviso só para a cliente
+async function valeCredito(ids, btn) {
+  const ts = valeIds(ids).map(id => estGetConfig().itens.find(x => x.id === id)).filter(Boolean);
+  const t = ts[0]; if (!t) return;
   const pedido = revNumeroPedido('estorno', t);
   if (!pedido) { alert('Esta linha não tem número de pedido: o crédito precisa do pedido para saber quem é a cliente.'); return; }
   const reais = v => 'R$ ' + (Number(v) || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 });
-  if (!confirm(`A peça já foi conferida (sem uso, sem lavagem, com etiqueta)?
+  const total = Math.round(ts.reduce((s, x) => s + (Number(x.valor) || 0), 0) * 100) / 100;
+  if (!confirm(`${ts.length > 1 ? 'As ' + ts.length + ' peças já foram conferidas' : 'A peça já foi conferida'} (sem uso, sem lavagem, com etiqueta)?
 
-Vai entrar ${reais(t.valor)} de saldo na conta de ${t.cliente || 'a cliente'}, válido por 90 dias.`)) return;
+Vai entrar ${reais(total)} de saldo na conta de ${t.cliente || 'a cliente'}, válido por 90 dias.`)) return;
   if (btn) { btn.disabled = true; btn.innerHTML = '<i class="ti ti-loader"></i> lançando...'; }
   try {
-    const r = await fetch('/api/vale-troca', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ acao: 'credito', pedido, item_id: id, valor: t.valor, cliente: t.cliente, pecas: t.pecas }) });
+    const r = await fetch('/api/vale-troca', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ acao: 'credito', pedido, item_id: t.id, valor: total, cliente: t.cliente, pecas: t.pecas,
+      itens: ts.map(x => ({ item_id: x.id, valor: x.valor, pecas: x.pecas })) }) });
     const j = await r.json();
     if (!r.ok || !j.ok) throw new Error(j.erro || 'HTTP ' + r.status);
     const agora = new Date().toISOString();
-    valeAlterar(id, x => {
-      Object.assign(x, { credito_lancado_em: x.credito_lancado_em || agora, credito_valor: j.valor || x.valor, credito_ate: j.ate || x.credito_ate || null, conferido_em: x.conferido_em || agora });
+    for (const x0 of ts) valeAlterar(x0.id, x => {
+      Object.assign(x, { credito_lancado_em: x.credito_lancado_em || agora, credito_valor: ts.length > 1 ? x.valor : (j.valor || x.valor), credito_ate: j.ate || x.credito_ate || null, conferido_em: x.conferido_em || agora });
       if (j.ja_existia || (j.whatsapp && j.whatsapp.enviado)) { delete x.credito_msg; x.vale_enviado_em = x.vale_enviado_em || agora; x.etapa = 'concluido'; x.etapa_em = agora; }
       else x.credito_msg = j.mensagem; // WhatsApp fora das 24 h: a Marcelly copia e manda
     });
@@ -3737,29 +3764,31 @@ Vai entrar ${reais(t.valor)} de saldo na conta de ${t.cliente || 'a cliente'}, v
 }
 // 11/11/2026: o crédito da Bianca #9065 ficou no "copiar msg" porque ela estava fora das 24 h. Com o
 // modelo credito_loja_conferido_v1 aprovado, o aviso sai por aqui sem lançar o crédito de novo.
-async function valeCreditoAviso(id, btn) {
-  const t = estGetConfig().itens.find(x => x.id === id); if (!t || !t.credito_lancado_em) return;
+async function valeCreditoAviso(ids, btn) {
+  const ts = valeIds(ids).map(id => estGetConfig().itens.find(x => x.id === id)).filter(x => x && x.credito_lancado_em);
+  const t = ts[0]; if (!t) return;
+  const total = Math.round(ts.reduce((s, x) => s + (Number(x.credito_valor || x.valor) || 0), 0) * 100) / 100;
   if (btn) { btn.disabled = true; btn.innerHTML = '<i class="ti ti-loader"></i> mandando...'; }
   try {
     const r = await fetch('/api/vale-troca', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ acao: 'credito_aviso', pedido: revNumeroPedido('estorno', t), item_id: id, valor: t.credito_valor || t.valor, ate: t.credito_ate, cliente: t.cliente, pecas: t.pecas }) });
+      body: JSON.stringify({ acao: 'credito_aviso', pedido: revNumeroPedido('estorno', t), item_id: t.id, valor: total, ate: t.credito_ate, cliente: t.cliente, pecas: ts.map(x => x.pecas).filter(Boolean).join('; ') }) });
     const j = await r.json();
     if (!r.ok || !j.ok) throw new Error(j.erro || 'HTTP ' + r.status);
     if (!(j.whatsapp && j.whatsapp.enviado)) throw new Error(j.whatsapp && j.whatsapp.motivo === 'fora_da_janela' ? 'o modelo do crédito ainda não foi aprovado pela Meta, copie a mensagem' : 'a Meta recusou, copie a mensagem');
-    valeEnviado(id);
+    valeEnviado(ids);
   } catch (e) {
     alert('O aviso não saiu: ' + e.message);
     atdSyncViews();
   }
 }
-async function valeCopiar(id, btn) {
-  const t0 = estGetConfig().itens.find(x => x.id === id); if (!t0) return;
+async function valeCopiar(ids, btn) {
+  const t0 = estGetConfig().itens.find(x => x.id === valeIds(ids)[0]); if (!t0) return;
   const t = { ...t0, vale_msg: t0.credito_msg || t0.vale_msg }; if (!t.vale_msg) return;
   try { await navigator.clipboard.writeText(t.vale_msg); if (btn) btn.innerHTML = '<i class="ti ti-check"></i> copiada'; }
   catch (e) { prompt('Copie a mensagem:', t.vale_msg); }
 }
-function valeEnviado(id) {
-  valeAlterar(id, t => { t.vale_enviado_em = new Date().toISOString(); delete t.credito_msg; t.etapa = 'concluido'; t.etapa_em = t.vale_enviado_em; });
+function valeEnviado(ids) {
+  for (const id of valeIds(ids)) valeAlterar(id, t => { t.vale_enviado_em = new Date().toISOString(); delete t.credito_msg; t.etapa = 'concluido'; t.etapa_em = t.vale_enviado_em; });
 }
 
 // ── Rastreio da devolução da troca (20/10/2026) ───────────────────────────────

@@ -15,6 +15,9 @@
  * falou com a loja nas últimas 24 h; fora delas vai pelo modelo credito_loja_conferido_v1 (11/11/2026)
  * e, se o modelo não estiver aprovado, a mensagem volta pronta para a Marcelly.
  *
+ * Várias peças da mesma solicitação (11/11/2026, um card só no quadro): manda também
+ * itens: [{ item_id, valor, pecas }] e sai UM crédito com a soma, uma tag por peça e um aviso só.
+ *
  * POST { acao: 'credito_aviso', pedido, item_id, valor, ate, cliente, pecas }: manda de novo só o aviso
  * de um crédito JÁ lançado (o card que ficou no "copiar msg"). Não lança nada.
  */
@@ -102,9 +105,11 @@ async function lancarCredito(env, gql, b, numero) {
   try {
     const o = ((await gql(Q_PEDIDO_CREDITO, { q: `name:#${numero}` })).orders.nodes || [])[0];
     if (!o || o.name !== '#' + numero) return json({ erro: `pedido #${numero} não encontrado na Shopify` }, 404);
-    const tag = tagCredito(b.item_id);
-    if ((o.tags || []).includes(tag)) return json({ ok: true, ja_existia: true, erro_aviso: 'O crédito desta peça já foi lançado antes.' });
-    const v = validarValor(b.valor, o.currentTotalPriceSet?.shopMoney?.amount);
+    const itens = Array.isArray(b.itens) && b.itens.length ? b.itens : [{ item_id: b.item_id, valor: b.valor, pecas: b.pecas }];
+    const faltam = itens.filter(i => i && i.item_id && !(o.tags || []).includes(tagCredito(i.item_id)));
+    if (!faltam.length) return json({ ok: true, ja_existia: true, erro_aviso: 'O crédito desta peça já foi lançado antes.' });
+    const soma = faltam.reduce((s, i) => s + (Number(i.valor) || 0), 0);
+    const v = validarValor(soma, o.currentTotalPriceSet?.shopMoney?.amount);
     if (v.erro) return json({ erro: v.erro }, 422);
     const nome = b.cliente || (o.shippingAddress && o.shippingAddress.name) || '';
 
@@ -123,11 +128,12 @@ async function lancarCredito(env, gql, b, numero) {
     const ate = validadeCredito();
     const r = (await gql(M_CREDITO, { id: clienteId, c: { creditAmount: { amount: String(v.valor), currencyCode: 'BRL' }, expiresAt: ate.toISOString(), notify: true } })).storeCreditAccountCredit;
     if (r.userErrors && r.userErrors.length) return json({ erro: 'Shopify recusou o crédito: ' + r.userErrors.map(e => e.message).join('; ') }, 400);
-    await gql(M_TAG, { id: o.id, tags: [tag] }).catch(() => {});
+    await gql(M_TAG, { id: o.id, tags: faltam.map(i => tagCredito(i.item_id)) }).catch(() => {});
     const saldo = Number(r.storeCreditAccountTransaction?.account?.balance?.amount) || null;
     const mensagem = mensagemCredito({ nome, pedido: o.name, valor: v.valor, ate });
-    const whatsapp = await avisarNaConversa(env, { tel: o.shippingAddress?.phone || o.phone, mensagem, msgId: 'credito_' + String(b.item_id).replace(/[^\w:-]/g, ''), pedido: o.name, valor: v.valor, pecas: String(b.pecas || '').slice(0, 300), nome, ate });
-    return json({ ok: true, valor: v.valor, ate: ate.toISOString(), saldo, cadastro_criado: cadastroCriado, mensagem, whatsapp });
+    const pecas = faltam.map(i => i.pecas).filter(Boolean).join('; ');
+    const whatsapp = await avisarNaConversa(env, { tel: o.shippingAddress?.phone || o.phone, mensagem, msgId: 'credito_' + String(faltam[0].item_id).replace(/[^\w:-]/g, ''), pedido: o.name, valor: v.valor, pecas: pecas.slice(0, 300), nome, ate });
+    return json({ ok: true, lancados: faltam.map(i => i.item_id), valor: v.valor, ate: ate.toISOString(), saldo, cadastro_criado: cadastroCriado, mensagem, whatsapp });
   } catch (e) {
     return json({ erro: e.message }, 502);
   }
