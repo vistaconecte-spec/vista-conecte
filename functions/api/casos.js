@@ -20,7 +20,7 @@
 import {
   soLeitura, MODELO, DOC_LOG, TEMPLATE_CONTINUIDADE, TEMPLATE_ALERTA, CATEGORIAS_DINHEIRO,
   SISTEMA, FERRAMENTAS, FERRAMENTAS_SERVIDOR, problemasDoTexto, prometeDinheiro, janelaAberta, revisarResposta,
-  semResposta, promessasDaEquipe, pagoPorItem, numerosDePedido, pedidoEhDaCliente, emailsDoTexto, devolucoesDoPainel, prazoDoPedido, logVazio, podeFechar, podeFecharPelaConversa, casoDeDinheiro, semEscapeUnicode, aprovacaoLiberada, novoId,
+  semResposta, promessasDaEquipe, pagoPorItem, numerosDePedido, pedidoEhDaCliente, emailsDoTexto, devolucoesDoPainel, codigosNaConversa, reversasDoPedido, prazoDoPedido, logVazio, podeFechar, podeFecharPelaConversa, casoDeDinheiro, semEscapeUnicode, aprovacaoLiberada, novoId,
   primeiroNome, finalTel, resumoDoCaso, conversaParaAssistente, hojeTexto, brt, metaParaMsg,
 } from '../_casos.js';
 import { variantes, mesclar, enviarTextoDaLoja, enviarArquivoDaLoja, enviarModeloDaLoja } from '../_whatsapp.js';
@@ -161,6 +161,18 @@ async function buscarPedido(env, numero, agora = Date.now(), ctx = null) {
   };
 }
 
+// Pedido de troca (R$ 0) lançado na Shopify para o pedido original: tag troca-de-N, que o portal e o painel põem.
+// Peça nova despachada sem esse pedido não baixa estoque nem aparece na produção (caso 727, calça reenviada à mão).
+async function pedidosDeTroca(env, numeros) {
+  const ns = numeros.map(n => String(n).replace(/\D/g, '')).filter(Boolean).slice(0, 3);
+  if (!ns.length) return [];
+  const q = '{' + ns.map(n => `t${n}: orders(first: 5, query: "tag:troca-de-${n}") { nodes { name createdAt displayFulfillmentStatus fulfillments(first: 2) { createdAt trackingInfo { number } } } }`).join(' ') + '}';
+  const r = await shop(env, 'graphql.json', { method: 'POST', body: JSON.stringify({ query: q }) });
+  const d = ((await r.json()) || {}).data || {};
+  return ns.map(n => ({ pedido_original: '#' + n, pedidos_de_troca: ((d['t' + n] || {}).nodes || []).map(o => ({ numero: o.name, criado_em: o.createdAt,
+    envio: o.displayFulfillmentStatus, rastreio: ((((o.fulfillments || [])[0] || {}).trackingInfo || [])[0] || {}).number || null })) }));
+}
+
 // Os outros pedidos da cliente, achados pelo e-mail, em versão curta (sem transação, Mercado Pago nem nota).
 async function outrosPedidos(env, emails, jaTem) {
   const out = [];
@@ -245,9 +257,12 @@ async function abrirCaso(env, { caso_id, wa_id, pedido }, agora = Date.now()) {
   pedidos.forEach(p => { delete p._email; });
   const outros = await outrosPedidos(env, emails, new Set(pedidos.map(p => p.numero))).catch(() => []);
   const daCli = [...pedidos.filter(p => p.da_cliente).map(p => p.numero), ...outros.map(p => p.numero)];
-  const devolucoes = await sb(env, true).get('vc_modelos?id=in.(retorno,estorno)&select=id,dados')
-    .then(l => devolucoesDoPainel((l.find(x => x.id === 'retorno') || {}).dados, (l.find(x => x.id === 'estorno') || {}).dados, daCli))
-    .catch(() => null);
+  const listas = await sb(env, true).get('vc_modelos?id=in.(retorno,estorno,reversas-resultado,rastreio-trocas)&select=id,dados').catch(() => null);
+  const doc = id => ((listas || []).find(x => x.id === id) || {}).dados;
+  const devolucoes = listas ? devolucoesDoPainel(doc('retorno'), doc('estorno'), daCli) : null;
+  // Caso 727 (11/11/2026): a cliente já postou a peça? e a peça nova foi lançada na Shopify como pedido de troca?
+  const reversas = listas ? reversasDoPedido(doc('reversas-resultado'), doc('rastreio-trocas'), daCli, codigosNaConversa(msgs)) : null;
+  const trocasShopify = await pedidosDeTroca(env, pedidos.filter(p => p.da_cliente).map(p => p.numero)).catch(() => null);
   const log = await lerLog(env);
   const id = caso && caso.id;
   return {
@@ -262,6 +277,8 @@ async function abrirCaso(env, { caso_id, wa_id, pedido }, agora = Date.now()) {
     pedidos,
     outros_pedidos_da_cliente: outros,
     devolucoes_no_painel: devolucoes,
+    reversas_do_pedido: reversas,
+    pedidos_de_troca_na_shopify: trocasShopify,
     feito_pelo_painel: id ? log.acoes.filter(a => Number(a.caso_id) === Number(id)).map(a => ({ tipo: a.tipo, em: a.em, texto: String(a.texto || '').slice(0, 200) })) : [],
     aprovacoes: id ? log.aprovacoes.filter(a => Number(a.caso_id) === Number(id)).map(a => ({ categoria: a.categoria, valor: a.valor, status: a.status, nota: a.nota || null })) : [],
     pode_fechar: id ? podeFechar(id, log) : { ok: false, motivo: 'sem caso' },

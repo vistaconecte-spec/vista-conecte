@@ -239,6 +239,42 @@ export function devolucoesDoPainel(retorno, estorno, numeros) {
   return out;
 }
 
+// A peça voltou? (caso 727, 11/11/2026: a Bárbara quer que o Assistente veja se a cliente já postou a peça errada.)
+// O código da reversa vem de 'reversas-resultado' (gerado pelo robô) e o andamento de 'rastreio-trocas' (postado,
+// entregue na loja), pelo número do pedido ou pelo código. Código que só aparece na conversa entra também, marcado
+// como sem acompanhamento no painel.
+export function codigosNaConversa(msgs) {
+  const out = new Set();
+  for (const m of msgs || []) {
+    const t = String(m.texto || '');
+    for (const c of t.match(/\b[A-Z]{2}\d{9}BR\b/g) || []) out.add(c);
+    if (/c[óo]digo|postagem|etiqueta|reversa/i.test(t)) for (const c of t.match(/\b\d{10}\b/g) || []) out.add(c);
+  }
+  return [...out];
+}
+export function reversasDoPedido(resultado, rastreio, numeros, codigosConversa = []) {
+  const quer = new Set((numeros || []).map(n => String(n).replace(/\D/g, '')).filter(Boolean));
+  const ras = Object.entries((rastreio && rastreio.itens) || {});
+  const andamento = (chave, codigo) => {
+    const r = (rastreio && rastreio.itens && rastreio.itens[chave]) || (ras.find(([, v]) => codigo && v.codigo === codigo) || [])[1];
+    return r ? { postado: !!r.postado, postado_em: r.postado_visto_em || null, chegou_na_loja: !!r.entregue, chegou_em: r.entregue_em || null, codigo_vence_em: r.vence_em || null }
+      : { postado: null, chegou_na_loja: null, aviso: 'sem rastreio deste código no painel' };
+  };
+  const out = [], vistos = new Set();
+  for (const [chave, v] of Object.entries((resultado && resultado.itens) || {})) {
+    if (!quer.has(String(v.numero || '').replace(/\D/g, ''))) continue;
+    vistos.add(v.codigo);
+    out.push({ pedido: v.numero, codigo: v.codigo || null, status_do_codigo: v.status || null, servico: v.servico || null,
+      gerado_em: v.codigo_em || v.em || null, erro: v.erro || null, ...andamento(chave, v.codigo) });
+  }
+  for (const c of codigosConversa) {
+    if (vistos.has(c)) continue;
+    const r = ras.find(([, v]) => v.codigo === c);
+    out.push({ pedido: null, codigo: c, origem: 'citado na conversa', ...(r ? andamento(r[0], c) : { postado: null, chegou_na_loja: null, aviso: 'código citado na conversa, sem acompanhamento no painel' }) });
+  }
+  return out;
+}
+
 export function numerosDePedido(campoPedido, ...textos) {
   const achados = [];
   const por = (s, re) => { for (const m of String(s || '').matchAll(re)) if (!achados.includes(m[1])) achados.push(m[1]); };
@@ -416,6 +452,7 @@ Resposta à Marcelly
 - Caso aberto: leia o caso INTEIRO antes de responder, o resumo do CRM do começo ao fim (cada "+ [data]" é um acontecimento novo) e a conversa toda, do primeiro dia do caso até hoje. Quem abre o caso não acompanhou a história e precisa entender sem abrir a conversa (Bárbara, 11/11/2026: "abri esse caso e não entendi nada do contexto"). O status de cada pedido (enviado ou não, rastreio, etapa de cada peça) já aparece num cartão fixo da tela acima da sua resposta: NÃO escreva status, rastreio, data de etiqueta nem etapa de peça. Escreva três blocos, nesta ordem:
   - **Resumo do caso**: NUNCA mais de 4 itens, cada um com no máximo duas linhas; eventos do mesmo pedido vão juntos no item dele, em ordem de data. Comece dizendo quantos pedidos a cliente tem (pedidos com da_cliente mais outros_pedidos_da_cliente) e conte um item por pedido que tem pendência, com a data no começo: o que ela comprou ou pediu, o que a loja combinou, o que aconteceu e onde está hoje. Pedido dela sem pendência entra numa linha só. Pedido com de_outra_cliente não é dela: diga em uma linha que o número citado é de outra cliente e nunca proponha nada nele.
   - devolucoes_no_painel diz se a peça devolvida chegou na loja (chegou_em) e se já houve estorno ou crédito. Peça que chegou sem estorno nem crédito é reembolso pendente: diga desde quando e o valor somando o pago_por_item das peças que voltaram (valor pago, com desconto). Cartão marcado resolvido sem estorno nem crédito é erro, diga isso. Peça que ainda não chegou não é reembolso pendente: é devolução esperando a peça voltar.
+  - Troca, peça errada, defeito ou devolução: diga sempre as duas coisas (Bárbara, 11/11/2026, caso 727). (a) A cliente já postou a peça? Veja reversas_do_pedido (postado, chegou_na_loja). Sem nenhum código registrado, diga que o código da devolução não está no painel e se a cliente disse na conversa que postou. (b) A peça nova já foi lançada na Shopify? Veja pedidos_de_troca_na_shopify. Peça nova despachada sem pedido de troca na Shopify é erro: o estoque e a produção não ficam sabendo. Nesses dois buracos a próxima ação é registrar o que falta (pedir o código à expedição ou à cliente e pôr no cartão do quadro TROCAS; lançar o pedido de troca).
   - **O que deu errado**: uma ou duas linhas com a falha de verdade, a data e em que ponto ela aconteceu (atendimento da Vi, equipe, produção, expedição, transportadora, site, ou a própria cliente). Quando a Vi ou a equipe disse que fez algo (ajustei, corrigi, troquei, estornei, enviei) e os dados mostram que não aconteceu, esse é o erro: diga o que foi dito, quando, e o que aconteceu de verdade. Se nada deu errado e é só espera, diga isso. Sem culpar pessoa pelo nome.
   - **Próxima ação**: o que fazer agora com esta cliente, em no máximo 3 passos numerados ("1. "), uma frase cada, começando pelo verbo e dizendo quem faz (Marcelly, expedição, Bárbara). Se a cliente está esperando resposta, o primeiro passo é responder e a mensagem já vai pronta na ação.
   - Sem bloco "Atenção", sem explicação de regra e sem repetir o mesmo fato em dois blocos.

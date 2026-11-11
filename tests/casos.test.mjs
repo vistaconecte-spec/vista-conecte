@@ -357,6 +357,18 @@ ok('Abrir manda o caso para o chat', /function csAbrirCaso\(id\) \{[\s\S]{0,160}
 
 console.log('\nCaso aberto sempre diz se o pedido foi processado e a etapa da peça (Bárbara, 30/10/2026, caso 661)');
 ok('status vai num cartão fixo e a IA não repete', /cartão fixo da tela acima da sua resposta: NÃO escreva status/.test(C.SISTEMA), true);
+// 11/11/2026, caso 727: a cliente já postou a peça errada? a peça nova foi lançada na Shopify?
+{
+  const cods = C.codigosNaConversa([{ texto: 'O código de postagem é 4754440062' }, { texto: 'meu telefone 4899912345' }, { texto: 'rastreio AP619409544BR' }]);
+  ok('códigos da conversa: Correios e reversa, telefone fica de fora', cods, ['4754440062', 'AP619409544BR']);
+  const rev = C.reversasDoPedido(
+    { itens: { 'retorno:x': { numero: '#9123', codigo: '4754440062', status: 'codigo', codigo_em: '2026-10-20T19:59:42Z' }, 'retorno:y': { numero: '#1111', codigo: '1' } } },
+    { itens: { 'retorno:x': { codigo: '4754440062', postado: true, postado_visto_em: '2026-10-21T10:00:00Z', entregue: false } } },
+    ['#9123'], ['4754440062', 'AP619409544BR']);
+  ok('reversa do pedido com o andamento, código só da conversa marcado', rev.map(r => [r.codigo, r.postado, r.origem || 'painel']), [['4754440062', true, 'painel'], ['AP619409544BR', null, 'citado na conversa']]);
+  ok('prompt: troca diz se postou e se o pedido de troca foi lançado', /\(a\) A cliente já postou a peça\?/.test(C.SISTEMA) && /Peça nova despachada sem pedido de troca na Shopify é erro/.test(C.SISTEMA), true);
+  ok('abrir_caso lê reversas e pedidos de troca', /reversasDoPedido\(doc\('reversas-resultado'\), doc\('rastreio-trocas'\)/.test(apiTxt) && /tag:troca-de-\$\{n\}/.test(apiTxt) && /pedidos_de_troca_na_shopify: trocasShopify/.test(apiTxt), true);
+}
 // 11/11/2026, caso 708: pedido citado de outra cliente, os outros pedidos dela e a devolução que o painel já sabe
 {
   const josy = { email: 'cliente@exemplo.com', phone: '+5575988250018', customer: { first_name: 'Joseane' } };
@@ -371,7 +383,7 @@ ok('status vai num cartão fixo e a IA não repete', /cartão fixo da tela acima
   ok('devolução do painel: só os pedidos dela, com a chegada', dev.map(d => [d.lista, d.pedido, d.chegou_em || d.valor]), [['troca ou devolução', '#9037', '2026-10-22'], ['estorno ou crédito', '#9037', 100]]);
   ok('prompt: pedido de outra cliente e reembolso pendente pela devolução do painel', /de_outra_cliente não é dela: diga em uma linha/.test(C.SISTEMA) && /Peça que chegou sem estorno nem crédito é reembolso pendente/.test(C.SISTEMA), true);
   ok('prompt: promessa dita e não feita é o erro', /disse que fez algo \(ajustei, corrigi, troquei, estornei, enviei\)/.test(C.SISTEMA), true);
-  ok('abrir_caso confere a dona, busca os outros pedidos e lê retorno/estorno', /buscarPedido\(env, n, agora, ctx\)/.test(apiTxt) && /outrosPedidos\(env, emails/.test(apiTxt) && /vc_modelos\?id=in\.\(retorno,estorno\)/.test(apiTxt) && /delete p\._email/.test(apiTxt), true);
+  ok('abrir_caso confere a dona, busca os outros pedidos e lê retorno/estorno', /buscarPedido\(env, n, agora, ctx\)/.test(apiTxt) && /outrosPedidos\(env, emails/.test(apiTxt) && /vc_modelos\?id=in\.\(retorno,estorno,reversas-resultado,rastreio-trocas\)/.test(apiTxt) && /delete p\._email/.test(apiTxt), true);
 }
 // 11/11/2026 (caso 708 "não entendi nada do contexto"): resumo do caso inteiro, o erro e a próxima ação
 ok('caso aberto: Resumo do caso, O que deu errado e Próxima ação', /\*\*Resumo do caso\*\*/.test(C.SISTEMA) && /\*\*O que deu errado\*\*/.test(C.SISTEMA) && /\*\*Próxima ação\*\*: [^\n]*no máximo 3 passos/.test(C.SISTEMA), true);
