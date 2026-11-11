@@ -103,6 +103,7 @@ console.log('\n6) Crédito na loja como saldo (22/10/2026)');
   ok('explica como entrar na conta', [/ícone de pessoa/.test(m), /código que chega no seu e-mail/.test(m)], [true, true]);
   ok('sem travessão, sem dois-pontos', [/—/.test(m), /:/.test(m)], [false, false]);
   ok('nome do cadastro novo', C.nomeCadastro('Karina Lam Souza'), { firstName: 'Karina', lastName: 'Lam Souza' });
+  ok('campos do modelo do crédito (11/11)', C.camposModeloCredito({ nome: 'Bianca Miranda', pedido: '#9065', valor: 151.2, ate: '2027-02-09T17:06:07Z' }), ['Bianca', '#9065', '151,20', '09/02/2027']);
 
   const chamadas = [];
   let tags = [], cliente = null;
@@ -135,6 +136,11 @@ console.log('\n6) Crédito na loja como saldo (22/10/2026)');
   ok('valor acima do pago é recusado', r3.s, 422);
   const r4 = await chamar({ acao: 'credito', pedido: '#9185', item_id: 'outro', valor: 179.55 });
   ok('com cadastro: credita no cadastro do pedido', [r4.j.cadastro_criado, chamadas.includes('CREDITO gid://shopify/Customer/7 179.55 true')], [false, true]);
+  const nCred = chamadas.filter(c => c.startsWith('CREDITO')).length;
+  const r5 = await chamar({ acao: 'credito_aviso', pedido: '#9185', item_id: 'outro', valor: 179.55, ate: '2027-01-20T18:00:00Z', cliente: 'Karina Lam' });
+  ok('credito_aviso: só o aviso, sem lançar de novo', [r5.s, r5.j.ok, chamadas.filter(c => c.startsWith('CREDITO')).length], [200, true, nCred]);
+  const r6 = await chamar({ acao: 'credito_aviso', pedido: '#9185', item_id: 'nunca-lancado', valor: 179.55, ate: '2027-01-20T18:00:00Z' });
+  ok('credito_aviso de crédito que não existe é recusado', r6.s, 409);
 }
 {
   const main = readFileSync(join(raiz, 'main.js'), 'utf8');

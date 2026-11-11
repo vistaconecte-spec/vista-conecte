@@ -3630,7 +3630,8 @@ function valeAcaoHtml(t) {
   // 22/10/2026: o crédito é SALDO na conta da cliente (não mais cupom de uso único). A equipe
   // confere a peça e um clique lança o saldo, cria o cadastro se preciso e avisa a cliente.
   if (e === 'chegou') return b('valeCredito', 'ti-coin', 'conferido, lançar crédito', `Depois de conferir a peça: lança ${reais(t.valor)} de saldo na conta da cliente, válido por 90 dias`);
-  if (e === 'gerado') return b('valeCopiar', 'ti-copy', 'copiar msg', t.credito_lancado_em ? 'O WhatsApp não saiu sozinho: copia a mensagem do crédito para mandar' : `Copia a mensagem com o vale ${t.vale_codigo} para mandar no WhatsApp`)
+  if (e === 'gerado') return (t.credito_lancado_em ? b('valeCreditoAviso', 'ti-brand-whatsapp', 'mandar', 'Manda o aviso do crédito pelo WhatsApp da loja (fora das 24 h vai pelo modelo aprovado)') : '')
+    + b('valeCopiar', 'ti-copy', 'copiar msg', t.credito_lancado_em ? 'O WhatsApp não saiu sozinho: copia a mensagem do crédito para mandar' : `Copia a mensagem com o vale ${t.vale_codigo} para mandar no WhatsApp`)
     + b('valeEnviado', 'ti-check', 'enviado', 'Marcar que o vale já foi mandado para a cliente');
   const ate = t.vale_ate ? new Date(t.vale_ate).toLocaleDateString('pt-BR') : '';
   return `<span title="vale enviado em ${new Date(t.vale_enviado_em).toLocaleDateString('pt-BR')}, válido até ${ate}" style="flex:0 0 auto;font-size:11px;font-weight:600;color:#3aa76d;white-space:nowrap"><i class="ti ti-ticket"></i> ${t.vale_codigo}</span>`;
@@ -3683,6 +3684,23 @@ Vai entrar ${reais(t.valor)} de saldo na conta de ${t.cliente || 'a cliente'}, v
     });
   } catch (e) {
     alert('Não consegui lançar o crédito: ' + e.message);
+    atdSyncViews();
+  }
+}
+// 11/11/2026: o crédito da Bianca #9065 ficou no "copiar msg" porque ela estava fora das 24 h. Com o
+// modelo credito_loja_conferido_v1 aprovado, o aviso sai por aqui sem lançar o crédito de novo.
+async function valeCreditoAviso(id, btn) {
+  const t = estGetConfig().itens.find(x => x.id === id); if (!t || !t.credito_lancado_em) return;
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="ti ti-loader"></i> mandando...'; }
+  try {
+    const r = await fetch('/api/vale-troca', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ acao: 'credito_aviso', pedido: revNumeroPedido('estorno', t), item_id: id, valor: t.credito_valor || t.valor, ate: t.credito_ate, cliente: t.cliente, pecas: t.pecas }) });
+    const j = await r.json();
+    if (!r.ok || !j.ok) throw new Error(j.erro || 'HTTP ' + r.status);
+    if (!(j.whatsapp && j.whatsapp.enviado)) throw new Error(j.whatsapp && j.whatsapp.motivo === 'fora_da_janela' ? 'o modelo do crédito ainda não foi aprovado pela Meta, copie a mensagem' : 'a Meta recusou, copie a mensagem');
+    valeEnviado(id);
+  } catch (e) {
+    alert('O aviso não saiu: ' + e.message);
     atdSyncViews();
   }
 }

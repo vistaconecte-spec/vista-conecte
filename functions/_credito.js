@@ -34,6 +34,17 @@ export function mensagemCredito({ nome, pedido, valor, ate }) {
     `Depois é só escolher as peças, o saldo aparece no pagamento e dá pra usar em mais de uma compra até acabar.`;
 }
 
+// Fora das 24 h da conversa o WhatsApp só aceita modelo aprovado (11/11/2026: o da Bianca #9065 ficou
+// parado no "copiar msg"). Mesmo conteúdo da mensagem acima, no texto que a Meta aprovou.
+export const TEMPLATE_CREDITO = 'credito_loja_conferido_v1';
+// Variáveis do modelo, na ordem: primeiro nome, pedido, valor sem o "R$" (o modelo já tem), validade
+export function camposModeloCredito({ nome, pedido, valor, ate }) {
+  const primeiro = String(nome || '').trim().split(/\s+/)[0] || 'cliente';
+  const v = Number(valor).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const data = new Date(ate).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' });
+  return [primeiro, String(pedido), v, data];
+}
+
 // Nome do cadastro novo a partir do pedido (visitante): primeiro nome e o resto como sobrenome
 export function nomeCadastro(nome) {
   const partes = String(nome || '').trim().split(/\s+/).filter(Boolean);

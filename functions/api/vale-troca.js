@@ -12,12 +12,16 @@
  * em vez do cupom, lança SALDO no crédito na loja da cliente (functions/_credito.js). Cria o
  * cadastro se ela comprou como visitante, marca o pedido original com uma tag por item (dois
  * cliques = um crédito só), a Shopify manda o e-mail e o WhatsApp sai pela conversa se a cliente
- * falou com a loja nas últimas 24 h; senão a mensagem volta pronta para a Marcelly.
+ * falou com a loja nas últimas 24 h; fora delas vai pelo modelo credito_loja_conferido_v1 (11/11/2026)
+ * e, se o modelo não estiver aprovado, a mensagem volta pronta para a Marcelly.
+ *
+ * POST { acao: 'credito_aviso', pedido, item_id, valor, ate, cliente, pecas }: manda de novo só o aviso
+ * de um crédito JÁ lançado (o card que ficou no "copiar msg"). Não lança nada.
  */
 import { codigoVale, validarValor, mensagemVale, inputDesconto, dataVale } from '../_vale.js';
-import { tagCredito, validadeCredito, mensagemCredito, nomeCadastro } from '../_credito.js';
+import { tagCredito, validadeCredito, mensagemCredito, nomeCadastro, TEMPLATE_CREDITO, camposModeloCredito } from '../_credito.js';
 import { variantesWa, dentroDaJanela } from './troca-aviso.js';
-import { enviarTextoDaLoja } from '../_whatsapp.js';
+import { enviarTextoDaLoja, enviarModeloDaLoja } from '../_whatsapp.js';
 
 const SB_URL = 'https://hckzsblwyabmhzbjdjgx.supabase.co';
 const Q_PEDIDO_CREDITO = `query($q: String!) {
@@ -67,6 +71,7 @@ export async function onRequestPost({ env, request }) {
   };
 
   if (b.acao === 'credito') return lancarCredito(env, gql, b, numero);
+  if (b.acao === 'credito_aviso') return avisarCreditoLancado(env, gql, b, numero);
 
   try {
     const o = ((await gql(Q_PEDIDO, { q: `name:#${numero}` })).orders.nodes || [])[0];
@@ -121,18 +126,35 @@ async function lancarCredito(env, gql, b, numero) {
     await gql(M_TAG, { id: o.id, tags: [tag] }).catch(() => {});
     const saldo = Number(r.storeCreditAccountTransaction?.account?.balance?.amount) || null;
     const mensagem = mensagemCredito({ nome, pedido: o.name, valor: v.valor, ate });
-    const whatsapp = await avisarNaConversa(env, { tel: o.shippingAddress?.phone || o.phone, mensagem, msgId: 'credito_' + String(b.item_id).replace(/[^\w:-]/g, ''), pedido: o.name, valor: v.valor, pecas: String(b.pecas || '').slice(0, 300) });
+    const whatsapp = await avisarNaConversa(env, { tel: o.shippingAddress?.phone || o.phone, mensagem, msgId: 'credito_' + String(b.item_id).replace(/[^\w:-]/g, ''), pedido: o.name, valor: v.valor, pecas: String(b.pecas || '').slice(0, 300), nome, ate });
     return json({ ok: true, valor: v.valor, ate: ate.toISOString(), saldo, cadastro_criado: cadastroCriado, mensagem, whatsapp });
   } catch (e) {
     return json({ erro: e.message }, 502);
   }
 }
 
-// Só dentro das 24 h da conversa (texto livre); fora disso a mensagem volta para a Marcelly.
+async function avisarCreditoLancado(env, gql, b, numero) {
+  try {
+    const o = ((await gql(Q_PEDIDO_CREDITO, { q: `name:#${numero}` })).orders.nodes || [])[0];
+    if (!o || o.name !== '#' + numero) return json({ erro: `pedido #${numero} não encontrado na Shopify` }, 404);
+    if (!(o.tags || []).includes(tagCredito(b.item_id))) return json({ erro: 'O crédito desta peça ainda não foi lançado.' }, 409);
+    const valor = Number(b.valor), ate = b.ate ? new Date(b.ate) : null;
+    if (!(valor > 0) || !ate || isNaN(ate)) return json({ erro: 'informe valor e validade do crédito' }, 400);
+    const nome = b.cliente || (o.shippingAddress && o.shippingAddress.name) || '';
+    const mensagem = mensagemCredito({ nome, pedido: o.name, valor, ate });
+    const whatsapp = await avisarNaConversa(env, { tel: o.shippingAddress?.phone || o.phone, mensagem, msgId: 'credito_' + String(b.item_id).replace(/[^\w:-]/g, ''), pedido: o.name, valor, pecas: String(b.pecas || '').slice(0, 300), nome, ate });
+    return json({ ok: true, mensagem, whatsapp });
+  } catch (e) {
+    return json({ erro: e.message }, 502);
+  }
+}
+
+// Dentro das 24 h da conversa vai como texto livre; fora delas, pelo modelo aprovado na Meta. Sem
+// modelo aprovado a mensagem volta para a Marcelly.
 // A Shopify já manda o e-mail do crédito de qualquer jeito (notify: true).
 // pecas (29/10/2026): a Vi indicou à Larissa #8986 a mesma calça que ela tinha devolvido, porque o
 // histórico só dizia o número do pedido. Agora o registro interno diz qual peça voltou.
-async function avisarNaConversa(env, { tel, mensagem, msgId, pedido, valor, pecas }) {
+async function avisarNaConversa(env, { tel, mensagem, msgId, pedido, valor, pecas, nome, ate }) {
   if (!env.SUPABASE_SERVICE_ROLE_KEY || !(env.WA_TOKEN || env.META_ACCESS_TOKEN)) return { enviado: false, motivo: 'sem_configuracao' };
   const vars = variantesWa(tel);
   if (!vars.length) return { enviado: false, motivo: 'sem_telefone' };
@@ -140,16 +162,24 @@ async function avisarNaConversa(env, { tel, mensagem, msgId, pedido, valor, peca
   try {
     const ult = await (await fetch(`${SB_URL}/rest/v1/wati_ia_mensagens?wa_id=in.(${vars.join(',')})&role=eq.user&order=created_at.desc&limit=1&select=wa_id,created_at`, { headers: sbH })).json();
     const ultima = Array.isArray(ult) && ult[0];
-    if (!ultima || !dentroDaJanela(ultima.created_at)) return { enviado: false, motivo: 'fora_da_janela' };
-    // mensagem da loja pela Meta (26/10/2026; antes pelo Wati): não pausa a Vi
-    const s = await enviarTextoDaLoja(env, ultima.wa_id, mensagem);
-    if (s.erro) return { enviado: false, motivo: 'meta_recusou' };
+    const wa = (ultima && ultima.wa_id) || vars[0];
+    let via = 'conversa';
+    if (ultima && dentroDaJanela(ultima.created_at)) {
+      // mensagem da loja pela Meta (26/10/2026; antes pelo Wati): não pausa a Vi
+      const s = await enviarTextoDaLoja(env, wa, mensagem);
+      if (s.erro) return { enviado: false, motivo: 'meta_recusou' };
+    } else {
+      const s = await enviarModeloDaLoja(env, wa, TEMPLATE_CREDITO, camposModeloCredito({ nome, pedido, valor, ate }));
+      if (s.erro === 'modelo') return { enviado: false, motivo: 'fora_da_janela' };
+      if (s.erro) return { enviado: false, motivo: 'meta_recusou' };
+      mensagem = s.texto || mensagem; via = 'modelo';
+    }
     await fetch(`${SB_URL}/rest/v1/wati_ia_mensagens`, {
       method: 'POST', headers: { ...sbH, Prefer: 'return=minimal' },
-      body: JSON.stringify({ msg_id: msgId, wa_id: ultima.wa_id, role: 'assistant', texto: `${mensagem}
+      body: JSON.stringify({ msg_id: msgId, wa_id: wa, role: 'assistant', texto: `${mensagem}
 [contexto interno: crédito na loja de R$ ${valor} lançado na conta dela pelo pedido ${pedido}, depois que a peça chegou e foi conferida.${pecas ? ` Peça que voltou: ${pecas}. Se ela pedir outra parecida, não indique essa mesma peça.` : ''} Ele aparece no pagamento quando ela entra com o e-mail da compra.]` }),
     }).catch(() => {});
-    return { enviado: true };
+    return { enviado: true, via };
   } catch (e) {
     return { enviado: false, motivo: 'erro' };
   }
