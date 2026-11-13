@@ -546,6 +546,8 @@ export async function filaEquipe(env, agora = Date.now()) {
   for (const c of casos) {
     if (!c.wa_id || vistos.has(c.wa_id)) continue;
     vistos.add(c.wa_id);
+    // Caso com a Bárbara (estorno) não é da fila da equipe: aparece no Aguardando Bárbara (13/11/2026)
+    if (c.responsavel === 'Bárbara') continue;
     const e = esperaBruta(porWa[c.wa_id], agora);
     if (e) cand.push({ c, e });
   }
@@ -585,7 +587,18 @@ export async function filaEquipe(env, agora = Date.now()) {
       itens.push({ ...p, responsavel: 'Marcelly', desde_brt: brt(p.desde) });
   } catch (_) {}
   itens.sort((a, b) => b.horas - a.horas);
-  return { prazo_horas: PRAZO_RESPOSTA_H, itens, vencidos: itens.filter(i => i.vencido).length };
+  // Estornos que estão com a Bárbara: o que decidir vem da primeira linha "[dd/mm] Com a Bárbara ..." do resumo
+  let comBarbara = [];
+  try {
+    const cb = await db.get(`wati_sac_casos?status=eq.aberto&responsavel=eq.${encodeURIComponent('Bárbara')}&select=id,wa_id,nome,pedido,tipo,resumo,atualizado_at&order=atualizado_at.asc&limit=50`);
+    comBarbara = cb.map(c => {
+      const linhas = String(c.resumo || '').split(/\r?\n/);
+      const linha = linhas.find(l => /Com a Bárbara/i.test(l)) || linhas[0] || '';
+      return { caso_id: c.id, cliente: primeiroNome(c.nome), pedido: c.pedido || null, wa_id: c.wa_id,
+        decidir: linha.replace(/^\[[^\]]*\]\s*/, '').replace(/^Com a Bárbara[^:]*:\s*/i, '').slice(0, 220) || String(c.tipo || '').slice(0, 120) };
+    });
+  } catch (_) {}
+  return { prazo_horas: PRAZO_RESPOSTA_H, itens, vencidos: itens.filter(i => i.vencido).length, com_barbara: comBarbara };
 }
 const DIA = 86400000;
 // Uma conversa lida pela IA: a cliente ainda espera resposta ou ação da loja? (13/11/2026)

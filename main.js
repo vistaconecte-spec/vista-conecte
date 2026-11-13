@@ -2535,7 +2535,8 @@ function csRenderTopo() {
   if (btn) {
     const n = (e.aprovacoes_pendentes || 0), f = (e.aprovadas_a_fazer || 0);
     const atr = (_fila && _fila.vencidos) || 0; // fila da equipe: passou de 3 horas úteis sem resposta (13/11/2026)
-    btn.innerHTML = `<i class="ti ti-hourglass"></i> Aguardando Bárbara${n ? ` <b style="color:#dc2626">(${n})</b>` : ''}${f ? ` · ${f} aprovada${f > 1 ? 's' : ''} a fazer` : ''}${atr ? ` · <b style="color:#dc2626">${atr} sem resposta da equipe</b>` : ''}`;
+    const est = ((_fila && _fila.com_barbara) || []).length; // estornos no nome dela (13/11/2026)
+    btn.innerHTML = `<i class="ti ti-hourglass"></i> Aguardando Bárbara${n ? ` <b style="color:#dc2626">(${n})</b>` : ''}${est ? ` · <b style="color:#dc2626">${est} estorno${est > 1 ? 's' : ''}</b>` : ''}${f ? ` · ${f} aprovada${f > 1 ? 's' : ''} a fazer` : ''}${atr ? ` · ${atr} atrasado${atr > 1 ? 's' : ''} da equipe` : ''}`;
   }
   csRotuloAbertos(e.casos_abertos);
 }
@@ -3088,6 +3089,14 @@ async function csAbrirAprovacoes() {
     // Escalada da fila (13/11/2026): cliente sem resposta da equipe há mais de 3 horas úteis aparece aqui também
     await filaVerificar(true);
     const atrasados = ((_fila && _fila.itens) || []).filter(i => i.vencido);
+    // Estornos no nome dela (13/11/2026): primeiro, porque só ela resolve
+    const estornos = (_fila && _fila.com_barbara) || [];
+    const blocoEst = estornos.length ? `<div style="padding:10px 12px;border:1px solid #fecaca;border-radius:10px;margin-bottom:10px;font-size:12.5px;background:#fff">
+        <b style="color:#b91c1c">Estornos com você (${estornos.length})</b>
+        ${estornos.map(i => `<div style="display:flex;gap:8px;align-items:center;padding:5px 0;border-top:1px solid #fde2e2">
+          <span style="flex:1"><b>${csEsc(i.cliente)}</b>${i.pedido ? ' · #' + csEsc(String(i.pedido).replace('#', '')) : ''} · caso ${i.caso_id}<br><span style="color:var(--text-sec)">${csEsc(i.decidir || '')}</span></span>
+          <button class="btn-outline" style="font-size:11px;padding:3px 10px" onclick="csAbrirConversa('${String(i.wa_id).replace(/\D/g, '')}')">Abrir conversa</button></div>`).join('')}
+      </div>` : '';
     const blocoAtr = atrasados.length ? `<div style="padding:10px 12px;border:1px solid #fecaca;border-radius:10px;margin-bottom:10px;font-size:12.5px;background:rgba(254,226,226,.6)">
         <b style="color:#b91c1c">A equipe passou do prazo (${atrasados.length})</b>
         ${atrasados.map(i => i.tipo === 'conferir' ? `<div style="display:flex;gap:8px;align-items:center;padding:4px 0">
@@ -3096,9 +3105,9 @@ async function csAbrirAprovacoes() {
           <span style="flex:1">${csEsc(i.cliente)}${i.pedido ? ' · #' + csEsc(String(i.pedido).replace('#', '')) : ''} · caso ${i.caso_id} · ${filaHoras(i.horas)} úteis sem resposta · com ${csEsc(i.responsavel)}<br><span style="color:var(--text-sec)">"${csEsc(String(i.ultima || '').slice(0, 120))}"</span></span>
           <button class="btn-outline" style="font-size:11px;padding:3px 10px" onclick="csAbrirConversa('${String(i.wa_id).replace(/\D/g, '')}')">Abrir conversa</button></div>`).join('')}
       </div>` : '';
-    if (!lista.length) { box.innerHTML = blocoAtr || '<div style="font-size:12px;color:var(--text-ter)">Nada esperando a Bárbara.</div>'; return; }
+    if (!lista.length) { box.innerHTML = (blocoEst + blocoAtr) || '<div style="font-size:12px;color:var(--text-ter)">Nada esperando a Bárbara.</div>'; return; }
     const cor = { pendente: '#dc2626', aprovado: '#0891b2', recusado: 'var(--text-ter)', feito: '#16a34a' };
-    box.innerHTML = blocoAtr + lista.map(a => `
+    box.innerHTML = blocoEst + blocoAtr + lista.map(a => `
       <div style="padding:10px 12px;border:1px solid var(--border);border-radius:10px;margin-bottom:8px;font-size:12.5px;background:rgba(255,255,255,.6)">
         <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:baseline">
           <b>${csEsc(a.categoria)}${a.valor != null ? ' R$ ' + Number(a.valor).toFixed(2).replace('.', ',') : ''}</b>
