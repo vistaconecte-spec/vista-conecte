@@ -384,6 +384,13 @@ ok('status vai num cartão fixo e a IA não repete', /cartão fixo da tela acima
   ok('leitura da IA: JSON válido', C.lerJuizo('{"espera": true, "falta": "mandar a etiqueta da troca", "motivo": "a equipe prometeu e não mandou"}'), { espera: true, falta: 'mandar a etiqueta da troca', motivo: 'a equipe prometeu e não mandou' });
   ok('leitura da IA: resposta estranha não vale (fica na fila)', [C.lerJuizo('acho que sim'), C.lerJuizo('{"espera": "talvez"}')], [null, null]);
   ok('a instrução manda ler o contexto e, na dúvida, esperar', [/Leia a conversa inteira/.test(C.JUIZ_FILA), /Na dúvida, espera/.test(C.JUIZ_FILA), /—/.test(C.JUIZ_FILA)], [true, true, false]);
+  const fat = C.fatosDoSistema('9269', {
+    retorno: [{ id: 'p0', pedido: '9269', status: 'pendente', pedido_troca: '#9453' }, { id: 'x', pedido: '92690', status: 'pendente' }],
+    rastreio: { 'retorno:p0': { postado: true, postado_visto_em: '2026-11-06T19:51:01Z', entregue: false } },
+    reversas: { 'retorno:p0': { codigo: '4769744757', status: 'codigo', whatsapp_em: null } } });
+  ok('situação no sistema: troca com pedido de troca, código e devolução postada (Crischélida)', fat, ['Troca aberta com pedido de troca #9453, código de postagem 4769744757 ainda não enviado no WhatsApp, a cliente postou a devolução 06/11 e está a caminho.']);
+  ok('situação no sistema vai junto da conversa para a IA', /Situação no sistema agora: Troca aberta/.test(C.conversaParaJuiz(conv, { tipo: 'troca', pedido: '9269' }, fat)), true);
+  ok('a instrução manda usar a situação do sistema', /Situação no sistema/.test(C.JUIZ_FILA), true);
   ok('fila: sem leitura da IA a cliente fica (nunca some por engano)', /if \(j && !j\.espera\) continue;/.test(apiTxt), true);
   const conf = C.pecasParaConferir([
     { id: 'a', cliente: 'Cris Silva', pedido: '9126', status: 'pendente', data_chegada_reversa: '2026-11-12', pedido_troca: '#9411' },

@@ -354,14 +354,32 @@ export function esperaBruta(msgs, agora = Date.now()) {
 export const JUIZ_FILA = `Você lê a conversa de WhatsApp entre uma cliente da Vista Conecte (loja de roupas feitas sob encomenda) e o atendimento. VI é a assistente automática, EQUIPE são as pessoas da loja.
 Decida se, no fim da conversa, a cliente ainda espera alguma coisa da loja: resposta a uma pergunta, ou uma ação como envio, troca, etiqueta ou código de postagem, estorno, reembolso, correção de pedido, ou uma confirmação que foi prometida.
 Leia a conversa inteira. Agradecimento, "ok" ou emoji depois de uma promessa que ainda não foi cumprida continua sendo espera. Promessa da VI de que "a equipe vai ver" ou "o código chega por aqui" é espera até a coisa acontecer na conversa.
-Só responda que não espera quando o assunto foi resolvido de fato na própria conversa: a informação pedida foi dada, o que ela pediu foi feito, ou ela desistiu do pedido. Na dúvida, espera.
+Só responda que não espera quando o assunto foi resolvido de fato: a informação pedida foi dada, o que ela pediu foi feito, ou ela desistiu do pedido.
+Use também a "Situação no sistema", que é o estado real e vale mais que a conversa: se o código de postagem já foi enviado a ela, ou a devolução já foi postada e está a caminho, ou o pedido de troca já existe esperando a peça chegar, e ela não fez pergunta que ficou sem resposta, ela não espera nada da equipe agora, o sistema está cuidando. Se ela perguntou algo depois disso e ninguém respondeu, espera.
+Na dúvida, espera.
 Responda só com JSON, sem mais nada: {"espera": true ou false, "falta": "o que a loja ainda precisa fazer ou responder, em até 15 palavras, vazio se nada", "motivo": "por que, em até 20 palavras"}`;
-export function conversaParaJuiz(msgs, caso) {
+// O que o sistema sabe da troca/devolução do pedido (13/11/2026, Bárbara: a Crischélida já tinha postado a devolução e
+// estava na fila). Vai junto da conversa para a IA não cobrar da equipe o que está só esperando a cliente ou o Correio.
+export function fatosDoSistema(pedido, { retorno = [], estorno = [], rastreio = {}, reversas = {} } = {}) {
+  const n = String(pedido || '').replace(/\D/g, '');
+  if (!n) return [];
+  const dia = s => s ? new Date(s).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit' }) : '';
+  const out = [];
+  const daRev = id => { const r = reversas[id]; if (!r) return ''; return r.codigo ? `, código de postagem ${r.codigo}${r.whatsapp_em ? ' enviado no WhatsApp ' + dia(r.whatsapp_em) : ' ainda não enviado no WhatsApp'}` : r.status === 'aguardando' ? ', o robô está gerando o código (a transportadora ainda não liberou)' : r.status === 'carrinho' ? ', etiqueta montada, falta pagar' : ''; };
+  const daRast = id => { const t = rastreio[id]; if (!t) return ''; return t.entregue ? `, a devolução chegou na loja ${dia(t.entregue_em)}` : t.postado ? `, a cliente postou a devolução ${dia(t.postado_visto_em)} e está a caminho` : ', a devolução ainda não foi postada'; };
+  for (const t of retorno) if (t && String(t.pedido || '').replace(/\D/g, '') === n && t.status !== 'resolvido')
+    out.push(`Troca aberta${t.pedido_troca ? ' com pedido de troca ' + t.pedido_troca + (t.pedido_troca_enviado ? ' já enviado' : '') : ''}${daRev('retorno:' + t.id)}${daRast('retorno:' + t.id)}${t.conferido_em ? ', peça conferida e troca liberada' : ''}.`);
+  for (const t of estorno) if (t && new RegExp('(#|pedido\\s+#?)\\s?' + n + '(?!\\d)').test(String(t.pecas || '')) && t.etapa !== 'concluido')
+    out.push(`Devolução aberta (${t.forma || 'dinheiro'}${t.valor ? ', R$ ' + t.valor : ''})${daRev('estorno:' + t.id)}${daRast('estorno:' + t.id)}${t.chegou_em ? ', peça chegou ' + dia(t.chegou_em) : ''}.`);
+  return out;
+}
+export function conversaParaJuiz(msgs, caso, fatos) {
   const quem = { user: 'CLIENTE', assistant: 'VI', operador: 'EQUIPE' };
   const linhas = (msgs || []).filter(m => quem[m.role] && String(m.texto || '').trim() && !/^\[contexto/.test(m.texto)).slice(-30)
     .map(m => `${brt(m.created_at)} ${quem[m.role]}: ${String(m.texto).replace(/\[contexto interno:[\s\S]*?\]/g, '').replace(/\s+/g, ' ').trim().slice(0, 400)}`);
-  const cab = caso ? `Caso aberto: ${String(caso.tipo || '').slice(0, 120)}${caso.pedido ? ', pedido ' + caso.pedido : ''}\n\n` : '';
-  return cab + linhas.join('\n');
+  const cab = caso ? `Caso aberto: ${String(caso.tipo || '').slice(0, 120)}${caso.pedido ? ', pedido ' + caso.pedido : ''}\n` : '';
+  const sis = fatos && fatos.length ? `Situação no sistema agora: ${fatos.join(' ')}\n` : '';
+  return cab + sis + '\n' + linhas.join('\n');
 }
 export function lerJuizo(texto) {
   const m = String(texto || '').match(/\{[\s\S]*\}/);
