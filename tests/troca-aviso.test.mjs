@@ -8,7 +8,7 @@
  *
  * Rodar:  node tests/troca-aviso.test.mjs
  */
-import { onRequestPost, textoConversa, variantesWa, dentroDaJanela, proximaAbertura } from '../functions/api/troca-aviso.js';
+import { onRequestPost, textoConversa, variantesWa, dentroDaJanela, proximaAbertura, textoCancelado } from '../functions/api/troca-aviso.js';
 
 let falhas = 0, total = 0;
 function ok(nome, real, esperado) {
@@ -21,7 +21,7 @@ function ok(nome, real, esperado) {
 console.log('\n1) Texto e telefone');
 {
   const t = textoConversa({ nome: 'Lais Jarilho', pedido: '#9250', codigo: '4665143571', validade: '2026-10-30T15:00:00Z' });
-  ok('texto aprovado por ela', t, 'Oi Lais, sua troca do pedido #9250 está liberada. O código de postagem dos Correios é 4665143571 e vale até 30/10/2026. É só levar a peça embalada a uma agência e informar esse código, não precisa imprimir etiqueta nem pagar frete.');
+  ok('texto aprovado por ela', t, 'Oi Lais, sua troca do pedido #9250 está liberada. O código de postagem dos Correios é 4665143571 e vale até 30/10/2026. É só levar a peça embalada a uma agência e informar esse código, não precisa imprimir etiqueta nem pagar frete. Depois dessa data o código é cancelado.');
   ok('sem travessão', /—/.test(t), false);
   ok('crédito não fala em troca (Karina #9185, 22/10)', /troca/.test(textoConversa({ nome: 'Karina', pedido: '#9185', codigo: 'X', tipo: 'credito' })), false);
   ok('crédito diz que vira crédito na loja', /vai virar crédito na loja/.test(textoConversa({ nome: 'Karina', pedido: '#9185', codigo: 'X', tipo: 'credito' })), true);
@@ -140,6 +140,16 @@ console.log('\n3) Sem depender de ninguém (13/11/2026)');
   const ch = cenario({ ultima: new Date().toISOString(), jaEnviado: false });
   const j = await chamar({ renovado: true });
   ok('código renovado tem aviso próprio', [j.enviado, ch.some(c => c.metodo === 'POST' && /troca_codigo_retorno:p1_renovado/.test(c.corpo || ''))], [true, true]);
+}
+
+console.log('\n4) Prazo de 7 dias para postar (13/11/2026)');
+{
+  const t = textoCancelado({ nome: 'Evelin Braga', pedido: '#9265', codigo: '4779712792' });
+  ok('cancelado: diz que o prazo de 7 dias acabou e que pode chamar', [/7 dias/.test(t), /foi cancelado/.test(t), /me chamar/.test(t), /—/.test(t)], [true, true, true, false]);
+  const ch = cenario({ ultima: new Date(Date.now() - 2 * 3600e3).toISOString(), outraPeca: true });
+  const j = await chamar({ cancelado: true });
+  ok('cancelado: manda mesmo já tendo mandado o código antes', [j.enviado, (envios(ch)[0] || {}).type, /foi cancelado/.test(((envios(ch)[0] || {}).text || {}).body || '')], [true, 'text', true]);
+  ok('cancelado: registro próprio no histórico da Vi', ch.some(c => c.metodo === 'POST' && /troca_cancelado_4665143571/.test(c.corpo || '')), true);
 }
 
 console.log(falhas ? `\n✗ ${falhas} de ${total} falharam` : `\n✓ TODOS OS TESTES PASSARAM — ${total}/${total}`);
