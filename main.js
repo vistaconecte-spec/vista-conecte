@@ -13947,7 +13947,9 @@ function auditarLeituraPedidos() {
 
   // Tira os que a dona já conferiu (ex.: cor assumida que ela confirmou estar certa)
   const conferidos = avisosConferidos();
-  const pendentes = avisos.filter(a => !conferidos[avisoAssinatura(a)]);
+  // Item fora da produção NÃO some com "conferido" (13/11/2026): o #9371 foi marcado como conferido em 20/10 e
+  // ficou 25 dias sem ser feito. Só sai quando o produto for mapeado (a leitura passa a reconhecer).
+  const pendentes = avisos.filter(a => a.tipo === 'ignorado' || !conferidos[avisoAssinatura(a)]);
 
   window._avisosLeitura = pendentes;
   window._avisosLeituraTodos = avisos;
@@ -13962,10 +13964,10 @@ function verificarLeituraPedidos() {
                    'font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;flex-shrink:0';
   const linhas = avisos.slice(0, 8).map(a =>
     `<div style="display:flex;align-items:center;gap:10px;padding:3px 0">
-       <div style="flex:1">• ${a.texto}</div>
-       <button title="Já conferi, está correto — não mostrar de novo"
+       <div style="flex:1">• ${a.texto}${a.tipo === 'ignorado' ? ' <b>(só sai daqui quando o produto for cadastrado no painel)</b>' : ''}</div>
+       ${a.tipo === 'ignorado' ? '' : `<button title="Já conferi, está correto — não mostrar de novo"
                onclick="marcarAvisoConferido(${JSON.stringify(avisoAssinatura(a)).replace(/"/g, '&quot;')})"
-               style="${btnStyle}">✓ conferido</button>
+               style="${btnStyle}">✓ conferido</button>`}
      </div>`).join('');
   const html =
     `<div style="display:flex;align-items:flex-start;gap:12px;flex-wrap:wrap">

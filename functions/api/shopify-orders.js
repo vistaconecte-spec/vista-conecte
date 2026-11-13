@@ -47,6 +47,10 @@ const PRODUCT_MAP = {
   'Conjunto Cropped Moletom':                               'conjunto-cropped-basica',
   'Conjunto Cropped':                                       'conjunto-cropped-basica',
   'Conjunto Moletom gola alta com Saia midi fenda frontal': 'conjunto-moletom-saia-midi',
+  // Mesmo conjunto com o nome novo da loja (moletom gola alta + saia midi com fenda, marrom e preta). Sem esta
+  // linha o #9371 (19/10/2026) ficou 25 dias fora da produção: o aviso "produto não mapeado" foi marcado
+  // como conferido no dia seguinte e sumiu. O #9328 já tinha passado pelo mesmo em 14/10.
+  'Conjunto Urban Slit':                                    'conjunto-moletom-saia-midi',
   'Conjunto Pantalona com Blusa Canelada':                  'conjunto-pantalona-blusa',
   'Conjunto Regata oversized com Mini saia canelada':       'conjunto-regata-mini-saia',
   'Conjunto Camiseta oversized com Mini saia canelada':     'conjunto-camiseta-mini-saia',
