@@ -5742,30 +5742,24 @@ function precoRecompute() {
 
   // Passo 2: monta cada linha (conjunto = soma das peças)
   keys.forEach(k => {
-    let tecido = 0, corte = 0, costura = 0, extras = 0, maxPecaCusto = 0;
+    let tecido = 0, corte = 0, costura = 0, extras = 0;
     const comps = (typeof CONJUNTO_PECAS !== 'undefined') ? CONJUNTO_PECAS[k] : null;
     if (comps) {
       comps.forEach(c => {
         const p = pecaCusto[c.key || c] || {};
         tecido += p.tecido || 0; corte += p.corte || 0; costura += p.costura || 0; extras += (p.embal || 0) + (p.aviam || 0);
-        const pc = (p.tecido || 0) + (p.corte || 0) + (p.costura || 0) + (p.embal || 0) + (p.aviam || 0);
-        if (pc > maxPecaCusto) maxPecaCusto = pc;
       });
       setTxt('pr-' + k + '-corte', corte); setTxt('pr-' + k + '-costura', costura);
     } else {
       const p = pecaCusto[k] || {}; tecido = p.tecido || 0; corte = p.corte || 0; costura = p.costura || 0; extras = (p.embal || 0) + (p.aviam || 0);
     }
     const custo = tecido + corte + costura + extras; // custo de produção + embalagem/aviamento (marketing/taxa entram via %)
-    // Conjunto = 1 venda só: os custos "por pedido" (marketing/CAC + fixos + logística) contam 1x
-    // (sobre a peça âncora = a mais cara), não 1x por peça — senão duplica CAC/frete numa venda única.
-    // Peça avulsa segue o cálculo normal (tudo via %).
-    const vpPct = (taxa + plataforma + imposto + devolucao + trocas) / 100;   // custos proporcionais ao valor de venda
-    const opPct = (marketing + fixos + logistica) / 100; // custos fixos por pedido
-    const divBundle = 1 - vpPct - margem / 100;
-    const perOrderFixo = comps ? opPct * (divisor > 0 ? maxPecaCusto / divisor : 0) : 0;
-    const sug = comps
-      ? (divBundle > 0 ? (custo + perOrderFixo) / divBundle / fatorDesc : 0)
-      : (divisor > 0 ? custo / divisor / fatorDesc : 0);
+    // Conjunto e peça avulsa pagam os mesmos % sobre o que entra. Até 13/11/2026 o conjunto cobrava
+    // marketing + fixos + logística sobre o PREÇO IDEAL da peça mais cara (custo ÷ divisor): quando o
+    // divisor caiu com desconto/devolução/trocas, esse custo dobrou (Canguru Longo: R$ 183 contra R$ 91).
+    // Os % de marketing e fixos foram medidos sobre o faturamento total, e o pedido médio (R$ 295, 1,9
+    // peça em ago-out/2026) é do tamanho de um conjunto, então o mesmo % vale para ele sem ajuste.
+    const sug = divisor > 0 ? custo / divisor / fatorDesc : 0;
     document.getElementById('pr-' + k + '-tecido').textContent = finBRL(tecido);
     document.getElementById('pr-' + k + '-custo').textContent = finBRL(custo);
     document.getElementById('pr-' + k + '-sug').textContent = (custo > 0 && divisor > 0) ? finBRL(sug) : '—';
@@ -5779,7 +5773,7 @@ function precoRecompute() {
     const ocell = document.getElementById('pr-' + k + '-oper');
     if (ocell) {
       const baseOper = (venda > 0 ? venda : sug) * fatorDesc; // o que entra de fato, já sem o desconto médio
-      const oper = comps ? (baseOper * vpPct + perOrderFixo) : (baseOper * pctVar);
+      const oper = baseOper * pctVar;
       ocell.textContent = (custo > 0 && baseOper > 0) ? finBRL(oper) : '—';
       ocell.style.color = venda > 0 ? 'var(--text-sec)' : 'var(--text-ter)';
       ocell.title = venda > 0
@@ -5791,9 +5785,7 @@ function precoRecompute() {
     const lcell = document.getElementById('pr-' + k + '-lucro');
     if (venda > 0 && custo > 0) {
       const recebido = venda * fatorDesc; // preço de tabela menos o desconto médio
-      const lucro = comps
-        ? recebido - custo - recebido * vpPct - perOrderFixo  // conjunto: custos por pedido contam 1x
-        : recebido - custo - recebido * pctVar;               // peça única: tudo via %
+      const lucro = recebido - custo - recebido * pctVar;
       const mreal = lucro / recebido * 100;
       const cor = mreal < (margem - 1) ? '#dc2626' : '#16a34a'; // tolerância de 1 ponto: só alerta abaixo de (meta - 1)%
       if (mcell) { mcell.textContent = mreal.toFixed(1) + '%'; mcell.style.color = cor; }
