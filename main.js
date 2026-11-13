@@ -13975,7 +13975,7 @@ function auditarLeituraPedidos() {
 // "Alerta no WhatsApp a Marcelly não lê, precisa ser algo mais efetivo no sistema." Faixa fixa no topo de qualquer
 // tela com as clientes que escreveram depois da última fala da equipe. Sem botão de ocultar: só sai quando alguém
 // responde a cliente. Passou de 3 horas úteis, fica em vermelho e aparece no Aguardando Bárbara.
-let _filaEm = 0, _fila = null;
+let _filaEm = 0, _fila = null, _filaAberta = false;
 async function filaVerificar(forcar) {
   if (!forcar && Date.now() - _filaEm < 5 * 60e3) return;
   _filaEm = Date.now();
@@ -13993,22 +13993,31 @@ function filaRender() {
   let el = document.getElementById('faixa-fila');
   if (!itens.length) { if (el) el.remove(); return; }
   const venc = itens.filter(i => i.vencido).length;
-  const btn = 'background:#fff;color:#b91c1c;border:0;border-radius:5px;padding:3px 10px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;flex-shrink:0';
+  // Vermelho claro e compacta (Bárbara, 13/11/2026: "precisa ficar com um vermelho claro no topo, com um botão de ver
+  // mais pra não ficar gigante"): mostra 3, o resto abre no "Ver mais". Não tem ocultar: só some quando resolve.
+  const VISIVEIS = 3;
+  const mostrar = _filaAberta ? itens : itens.slice(0, VISIVEIS);
+  const btn = 'background:#b91c1c;color:#fff;border:0;border-radius:5px;padding:3px 10px;font-size:11px;font-weight:600;cursor:pointer;white-space:nowrap;flex-shrink:0';
+  const quem = i => `${csEsc(i.cliente)}${i.pedido ? ' #' + csEsc(String(i.pedido).replace('#', '')) : ''}`;
   // Peça da troca que voltou sem conferência (13/11/2026): mesma faixa, prazo de 1 dia útil, botão para a aba Trocas
-  const linhas = itens.slice(0, 10).map(i => i.tipo === 'conferir' ? `
-    <div style="display:flex;align-items:center;gap:10px;padding:3px 0;${i.vencido ? 'font-weight:700' : ''}">
-      <div style="flex:1">• ${csEsc(i.cliente)}${i.pedido ? ' #' + csEsc(String(i.pedido).replace('#', '')) : ''}, ${csEsc(i.ultima || '')} (há ${filaHoras(i.horas)} úteis${i.vencido ? ', passou de 1 dia útil e a Bárbara já vê' : ''})</div>
-      <button style="${btn}" onclick="abrirTrocas(null)">Abrir trocas</button>
-    </div>` : `
-    <div style="display:flex;align-items:center;gap:10px;padding:3px 0;${i.vencido ? 'font-weight:700' : ''}">
-      <div style="flex:1">• ${csEsc(i.cliente)}${i.pedido ? ' #' + csEsc(String(i.pedido).replace('#', '')) : ''}, esperando há ${filaHoras(i.horas)} úteis${i.vencido ? ', passou do prazo e a Bárbara já vê' : ''}
-        <span style="font-weight:400;opacity:.85">${i.falta ? 'falta ' + csEsc(i.falta) : '"' + csEsc(String(i.ultima || '').slice(0, 90)) + '"'}</span></div>
-      <button style="${btn}" onclick="filaAbrir('${String(i.wa_id).replace(/\D/g, '')}')">Abrir conversa</button>
+  const linhas = mostrar.map(i => `
+    <div style="display:flex;align-items:center;gap:10px;padding:4px 0;border-top:1px solid #fecaca">
+      <div style="flex:1;min-width:0">${i.vencido ? '<b style="color:#b91c1c">●</b> ' : '○ '}<b>${quem(i)}</b>
+        ${i.tipo === 'conferir'
+          ? `${csEsc(i.ultima || '')} <span style="opacity:.7">(há ${filaHoras(i.horas)} úteis)</span>`
+          : `<span style="opacity:.7">há ${filaHoras(i.horas)} úteis</span> · ${i.falta ? 'falta ' + csEsc(i.falta) : '"' + csEsc(String(i.ultima || '').slice(0, 90)) + '"'}`}</div>
+      ${i.tipo === 'conferir'
+        ? `<button style="${btn}" onclick="abrirTrocas(null)">Abrir trocas</button>`
+        : `<button style="${btn}" onclick="filaAbrir('${String(i.wa_id).replace(/\D/g, '')}')">Abrir conversa</button>`}
     </div>`).join('');
   const nConf = itens.filter(i => i.tipo === 'conferir').length, nCli = itens.length - nConf;
-  const html = `<div style="font-weight:700;margin-bottom:4px"><i class="ti ti-clock-exclamation"></i> Esperando a equipe (${itens.length}): ${nCli} cliente${nCli === 1 ? '' : 's'} sem resposta${nConf ? `, ${nConf} peça${nConf === 1 ? '' : 's'} de troca para conferir` : ''}${venc ? `, ${venc} passaram do prazo` : ''}</div>
-    <div style="font-size:12px;line-height:1.55">${linhas}${itens.length > 10 ? `<div style="padding-top:4px"><i>…e mais ${itens.length - 10} na lista de Casos em aberto</i></div>` : ''}</div>
-    <div style="font-size:11px;margin-top:6px;opacity:.9">Some daqui quando alguém da equipe responder a cliente ou conferir a peça. Prazo de ${(_fila && _fila.prazo_horas) || 3} horas úteis para responder e 1 dia útil para conferir (seg a sex, 9h às 17h).</div>`;
+  const resto = itens.length - VISIVEIS;
+  const html = `<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:6px">
+      <div style="flex:1;font-weight:700;color:#991b1b"><i class="ti ti-clock-exclamation"></i> Esperando a equipe: ${nCli} cliente${nCli === 1 ? '' : 's'} sem resposta${nConf ? `, ${nConf} peça${nConf === 1 ? '' : 's'} para conferir` : ''}${venc ? ` <span style="font-weight:600">· ${venc} fora do prazo</span>` : ''}</div>
+      ${resto > 0 ? `<button onclick="_filaAberta=!_filaAberta;filaRender()" style="background:#fff;color:#991b1b;border:1px solid #fca5a5;border-radius:6px;padding:3px 12px;font-size:12px;font-weight:600;cursor:pointer">${_filaAberta ? 'Ver menos' : `Ver mais (${resto})`}</button>` : ''}
+    </div>
+    <div style="font-size:12px;line-height:1.5">${linhas}</div>
+    ${_filaAberta ? `<div style="font-size:11px;margin-top:6px;opacity:.75">Some daqui quando alguém da equipe responder a cliente ou conferir a peça. Prazo de ${(_fila && _fila.prazo_horas) || 3} horas úteis para responder e 1 dia útil para conferir (seg a sex, 9h às 17h). ● fora do prazo, a Bárbara já vê.</div>` : ''}`;
   if (!el) {
     el = document.createElement('div');
     el.id = 'faixa-fila';
@@ -14017,7 +14026,7 @@ function filaRender() {
     if (!alvo) return;
     alvo.insertBefore(el, alvo.firstChild);
   }
-  el.style.cssText = `position:relative;z-index:1;background:${venc ? '#b91c1c' : '#b45309'};color:#fff;padding:12px 16px;margin:0 0 12px;border-radius:8px`;
+  el.style.cssText = 'position:relative;z-index:1;background:#fef2f2;color:#7f1d1d;border:1px solid #fecaca;padding:10px 14px;margin:0 0 12px;border-radius:8px';
   el.innerHTML = html;
 }
 function filaAbrir(wa) {
