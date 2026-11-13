@@ -5533,7 +5533,7 @@ function flxRecompute() {
 
 // ─── ABA PRECIFICAÇÃO ────────────────────────────────────────────────────────
 function precoGetConfig() {
-  return loadLocal('vc:precificacao') || { global: { custoMetro: 12, taxa: 2.6, taxaShopify: 0, comissao: 0, plataforma: 1.05, imposto: 0, marketing: 26.73, fixos: 9.55, parcelas: 0, logistica: 2.09, margem: 25 }, modelos: {} };
+  return loadLocal('vc:precificacao') || { global: { custoMetro: 12, taxa: 2.6, taxaShopify: 0, comissao: 0, plataforma: 1.05, imposto: 0, marketing: 26.73, fixos: 9.55, parcelas: 0, logistica: 2.09, desconto: 0, devolucao: 0, trocas: 0, margem: 25 }, modelos: {} };
 }
 function precoChaves() {
   const ks = [];
@@ -5601,6 +5601,9 @@ async function renderPrecos() {
     ${ginp('prc-g-fixos', 'Custos fixos', g.fixos != null ? g.fixos : 9.55, '%')}
     ${ginp('prc-g-parcelas', 'Parcelas de dívida (temporário)', g.parcelas != null ? g.parcelas : 0, '%')}
     ${ginp('prc-g-logistica', 'Logística', g.logistica != null ? g.logistica : 2.09, '%')}
+    ${ginp('prc-g-devolucao', 'Devolução de dinheiro', g.devolucao != null ? g.devolucao : 0, '%')}
+    ${ginp('prc-g-trocas', 'Trocas e reenvios grátis', g.trocas != null ? g.trocas : 0, '%')}
+    ${ginp('prc-g-desconto', 'Desconto médio (R$70 e cupons)', g.desconto != null ? g.desconto : 0, '% da tabela')}
     ${ginp('prc-g-margem', 'Margem alvo', g.margem, '%')}
   </div>
   <div id="prc-divisor-aviso" style="font-size:11px;color:var(--text-ter);margin-top:8px"></div>`;
@@ -5666,6 +5669,9 @@ function precoSalvar() {
     fixos: parseFloat(document.getElementById('prc-g-fixos').value) || 0,
     parcelas: parseFloat(document.getElementById('prc-g-parcelas').value) || 0,
     logistica: parseFloat(document.getElementById('prc-g-logistica').value) || 0,
+    devolucao: parseFloat(document.getElementById('prc-g-devolucao').value) || 0,
+    trocas: parseFloat(document.getElementById('prc-g-trocas').value) || 0,
+    desconto: parseFloat(document.getElementById('prc-g-desconto').value) || 0,
     margem: parseFloat(document.getElementById('prc-g-margem').value) || 0,
   };
   cfg.modelos = cfg.modelos || {};
@@ -5694,12 +5700,20 @@ function precoRecompute() {
   const parcelas = gnum('prc-g-parcelas'); // empréstimo/parcelamento: temporário, mas pesa como fixo enquanto durar
   const fixos = fixosBase + parcelas;
   const logistica = gnum('prc-g-logistica');
+  // Medido no extrato de ago a out/2026 (13/11/2026): dinheiro devolvido a cliente e peça dada em troca
+  // ou reenvio saem de cada venda como as taxas, então entram junto com elas no % sobre o valor recebido.
+  const devolucao = gnum('prc-g-devolucao');
+  const trocas = gnum('prc-g-trocas');
+  // Desconto médio (R$70 do combo + cupons) em % do preço de TABELA: a loja recebe tabela × (1 − desconto),
+  // e todos os % acima incidem sobre o que entra. Sem isso o preço sugerido sai baixo (furo de 13 a 20 pontos).
+  const desconto = Math.min(gnum('prc-g-desconto'), 99) / 100;
+  const fatorDesc = 1 - desconto;
   const margem = gnum('prc-g-margem');
-  const pctVar = (taxa + plataforma + imposto + marketing + fixos + logistica) / 100; // custos que incidem % sobre o preço
+  const pctVar = (taxa + plataforma + imposto + marketing + fixos + logistica + devolucao + trocas) / 100; // custos que incidem % sobre o preço
   const divisor = 1 - pctVar - margem / 100;
   const aviso = document.getElementById('prc-divisor-aviso');
   if (divisor <= 0) { aviso.textContent = '⚠ Taxas + comissão + plataforma + imposto + marketing + fixos + parcelas + logística + margem somam ≥ 100% — impossível precificar. Reduza algum %.'; aviso.style.color = '#dc2626'; }
-  else { aviso.textContent = `Preço = Custo de produção ÷ ${divisor.toFixed(3)}  (1 − ${taxaMP}% Mercado Pago − ${taxaShopify}% Shopify − ${comissao}% comissão − ${plataforma}% plataforma − ${imposto}% imposto − ${marketing}% marketing − ${fixosBase}% fixos − ${parcelas}% parcelas − ${logistica}% logística − ${margem}% margem)`; aviso.style.color = 'var(--text-ter)'; }
+  else { aviso.textContent = `Preço = Custo de produção ÷ ${divisor.toFixed(3)}  (1 − ${taxaMP}% Mercado Pago − ${taxaShopify}% Shopify − ${comissao}% comissão − ${plataforma}% plataforma − ${imposto}% imposto − ${marketing}% marketing − ${fixosBase}% fixos − ${parcelas}% parcelas − ${logistica}% logística − ${devolucao}% devolução − ${trocas}% trocas − ${margem}% margem)${desconto > 0 ? ` ÷ ${fatorDesc.toFixed(3)} (preço de tabela com ${(desconto * 100).toLocaleString('pt-BR')}% de desconto médio)` : ''}`; aviso.style.color = 'var(--text-ter)'; }
 
   const alertas = [];
   const keys = precoChaves();
@@ -5720,36 +5734,37 @@ function precoRecompute() {
       tecido: consumo * preco,
       corte: cfgM.corte || 0,
       costura: cfgM.costura || 0,
-      aviam: 0,
+      embal: cfgM.embal || 0, // tag + saco + envelope por peça (R$ 2,34 medido em nov/2026)
+      aviam: cfgM.aviam || 0,
     };
   });
 
   // Passo 2: monta cada linha (conjunto = soma das peças)
   keys.forEach(k => {
-    let tecido = 0, corte = 0, costura = 0, maxPecaCusto = 0;
+    let tecido = 0, corte = 0, costura = 0, extras = 0, maxPecaCusto = 0;
     const comps = (typeof CONJUNTO_PECAS !== 'undefined') ? CONJUNTO_PECAS[k] : null;
     if (comps) {
       comps.forEach(c => {
         const p = pecaCusto[c.key || c] || {};
-        tecido += p.tecido || 0; corte += p.corte || 0; costura += p.costura || 0;
-        const pc = (p.tecido || 0) + (p.corte || 0) + (p.costura || 0);
+        tecido += p.tecido || 0; corte += p.corte || 0; costura += p.costura || 0; extras += (p.embal || 0) + (p.aviam || 0);
+        const pc = (p.tecido || 0) + (p.corte || 0) + (p.costura || 0) + (p.embal || 0) + (p.aviam || 0);
         if (pc > maxPecaCusto) maxPecaCusto = pc;
       });
       setTxt('pr-' + k + '-corte', corte); setTxt('pr-' + k + '-costura', costura);
     } else {
-      const p = pecaCusto[k] || {}; tecido = p.tecido || 0; corte = p.corte || 0; costura = p.costura || 0;
+      const p = pecaCusto[k] || {}; tecido = p.tecido || 0; corte = p.corte || 0; costura = p.costura || 0; extras = (p.embal || 0) + (p.aviam || 0);
     }
-    const custo = tecido + corte + costura; // custo de produção (marketing/taxa entram via %)
+    const custo = tecido + corte + costura + extras; // custo de produção + embalagem/aviamento (marketing/taxa entram via %)
     // Conjunto = 1 venda só: os custos "por pedido" (marketing/CAC + fixos + logística) contam 1x
     // (sobre a peça âncora = a mais cara), não 1x por peça — senão duplica CAC/frete numa venda única.
     // Peça avulsa segue o cálculo normal (tudo via %).
-    const vpPct = (taxa + plataforma + imposto) / 100;   // custos proporcionais ao valor de venda
+    const vpPct = (taxa + plataforma + imposto + devolucao + trocas) / 100;   // custos proporcionais ao valor de venda
     const opPct = (marketing + fixos + logistica) / 100; // custos fixos por pedido
     const divBundle = 1 - vpPct - margem / 100;
     const perOrderFixo = comps ? opPct * (divisor > 0 ? maxPecaCusto / divisor : 0) : 0;
     const sug = comps
-      ? (divBundle > 0 ? (custo + perOrderFixo) / divBundle : 0)
-      : (divisor > 0 ? custo / divisor : 0);
+      ? (divBundle > 0 ? (custo + perOrderFixo) / divBundle / fatorDesc : 0)
+      : (divisor > 0 ? custo / divisor / fatorDesc : 0);
     document.getElementById('pr-' + k + '-tecido').textContent = finBRL(tecido);
     document.getElementById('pr-' + k + '-custo').textContent = finBRL(custo);
     document.getElementById('pr-' + k + '-sug').textContent = (custo > 0 && divisor > 0) ? finBRL(sug) : '—';
@@ -5762,7 +5777,7 @@ function precoRecompute() {
     // Usa a venda quando ela existe; sem venda, estima sobre o preco sugerido.
     const ocell = document.getElementById('pr-' + k + '-oper');
     if (ocell) {
-      const baseOper = venda > 0 ? venda : sug;
+      const baseOper = (venda > 0 ? venda : sug) * fatorDesc; // o que entra de fato, já sem o desconto médio
       const oper = comps ? (baseOper * vpPct + perOrderFixo) : (baseOper * pctVar);
       ocell.textContent = (custo > 0 && baseOper > 0) ? finBRL(oper) : '—';
       ocell.style.color = venda > 0 ? 'var(--text-sec)' : 'var(--text-ter)';
@@ -5774,10 +5789,11 @@ function precoRecompute() {
     const mcell = document.getElementById('pr-' + k + '-mreal');
     const lcell = document.getElementById('pr-' + k + '-lucro');
     if (venda > 0 && custo > 0) {
+      const recebido = venda * fatorDesc; // preço de tabela menos o desconto médio
       const lucro = comps
-        ? venda - custo - venda * vpPct - perOrderFixo  // conjunto: custos por pedido contam 1x
-        : venda - custo - venda * pctVar;               // peça única: tudo via %
-      const mreal = lucro / venda * 100;
+        ? recebido - custo - recebido * vpPct - perOrderFixo  // conjunto: custos por pedido contam 1x
+        : recebido - custo - recebido * pctVar;               // peça única: tudo via %
+      const mreal = lucro / recebido * 100;
       const cor = mreal < (margem - 1) ? '#dc2626' : '#16a34a'; // tolerância de 1 ponto: só alerta abaixo de (meta - 1)%
       if (mcell) { mcell.textContent = mreal.toFixed(1) + '%'; mcell.style.color = cor; }
       if (lcell) { lcell.textContent = finBRL(lucro); lcell.style.color = lucro < 0 ? '#dc2626' : cor; }
