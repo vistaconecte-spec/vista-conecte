@@ -312,13 +312,22 @@ export function horasUteis(de, ate = Date.now()) {
 }
 // Despedida e emoji não esperam resposta (o aviso do Vi - atendimento usa a mesma ideia).
 const SO_DESPEDIDA = /^[\p{Extended_Pictographic}\p{Emoji_Modifier}‍️\s!.]+$|^(ok|okay|certo|blz|beleza|show|perfeito|combinado|t[áa] ?bom|top|amei|entendi|sim|uhum|aham)\b[^?]{0,25}$|^(muito )?obrigad[ao]|^obg\b|^valeu|^agrade[cç]o/iu;
+// Fala sem pergunta que só agradece, concorda ou diz que vai aguardar não espera resposta ("Blza", "Magina", "Tudo bem",
+// "Chegou aqui, obrigada 😊", "Irei aguardar"). O trecho citado pela cliente sai antes da conta.
+const FECHO = /obrigad|agrade[cç]|valeu|\bobg\b|aguard|combinado|perfeito|\b(ok|okay|certo|blza?|beleza|j[óo]ia|magina|imagina|[ée] nada|tudo bem|t[áa] ?bom|show|top|amei|entendi|sim|uhum|aham|beijos?|bjs?)\b/i;
+export function naoEspera(texto) {
+  const t = String(texto || '').replace(/^\[mensagem citada pela cliente: "[\s\S]*?"\]\s*/, '').trim();
+  if (!t || /^\[(unsupported|reaction|sticker)\]$/i.test(t)) return true;
+  if (SO_DESPEDIDA.test(t)) return true;
+  return !t.includes('?') && t.length <= 120 && FECHO.test(t);
+}
 // msgs: [{ role: 'user'|'operador'|..., texto, created_at }] em ordem de data. Devolve a espera da cliente ou null.
 export function esperaDaEquipe(msgs, agora = Date.now()) {
   const lista = (msgs || []).filter(m => m.role === 'user' || m.role === 'operador');
   let iEquipe = -1;
   lista.forEach((m, i) => { if (m.role === 'operador') iEquipe = i; });
   const depois = lista.slice(iEquipe + 1).filter(m => m.role === 'user');
-  const pendentes = depois.filter(m => !SO_DESPEDIDA.test(String(m.texto || '').trim()));
+  const pendentes = depois.filter(m => !naoEspera(m.texto));
   if (!pendentes.length) return null;
   const desde = pendentes[0].created_at;
   return { desde, horas: horasUteis(desde, agora), ultima: String(pendentes[pendentes.length - 1].texto || '').slice(0, 160),

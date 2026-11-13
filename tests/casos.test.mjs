@@ -369,6 +369,8 @@ ok('status vai num cartão fixo e a IA não repete', /cartão fixo da tela acima
   ok('espera: só despedida depois da equipe não espera', C.esperaDaEquipe([{ role: 'operador', texto: 'segue o código', created_at: '2026-11-12T13:00:00Z' }, { role: 'user', texto: 'Obrigada!! ❤️', created_at: '2026-11-12T13:01:00Z' }], agora), null);
   ok('espera: equipe respondeu depois, nada pendente', C.esperaDaEquipe([{ role: 'user', texto: 'cadê?', created_at: '2026-11-12T13:00:00Z' }, { role: 'operador', texto: 'já te mando', created_at: '2026-11-12T14:00:00Z' }], agora), null);
   ok('espera: resposta da Vi não conta', !!C.esperaDaEquipe([{ role: 'user', texto: 'cadê meu reembolso?', created_at: '2026-11-12T13:00:00Z' }, { role: 'assistant', texto: 'Já passei sua conversa pra nossa equipe', created_at: '2026-11-12T13:01:00Z' }], agora), true);
+  ok('não espera: Blza, Magina, Tudo bem, Chegou aqui obrigada, Irei aguardar', ['Blza', 'Magina', 'Tudo bem', 'Chegou aqui, obrigada 😊', 'Irei aguardar as minhas encomendas', '[unsupported]', '[mensagem citada pela cliente: "Por nada"] Jóia! 🫶'].every(C.naoEspera), true);
+  ok('espera: pergunta e cobrança continuam', ['Até hoje não foi enviado ?', 'Tô esperando o valor de volta', 'Queria saber sobre meu pedido', 'ok, e quando chega?'].some(C.naoEspera), false);
   ok('rota ?fila=1 e faixa sem botão de ocultar', /searchParams\.get\('fila'\)\) return J\(await filaEquipe\(env\)\)/.test(apiTxt) && /id = 'faixa-fila'/.test(main) && !/faixa-fila'\)\.remove\(\)" style/.test(main), true);
 }
 // 11/11/2026, caso 727: a cliente já postou a peça errada? a peça nova foi lançada na Shopify?
