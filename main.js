@@ -3068,19 +3068,27 @@ function csEstornoForm(id) {
   if (!box) return;
   if (!box.hidden) { box.hidden = true; return; }
   box.hidden = false;
-  box.innerHTML = `<div style="margin-top:8px;padding:8px 10px;border:1px solid #fecaca;border-radius:8px;background:#fef2f2;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-    <span style="font-weight:600;color:#991b1b">A cliente não aceitou reverter. Passar o estorno pra Bárbara:</span>
-    <input id="cs-est-valor-${id}" type="text" inputmode="decimal" placeholder="valor, ex: 205,18" style="width:120px;font-size:12px;padding:4px 6px">
-    <input id="cs-est-motivo-${id}" type="text" placeholder="motivo, ex: desistiu antes do envio, recusou crédito" style="flex:1;min-width:220px;font-size:12px;padding:4px 6px">
-    <button class="btn-primary" style="font-size:11px;padding:4px 12px" onclick="csEstornoEnviar(${id})">Passar pra Bárbara</button>
-  </div>`;
-  document.getElementById('cs-est-valor-' + id).focus();
+  box.innerHTML = '<div style="margin-top:8px;font-size:12px;color:var(--text-sec)">calculando o valor...</div>';
+  // Valor automático (Bárbara, 13/11/2026): vem do sistema e a Marcelly não digita; o motivo é sempre ela que escreve
+  fetch('/api/casos?valor_estorno=' + id).then(r => r.json()).catch(() => ({})).then(v => {
+    const valor = Number(v && v.valor) > 0 ? Number(v.valor) : null;
+    box.dataset.valor = valor || '';
+    box.innerHTML = `<div style="margin-top:8px;padding:8px 10px;border:1px solid #fecaca;border-radius:8px;background:#fef2f2">
+      <div style="font-weight:600;color:#991b1b;margin-bottom:6px">A cliente não aceitou reverter. Passar o estorno pra Bárbara</div>
+      <div style="font-size:12px;margin-bottom:6px">Valor: <b>${valor ? 'R$ ' + valor.toFixed(2).replace('.', ',') : 'a Bárbara confere'}</b> <span style="color:var(--text-sec)">(${csEsc((v && v.origem) || 'sem cálculo')})</span></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+        <input id="cs-est-motivo-${id}" type="text" placeholder="motivo, obrigatório: por que a cliente não aceitou reverter" style="flex:1;min-width:240px;font-size:12px;padding:4px 6px">
+        <button class="btn-primary" style="font-size:11px;padding:4px 12px" onclick="csEstornoEnviar(${id})">Passar pra Bárbara</button>
+      </div>
+    </div>`;
+    document.getElementById('cs-est-motivo-' + id).focus();
+  });
 }
 async function csEstornoEnviar(id) {
-  const valor = Number(String(document.getElementById('cs-est-valor-' + id).value || '').replace(/[^\d,.]/g, '').replace(/\.(?=\d{3}(\D|$))/g, '').replace(',', '.'));
+  const caixa = document.getElementById('cs-est-' + id);
+  const valor = Number(caixa && caixa.dataset.valor) || null;
   const motivo = String(document.getElementById('cs-est-motivo-' + id).value || '').trim();
-  if (!(valor > 0)) { alert('Coloque o valor do estorno.'); return; }
-  if (motivo.length < 5) { alert('Escreva o motivo, por que a cliente não aceitou reverter.'); return; }
+  if (motivo.length < 5) { alert('Escreva o motivo: por que a cliente não aceitou reverter. Sem motivo não vai.'); return; }
   try {
     const r = await fetch('/api/casos', { method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ acao: 'executar', tipo: 'pedir_aprovacao', caso_id: id, categoria: 'estorno', valor, texto: 'Estorno sem reversão: ' + motivo }) });
@@ -3089,7 +3097,7 @@ async function csEstornoEnviar(id) {
     if (d.so_leitura) { alert('Modo só leitura: nada foi gravado.'); return; }
     if (!d.ok) { alert(d.erro || 'não deu certo'); return; }
     const box = document.getElementById('cs-est-' + id);
-    if (box) box.innerHTML = `<div style="margin-top:8px;font-weight:600;color:#991b1b">Passado pra Bárbara: estorno de R$ ${valor.toFixed(2).replace('.', ',')}. O caso agora está com ela.</div>`;
+    if (box) box.innerHTML = `<div style="margin-top:8px;font-weight:600;color:#991b1b">Passado pra Bárbara: estorno${valor ? ' de R$ ' + valor.toFixed(2).replace('.', ',') : ''}. O caso agora está com ela.</div>`;
     filaVerificar(true);
   } catch (e) { alert('falhou: ' + e.message); }
 }

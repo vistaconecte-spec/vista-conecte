@@ -601,6 +601,30 @@ export async function filaEquipe(env, agora = Date.now()) {
   return { prazo_horas: PRAZO_RESPOSTA_H, itens, vencidos: itens.filter(i => i.vencido).length, com_barbara: comBarbara };
 }
 const DIA = 86400000;
+// Valor do estorno preenchido sozinho no botão "Estorno sem reversão" (Bárbara, 13/11/2026: "o valor precisa ser
+// automático, o motivo ela sempre preenche"). Devolução lançada no painel = soma das peças devolvidas (valor pago);
+// sem devolução = o que a cliente pagou no pedido menos o que já foi estornado.
+async function valorDoEstorno(env, casoId) {
+  const id = String(casoId || '').replace(/\D/g, '');
+  if (!id) return { erro: 'qual caso?' };
+  const caso = (await sb(env).get(`wati_sac_casos?id=eq.${id}&select=pedido`))[0];
+  const n = ((String((caso && caso.pedido) || '').match(/\d{4,}/) || [])[0]) || '';
+  if (!n) return { valor: null, origem: 'o caso não tem pedido ligado, a Bárbara confere o valor' };
+  try {
+    const est = (((await sb(env, true).get('vc_modelos?id=eq.estorno&select=dados'))[0] || {}).dados || {}).itens || [];
+    const re = new RegExp('(#|pedido\\s+#?)\\s?' + n + '(?!\\d)');
+    const cards = est.filter(t => t && re.test(String(t.pecas || '')) && t.etapa !== 'concluido' && Number(t.valor) > 0);
+    if (cards.length) {
+      const v = Math.round(cards.reduce((s2, t) => s2 + Number(t.valor), 0) * 100) / 100;
+      return { valor: v, pedido: '#' + n, origem: `soma das ${cards.length} peça${cards.length > 1 ? 's' : ''} da devolução do pedido #${n} (valor pago)` };
+    }
+  } catch (_) {}
+  const o = await pedidoBruto(env, n).catch(() => null);
+  if (!o) return { valor: null, pedido: '#' + n, origem: 'não achei o pedido na Shopify, a Bárbara confere o valor' };
+  const estornado = (o.refunds || []).reduce((s2, r) => s2 + (r.transactions || []).filter(x => x.kind === 'refund' && x.status === 'success').reduce((a3, x) => a3 + (parseFloat(x.amount) || 0), 0), 0);
+  const v = Math.round((parseFloat(o.total_price) - estornado) * 100) / 100;
+  return { valor: v > 0 ? v : 0, pedido: o.name, origem: `total pago no pedido ${o.name}${estornado ? ` menos R$ ${estornado.toFixed(2).replace('.', ',')} já estornado` : ''}` };
+}
 // Uma conversa lida pela IA: a cliente ainda espera resposta ou ação da loja? (13/11/2026)
 async function julgarEspera(env, msgs, caso, fatos) {
   const r = await fetch('https://api.anthropic.com/v1/messages', {
@@ -626,6 +650,7 @@ export async function onRequestGet({ request, env }) {
       return J({ casos: casos.map(c => ({ ...resumoDoCaso(c), dinheiro: casoDeDinheiro(c), pode_fechar: podeFecharPelaConversa(c, log).ok })) });
     }
     if (u.searchParams.get('fila')) return J(await filaEquipe(env));
+    if (u.searchParams.get('valor_estorno')) return J(await valorDoEstorno(env, u.searchParams.get('valor_estorno')));
     if (u.searchParams.get('aprovacoes')) {
       return J({ so_leitura: soLeitura(env), aprovacoes: log.aprovacoes.slice(-60).reverse() });
     }
