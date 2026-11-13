@@ -13996,7 +13996,9 @@ function filaRender() {
   if (!el) {
     el = document.createElement('div');
     el.id = 'faixa-fila';
-    const alvo = document.querySelector('.content') || document.body;
+    // Só na aba Atendimento (Bárbara, 13/11/2026): dentro do conteúdo destravado, não no topo de todas as abas
+    const alvo = document.getElementById('atd-content');
+    if (!alvo) return;
     alvo.insertBefore(el, alvo.firstChild);
   }
   el.style.cssText = `position:relative;z-index:1;background:${venc ? '#b91c1c' : '#b45309'};color:#fff;padding:12px 16px;margin:0 0 12px;border-radius:8px`;
