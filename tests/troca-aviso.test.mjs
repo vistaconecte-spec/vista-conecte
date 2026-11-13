@@ -148,8 +148,8 @@ console.log('\n4) Prazo de 7 dias para postar (13/11/2026)');
   ok('cancelado: diz que o prazo de 7 dias acabou e que pode chamar', [/7 dias/.test(t), /foi cancelado/.test(t), /me chamar/.test(t), /—/.test(t)], [true, true, true, false]);
   const ch = cenario({ ultima: new Date(Date.now() - 2 * 3600e3).toISOString(), outraPeca: true });
   const j = await chamar({ cancelado: true });
-  ok('cancelado: manda mesmo já tendo mandado o código antes', [j.enviado, (envios(ch)[0] || {}).type, /foi cancelado/.test(((envios(ch)[0] || {}).text || {}).body || '')], [true, 'text', true]);
-  ok('cancelado: registro próprio no histórico da Vi', ch.some(c => c.metodo === 'POST' && /troca_cancelado_4665143571/.test(c.corpo || '')), true);
+  ok('cancelado: NÃO manda nada para a cliente (só explica se ela perguntar)', [j.enviado, j.via, envios(ch).length], [true, 'anotacao', 0]);
+  ok('cancelado: anotação interna para a Vi, com registro próprio', ch.some(c => c.metodo === 'POST' && /troca_cancelado_4665143571/.test(c.corpo || '') && /contexto interno: em .* cancelou o código 4665143571/.test(c.corpo || '') && /NÃO foi avisada/.test(c.corpo || '')), true);
 }
 
 console.log(falhas ? `\n✗ ${falhas} de ${total} falharam` : `\n✓ TODOS OS TESTES PASSARAM — ${total}/${total}`);

@@ -163,6 +163,16 @@ export async function onRequestPost({ env, request }) {
     const wa = (ultima && ultima.wa_id) || vars[0];
     let via = null;
 
+    // Cancelamento pelo prazo NÃO vai para a cliente (Bárbara, 13/11/2026: "a Frenet não precisa avisar a cliente quando
+    // cancela, o robô só avisa quando a cliente questionar na Vi"): fica só a anotação para a Vi explicar se perguntarem.
+    if (cancelado) {
+      const dia = new Date().toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit' });
+      const nota = `[contexto interno: em ${dia} o robô cancelou o código ${codigo} da devolução do pedido ${o.name} porque a cliente não postou em 7 dias depois de receber (regra da loja). A cliente NÃO foi avisada. Se ela perguntar do código ou da devolução, explique com calma que o prazo de 7 dias para postar terminou e o código foi cancelado; se ela ainda quiser devolver, registre o caso para a equipe. Não gere nem prometa código novo.]`;
+      await fetch(`${SB_URL}/rest/v1/wati_ia_mensagens`, { method: 'POST', headers: { ...sbH, Prefer: 'return=minimal' },
+        body: JSON.stringify({ msg_id: msgId, wa_id: wa, role: 'assistant', texto: nota }) }).catch(() => {});
+      return json({ enviado: true, via: 'anotacao', mensagem: nota });
+    }
+
     if (ultima && dentroDaJanela(ultima.created_at)) {
       // etiqueta comum: o PDF com o texto como legenda, numa mensagem só
       const s = pdf ? await enviarArquivoDaLoja(env, wa, pdf, texto) : await enviarTextoDaLoja(env, wa, texto);
