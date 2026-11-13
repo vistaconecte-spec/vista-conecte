@@ -35,27 +35,6 @@ export async function onRequestGet({ request, env }) {
   const u = new URL(request.url);
   const ids = (u.searchParams.get('ids') || '').split(',').map(s => s.trim()).filter(Boolean).slice(0, 40);
   try {
-    // ?sonda=SOURCE_ID → testa (só GET) onde o MP guarda o detalhe de um payout (Pix enviado),
-    // que não existe em /v1/payments. Usado pra montar o extrato com nome do destinatário.
-    const sonda = u.searchParams.get('sonda');
-    if (sonda) {
-      const id = encodeURIComponent(sonda);
-      const urls = [
-        '/v1/transaction-intents/' + id,
-        '/v1/payouts/' + id,
-        '/v1/money_requests/' + id,
-        '/v1/transfers/' + id,
-        '/mercadopago_account/movements/search?reference_id=' + id,
-        '/mercadopago_account/movements/search?limit=3',
-        '/v1/account/release_report/config',
-      ];
-      const out = [];
-      for (const p of urls) {
-        const r = await fetch('https://api.mercadopago.com' + p, { headers: H });
-        out.push({ p, status: r.status, corpo: (await r.text()).slice(0, 3000) });
-      }
-      return J({ sonda: out });
-    }
     if (ids.length) {
       const itens = [];
       for (const id of ids) {
