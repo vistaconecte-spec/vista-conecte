@@ -517,21 +517,26 @@ async function marcarFeito(env, { id, nota }, agora = Date.now()) {
 
 // Fila da equipe (13/11/2026): casos abertos em que a cliente escreveu depois da última fala da equipe, com as
 // horas úteis de espera. Passou de PRAZO_RESPOSTA_H, vencido (aparece também para a Bárbara).
-async function filaEquipe(env, agora = Date.now()) {
+export async function filaEquipe(env, agora = Date.now()) {
   const db = sb(env);
   const casos = await db.get('wati_sac_casos?status=eq.aberto&order=criado_at.asc&limit=300&select=id,wa_id,nome,pedido,tipo,responsavel');
   const was = [...new Set(casos.map(c => c.wa_id).filter(Boolean))];
   const desde = new Date(agora - 45 * DIA).toISOString();
   const porWa = {};
   for (let i = 0; i < was.length; i += 40) {
-    const lote = await db.get(`wati_ia_mensagens?wa_id=in.(${was.slice(i, i + 40).join(',')})&role=in.(user,operador)&created_at=gte.${encodeURIComponent(desde)}&select=wa_id,role,texto,created_at&order=created_at.asc&limit=5000`);
-    for (const m of lote) (porWa[m.wa_id] = porWa[m.wa_id] || []).push(m);
+    // O Supabase devolve no máximo 1000 linhas por chamada; antes vinha em ordem crescente e cortava as
+    // mensagens MAIS NOVAS (a resposta da Marcelly à Lu, 13/11, sumia). Agora pagina, das mais novas.
+    for (let pag = 0; pag < 8; pag++) {
+      const lote = await db.get(`wati_ia_mensagens?wa_id=in.(${was.slice(i, i + 40).join(',')})&role=in.(user,operador)&created_at=gte.${encodeURIComponent(desde)}&select=wa_id,role,texto,created_at&order=created_at.desc&limit=1000&offset=${pag * 1000}`);
+      for (const m of lote) (porWa[m.wa_id] = porWa[m.wa_id] || []).push(m);
+      if (lote.length < 1000) break;
+    }
     // O que saiu pelo painel (equipe ou mensagem aprovada pela Bárbara) também é resposta da equipe
     const fim8 = t => String(t || '').replace(/\D/g, '').slice(-8);
     const porFim = {};
     for (const w of was.slice(i, i + 40)) porFim[fim8(w)] = w;
     const tels = was.slice(i, i + 40).flatMap(w => variantes(w));
-    const doPainel = await db.get(`wa_mensagens?telefone=in.(${tels.join(',')})&direcao=eq.saida&origem=eq.painel&recebida_em=gte.${encodeURIComponent(desde)}&select=telefone,recebida_em&limit=3000`).catch(() => []);
+    const doPainel = await db.get(`wa_mensagens?telefone=in.(${tels.join(',')})&direcao=eq.saida&origem=eq.painel&recebida_em=gte.${encodeURIComponent(desde)}&select=telefone,recebida_em&order=recebida_em.desc&limit=1000`).catch(() => []);
     for (const m of doPainel) { const w = porFim[fim8(m.telefone)]; if (w) (porWa[w] = porWa[w] || []).push({ role: 'operador', texto: '', created_at: m.recebida_em }); }
   }
   for (const w of Object.keys(porWa)) porWa[w].sort((x, y) => String(x.created_at).localeCompare(String(y.created_at)));
