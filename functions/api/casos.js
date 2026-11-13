@@ -550,7 +550,7 @@ export async function filaEquipe(env, agora = Date.now()) {
     if (e) cand.push({ c, e });
   }
   let juizos = {};
-  try { juizos = ((((await db.get('vc_modelos?id=eq.fila-juizo&select=dados'))[0] || {}).dados || {}).itens) || {}; } catch (_) {}
+  try { juizos = ((((await sb(env, true).get('vc_modelos?id=eq.fila-juizo&select=dados'))[0] || {}).dados || {}).itens) || {}; } catch (_) {}
   const atual = x => { const j = juizos[x.c.wa_id]; return j && j.ate === x.e.ultima_em ? j : null; };
   // Lê no máximo 8 conversas por vez (limite de chamadas do Cloudflare); as mais antigas primeiro. O resto entra na
   // fila como "ainda não lida" e é lido nas próximas consultas, de 5 em 5 minutos.
@@ -562,7 +562,7 @@ export async function filaEquipe(env, agora = Date.now()) {
     if (mudou) {
       const vivos = new Set(cand.map(x => x.c.wa_id));
       for (const w of Object.keys(juizos)) if (!vivos.has(w)) delete juizos[w];
-      await db.send('POST', 'vc_modelos?on_conflict=id', { id: 'fila-juizo', dados: { itens: juizos, updated_at: new Date(agora).toISOString() } }, 'resolution=merge-duplicates,return=minimal').catch(() => {});
+      await sb(env, true).send('POST', 'vc_modelos?on_conflict=id', { id: 'fila-juizo', dados: { itens: juizos, updated_at: new Date(agora).toISOString() } }, 'resolution=merge-duplicates,return=minimal').catch(() => {});
     }
   }
   const itens = [];
@@ -576,7 +576,7 @@ export async function filaEquipe(env, agora = Date.now()) {
   }
   // Peça da troca que voltou e ninguém conferiu: prazo de 1 dia útil (13/11/2026)
   try {
-    const docs = await db.get('vc_modelos?id=in.(retorno,rastreio-trocas)&select=id,dados');
+    const docs = await sb(env, true).get('vc_modelos?id=in.(retorno,rastreio-trocas)&select=id,dados');
     const doc = id => ((docs.find(d => d.id === id) || {}).dados || {});
     for (const p of pecasParaConferir(doc('retorno').itens, doc('rastreio-trocas').itens, agora))
       itens.push({ ...p, responsavel: 'Marcelly', desde_brt: brt(p.desde) });
