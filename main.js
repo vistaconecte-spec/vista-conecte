@@ -3032,10 +3032,12 @@ async function csAbrirAbertos() {
           <span style="margin-left:auto;display:flex;gap:6px">
             ${c.wa_id ? `<button class="btn-outline" style="font-size:11px;padding:3px 10px" onclick="csAbrirConversa('${String(c.wa_id).replace(/\D/g, '')}')">Abrir conversa</button>` : ''}
             <button class="btn-outline" style="font-size:11px;padding:3px 10px" onclick="csAbrirCaso(${c.caso_id})">Abrir no assistente</button>
+            ${c.responsavel !== 'Bárbara' ? `<button class="btn-outline" style="font-size:11px;padding:3px 10px;color:#b91c1c;border-color:#fca5a5" onclick="csEstornoForm(${c.caso_id})">Estorno sem reversão</button>` : ''}
             ${c.pode_fechar ? `<button class="btn-outline" style="font-size:11px;padding:3px 10px" onclick="csFecharDaLista(${c.caso_id})">Fechar</button>` : ''}
           </span>
         </div>
         <div style="margin-top:3px;color:var(--text-sec)">${csEsc(c.resumo)}</div>
+        <div id="cs-est-${c.caso_id}" hidden></div>
       </div>`).join('') + '</div>';
   } catch (e) { box.innerHTML = `<div style="font-size:12px;color:#b91c1c">falhou: ${csEsc(e.message)}</div>`; }
 }
@@ -3058,6 +3060,39 @@ function csAbrirCaso(id) {
   csEnviar();
 }
 
+// "Estorno sem reversão" (Bárbara, 13/11/2026: "a Marcelly tenta contornar e ela dá o comando que não tem reversão"):
+// botão direto em cada caso, sem depender do Assistente sugerir. Vira um pedido de aprovação de estorno e o caso passa
+// para o nome da Bárbara (aparece em Aguardando Bárbara).
+function csEstornoForm(id) {
+  const box = document.getElementById('cs-est-' + id);
+  if (!box) return;
+  if (!box.hidden) { box.hidden = true; return; }
+  box.hidden = false;
+  box.innerHTML = `<div style="margin-top:8px;padding:8px 10px;border:1px solid #fecaca;border-radius:8px;background:#fef2f2;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+    <span style="font-weight:600;color:#991b1b">A cliente não aceitou reverter. Passar o estorno pra Bárbara:</span>
+    <input id="cs-est-valor-${id}" type="text" inputmode="decimal" placeholder="valor, ex: 205,18" style="width:120px;font-size:12px;padding:4px 6px">
+    <input id="cs-est-motivo-${id}" type="text" placeholder="motivo, ex: desistiu antes do envio, recusou crédito" style="flex:1;min-width:220px;font-size:12px;padding:4px 6px">
+    <button class="btn-primary" style="font-size:11px;padding:4px 12px" onclick="csEstornoEnviar(${id})">Passar pra Bárbara</button>
+  </div>`;
+  document.getElementById('cs-est-valor-' + id).focus();
+}
+async function csEstornoEnviar(id) {
+  const valor = Number(String(document.getElementById('cs-est-valor-' + id).value || '').replace(/[^\d,.]/g, '').replace(/\.(?=\d{3}(\D|$))/g, '').replace(',', '.'));
+  const motivo = String(document.getElementById('cs-est-motivo-' + id).value || '').trim();
+  if (!(valor > 0)) { alert('Coloque o valor do estorno.'); return; }
+  if (motivo.length < 5) { alert('Escreva o motivo, por que a cliente não aceitou reverter.'); return; }
+  try {
+    const r = await fetch('/api/casos', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ acao: 'executar', tipo: 'pedir_aprovacao', caso_id: id, categoria: 'estorno', valor, texto: 'Estorno sem reversão: ' + motivo }) });
+    if (r.status === 401 || r.status === 403) { sessaoExpirou(); return; }
+    const d = await r.json().catch(() => ({}));
+    if (d.so_leitura) { alert('Modo só leitura: nada foi gravado.'); return; }
+    if (!d.ok) { alert(d.erro || 'não deu certo'); return; }
+    const box = document.getElementById('cs-est-' + id);
+    if (box) box.innerHTML = `<div style="margin-top:8px;font-weight:600;color:#991b1b">Passado pra Bárbara: estorno de R$ ${valor.toFixed(2).replace('.', ',')}. O caso agora está com ela.</div>`;
+    filaVerificar(true);
+  } catch (e) { alert('falhou: ' + e.message); }
+}
 async function csFecharDaLista(id) {
   if (!confirm('Fechar o caso ' + id + '? Só feche se não falta mais nada para essa cliente.')) return;
   try {
@@ -3090,7 +3125,9 @@ async function csAbrirAprovacoes() {
     await filaVerificar(true);
     const atrasados = ((_fila && _fila.itens) || []).filter(i => i.vencido);
     // Estornos no nome dela (13/11/2026): primeiro, porque só ela resolve
-    const estornos = (_fila && _fila.com_barbara) || [];
+    // o que já está como pedido de aprovação pendente aparece lá embaixo, com aprovar e recusar: não repete aqui
+    const comPedido = new Set(lista.filter(a => a.status === 'pendente' || a.status === 'aprovado').map(a => String(a.caso_id)));
+    const estornos = ((_fila && _fila.com_barbara) || []).filter(i => !comPedido.has(String(i.caso_id)));
     const blocoEst = estornos.length ? `<div style="padding:10px 12px;border:1px solid #fecaca;border-radius:10px;margin-bottom:10px;font-size:12.5px;background:#fff">
         <b style="color:#b91c1c">Estornos com você (${estornos.length})</b>
         ${estornos.map(i => `<div style="display:flex;gap:8px;align-items:center;padding:5px 0;border-top:1px solid #fde2e2">
