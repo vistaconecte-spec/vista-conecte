@@ -21,7 +21,7 @@ import {
   soLeitura, MODELO, DOC_LOG, TEMPLATE_CONTINUIDADE, TEMPLATE_ALERTA, CATEGORIAS_DINHEIRO,
   SISTEMA, FERRAMENTAS, FERRAMENTAS_SERVIDOR, problemasDoTexto, prometeDinheiro, janelaAberta, revisarResposta,
   semResposta, promessasDaEquipe, pagoPorItem, numerosDePedido, pedidoEhDaCliente, emailsDoTexto, devolucoesDoPainel, codigosNaConversa, reversasDoPedido, prazoDoPedido, logVazio, podeFechar, podeFecharPelaConversa, casoDeDinheiro, semEscapeUnicode, aprovacaoLiberada, novoId,
-  primeiroNome, finalTel, resumoDoCaso, conversaParaAssistente, hojeTexto, brt, metaParaMsg, esperaDaEquipe, PRAZO_RESPOSTA_H, pecasParaConferir,
+  primeiroNome, finalTel, resumoDoCaso, conversaParaAssistente, hojeTexto, brt, metaParaMsg, esperaDaEquipe, PRAZO_RESPOSTA_H, pecasParaConferir, esperaBruta, JUIZ_FILA, conversaParaJuiz, lerJuizo,
 } from '../_casos.js';
 import { variantes, mesclar, enviarTextoDaLoja, enviarArquivoDaLoja, enviarModeloDaLoja } from '../_whatsapp.js';
 
@@ -536,19 +536,43 @@ export async function filaEquipe(env, agora = Date.now()) {
     const porFim = {};
     for (const w of was.slice(i, i + 40)) porFim[fim8(w)] = w;
     const tels = was.slice(i, i + 40).flatMap(w => variantes(w));
-    const doPainel = await db.get(`wa_mensagens?telefone=in.(${tels.join(',')})&direcao=eq.saida&origem=eq.painel&recebida_em=gte.${encodeURIComponent(desde)}&select=telefone,recebida_em&order=recebida_em.desc&limit=1000`).catch(() => []);
-    for (const m of doPainel) { const w = porFim[fim8(m.telefone)]; if (w) (porWa[w] = porWa[w] || []).push({ role: 'operador', texto: '', created_at: m.recebida_em }); }
+    const doPainel = await db.get(`wa_mensagens?telefone=in.(${tels.join(',')})&direcao=eq.saida&origem=eq.painel&recebida_em=gte.${encodeURIComponent(desde)}&select=telefone,recebida_em,texto&order=recebida_em.desc&limit=1000`).catch(() => []);
+    for (const m of doPainel) { const w = porFim[fim8(m.telefone)]; if (w) (porWa[w] = porWa[w] || []).push({ role: 'operador', texto: m.texto || '', created_at: m.recebida_em }); }
   }
   for (const w of Object.keys(porWa)) porWa[w].sort((x, y) => String(x.created_at).localeCompare(String(y.created_at)));
+  // Quem escreveu depois da última fala da equipe é candidata; a IA lê a conversa e decide (13/11/2026)
   const vistos = new Set();
-  const itens = [];
+  const cand = [];
   for (const c of casos) {
     if (!c.wa_id || vistos.has(c.wa_id)) continue;
     vistos.add(c.wa_id);
-    const e = esperaDaEquipe(porWa[c.wa_id], agora);
-    if (!e) continue;
+    const e = esperaBruta(porWa[c.wa_id], agora);
+    if (e) cand.push({ c, e });
+  }
+  let juizos = {};
+  try { juizos = ((((await db.get('vc_modelos?id=eq.fila-juizo&select=dados'))[0] || {}).dados || {}).itens) || {}; } catch (_) {}
+  const atual = x => { const j = juizos[x.c.wa_id]; return j && j.ate === x.e.ultima_em ? j : null; };
+  // Lê no máximo 8 conversas por vez (limite de chamadas do Cloudflare); as mais antigas primeiro. O resto entra na
+  // fila como "ainda não lida" e é lido nas próximas consultas, de 5 em 5 minutos.
+  const ler = cand.filter(x => !atual(x)).sort((a, b) => String(a.e.desde).localeCompare(String(b.e.desde))).slice(0, env.ANTHROPIC_API_KEY ? 8 : 0);
+  if (ler.length) {
+    const lidos = await Promise.all(ler.map(x => julgarEspera(env, porWa[x.c.wa_id], x.c).catch(() => null)));
+    let mudou = false;
+    ler.forEach((x, i) => { if (lidos[i]) { juizos[x.c.wa_id] = { ...lidos[i], ate: x.e.ultima_em, lido_em: new Date(agora).toISOString() }; mudou = true; } });
+    if (mudou) {
+      const vivos = new Set(cand.map(x => x.c.wa_id));
+      for (const w of Object.keys(juizos)) if (!vivos.has(w)) delete juizos[w];
+      await db.send('POST', 'vc_modelos?on_conflict=id', { id: 'fila-juizo', dados: { itens: juizos, updated_at: new Date(agora).toISOString() } }, 'resolution=merge-duplicates,return=minimal').catch(() => {});
+    }
+  }
+  const itens = [];
+  for (const x of cand) {
+    const j = atual(x);
+    if (j && !j.espera) continue;
+    const { c, e } = x;
     itens.push({ caso_id: c.id, cliente: primeiroNome(c.nome), pedido: c.pedido || null, wa_id: c.wa_id, responsavel: c.responsavel || 'Marcelly',
-      tipo: String(c.tipo || '').split(' · ')[0].slice(0, 60), desde_brt: brt(e.desde), horas: e.horas, vencido: e.vencido, ultima: e.ultima });
+      tipo: String(c.tipo || '').split(' · ')[0].slice(0, 60), desde_brt: brt(e.desde), horas: e.horas, vencido: e.vencido, ultima: e.ultima,
+      falta: j ? j.falta : null, lido: !!j });
   }
   // Peça da troca que voltou e ninguém conferiu: prazo de 1 dia útil (13/11/2026)
   try {
@@ -561,6 +585,17 @@ export async function filaEquipe(env, agora = Date.now()) {
   return { prazo_horas: PRAZO_RESPOSTA_H, itens, vencidos: itens.filter(i => i.vencido).length };
 }
 const DIA = 86400000;
+// Uma conversa lida pela IA: a cliente ainda espera resposta ou ação da loja? (13/11/2026)
+async function julgarEspera(env, msgs, caso) {
+  const r = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: { 'x-api-key': env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
+    body: JSON.stringify({ model: MODELO, max_tokens: 300, system: JUIZ_FILA, messages: [{ role: 'user', content: conversaParaJuiz(msgs, caso) }] }),
+  });
+  if (!r.ok) return null;
+  const j = await r.json().catch(() => null);
+  return lerJuizo(((j && j.content) || []).filter(b => b.type === 'text').map(b => b.text).join(''));
+}
 
 // ── Rota ────────────────────────────────────────────────────────────────────────
 export async function onRequestGet({ request, env }) {

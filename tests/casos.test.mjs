@@ -371,13 +371,20 @@ ok('status vai num cartão fixo e a IA não repete', /cartão fixo da tela acima
   ok('espera: resposta da Vi não conta', !!C.esperaDaEquipe([{ role: 'user', texto: 'cadê meu reembolso?', created_at: '2026-11-12T13:00:00Z' }, { role: 'assistant', texto: 'Já passei sua conversa pra nossa equipe', created_at: '2026-11-12T13:01:00Z' }], agora), true);
   ok('não espera: Blza, Magina, Tudo bem, Chegou aqui obrigada, Irei aguardar', ['Blza', 'Magina', 'Tudo bem', 'Chegou aqui, obrigada 😊', 'Irei aguardar as minhas encomendas', '[unsupported]', '[mensagem citada pela cliente: "Por nada"] Jóia! 🫶'].every(C.naoEspera), true);
   ok('espera: pergunta e cobrança continuam', ['Até hoje não foi enviado ?', 'Tô esperando o valor de volta', 'Queria saber sobre meu pedido', 'ok, e quando chega?'].some(C.naoEspera), false);
-  ok('espera: a Vi respondeu e ela só agradeceu depois, não espera (Crischélida #9269)', C.esperaDaEquipe([
-    { role: 'user', texto: 'O problema também é que ela é muito transparente, seria ideal ter um forro', created_at: '2026-10-08T20:00:00Z' },
-    { role: 'assistant', texto: 'Dá para trocar pelo portal', created_at: '2026-10-08T20:01:00Z' },
-    { role: 'user', texto: 'Perfeito, muito obrigada', created_at: '2026-10-08T20:43:00Z' }, { role: 'user', texto: '❤️', created_at: '2026-10-08T20:45:00Z' }], agora), null);
-  ok('espera: a Vi respondeu mas ela perguntou de novo, continua esperando', !!C.esperaDaEquipe([
-    { role: 'user', texto: 'cadê a etiqueta?', created_at: '2026-11-12T13:00:00Z' }, { role: 'assistant', texto: 'Já passei pra equipe', created_at: '2026-11-12T13:01:00Z' },
-    { role: 'user', texto: 'ok', created_at: '2026-11-12T13:02:00Z' }, { role: 'user', texto: 'e quando chega?', created_at: '2026-11-12T15:00:00Z' }], agora), true);
+  // Fila pela leitura da conversa (Bárbara: "não ler a última palavra agradecimento e concluir")
+  const conv = [
+    { role: 'operador', texto: 'vou solicitar a etiqueta e te envio segunda', created_at: '2026-11-10T13:00:00Z' },
+    { role: 'user', texto: 'Obrigada!', created_at: '2026-11-10T13:01:00Z' },
+    { role: 'assistant', texto: 'Imagina! [contexto interno: não repetir]', created_at: '2026-11-10T13:02:00Z' }];
+  const b = C.esperaBruta(conv, agora);
+  ok('candidata: agradeceu uma promessa da equipe, entra para a IA ler (não some pela palavra)', [!!b, b && b.ultima_em], [true, '2026-11-10T13:02:00Z']);
+  ok('candidata: equipe falou por último, não entra', C.esperaBruta([{ role: 'user', texto: 'cadê?', created_at: '2026-11-12T13:00:00Z' }, { role: 'operador', texto: 'segue', created_at: '2026-11-12T14:00:00Z' }], agora), null);
+  const pj = C.conversaParaJuiz(conv, { tipo: 'troca (tamanho)', pedido: '8981' });
+  ok('a IA lê quem falou o quê, com o caso, sem o contexto interno', [/EQUIPE: vou solicitar a etiqueta/.test(pj), /CLIENTE: Obrigada!/.test(pj), /contexto interno/.test(pj), /pedido 8981/.test(pj)], [true, true, false, true]);
+  ok('leitura da IA: JSON válido', C.lerJuizo('{"espera": true, "falta": "mandar a etiqueta da troca", "motivo": "a equipe prometeu e não mandou"}'), { espera: true, falta: 'mandar a etiqueta da troca', motivo: 'a equipe prometeu e não mandou' });
+  ok('leitura da IA: resposta estranha não vale (fica na fila)', [C.lerJuizo('acho que sim'), C.lerJuizo('{"espera": "talvez"}')], [null, null]);
+  ok('a instrução manda ler o contexto e, na dúvida, esperar', [/Leia a conversa inteira/.test(C.JUIZ_FILA), /Na dúvida, espera/.test(C.JUIZ_FILA), /—/.test(C.JUIZ_FILA)], [true, true, false]);
+  ok('fila: sem leitura da IA a cliente fica (nunca some por engano)', /if \(j && !j\.espera\) continue;/.test(apiTxt), true);
   const conf = C.pecasParaConferir([
     { id: 'a', cliente: 'Cris Silva', pedido: '9126', status: 'pendente', data_chegada_reversa: '2026-11-12', pedido_troca: '#9411' },
     { id: 'b', cliente: 'Ana', pedido: '9000', status: 'pendente', data_chegada_reversa: '2026-11-12', conferido_em: '2026-11-12T15:00:00Z' },

@@ -14002,7 +14002,7 @@ function filaRender() {
     </div>` : `
     <div style="display:flex;align-items:center;gap:10px;padding:3px 0;${i.vencido ? 'font-weight:700' : ''}">
       <div style="flex:1">• ${csEsc(i.cliente)}${i.pedido ? ' #' + csEsc(String(i.pedido).replace('#', '')) : ''}, esperando há ${filaHoras(i.horas)} úteis${i.vencido ? ', passou do prazo e a Bárbara já vê' : ''}
-        <span style="font-weight:400;opacity:.85">"${csEsc(String(i.ultima || '').slice(0, 90))}"</span></div>
+        <span style="font-weight:400;opacity:.85">${i.falta ? 'falta ' + csEsc(i.falta) : '"' + csEsc(String(i.ultima || '').slice(0, 90)) + '"'}</span></div>
       <button style="${btn}" onclick="filaAbrir('${String(i.wa_id).replace(/\D/g, '')}')">Abrir conversa</button>
     </div>`).join('');
   const nConf = itens.filter(i => i.tipo === 'conferir').length, nCli = itens.length - nConf;

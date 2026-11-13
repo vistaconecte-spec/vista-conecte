@@ -329,17 +329,48 @@ export function esperaDaEquipe(msgs, agora = Date.now()) {
   const depois = lista.slice(iEquipe + 1).filter(m => m.role === 'user');
   const pendentes = depois.filter(m => !naoEspera(m.texto));
   if (!pendentes.length) return null;
-  // A Vi respondeu a última pergunta e depois a cliente só agradeceu ("Perfeito, muito obrigada", coração): ela não
-  // espera mais nada. A Crischélida #9269 ficou na faixa por uma pergunta de 08/10 já resolvida pela Vi (13/11/2026).
-  // Agradecer logo depois de perguntar, sem resposta no meio ("E a etiqueta?" + "obrigada"), continua esperando.
-  const ultPend = pendentes[pendentes.length - 1];
-  const tudo = msgs || [];
-  const iPend = tudo.indexOf(ultPend);
-  const iVi = tudo.findIndex((m, i) => i > iPend && m.role === 'assistant');
-  if (iVi > 0 && tudo.slice(iVi).some(m => m.role === 'user' && naoEspera(m.texto)) && !tudo.slice(iVi).some(m => m.role === 'user' && !naoEspera(m.texto))) return null;
   const desde = pendentes[0].created_at;
   return { desde, horas: horasUteis(desde, agora), ultima: String(pendentes[pendentes.length - 1].texto || '').slice(0, 160),
     vencido: horasUteis(desde, agora) >= PRAZO_RESPOSTA_H, equipe_ja_falou: iEquipe >= 0 };
+}
+
+// ── Fila pela leitura da conversa (13/11/2026) ─────────────────────────────────────
+// Bárbara: "o robô precisa ler o contexto, e não ler a última palavra agradecimento e concluir". Palavra solta
+// ("obrigada", "blz", coração) não diz se a cliente ainda espera: agradecer uma promessa que não foi cumprida
+// continua sendo espera. Toda cliente que escreveu depois da última fala da equipe é candidata; a IA lê a conversa
+// e diz se ela ainda espera resposta ou ação da loja e o que falta. Sem leitura ainda, fica na fila (nunca some
+// por engano). A leitura vale até chegar mensagem nova.
+export function esperaBruta(msgs, agora = Date.now()) {
+  const lista = (msgs || []).filter(m => m.role === 'user' || m.role === 'operador');
+  let iEquipe = -1;
+  lista.forEach((m, i) => { if (m.role === 'operador') iEquipe = i; });
+  const depois = lista.slice(iEquipe + 1).filter(m => m.role === 'user');
+  if (!depois.length) return null;
+  const todas = (msgs || []).filter(m => m && m.created_at);
+  const desde = depois[0].created_at;
+  return { desde, horas: horasUteis(desde, agora), vencido: horasUteis(desde, agora) >= PRAZO_RESPOSTA_H,
+    ultima: String(depois[depois.length - 1].texto || '').slice(0, 160), ultima_em: todas.length ? todas[todas.length - 1].created_at : desde };
+}
+export const JUIZ_FILA = `Você lê a conversa de WhatsApp entre uma cliente da Vista Conecte (loja de roupas feitas sob encomenda) e o atendimento. VI é a assistente automática, EQUIPE são as pessoas da loja.
+Decida se, no fim da conversa, a cliente ainda espera alguma coisa da loja: resposta a uma pergunta, ou uma ação como envio, troca, etiqueta ou código de postagem, estorno, reembolso, correção de pedido, ou uma confirmação que foi prometida.
+Leia a conversa inteira. Agradecimento, "ok" ou emoji depois de uma promessa que ainda não foi cumprida continua sendo espera. Promessa da VI de que "a equipe vai ver" ou "o código chega por aqui" é espera até a coisa acontecer na conversa.
+Só responda que não espera quando o assunto foi resolvido de fato na própria conversa: a informação pedida foi dada, o que ela pediu foi feito, ou ela desistiu do pedido. Na dúvida, espera.
+Responda só com JSON, sem mais nada: {"espera": true ou false, "falta": "o que a loja ainda precisa fazer ou responder, em até 15 palavras, vazio se nada", "motivo": "por que, em até 20 palavras"}`;
+export function conversaParaJuiz(msgs, caso) {
+  const quem = { user: 'CLIENTE', assistant: 'VI', operador: 'EQUIPE' };
+  const linhas = (msgs || []).filter(m => quem[m.role] && String(m.texto || '').trim() && !/^\[contexto/.test(m.texto)).slice(-30)
+    .map(m => `${brt(m.created_at)} ${quem[m.role]}: ${String(m.texto).replace(/\[contexto interno:[\s\S]*?\]/g, '').replace(/\s+/g, ' ').trim().slice(0, 400)}`);
+  const cab = caso ? `Caso aberto: ${String(caso.tipo || '').slice(0, 120)}${caso.pedido ? ', pedido ' + caso.pedido : ''}\n\n` : '';
+  return cab + linhas.join('\n');
+}
+export function lerJuizo(texto) {
+  const m = String(texto || '').match(/\{[\s\S]*\}/);
+  if (!m) return null;
+  try {
+    const j = JSON.parse(m[0]);
+    if (typeof j.espera !== 'boolean') return null;
+    return { espera: j.espera, falta: String(j.falta || '').slice(0, 140), motivo: String(j.motivo || '').slice(0, 180) };
+  } catch (_) { return null; }
 }
 
 // Peça da troca que voltou e ninguém conferiu (13/11/2026). A Bárbara quer a conferência humana ("precisamos esperar
