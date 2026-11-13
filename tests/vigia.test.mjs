@@ -34,6 +34,10 @@ ok('item que não deu pra conferir não é problema', problemas({ em: ha(5), ite
 ok('robô sem bater há 46 min', chaves(problemas({ em: ha(5) }, { robo_visto_em: ha(46) }, dia)), ['robo']);
 ok('robô batendo não aparece', problemas({ em: ha(5) }, { robo_visto_em: ha(10) }, dia), []);
 ok('notebook parado não acusa o robô junto', chaves(problemas({ em: ha(60) }, { robo_visto_em: ha(60) }, dia)), ['notebook']);
+// Frenet deslogada no robô (13/11/2026): ele bate, mas não trabalha
+ok('Frenet deslogada depois do último login bom é problema', chaves(problemas({ em: ha(5) }, { robo_visto_em: ha(5), frenet_ok_em: ha(120), frenet_deslogada_em: ha(30) }, dia)), ['frenet']);
+ok('Frenet logada de novo depois da queda não é problema', problemas({ em: ha(5) }, { robo_visto_em: ha(5), frenet_ok_em: ha(10), frenet_deslogada_em: ha(30) }, dia), []);
+ok('o aviso da Frenet diz o que fazer', /Entrar na Frenet do robô/.test((problemas({ em: ha(5) }, { robo_visto_em: ha(5), frenet_deslogada_em: ha(30) }, dia)[0] || {}).texto || ''), true);
 
 // decidir
 const P = [{ chave: 'central', texto: 'Central deslogada' }];

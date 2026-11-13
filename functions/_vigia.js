@@ -39,6 +39,12 @@ export function problemas(pulso, robo, agora) {
   if (visto && minutos(agora, visto) > ROBO_MIN) {
     lista.push({ chave: 'robo', texto: `Robô de etiquetas da Frenet parado desde ${hhmm(visto)}` });
   }
+  // Frenet deslogada (13/11/2026): o robô segue dando sinal de vida, mas trocas, reversas, etiquetas, pagamentos com o
+  // saldo e o prazo de 7 dias param. O login tem verificação "não sou robô", então só ela consegue entrar de novo.
+  const caiu = robo && robo.frenet_deslogada_em;
+  if (caiu && !Number.isNaN(Date.parse(caiu)) && (!robo.frenet_ok_em || Date.parse(caiu) > Date.parse(robo.frenet_ok_em))) {
+    lista.push({ chave: 'frenet', texto: `A Frenet deslogou no robô às ${hhmm(caiu)}. Trocas, reversas e etiquetas pararam. Abra no notebook o atalho "Entrar na Frenet do robô" e faça o login` });
+  }
   return lista;
 }
 
