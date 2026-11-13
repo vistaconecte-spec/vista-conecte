@@ -21,7 +21,7 @@ import {
   soLeitura, MODELO, DOC_LOG, TEMPLATE_CONTINUIDADE, TEMPLATE_ALERTA, CATEGORIAS_DINHEIRO,
   SISTEMA, FERRAMENTAS, FERRAMENTAS_SERVIDOR, problemasDoTexto, prometeDinheiro, janelaAberta, revisarResposta,
   semResposta, promessasDaEquipe, pagoPorItem, numerosDePedido, pedidoEhDaCliente, emailsDoTexto, devolucoesDoPainel, codigosNaConversa, reversasDoPedido, prazoDoPedido, logVazio, podeFechar, podeFecharPelaConversa, casoDeDinheiro, semEscapeUnicode, aprovacaoLiberada, novoId,
-  primeiroNome, finalTel, resumoDoCaso, conversaParaAssistente, hojeTexto, brt, metaParaMsg, esperaDaEquipe, PRAZO_RESPOSTA_H,
+  primeiroNome, finalTel, resumoDoCaso, conversaParaAssistente, hojeTexto, brt, metaParaMsg, esperaDaEquipe, PRAZO_RESPOSTA_H, pecasParaConferir,
 } from '../_casos.js';
 import { variantes, mesclar, enviarTextoDaLoja, enviarArquivoDaLoja, enviarModeloDaLoja } from '../_whatsapp.js';
 
@@ -527,7 +527,7 @@ export async function filaEquipe(env, agora = Date.now()) {
     // O Supabase devolve no máximo 1000 linhas por chamada; antes vinha em ordem crescente e cortava as
     // mensagens MAIS NOVAS (a resposta da Marcelly à Lu, 13/11, sumia). Agora pagina, das mais novas.
     for (let pag = 0; pag < 8; pag++) {
-      const lote = await db.get(`wati_ia_mensagens?wa_id=in.(${was.slice(i, i + 40).join(',')})&role=in.(user,operador)&created_at=gte.${encodeURIComponent(desde)}&select=wa_id,role,texto,created_at&order=created_at.desc&limit=1000&offset=${pag * 1000}`);
+      const lote = await db.get(`wati_ia_mensagens?wa_id=in.(${was.slice(i, i + 40).join(',')})&role=in.(user,operador,assistant)&created_at=gte.${encodeURIComponent(desde)}&select=wa_id,role,texto,created_at&order=created_at.desc&limit=1000&offset=${pag * 1000}`);
       for (const m of lote) (porWa[m.wa_id] = porWa[m.wa_id] || []).push(m);
       if (lote.length < 1000) break;
     }
@@ -550,6 +550,13 @@ export async function filaEquipe(env, agora = Date.now()) {
     itens.push({ caso_id: c.id, cliente: primeiroNome(c.nome), pedido: c.pedido || null, wa_id: c.wa_id, responsavel: c.responsavel || 'Marcelly',
       tipo: String(c.tipo || '').split(' · ')[0].slice(0, 60), desde_brt: brt(e.desde), horas: e.horas, vencido: e.vencido, ultima: e.ultima });
   }
+  // Peça da troca que voltou e ninguém conferiu: prazo de 1 dia útil (13/11/2026)
+  try {
+    const docs = await db.get('vc_modelos?id=in.(retorno,rastreio-trocas)&select=id,dados');
+    const doc = id => ((docs.find(d => d.id === id) || {}).dados || {});
+    for (const p of pecasParaConferir(doc('retorno').itens, doc('rastreio-trocas').itens, agora))
+      itens.push({ ...p, responsavel: 'Marcelly', desde_brt: brt(p.desde) });
+  } catch (_) {}
   itens.sort((a, b) => b.horas - a.horas);
   return { prazo_horas: PRAZO_RESPOSTA_H, itens, vencidos: itens.filter(i => i.vencido).length };
 }

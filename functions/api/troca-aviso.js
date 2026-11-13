@@ -23,7 +23,7 @@
  *
  * POST { pedido: '#9250', codigo, validade (ISO), item_id }
  */
-import { enviarTextoDaLoja, enviarModeloDaLoja } from '../_whatsapp.js';
+import { enviarTextoDaLoja, enviarModeloDaLoja, enviarArquivoDaLoja } from '../_whatsapp.js';
 
 const API_VERSION = '2026-04';
 const SB_URL = 'https://hckzsblwyabmhzbjdjgx.supabase.co';
@@ -39,12 +39,36 @@ const ASSUNTO = {
   credito: p => `a devolução do pedido ${p}, que vai virar crédito na loja, está liberada`,
   devolucao: p => `sua devolução do pedido ${p} está liberada`,
 };
-export function textoConversa({ nome, pedido, codigo, validade, tipo = 'troca' }) {
+// comum (13/11/2026): etiqueta comum de devolução, quando a Frenet trava a reversa. Vai com o PDF na mesma
+// mensagem e a cliente imprime. renovado: o código anterior venceu sem postagem e o robô gerou outro, o último.
+export function textoConversa({ nome, pedido, codigo, validade, tipo = 'troca', comum = false, renovado = false }) {
   const primeiro = String(nome || '').trim().split(/\s+/)[0] || '';
   const dia = validade ? new Date(validade).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' }) : '';
   return `Oi${primeiro ? ' ' + primeiro : ''}, ${(ASSUNTO[tipo] || ASSUNTO.troca)(pedido)}. O código de postagem dos Correios é ${codigo}`
     + (dia ? ` e vale até ${dia}` : '')
-    + '. É só levar a peça embalada a uma agência e informar esse código, não precisa imprimir etiqueta nem pagar frete.';
+    + (comum
+      ? '. A etiqueta está neste PDF, é só imprimir, colar no pacote e levar a uma agência dos Correios. O frete já está pago.'
+      : '. É só levar a peça embalada a uma agência e informar esse código, não precisa imprimir etiqueta nem pagar frete.')
+    + (renovado ? ' Esse código é novo, porque o anterior venceu sem a postagem, e é o último que conseguimos gerar para essa troca.' : '');
+}
+
+// Modelo de continuidade (13/11/2026, Bárbara: "não pode depender de ninguém"): antes ia uma vez só e, se a
+// cliente não respondesse, o código nunca chegava. Agora repete a cada 3 dias, até 3 vezes, enquanto o código vale.
+export const ABRIR_INTERVALO_MS = 3 * 86400e3, ABRIR_MAX = 3;
+export function proximaAbertura(base, anteriores, agora = Date.now()) {
+  const minhas = (anteriores || []).filter(x => x && new RegExp('^' + base + '(_\\d+)?$').test(x.msg_id))
+    .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
+  if (minhas.length >= ABRIR_MAX) return null;
+  if (minhas.length && agora - new Date(minhas[0].created_at).getTime() < ABRIR_INTERVALO_MS) return null;
+  return minhas.length ? `${base}_${minhas.length + 1}` : base;
+}
+
+function pdfDoCorpo(b64, nome) {
+  if (!b64) return null;
+  const bin = atob(String(b64));
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return new File([bytes], nome, { type: 'application/pdf' });
 }
 
 // O mesmo número aparece com e sem o 9 nas conversas antigas do Wati
@@ -70,7 +94,8 @@ export async function onRequestPost({ env, request }) {
   if (!num || !codigo || !b.item_id) return json({ erro: 'informe pedido, codigo e item_id' }, 400);
   if (!env.SUPABASE_SERVICE_ROLE_KEY || !(env.WA_TOKEN || env.META_ACCESS_TOKEN)) return json({ erro: 'faltam SUPABASE_SERVICE_ROLE_KEY ou META_ACCESS_TOKEN' }, 500);
   const sbH = { apikey: env.SUPABASE_SERVICE_ROLE_KEY, Authorization: 'Bearer ' + env.SUPABASE_SERVICE_ROLE_KEY, 'Content-Type': 'application/json' };
-  const msgId = 'troca_codigo_' + String(b.item_id).replace(/[^\w:-]/g, '');
+  // código renovado (o anterior venceu) é outro aviso do mesmo item: id próprio para não cair no "já mandado"
+  const msgId = 'troca_codigo_' + String(b.item_id).replace(/[^\w:-]/g, '') + (b.renovado ? '_renovado' : '');
 
   try {
     const ja = await (await fetch(`${SB_URL}/rest/v1/wati_ia_mensagens?msg_id=eq.${encodeURIComponent(msgId)}&select=msg_id,created_at`, { headers: sbH })).json();
@@ -91,7 +116,10 @@ export async function onRequestPost({ env, request }) {
     const vars = variantesWa(tel);
     if (!vars.length) return json({ enviado: false, motivo: 'sem_telefone' });
     const nome = o.shippingAddress?.firstName || o.customer?.firstName || (o.shippingAddress?.name || '').split(' ')[0];
-    const texto = textoConversa({ nome, pedido: o.name, codigo, validade: b.validade, tipo: await tipoDoItem(b) });
+    const comum = !!b.comum;
+    const texto = textoConversa({ nome, pedido: o.name, codigo, validade: b.validade, tipo: await tipoDoItem(b), comum, renovado: !!b.renovado });
+    const pdf = comum ? pdfDoCorpo(b.pdf_b64, `etiqueta-devolucao-${num}.pdf`) : null;
+    if (comum && !pdf) return json({ enviado: false, motivo: 'sem_pdf', mensagem: texto });
 
     const ult = await (await fetch(`${SB_URL}/rest/v1/wati_ia_mensagens?wa_id=in.(${vars.join(',')})&role=eq.user&order=created_at.desc&limit=1&select=wa_id,created_at`, { headers: sbH })).json();
     const ultima = Array.isArray(ult) && ult[0];
@@ -99,13 +127,15 @@ export async function onRequestPost({ env, request }) {
     let via = null;
 
     if (ultima && dentroDaJanela(ultima.created_at)) {
-      const s = await enviarTextoDaLoja(env, wa, texto);
+      // etiqueta comum: o PDF com o texto como legenda, numa mensagem só
+      const s = pdf ? await enviarArquivoDaLoja(env, wa, pdf, texto) : await enviarTextoDaLoja(env, wa, texto);
       if (s.erro) return json({ enviado: false, motivo: 'meta_recusou', detalhe: s.detalhe || s.erro, mensagem: texto });
       via = 'conversa';
     } else {
       // Fora das 24 h: só pelo modelo aprovado (variáveis: nome, pedido, autorização, validade)
       const dia = b.validade ? new Date(b.validade).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' }) : '';
-      const s = await enviarModeloDaLoja(env, wa, TEMPLATE_TROCA, [nome || 'cliente', num, codigo, dia]);
+      // A etiqueta comum precisa do PDF, que modelo não leva: sempre abre a conversa primeiro
+      const s = comum ? { erro: 'modelo' } : await enviarModeloDaLoja(env, wa, TEMPLATE_TROCA, [nome || 'cliente', num, codigo, dia]);
       if (s.erro === 'modelo') {
         const aberta = await abrirConversa(env, sbH, wa, nome, o.name);
         return json({ enviado: false, motivo: 'fora_da_janela', conversa_aberta: aberta, mensagem: texto });
@@ -124,12 +154,13 @@ export async function onRequestPost({ env, request }) {
   }
 }
 
-// Uma vez por pedido: o modelo aprovado de continuidade, para a cliente responder e a janela abrir.
-// Devolve true (mandou agora), 'ja_pedida' (já tinha mandado) ou false (a Meta não aceitou).
+// O modelo aprovado de continuidade, para a cliente responder e a janela abrir: a cada 3 dias, até 3 vezes por pedido.
+// Devolve true (mandou agora), 'ja_pedida' (mandou há menos de 3 dias ou já foram 3) ou false (a Meta não aceitou).
 async function abrirConversa(env, sbH, wa, nome, pedido) {
-  const id = 'troca_abrir_' + String(pedido).replace(/\D/g, '');
-  const ja = await (await fetch(`${SB_URL}/rest/v1/wati_ia_mensagens?msg_id=eq.${id}&select=msg_id`, { headers: sbH })).json();
-  if (Array.isArray(ja) && ja.length) return 'ja_pedida';
+  const base = 'troca_abrir_' + String(pedido).replace(/\D/g, '');
+  const ant = await (await fetch(`${SB_URL}/rest/v1/wati_ia_mensagens?msg_id=like.${base}*&select=msg_id,created_at&limit=20`, { headers: sbH })).json();
+  const id = proximaAbertura(base, Array.isArray(ant) ? ant : []);
+  if (!id) return 'ja_pedida';
   const s = await enviarModeloDaLoja(env, wa, TEMPLATE_ABRIR, [nome || 'cliente', `troca do pedido ${pedido}`]);
   if (s.erro) return false;
   await fetch(`${SB_URL}/rest/v1/wati_ia_mensagens`, {

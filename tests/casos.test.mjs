@@ -371,6 +371,23 @@ ok('status vai num cartão fixo e a IA não repete', /cartão fixo da tela acima
   ok('espera: resposta da Vi não conta', !!C.esperaDaEquipe([{ role: 'user', texto: 'cadê meu reembolso?', created_at: '2026-11-12T13:00:00Z' }, { role: 'assistant', texto: 'Já passei sua conversa pra nossa equipe', created_at: '2026-11-12T13:01:00Z' }], agora), true);
   ok('não espera: Blza, Magina, Tudo bem, Chegou aqui obrigada, Irei aguardar', ['Blza', 'Magina', 'Tudo bem', 'Chegou aqui, obrigada 😊', 'Irei aguardar as minhas encomendas', '[unsupported]', '[mensagem citada pela cliente: "Por nada"] Jóia! 🫶'].every(C.naoEspera), true);
   ok('espera: pergunta e cobrança continuam', ['Até hoje não foi enviado ?', 'Tô esperando o valor de volta', 'Queria saber sobre meu pedido', 'ok, e quando chega?'].some(C.naoEspera), false);
+  ok('espera: a Vi respondeu e ela só agradeceu depois, não espera (Crischélida #9269)', C.esperaDaEquipe([
+    { role: 'user', texto: 'O problema também é que ela é muito transparente, seria ideal ter um forro', created_at: '2026-10-08T20:00:00Z' },
+    { role: 'assistant', texto: 'Dá para trocar pelo portal', created_at: '2026-10-08T20:01:00Z' },
+    { role: 'user', texto: 'Perfeito, muito obrigada', created_at: '2026-10-08T20:43:00Z' }, { role: 'user', texto: '❤️', created_at: '2026-10-08T20:45:00Z' }], agora), null);
+  ok('espera: a Vi respondeu mas ela perguntou de novo, continua esperando', !!C.esperaDaEquipe([
+    { role: 'user', texto: 'cadê a etiqueta?', created_at: '2026-11-12T13:00:00Z' }, { role: 'assistant', texto: 'Já passei pra equipe', created_at: '2026-11-12T13:01:00Z' },
+    { role: 'user', texto: 'ok', created_at: '2026-11-12T13:02:00Z' }, { role: 'user', texto: 'e quando chega?', created_at: '2026-11-12T15:00:00Z' }], agora), true);
+  const conf = C.pecasParaConferir([
+    { id: 'a', cliente: 'Cris Silva', pedido: '9126', status: 'pendente', data_chegada_reversa: '2026-11-12', pedido_troca: '#9411' },
+    { id: 'b', cliente: 'Ana', pedido: '9000', status: 'pendente', data_chegada_reversa: '2026-11-12', conferido_em: '2026-11-12T15:00:00Z' },
+    { id: 'c', cliente: 'Bia', pedido: '9001', status: 'pendente' },
+    { id: 'd', cliente: 'Duda', pedido: '9002', status: 'pendente' },
+    { id: 'e', cliente: 'Eva', pedido: '9003', status: 'resolvido', data_chegada_reversa: '2026-11-01' },
+  ], { 'retorno:d': { entregue: true, entregue_em: '2026-11-13T13:00:00Z' } }, agora);
+  ok('conferir: peça voltou e ninguém conferiu entra na fila; conferida, sem chegada e resolvida ficam fora', conf.map(x => x.card_id), ['a', 'd']);
+  ok('conferir: 1 dia útil de prazo (chegou qui, sex 14h já passou)', [conf[0].vencido, conf[1].vencido], [true, false]);
+  ok('conferir: diz o que falta', conf[0].ultima, 'a peça voltou dia 12/11, falta conferir e liberar o #9411');
   ok('rota ?fila=1 e faixa sem botão de ocultar', /searchParams\.get\('fila'\)\) return J\(await filaEquipe\(env\)\)/.test(apiTxt) && /id = 'faixa-fila'/.test(main) && !/faixa-fila'\)\.remove\(\)" style/.test(main), true);
 }
 // 11/11/2026, caso 727: a cliente já postou a peça errada? a peça nova foi lançada na Shopify?

@@ -329,9 +329,40 @@ export function esperaDaEquipe(msgs, agora = Date.now()) {
   const depois = lista.slice(iEquipe + 1).filter(m => m.role === 'user');
   const pendentes = depois.filter(m => !naoEspera(m.texto));
   if (!pendentes.length) return null;
+  // A Vi respondeu a última pergunta e depois a cliente só agradeceu ("Perfeito, muito obrigada", coração): ela não
+  // espera mais nada. A Crischélida #9269 ficou na faixa por uma pergunta de 08/10 já resolvida pela Vi (13/11/2026).
+  // Agradecer logo depois de perguntar, sem resposta no meio ("E a etiqueta?" + "obrigada"), continua esperando.
+  const ultPend = pendentes[pendentes.length - 1];
+  const tudo = msgs || [];
+  const iPend = tudo.indexOf(ultPend);
+  const iVi = tudo.findIndex((m, i) => i > iPend && m.role === 'assistant');
+  if (iVi > 0 && tudo.slice(iVi).some(m => m.role === 'user' && naoEspera(m.texto)) && !tudo.slice(iVi).some(m => m.role === 'user' && !naoEspera(m.texto))) return null;
   const desde = pendentes[0].created_at;
   return { desde, horas: horasUteis(desde, agora), ultima: String(pendentes[pendentes.length - 1].texto || '').slice(0, 160),
     vencido: horasUteis(desde, agora) >= PRAZO_RESPOSTA_H, equipe_ja_falou: iEquipe >= 0 };
+}
+
+// Peça da troca que voltou e ninguém conferiu (13/11/2026). A Bárbara quer a conferência humana ("precisamos esperar
+// chegar a peça aqui, avaliar e liberar"), mas sem depender de alguém lembrar: o cartão entra na fila da equipe com
+// prazo de 1 dia útil e, vencido, sobe para ela. A Cris #9126 ficou 16 dias com as calças aqui e a troca travada.
+// retorno: itens da lista `retorno`; rastreio: `rastreio-trocas`.itens ({ 'retorno:<id>': { entregue, entregue_em } }).
+export const PRAZO_CONFERIR_H = 8;
+export function pecasParaConferir(retorno, rastreio, agora = Date.now()) {
+  const out = [];
+  for (const t of retorno || []) {
+    if (!t || t.status === 'resolvido' || t.conferido_em || t.recusada_em || t.pedido_troca_enviado || t.codigo_reenvio) continue;
+    const r = (rastreio || {})['retorno:' + t.id];
+    const chegou = t.data_chegada_reversa || (r && r.entregue && (r.entregue_em || r.visto_em));
+    if (!chegou) continue;
+    const desde = /^\d{4}-\d{2}-\d{2}$/.test(String(chegou)) ? Date.parse(chegou + 'T12:00:00-03:00') : Date.parse(chegou);
+    if (!(desde > 0) || agora - desde > 60 * DIA_MS) continue;
+    const horas = horasUteis(desde, agora);
+    const dia = new Date(desde).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit' });
+    out.push({ tipo: 'conferir', card_id: t.id, cliente: String(t.cliente || '').trim().split(/\s+/)[0] || 'cliente', pedido: t.pedido ? String(t.pedido).replace('#', '') : null,
+      desde: new Date(desde).toISOString(), horas, vencido: horas >= PRAZO_CONFERIR_H,
+      ultima: `a peça voltou dia ${dia}, falta conferir e liberar ${t.pedido_troca ? 'o ' + t.pedido_troca : 'a troca'}` });
+  }
+  return out;
 }
 
 // Dias úteis DEPOIS do dia do pagamento até hoje (mesma conta do card TEMPO DE LIBERAÇÃO).

@@ -3089,9 +3089,11 @@ async function csAbrirAprovacoes() {
     await filaVerificar(true);
     const atrasados = ((_fila && _fila.itens) || []).filter(i => i.vencido);
     const blocoAtr = atrasados.length ? `<div style="padding:10px 12px;border:1px solid #fecaca;border-radius:10px;margin-bottom:10px;font-size:12.5px;background:rgba(254,226,226,.6)">
-        <b style="color:#b91c1c">Sem resposta da equipe há mais de ${_fila.prazo_horas} horas úteis (${atrasados.length})</b>
-        ${atrasados.map(i => `<div style="display:flex;gap:8px;align-items:center;padding:4px 0">
-          <span style="flex:1">${csEsc(i.cliente)}${i.pedido ? ' · #' + csEsc(String(i.pedido).replace('#', '')) : ''} · caso ${i.caso_id} · ${filaHoras(i.horas)} úteis · com ${csEsc(i.responsavel)}<br><span style="color:var(--text-sec)">"${csEsc(String(i.ultima || '').slice(0, 120))}"</span></span>
+        <b style="color:#b91c1c">A equipe passou do prazo (${atrasados.length})</b>
+        ${atrasados.map(i => i.tipo === 'conferir' ? `<div style="display:flex;gap:8px;align-items:center;padding:4px 0">
+          <span style="flex:1">${csEsc(i.cliente)}${i.pedido ? ' · #' + csEsc(String(i.pedido).replace('#', '')) : ''} · ${filaHoras(i.horas)} úteis · com ${csEsc(i.responsavel)}<br><span style="color:var(--text-sec)">${csEsc(i.ultima || '')}</span></span>
+          <button class="btn-outline" style="font-size:11px;padding:3px 10px" onclick="abrirTrocas(null)">Abrir trocas</button></div>` : `<div style="display:flex;gap:8px;align-items:center;padding:4px 0">
+          <span style="flex:1">${csEsc(i.cliente)}${i.pedido ? ' · #' + csEsc(String(i.pedido).replace('#', '')) : ''} · caso ${i.caso_id} · ${filaHoras(i.horas)} úteis sem resposta · com ${csEsc(i.responsavel)}<br><span style="color:var(--text-sec)">"${csEsc(String(i.ultima || '').slice(0, 120))}"</span></span>
           <button class="btn-outline" style="font-size:11px;padding:3px 10px" onclick="csAbrirConversa('${String(i.wa_id).replace(/\D/g, '')}')">Abrir conversa</button></div>`).join('')}
       </div>` : '';
     if (!lista.length) { box.innerHTML = blocoAtr || '<div style="font-size:12px;color:var(--text-ter)">Nada esperando a Bárbara.</div>'; return; }
@@ -3688,6 +3690,13 @@ function revPecas(lista, t) {
   }).filter(x => x.nome);
 }
 function revStatus(lista, t) {
+  {
+    // Robô cuidando sozinho do código vencido e da reversa travada (13/11/2026): o cartão mostra o que está acontecendo
+    const r0 = ((loadLocal('vc:reversas-resultado') || {}).itens || {})[lista + ':' + t.id];
+    if (r0 && r0.status === 'renovar') return { txt: 'robô: o código venceu sem postagem, cancelou a etiqueta e está gerando outro', pode: false, cor: '#b45309' };
+    if (r0 && r0.desistiu) return { txt: 'robô: ' + r0.desistiu, pode: false, cor: '#dc2626' };
+    if (r0 && r0.comum && r0.travada && r0.status === 'carrinho') return { txt: 'robô: a Frenet travou a reversa, montou etiqueta comum e paga com o saldo', pode: false, cor: '#b45309' };
+  }
   if (!revNumeroPedido(lista, t) || revCodigoAtual(lista, t)) return { txt: '', pode: false };
   // Peça que já voltou ou caso resolvido não precisa de reversa: o botão ali faria a equipe pagar
   // uma reversa à toa (visto no print de 19/10/2026: Aline #8672 com "chegou" 04/09 e o caminhão).
@@ -3739,7 +3748,8 @@ function revAplicarCodigos() {
     const lista = id.slice(0, id.indexOf(':')), itemId = id.slice(id.indexOf(':') + 1);
     const cfg = lista === 'retorno' ? cfgRet : lista === 'estorno' ? cfgEst : null;
     const t = cfg && cfg.itens.find(x => x.id === itemId);
-    if (!t || revCodigoAtual(lista, t)) return;
+    // Código renovado pelo robô (o anterior venceu sem postagem, 13/11/2026): troca o velho pelo novo
+    if (!t || (revCodigoAtual(lista, t) && !(r.anterior_codigo && revCodigoAtual(lista, t) === r.anterior_codigo))) return;
     carimbarItem(t);
     if (lista === 'retorno') { t.codigo_logistica_reversa = r.codigo; nRet++; } else { t.codigo_devolucao = r.codigo; nEst++; }
   });
@@ -13984,15 +13994,21 @@ function filaRender() {
   if (!itens.length) { if (el) el.remove(); return; }
   const venc = itens.filter(i => i.vencido).length;
   const btn = 'background:#fff;color:#b91c1c;border:0;border-radius:5px;padding:3px 10px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;flex-shrink:0';
-  const linhas = itens.slice(0, 10).map(i => `
+  // Peça da troca que voltou sem conferência (13/11/2026): mesma faixa, prazo de 1 dia útil, botão para a aba Trocas
+  const linhas = itens.slice(0, 10).map(i => i.tipo === 'conferir' ? `
+    <div style="display:flex;align-items:center;gap:10px;padding:3px 0;${i.vencido ? 'font-weight:700' : ''}">
+      <div style="flex:1">• ${csEsc(i.cliente)}${i.pedido ? ' #' + csEsc(String(i.pedido).replace('#', '')) : ''}, ${csEsc(i.ultima || '')} (há ${filaHoras(i.horas)} úteis${i.vencido ? ', passou de 1 dia útil e a Bárbara já vê' : ''})</div>
+      <button style="${btn}" onclick="abrirTrocas(null)">Abrir trocas</button>
+    </div>` : `
     <div style="display:flex;align-items:center;gap:10px;padding:3px 0;${i.vencido ? 'font-weight:700' : ''}">
       <div style="flex:1">• ${csEsc(i.cliente)}${i.pedido ? ' #' + csEsc(String(i.pedido).replace('#', '')) : ''}, esperando há ${filaHoras(i.horas)} úteis${i.vencido ? ', passou do prazo e a Bárbara já vê' : ''}
         <span style="font-weight:400;opacity:.85">"${csEsc(String(i.ultima || '').slice(0, 90))}"</span></div>
       <button style="${btn}" onclick="filaAbrir('${String(i.wa_id).replace(/\D/g, '')}')">Abrir conversa</button>
     </div>`).join('');
-  const html = `<div style="font-weight:700;margin-bottom:4px"><i class="ti ti-clock-exclamation"></i> Clientes esperando resposta da equipe (${itens.length})${venc ? `, ${venc} passaram de ${(_fila && _fila.prazo_horas) || 3} horas úteis` : ''}</div>
+  const nConf = itens.filter(i => i.tipo === 'conferir').length, nCli = itens.length - nConf;
+  const html = `<div style="font-weight:700;margin-bottom:4px"><i class="ti ti-clock-exclamation"></i> Esperando a equipe (${itens.length}): ${nCli} cliente${nCli === 1 ? '' : 's'} sem resposta${nConf ? `, ${nConf} peça${nConf === 1 ? '' : 's'} de troca para conferir` : ''}${venc ? `, ${venc} passaram do prazo` : ''}</div>
     <div style="font-size:12px;line-height:1.55">${linhas}${itens.length > 10 ? `<div style="padding-top:4px"><i>…e mais ${itens.length - 10} na lista de Casos em aberto</i></div>` : ''}</div>
-    <div style="font-size:11px;margin-top:6px;opacity:.9">Some daqui quando alguém da equipe responder a cliente. Prazo de resposta ${(_fila && _fila.prazo_horas) || 3} horas úteis (seg a sex, 9h às 17h).</div>`;
+    <div style="font-size:11px;margin-top:6px;opacity:.9">Some daqui quando alguém da equipe responder a cliente ou conferir a peça. Prazo de ${(_fila && _fila.prazo_horas) || 3} horas úteis para responder e 1 dia útil para conferir (seg a sex, 9h às 17h).</div>`;
   if (!el) {
     el = document.createElement('div');
     el.id = 'faixa-fila';
