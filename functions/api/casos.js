@@ -604,6 +604,71 @@ const DIA = 86400000;
 // Valor do estorno preenchido sozinho no botão "Estorno sem reversão" (Bárbara, 13/11/2026: "o valor precisa ser
 // automático, o motivo ela sempre preenche"). Devolução lançada no painel = soma das peças devolvidas (valor pago);
 // sem devolução = o que a cliente pagou no pedido menos o que já foi estornado.
+// Estornos com a Bárbara, completos (Bárbara, 13/11/2026: "precisa ter o resumo do caso, qual forma de estorno devo
+// fazer, pix, crédito, mp ou outro" e "se o item já chegou"). Só roda quando ela abre o Aguardando Bárbara.
+export function formaDoEstorno({ gateways = '', mp = null, pagoEm = null, agora = Date.now() } = {}) {
+  const g = String(gateways || '').toLowerCase();
+  const dias = pagoEm ? (agora - Date.parse(pagoEm)) / 86400000 : 0;
+  if (/pagar\.?me|pagarme/.test(g)) return { forma: 'Pix para a cliente', porque: 'foi pago pela Pagar.me, que está desligada e não estorna; pedir a chave Pix dela' };
+  if (/mercado/.test(g) || (mp && mp.achado)) {
+    const meio = mp && mp.meio;
+    if (meio === 'credit_card') {
+      if (dias > 175) return { forma: 'Pix para a cliente', porque: 'cartão pago há mais de 180 dias, o Mercado Pago não estorna mais' };
+      return { forma: 'Estorno no cartão pelo Mercado Pago', porque: `cartão${mp.parcelas > 1 ? ' em ' + mp.parcelas + 'x' : ''}, volta na fatura dela` };
+    }
+    if (meio === 'bank_transfer' || meio === 'account_money') return { forma: 'Estorno do Pix pelo Mercado Pago', porque: 'pagou por Pix no Mercado Pago, o valor volta para a conta dela' };
+    if (meio === 'ticket') return { forma: 'Pix para a cliente', porque: 'pagou por boleto, que não tem estorno; pedir a chave Pix dela' };
+    return { forma: 'Mercado Pago (conferir o meio no pagamento)', porque: mp && mp.erro ? mp.erro : 'não consegui ler o meio de pagamento' };
+  }
+  if (/manual|pix|dep[oó]sito|transfer/.test(g) || !g) return { forma: 'Pix para a cliente', porque: 'pagamento feito fora do checkout (Pix direto); pedir a chave Pix dela' };
+  return { forma: 'Conferir o meio: ' + gateways, porque: 'meio de pagamento que o painel não conhece' };
+}
+async function estornosDaBarbara(env, agora = Date.now()) {
+  const casos = await sb(env).get(`wati_sac_casos?status=eq.aberto&responsavel=eq.${encodeURIComponent('Bárbara')}&select=id,wa_id,nome,pedido,tipo,resumo&order=atualizado_at.asc&limit=12`);
+  let est = [], rast = {};
+  try {
+    const docs = await sb(env, true).get('vc_modelos?id=in.(estorno,rastreio-trocas)&select=id,dados');
+    est = (((docs.find(d => d.id === 'estorno') || {}).dados || {}).itens) || [];
+    rast = (((docs.find(d => d.id === 'rastreio-trocas') || {}).dados || {}).itens) || {};
+  } catch (_) {}
+  const dia = x => x ? new Date(x).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit' }) : '';
+  const out = [];
+  for (const c of casos) {
+    const n = ((String(c.pedido || '').match(/\d{4,}/) || [])[0]) || '';
+    const linhas = String(c.resumo || '').split(/\r?\n/);
+    const resumo = (linhas.find(l => /Com a Bárbara|Estorno sem reversão/i.test(l)) || linhas[0] || '').replace(/^\[[^\]]*\]\s*/, '').replace(/^Com a Bárbara[^:]*:\s*/i, '').slice(0, 260);
+    const item = { caso_id: c.id, cliente: primeiroNome(c.nome), pedido: n ? '#' + n : null, wa_id: c.wa_id, tipo: String(c.tipo || '').split(' · ')[0].slice(0, 80), resumo };
+    try {
+      const v = await valorDoEstorno(env, c.id);
+      item.valor = v.valor; item.valor_origem = v.origem;
+      const o = n ? await pedidoBruto(env, n) : null;
+      if (o) {
+        let pagoEm = null, ref = null;
+        const t = await shop(env, `orders/${o.id}/transactions.json`);
+        if (t.ok) { const venda = ((await t.json()).transactions || []).find(x => (x.kind === 'sale' || x.kind === 'capture') && x.status === 'success'); if (venda) { pagoEm = venda.processed_at || venda.created_at; ref = venda.receipt && venda.receipt.payment_id; } }
+        const mp = await pagamentoMP(env, ref).catch(() => null);
+        Object.assign(item, formaDoEstorno({ gateways: (o.payment_gateway_names || []).join(', '), mp, pagoEm, agora }));
+        item.pagamento = [mp && mp.achado ? 'pagamento MP ' + ref : null, pagoEm ? 'pago ' + dia(pagoEm) : null, mp && mp.devolvido ? `já devolvido R$ ${Number(mp.devolvido).toFixed(2).replace('.', ',')} no MP` : null].filter(Boolean).join(', ');
+        // A peça já voltou?
+        const re = new RegExp('(#|pedido\\s+#?)\\s?' + n + '(?!\\d)');
+        const cards = est.filter(t2 => t2 && re.test(String(t2.pecas || '')) && t2.etapa !== 'concluido');
+        const chegou = cards.find(t2 => t2.chegou_em);
+        const r2 = cards.map(t2 => rast['estorno:' + t2.id]).find(Boolean);
+        if (!o.fulfillment_status && !(o.fulfillments || []).length) item.peca = 'o pedido não foi enviado, não tem peça para voltar';
+        else if (chegou) item.peca = `a peça já voltou (${dia(chegou.chegou_em)})`;
+        else if (r2 && r2.entregue) item.peca = `a devolução foi entregue na loja ${dia(r2.entregue_em)}, falta conferir`;
+        else if (r2 && r2.postado) item.peca = `a devolução está a caminho (postada ${dia(r2.postado_visto_em)})`;
+        else if (cards.length) item.peca = 'a peça ainda não voltou';
+        else {
+          item.peca = 'sem devolução lançada no painel: conferir se tem peça para voltar';
+          item.valor_origem += ' (pedido inteiro: se voltarem só algumas peças, o valor é menor)';
+        }
+      }
+    } catch (e) { item.erro = e.message; }
+    out.push(item);
+  }
+  return { estornos: out };
+}
 async function valorDoEstorno(env, casoId) {
   const id = String(casoId || '').replace(/\D/g, '');
   if (!id) return { erro: 'qual caso?' };
@@ -651,6 +716,7 @@ export async function onRequestGet({ request, env }) {
     }
     if (u.searchParams.get('fila')) return J(await filaEquipe(env));
     if (u.searchParams.get('valor_estorno')) return J(await valorDoEstorno(env, u.searchParams.get('valor_estorno')));
+    if (u.searchParams.get('estornos')) return J(await estornosDaBarbara(env));
     if (u.searchParams.get('aprovacoes')) {
       return J({ so_leitura: soLeitura(env), aprovacoes: log.aprovacoes.slice(-60).reverse() });
     }

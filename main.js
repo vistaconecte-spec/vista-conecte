@@ -3135,12 +3135,22 @@ async function csAbrirAprovacoes() {
     // Estornos no nome dela (13/11/2026): primeiro, porque só ela resolve
     // o que já está como pedido de aprovação pendente aparece lá embaixo, com aprovar e recusar: não repete aqui
     const comPedido = new Set(lista.filter(a => a.status === 'pendente' || a.status === 'aprovado').map(a => String(a.caso_id)));
-    const estornos = ((_fila && _fila.com_barbara) || []).filter(i => !comPedido.has(String(i.caso_id)));
+    // Detalhe completo (13/11/2026: resumo, forma de estorno, se a peça já voltou): lido só ao abrir este bloco
+    let detalhe = {};
+    try { const rd = await fetch('/api/casos?estornos=1'); if (rd.ok) for (const e of ((await rd.json()).estornos || [])) detalhe[e.caso_id] = e; } catch (_) {}
+    const estornos = ((_fila && _fila.com_barbara) || []).filter(i => !comPedido.has(String(i.caso_id))).map(i => ({ ...i, ...(detalhe[i.caso_id] || {}) }));
+    const reais = v => 'R$ ' + Number(v).toFixed(2).replace('.', ',');
     const blocoEst = estornos.length ? `<div style="padding:10px 12px;border:1px solid #fecaca;border-radius:10px;margin-bottom:10px;font-size:12.5px;background:#fff">
         <b style="color:#b91c1c">Estornos com você (${estornos.length})</b>
-        ${estornos.map(i => `<div style="display:flex;gap:8px;align-items:center;padding:5px 0;border-top:1px solid #fde2e2">
-          <span style="flex:1"><b>${csEsc(i.cliente)}</b>${i.pedido ? ' · #' + csEsc(String(i.pedido).replace('#', '')) : ''} · caso ${i.caso_id}<br><span style="color:var(--text-sec)">${csEsc(i.decidir || '')}</span></span>
-          <button class="btn-outline" style="font-size:11px;padding:3px 10px" onclick="csAbrirConversa('${String(i.wa_id).replace(/\D/g, '')}')">Abrir conversa</button></div>`).join('')}
+        ${estornos.map(i => `<div style="display:flex;gap:10px;align-items:flex-start;padding:8px 0;border-top:1px solid #fde2e2">
+          <div style="flex:1;line-height:1.5">
+            <div><b>${csEsc(i.cliente)}</b>${i.pedido ? ' · ' + csEsc(String(i.pedido)) : ''} · caso ${i.caso_id}${i.tipo ? ` · <span style="color:var(--text-sec)">${csEsc(i.tipo)}</span>` : ''}</div>
+            <div style="color:var(--text-sec)">${csEsc(i.resumo || i.decidir || '')}</div>
+            <div><b>Valor:</b> ${i.valor ? reais(i.valor) : 'conferir'} <span style="color:var(--text-ter)">${csEsc(i.valor_origem || '')}</span></div>
+            <div><b>Como estornar:</b> ${csEsc(i.forma || 'carregando...')} <span style="color:var(--text-ter)">${csEsc(i.porque || '')}${i.pagamento ? ' · ' + csEsc(i.pagamento) : ''}</span></div>
+            <div><b>Peça:</b> ${csEsc(i.peca || 'carregando...')}</div>
+          </div>
+          <button class="btn-outline" style="font-size:11px;padding:3px 10px;flex-shrink:0" onclick="csAbrirConversa('${String(i.wa_id || '').replace(/\D/g, '')}')">Abrir conversa</button></div>`).join('')}
       </div>` : '';
     const blocoAtr = atrasados.length ? `<div style="padding:10px 12px;border:1px solid #fecaca;border-radius:10px;margin-bottom:10px;font-size:12.5px;background:rgba(254,226,226,.6)">
         <b style="color:#b91c1c">A equipe passou do prazo (${atrasados.length})</b>
