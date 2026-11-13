@@ -623,13 +623,38 @@ export function formaDoEstorno({ gateways = '', mp = null, pagoEm = null, agora 
   if (/manual|pix|dep[oó]sito|transfer/.test(g) || !g) return { forma: 'Pix para a cliente', porque: 'pagamento feito fora do checkout (Pix direto); pedir a chave Pix dela' };
   return { forma: 'Conferir o meio: ' + gateways, porque: 'meio de pagamento que o painel não conhece' };
 }
+// Rastreio pela API pública da Frenet (mesmo token da cotação), igual ao robô: entregue ao destinatário = chegou na loja
+export function devolucoesDaCliente(lista, { nome, cep, desde } = {}) {
+  const norm = x => String(x || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z ]/g, ' ').replace(/\s+/g, ' ').trim();
+  const partes = norm(nome).split(' ').filter(p => p.length > 2);
+  const c = String(cep || '').replace(/\D/g, '');
+  const d0 = desde ? Date.parse(desde) : 0;
+  return (lista || []).filter(v => {
+    if (!v || (d0 && Date.parse(v.criado || 0) < d0)) return false;
+    const r = norm(v.remetente);
+    const porNome = partes.length >= 2 && r.includes(partes[0]) && partes.slice(1).some(p => r.includes(p));
+    return porNome || (c && v.cep && v.cep === c);
+  }).sort((a, b) => String(b.criado).localeCompare(String(a.criado)));
+}
+async function rastreioFrenet(env, codigo) {
+  const r = await fetch('https://api.frenet.com.br/tracking/trackinginfo', { method: 'POST',
+    headers: { token: env.FRENET_TOKEN, Accept: 'application/json', 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ShippingServiceCode: '03298', TrackingNumber: String(codigo).replace(/[^A-Z0-9]/gi, '').toUpperCase() }) });
+  const j = await r.json().catch(() => null);
+  const ev = (j && j.TrackingEvents) || [];
+  if (!ev.length) return { eventos: 0 };
+  const ent = ev.find(e => /entregue ao destinat/i.test(e.EventDescription || ''));
+  return { eventos: ev.length, entregue: !!ent, entregue_em: ent ? String(ent.EventDateTime || '').slice(0, 10) : null,
+    ultimo: String((ev[0] && ev[0].EventDescription) || '').split(' - ')[0].slice(0, 80) };
+}
 async function estornosDaBarbara(env, agora = Date.now()) {
   const casos = await sb(env).get(`wati_sac_casos?status=eq.aberto&responsavel=eq.${encodeURIComponent('Bárbara')}&select=id,wa_id,nome,pedido,tipo,resumo&order=atualizado_at.asc&limit=12`);
-  let est = [], rast = {};
+  let est = [], rast = {}, devLoja = [];
   try {
-    const docs = await sb(env, true).get('vc_modelos?id=in.(estorno,rastreio-trocas)&select=id,dados');
+    const docs = await sb(env, true).get('vc_modelos?id=in.(estorno,rastreio-trocas,devolucoes-frenet)&select=id,dados');
     est = (((docs.find(d => d.id === 'estorno') || {}).dados || {}).itens) || [];
     rast = (((docs.find(d => d.id === 'rastreio-trocas') || {}).dados || {}).itens) || {};
+    devLoja = Object.values((((docs.find(d => d.id === 'devolucoes-frenet') || {}).dados || {}).itens) || {});
   } catch (_) {}
   const dia = x => x ? new Date(x).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit' }) : '';
   const out = [];
@@ -654,13 +679,29 @@ async function estornosDaBarbara(env, agora = Date.now()) {
         const cards = est.filter(t2 => t2 && re.test(String(t2.pecas || '')) && t2.etapa !== 'concluido');
         const chegou = cards.find(t2 => t2.chegou_em);
         const r2 = cards.map(t2 => rast['estorno:' + t2.id]).find(Boolean);
-        if (!o.fulfillment_status && !(o.fulfillments || []).length) item.peca = 'o pedido não foi enviado, não tem peça para voltar';
-        else if (chegou) item.peca = `a peça já voltou (${dia(chegou.chegou_em)})`;
-        else if (r2 && r2.entregue) item.peca = `a devolução foi entregue na loja ${dia(r2.entregue_em)}, falta conferir`;
-        else if (r2 && r2.postado) item.peca = `a devolução está a caminho (postada ${dia(r2.postado_visto_em)})`;
-        else if (cards.length) item.peca = 'a peça ainda não voltou';
+        // Bárbara (13/11/2026): "precisa conferir sempre na Frenet se a peça voltou pra nós". Além do que o robô já
+        // acompanha (rastreio-trocas), confere na Frenet o código de devolução citado no caso ou no cartão.
+        const idas = new Set((o.fulfillments || []).map(f => String(f.tracking_number || '').replace(/\s/g, '')).filter(Boolean));
+        const codDev = [...new Set([...cards.map(t2 => String(t2.codigo_devolucao || '').trim()).filter(x => x && !x.startsWith('#')),
+          ...(String(c.resumo || '').match(/\b[A-Z]{2}\d{9}BR\b|\b\d{10}\b/g) || [])])].filter(x => !idas.has(x));
+        let api = null;
+        if (!chegou && !(r2 && r2.entregue) && codDev.length && env.FRENET_TOKEN) api = await rastreioFrenet(env, codDev[0]).catch(() => null);
+        const naoEnviado = !o.fulfillment_status && !(o.fulfillments || []).length;
+        // Etiquetas para a loja na Frenet com ela como remetente, inclusive as feitas à mão (robô, devolucoes-frenet)
+        const sa = o.shipping_address || {};
+        const doLoja = devolucoesDaCliente(devLoja, { nome: sa.name || [sa.first_name, sa.last_name].filter(Boolean).join(' '), cep: sa.zip, desde: o.created_at });
+        item.frenet = doLoja.map(v => `${v.codigo || 'sem código'} de ${dia(v.criado)}: ${v.entregue ? 'entregue na loja ' + dia(v.entregue_em) : v.postado ? 'a caminho' : 'ainda não postada'}`);
+        if (doLoja.some(v => v.entregue)) item.peca_ok_frenet = true;
+        item.peca_ok = naoEnviado || !!chegou || !!(r2 && r2.entregue) || !!(api && api.entregue) || (doLoja.length > 0 && doLoja.every(v => v.entregue));
+        if (naoEnviado) item.peca = 'o pedido não foi enviado, não tem peça para voltar';
+        else if (chegou) item.peca = `a peça já voltou e foi conferida (${dia(chegou.chegou_em)})`;
+        else if (r2 && r2.entregue) item.peca = `a Frenet mostra a devolução entregue na loja ${dia(r2.entregue_em)}, falta conferir a peça`;
+        else if (api && api.entregue) item.peca = `a Frenet mostra a devolução ${codDev[0]} entregue em ${api.entregue_em}, falta conferir a peça`;
+        else if ((r2 && r2.postado) || (api && api.eventos)) item.peca = `a devolução ${codDev[0] || ''} está a caminho (${api && api.ultimo ? api.ultimo : 'postada ' + dia(r2 && r2.postado_visto_em)}), ainda não chegou`;
+        else if (codDev.length) item.peca = `a Frenet não mostra movimento da devolução ${codDev[0]}: a peça não voltou`;
+        else if (doLoja.length) item.peca = 'veja abaixo as etiquetas de devolução dela na Frenet';
         else {
-          item.peca = 'sem devolução lançada no painel: conferir se tem peça para voltar';
+          item.peca = 'não há código de devolução: a Frenet não tem como confirmar que a peça voltou';
           item.valor_origem += ' (pedido inteiro: se voltarem só algumas peças, o valor é menor)';
         }
       }

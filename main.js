@@ -3148,7 +3148,8 @@ async function csAbrirAprovacoes() {
             <div style="color:var(--text-sec)">${csEsc(i.resumo || i.decidir || '')}</div>
             <div><b>Valor:</b> ${i.valor ? reais(i.valor) : 'conferir'} <span style="color:var(--text-ter)">${csEsc(i.valor_origem || '')}</span></div>
             <div><b>Como estornar:</b> ${csEsc(i.forma || 'carregando...')} <span style="color:var(--text-ter)">${csEsc(i.porque || '')}${i.pagamento ? ' · ' + csEsc(i.pagamento) : ''}</span></div>
-            <div><b>Peça:</b> ${csEsc(i.peca || 'carregando...')}</div>
+            <div style="${i.peca && i.peca_ok === false ? 'color:#b91c1c;font-weight:600' : ''}"><b>Peça:</b> ${i.peca && i.peca_ok === false ? '⚠ ' : ''}${csEsc(i.peca || 'carregando...')}${i.peca && i.peca_ok === false ? '. Não estornar antes de a peça chegar' : ''}</div>
+            ${(i.frenet || []).length ? `<div><b>Frenet:</b> ${i.frenet.map(csEsc).join(' · ')}</div>` : ''}
           </div>
           <button class="btn-outline" style="font-size:11px;padding:3px 10px;flex-shrink:0" onclick="csAbrirConversa('${String(i.wa_id || '').replace(/\D/g, '')}')">Abrir conversa</button></div>`).join('')}
       </div>` : '';
