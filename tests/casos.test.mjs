@@ -357,6 +357,20 @@ ok('Abrir manda o caso para o chat', /function csAbrirCaso\(id\) \{[\s\S]{0,160}
 
 console.log('\nCaso aberto sempre diz se o pedido foi processado e a etapa da peça (Bárbara, 30/10/2026, caso 661)');
 ok('status vai num cartão fixo e a IA não repete', /cartão fixo da tela acima da sua resposta: NÃO escreva status/.test(C.SISTEMA), true);
+// 13/11/2026, fila da equipe: 3 horas úteis (seg a sex, 9h às 17h de Brasília)
+{
+  ok('horas úteis: sexta 16h até segunda 10h = 2h', C.horasUteis('2026-11-13T19:00:00Z', '2026-11-16T13:00:00Z'), 2);
+  ok('horas úteis: feriado 20/11 não conta', C.horasUteis('2026-11-19T19:00:00Z', '2026-11-23T13:00:00Z'), 2);
+  ok('horas úteis: noite inteira não conta', C.horasUteis('2026-11-12T23:00:00Z', '2026-11-13T12:00:00Z'), 0);
+  const agora = Date.parse('2026-11-13T17:00:00Z'); // sexta 14h
+  const e = C.esperaDaEquipe([{ role: 'operador', texto: 'oi', created_at: '2026-11-12T13:00:00Z' }, { role: 'user', texto: 'E a etiqueta?', created_at: '2026-11-12T14:00:00Z' }, { role: 'user', texto: 'obrigada', created_at: '2026-11-12T14:05:00Z' }], agora);
+  ok('espera: cliente perguntou depois da equipe', e && e.horas, 13);
+  ok('espera: passou de 3 horas = vencido', e && e.vencido, true);
+  ok('espera: só despedida depois da equipe não espera', C.esperaDaEquipe([{ role: 'operador', texto: 'segue o código', created_at: '2026-11-12T13:00:00Z' }, { role: 'user', texto: 'Obrigada!! ❤️', created_at: '2026-11-12T13:01:00Z' }], agora), null);
+  ok('espera: equipe respondeu depois, nada pendente', C.esperaDaEquipe([{ role: 'user', texto: 'cadê?', created_at: '2026-11-12T13:00:00Z' }, { role: 'operador', texto: 'já te mando', created_at: '2026-11-12T14:00:00Z' }], agora), null);
+  ok('espera: resposta da Vi não conta', !!C.esperaDaEquipe([{ role: 'user', texto: 'cadê meu reembolso?', created_at: '2026-11-12T13:00:00Z' }, { role: 'assistant', texto: 'Já passei sua conversa pra nossa equipe', created_at: '2026-11-12T13:01:00Z' }], agora), true);
+  ok('rota ?fila=1 e faixa sem botão de ocultar', /searchParams\.get\('fila'\)\) return J\(await filaEquipe\(env\)\)/.test(apiTxt) && /id = 'faixa-fila'/.test(main) && !/faixa-fila'\)\.remove\(\)" style/.test(main), true);
+}
 // 11/11/2026, caso 727: a cliente já postou a peça errada? a peça nova foi lançada na Shopify?
 {
   const cods = C.codigosNaConversa([{ texto: 'O código de postagem é 4754440062' }, { texto: 'meu telefone 4899912345' }, { texto: 'rastreio AP619409544BR' }]);

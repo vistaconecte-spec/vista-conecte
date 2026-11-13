@@ -21,7 +21,7 @@ import {
   soLeitura, MODELO, DOC_LOG, TEMPLATE_CONTINUIDADE, TEMPLATE_ALERTA, CATEGORIAS_DINHEIRO,
   SISTEMA, FERRAMENTAS, FERRAMENTAS_SERVIDOR, problemasDoTexto, prometeDinheiro, janelaAberta, revisarResposta,
   semResposta, promessasDaEquipe, pagoPorItem, numerosDePedido, pedidoEhDaCliente, emailsDoTexto, devolucoesDoPainel, codigosNaConversa, reversasDoPedido, prazoDoPedido, logVazio, podeFechar, podeFecharPelaConversa, casoDeDinheiro, semEscapeUnicode, aprovacaoLiberada, novoId,
-  primeiroNome, finalTel, resumoDoCaso, conversaParaAssistente, hojeTexto, brt, metaParaMsg,
+  primeiroNome, finalTel, resumoDoCaso, conversaParaAssistente, hojeTexto, brt, metaParaMsg, esperaDaEquipe, PRAZO_RESPOSTA_H,
 } from '../_casos.js';
 import { variantes, mesclar, enviarTextoDaLoja, enviarArquivoDaLoja, enviarModeloDaLoja } from '../_whatsapp.js';
 
@@ -515,6 +515,33 @@ async function marcarFeito(env, { id, nota }, agora = Date.now()) {
   return a ? { ok: true } : { ok: false, erro: 'só dá para marcar como feito o que a Bárbara aprovou' };
 }
 
+// Fila da equipe (13/11/2026): casos abertos em que a cliente escreveu depois da última fala da equipe, com as
+// horas úteis de espera. Passou de PRAZO_RESPOSTA_H, vencido (aparece também para a Bárbara).
+async function filaEquipe(env, agora = Date.now()) {
+  const db = sb(env);
+  const casos = await db.get('wati_sac_casos?status=eq.aberto&order=criado_at.asc&limit=300&select=id,wa_id,nome,pedido,tipo,responsavel');
+  const was = [...new Set(casos.map(c => c.wa_id).filter(Boolean))];
+  const desde = new Date(agora - 45 * DIA).toISOString();
+  const porWa = {};
+  for (let i = 0; i < was.length; i += 40) {
+    const lote = await db.get(`wati_ia_mensagens?wa_id=in.(${was.slice(i, i + 40).join(',')})&role=in.(user,operador)&created_at=gte.${encodeURIComponent(desde)}&select=wa_id,role,texto,created_at&order=created_at.asc&limit=5000`);
+    for (const m of lote) (porWa[m.wa_id] = porWa[m.wa_id] || []).push(m);
+  }
+  const vistos = new Set();
+  const itens = [];
+  for (const c of casos) {
+    if (!c.wa_id || vistos.has(c.wa_id)) continue;
+    vistos.add(c.wa_id);
+    const e = esperaDaEquipe(porWa[c.wa_id], agora);
+    if (!e) continue;
+    itens.push({ caso_id: c.id, cliente: primeiroNome(c.nome), pedido: c.pedido || null, wa_id: c.wa_id, responsavel: c.responsavel || 'Marcelly',
+      tipo: String(c.tipo || '').split(' · ')[0].slice(0, 60), desde_brt: brt(e.desde), horas: e.horas, vencido: e.vencido, ultima: e.ultima });
+  }
+  itens.sort((a, b) => b.horas - a.horas);
+  return { prazo_horas: PRAZO_RESPOSTA_H, itens, vencidos: itens.filter(i => i.vencido).length };
+}
+const DIA = 86400000;
+
 // ── Rota ────────────────────────────────────────────────────────────────────────
 export async function onRequestGet({ request, env }) {
   if (!env.SUPABASE_SERVICE_ROLE_KEY) return J({ erro: 'SUPABASE_SERVICE_ROLE_KEY ausente' }, 500);
@@ -527,6 +554,7 @@ export async function onRequestGet({ request, env }) {
       const casos = await sb(env).get('wati_sac_casos?status=eq.aberto&order=criado_at.asc&limit=300&select=id,wa_id,nome,tipo,pedido,resumo,criado_at,status,responsavel');
       return J({ casos: casos.map(c => ({ ...resumoDoCaso(c), dinheiro: casoDeDinheiro(c), pode_fechar: podeFecharPelaConversa(c, log).ok })) });
     }
+    if (u.searchParams.get('fila')) return J(await filaEquipe(env));
     if (u.searchParams.get('aprovacoes')) {
       return J({ so_leitura: soLeitura(env), aprovacoes: log.aprovacoes.slice(-60).reverse() });
     }

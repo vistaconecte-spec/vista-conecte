@@ -294,6 +294,37 @@ const FERIADOS = new Set([
 const diaLocal = t => Math.floor(((typeof t === 'number' ? t : Date.parse(t)) - FUSO_MS) / DIA_MS);
 const ehUtil = d => { const w = (d + 4) % 7; return w !== 0 && w !== 6 && !FERIADOS.has(d); };
 
+// ── Fila da equipe (Bárbara, 13/11/2026) ──────────────────────────────────────
+// "Alerta no WhatsApp a Marcelly não lê, precisa ser no sistema." A cliente que escreveu depois da última fala da
+// equipe está esperando; o prazo é de 3 horas úteis (seg a sex, 9h às 17h de Brasília, sem feriado). Passou disso,
+// o caso aparece também para a Bárbara. Resposta da Vi não conta como resposta da equipe.
+export const PRAZO_RESPOSTA_H = 3;
+export function horasUteis(de, ate = Date.now()) {
+  const a = typeof de === 'number' ? de : Date.parse(de), b = typeof ate === 'number' ? ate : Date.parse(ate);
+  if (!(b > a)) return 0;
+  let ms = 0;
+  for (let d = diaLocal(a); d <= diaLocal(b); d++) {
+    if (!ehUtil(d)) continue;
+    const ini = d * DIA_MS + FUSO_MS + 9 * 3600000, fim = d * DIA_MS + FUSO_MS + 17 * 3600000;
+    ms += Math.max(0, Math.min(fim, b) - Math.max(ini, a));
+  }
+  return Math.round(ms / 360000) / 10;
+}
+// Despedida e emoji não esperam resposta (o aviso do Vi - atendimento usa a mesma ideia).
+const SO_DESPEDIDA = /^[\p{Extended_Pictographic}\p{Emoji_Modifier}‍️\s!.]+$|^(ok|okay|certo|blz|beleza|show|perfeito|combinado|t[áa] ?bom|top|amei|entendi|sim|uhum|aham)\b[^?]{0,25}$|^(muito )?obrigad[ao]|^obg\b|^valeu|^agrade[cç]o/iu;
+// msgs: [{ role: 'user'|'operador'|..., texto, created_at }] em ordem de data. Devolve a espera da cliente ou null.
+export function esperaDaEquipe(msgs, agora = Date.now()) {
+  const lista = (msgs || []).filter(m => m.role === 'user' || m.role === 'operador');
+  let iEquipe = -1;
+  lista.forEach((m, i) => { if (m.role === 'operador') iEquipe = i; });
+  const depois = lista.slice(iEquipe + 1).filter(m => m.role === 'user');
+  const pendentes = depois.filter(m => !SO_DESPEDIDA.test(String(m.texto || '').trim()));
+  if (!pendentes.length) return null;
+  const desde = pendentes[0].created_at;
+  return { desde, horas: horasUteis(desde, agora), ultima: String(pendentes[pendentes.length - 1].texto || '').slice(0, 160),
+    vencido: horasUteis(desde, agora) >= PRAZO_RESPOSTA_H, equipe_ja_falou: iEquipe >= 0 };
+}
+
 // Dias úteis DEPOIS do dia do pagamento até hoje (mesma conta do card TEMPO DE LIBERAÇÃO).
 export function diasUteisDesde(iso, agora = Date.now()) {
   const a = diaLocal(iso), b = diaLocal(agora);

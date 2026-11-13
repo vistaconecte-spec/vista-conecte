@@ -2534,7 +2534,8 @@ function csRenderTopo() {
   }
   if (btn) {
     const n = (e.aprovacoes_pendentes || 0), f = (e.aprovadas_a_fazer || 0);
-    btn.innerHTML = `<i class="ti ti-hourglass"></i> Aguardando Bárbara${n ? ` <b style="color:#dc2626">(${n})</b>` : ''}${f ? ` · ${f} aprovada${f > 1 ? 's' : ''} a fazer` : ''}`;
+    const atr = (_fila && _fila.vencidos) || 0; // fila da equipe: passou de 3 horas úteis sem resposta (13/11/2026)
+    btn.innerHTML = `<i class="ti ti-hourglass"></i> Aguardando Bárbara${n ? ` <b style="color:#dc2626">(${n})</b>` : ''}${f ? ` · ${f} aprovada${f > 1 ? 's' : ''} a fazer` : ''}${atr ? ` · <b style="color:#dc2626">${atr} sem resposta da equipe</b>` : ''}`;
   }
   csRotuloAbertos(e.casos_abertos);
 }
@@ -3084,9 +3085,18 @@ async function csAbrirAprovacoes() {
     const d = await r.json();
     const lista = (d.aprovacoes || []).filter(a => a.status !== 'feito' && a.status !== 'recusado')
       .concat((d.aprovacoes || []).filter(a => a.status === 'feito' || a.status === 'recusado').slice(0, 8));
-    if (!lista.length) { box.innerHTML = '<div style="font-size:12px;color:var(--text-ter)">Nada esperando a Bárbara.</div>'; return; }
+    // Escalada da fila (13/11/2026): cliente sem resposta da equipe há mais de 3 horas úteis aparece aqui também
+    await filaVerificar(true);
+    const atrasados = ((_fila && _fila.itens) || []).filter(i => i.vencido);
+    const blocoAtr = atrasados.length ? `<div style="padding:10px 12px;border:1px solid #fecaca;border-radius:10px;margin-bottom:10px;font-size:12.5px;background:rgba(254,226,226,.6)">
+        <b style="color:#b91c1c">Sem resposta da equipe há mais de ${_fila.prazo_horas} horas úteis (${atrasados.length})</b>
+        ${atrasados.map(i => `<div style="display:flex;gap:8px;align-items:center;padding:4px 0">
+          <span style="flex:1">${csEsc(i.cliente)}${i.pedido ? ' · #' + csEsc(String(i.pedido).replace('#', '')) : ''} · caso ${i.caso_id} · ${filaHoras(i.horas)} úteis · com ${csEsc(i.responsavel)}<br><span style="color:var(--text-sec)">"${csEsc(String(i.ultima || '').slice(0, 120))}"</span></span>
+          <button class="btn-outline" style="font-size:11px;padding:3px 10px" onclick="csAbrirConversa('${String(i.wa_id).replace(/\D/g, '')}')">Abrir conversa</button></div>`).join('')}
+      </div>` : '';
+    if (!lista.length) { box.innerHTML = blocoAtr || '<div style="font-size:12px;color:var(--text-ter)">Nada esperando a Bárbara.</div>'; return; }
     const cor = { pendente: '#dc2626', aprovado: '#0891b2', recusado: 'var(--text-ter)', feito: '#16a34a' };
-    box.innerHTML = lista.map(a => `
+    box.innerHTML = blocoAtr + lista.map(a => `
       <div style="padding:10px 12px;border:1px solid var(--border);border-radius:10px;margin-bottom:8px;font-size:12.5px;background:rgba(255,255,255,.6)">
         <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:baseline">
           <b>${csEsc(a.categoria)}${a.valor != null ? ' R$ ' + Number(a.valor).toFixed(2).replace('.', ',') : ''}</b>
@@ -13782,6 +13792,7 @@ async function carregarPedidosShopify() {
     _pedidosLidosEm = Date.now();
     pedidosEmDia();
     verificarLeituraPedidos();
+    filaVerificar();
   } catch (_) {
     // Rede caiu no meio (4G do celular) — mesma regra: número velho na tela tem de avisar.
     pedidosDesatualizados('sem conexão');
@@ -13947,6 +13958,52 @@ function auditarLeituraPedidos() {
   window._avisosLeitura = pendentes;
   window._avisosLeituraTodos = avisos;
   return pendentes;
+}
+
+// ── Fila da equipe (Bárbara, 13/11/2026) ──────────────────────────────────────
+// "Alerta no WhatsApp a Marcelly não lê, precisa ser algo mais efetivo no sistema." Faixa fixa no topo de qualquer
+// tela com as clientes que escreveram depois da última fala da equipe. Sem botão de ocultar: só sai quando alguém
+// responde a cliente. Passou de 3 horas úteis, fica em vermelho e aparece no Aguardando Bárbara.
+let _filaEm = 0, _fila = null;
+async function filaVerificar(forcar) {
+  if (!forcar && Date.now() - _filaEm < 5 * 60e3) return;
+  _filaEm = Date.now();
+  try {
+    const r = await fetch('/api/casos?fila=1');
+    if (!r.ok) return;
+    _fila = await r.json();
+  } catch (_) { return; }
+  filaRender();
+  if (typeof csRenderTopo === 'function' && document.getElementById('cs-btn-apv')) csRenderTopo();
+}
+function filaHoras(n) { return n < 1 ? Math.max(1, Math.round(n * 60)) + ' min' : String(n).replace('.', ',') + ' h'; }
+function filaRender() {
+  const itens = (_fila && _fila.itens) || [];
+  let el = document.getElementById('faixa-fila');
+  if (!itens.length) { if (el) el.remove(); return; }
+  const venc = itens.filter(i => i.vencido).length;
+  const btn = 'background:#fff;color:#b91c1c;border:0;border-radius:5px;padding:3px 10px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;flex-shrink:0';
+  const linhas = itens.slice(0, 10).map(i => `
+    <div style="display:flex;align-items:center;gap:10px;padding:3px 0;${i.vencido ? 'font-weight:700' : ''}">
+      <div style="flex:1">• ${csEsc(i.cliente)}${i.pedido ? ' #' + csEsc(String(i.pedido).replace('#', '')) : ''}, esperando há ${filaHoras(i.horas)} úteis${i.vencido ? ', passou do prazo e a Bárbara já vê' : ''}
+        <span style="font-weight:400;opacity:.85">"${csEsc(String(i.ultima || '').slice(0, 90))}"</span></div>
+      <button style="${btn}" onclick="filaAbrir('${String(i.wa_id).replace(/\D/g, '')}')">Abrir conversa</button>
+    </div>`).join('');
+  const html = `<div style="font-weight:700;margin-bottom:4px"><i class="ti ti-clock-exclamation"></i> Clientes esperando resposta da equipe (${itens.length})${venc ? `, ${venc} passaram de ${(_fila && _fila.prazo_horas) || 3} horas úteis` : ''}</div>
+    <div style="font-size:12px;line-height:1.55">${linhas}${itens.length > 10 ? `<div style="padding-top:4px"><i>…e mais ${itens.length - 10} na lista de Casos em aberto</i></div>` : ''}</div>
+    <div style="font-size:11px;margin-top:6px;opacity:.9">Some daqui quando alguém da equipe responder a cliente. Prazo de resposta ${(_fila && _fila.prazo_horas) || 3} horas úteis (seg a sex, 9h às 17h).</div>`;
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'faixa-fila';
+    const alvo = document.querySelector('.content') || document.body;
+    alvo.insertBefore(el, alvo.firstChild);
+  }
+  el.style.cssText = `position:sticky;top:0;z-index:899;background:${venc ? '#b91c1c' : '#b45309'};color:#fff;padding:12px 16px;margin:0 0 12px;border-radius:8px`;
+  el.innerHTML = html;
+}
+function filaAbrir(wa) {
+  if (modeloAtual !== '__atendimento__') abrirAtendimento(null);
+  if (sessionStorage.getItem('fin-ok') === '1') csAbrirConversa(wa);
 }
 
 function verificarLeituraPedidos() {
