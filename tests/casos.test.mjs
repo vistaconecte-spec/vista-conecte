@@ -364,7 +364,7 @@ ok('status vai num cartão fixo e a IA não repete', /cartão fixo da tela acima
   ok('horas úteis: noite inteira não conta', C.horasUteis('2026-11-12T23:00:00Z', '2026-11-13T12:00:00Z'), 0);
   const agora = Date.parse('2026-11-13T17:00:00Z'); // sexta 14h
   const e = C.esperaDaEquipe([{ role: 'operador', texto: 'oi', created_at: '2026-11-12T13:00:00Z' }, { role: 'user', texto: 'E a etiqueta?', created_at: '2026-11-12T14:00:00Z' }, { role: 'user', texto: 'obrigada', created_at: '2026-11-12T14:05:00Z' }], agora);
-  ok('espera: cliente perguntou depois da equipe', e && e.horas, 13);
+  ok('espera: cliente perguntou depois da equipe (qui 11h a sex 14h = 6h + 5h)', e && e.horas, 11);
   ok('espera: passou de 3 horas = vencido', e && e.vencido, true);
   ok('espera: só despedida depois da equipe não espera', C.esperaDaEquipe([{ role: 'operador', texto: 'segue o código', created_at: '2026-11-12T13:00:00Z' }, { role: 'user', texto: 'Obrigada!! ❤️', created_at: '2026-11-12T13:01:00Z' }], agora), null);
   ok('espera: equipe respondeu depois, nada pendente', C.esperaDaEquipe([{ role: 'user', texto: 'cadê?', created_at: '2026-11-12T13:00:00Z' }, { role: 'operador', texto: 'já te mando', created_at: '2026-11-12T14:00:00Z' }], agora), null);

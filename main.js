@@ -13792,7 +13792,8 @@ async function carregarPedidosShopify() {
     _pedidosLidosEm = Date.now();
     pedidosEmDia();
     verificarLeituraPedidos();
-    filaVerificar();
+    // fila da equipe: assíncrona e fora do caminho da leitura, para nunca derrubar o "pedidos em dia"
+    if (typeof filaVerificar === 'function') filaVerificar().catch(() => {});
   } catch (_) {
     // Rede caiu no meio (4G do celular) — mesma regra: número velho na tela tem de avisar.
     pedidosDesatualizados('sem conexão');
