@@ -13999,7 +13999,7 @@ function filaRender() {
     const alvo = document.querySelector('.content') || document.body;
     alvo.insertBefore(el, alvo.firstChild);
   }
-  el.style.cssText = `position:sticky;top:0;z-index:899;background:${venc ? '#b91c1c' : '#b45309'};color:#fff;padding:12px 16px;margin:0 0 12px;border-radius:8px`;
+  el.style.cssText = `position:relative;z-index:1;background:${venc ? '#b91c1c' : '#b45309'};color:#fff;padding:12px 16px;margin:0 0 12px;border-radius:8px`;
   el.innerHTML = html;
 }
 function filaAbrir(wa) {
