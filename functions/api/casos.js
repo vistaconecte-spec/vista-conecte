@@ -461,6 +461,9 @@ async function executar(env, b, agora = Date.now()) {
       d.aprovacoes = d.aprovacoes || [];
       d.aprovacoes.push({ id, caso_id: casoId, cliente, pedido, categoria: cat, valor, motivo: texto, status: 'pendente', criado_em: new Date(agora).toISOString() });
     }, logVazio);
+    // Regra da Bárbara (13/11/2026): todo caso é da Marcelly; só passa para a Bárbara quando a Marcelly pede a aprovação
+    // de estorno ou dinheiro definitivo, que é este botão.
+    if (casoId) await db.send('PATCH', `wati_sac_casos?id=eq.${casoId}`, { responsavel: 'Bárbara', atualizado_at: new Date(agora).toISOString() }, 'return=minimal').catch(() => {});
     let avisada = false;
     if (env.CASOS_AVISO_WA) {
       try { avisada = !(await enviarModeloDaLoja(env, env.CASOS_AVISO_WA, TEMPLATE_ALERTA, [aviso.slice(0, 900)])).erro; } catch (_) {}
@@ -482,18 +485,20 @@ async function registrar(env, acao) {
 // Conversa sem caso no CRM (cliente sem resposta): ao agir, abre um para o registro ter onde morar.
 async function abrirCasoNovo(db, wa, texto) {
   const sess = (await db.get(`wati_ia_sessions?wa_id=eq.${wa}&select=nome`))[0];
-  const [c] = await db.send('POST', 'wati_sac_casos', { wa_id: wa, nome: (sess && sess.nome) || null, tipo: 'atendimento pela aba Casos', resumo: String(texto).slice(0, 500) });
+  const [c] = await db.send('POST', 'wati_sac_casos', { wa_id: wa, nome: (sess && sess.nome) || null, tipo: 'atendimento pela aba Casos', resumo: String(texto).slice(0, 500), responsavel: 'Marcelly' });
   return c;
 }
 
 async function decidir(env, { id, decisao, nota }, agora = Date.now()) {
   if (!['aprovado', 'recusado'].includes(decisao)) return { ok: false, erro: 'decisão inválida' };
   if (soLeitura(env)) return { ok: false, so_leitura: true, simulacao: 'a aprovação ficaria ' + decisao };
-  let achou = false;
+  let achou = false, casoDecidido = null;
   await mudarDoc(env, DOC_LOG, d => {
     const a = (d.aprovacoes || []).find(x => x.id === id);
-    if (a && a.status === 'pendente') { a.status = decisao; a.nota = nota || ''; a.decidido_em = new Date(agora).toISOString(); achou = true; }
+    if (a && a.status === 'pendente') { a.status = decisao; a.nota = nota || ''; a.decidido_em = new Date(agora).toISOString(); achou = true; casoDecidido = a.caso_id; }
   }, logVazio);
+  // recusado volta para a Marcelly seguir com a cliente; aprovado fica com a Bárbara até ela marcar como feito
+  if (achou && decisao === 'recusado' && casoDecidido) await sb(env).send('PATCH', `wati_sac_casos?id=eq.${Number(casoDecidido)}`, { responsavel: 'Marcelly' }, 'return=minimal').catch(() => {});
   return achou ? { ok: true } : { ok: false, erro: 'aprovação não está mais pendente' };
 }
 

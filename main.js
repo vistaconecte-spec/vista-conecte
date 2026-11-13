@@ -3026,6 +3026,7 @@ async function csAbrirAbertos() {
           <span style="color:var(--text-sec)">${csEsc(c.tipo)}</span>
           <span style="color:${c.aberto_ha_dias >= 7 ? '#dc2626' : 'var(--text-ter)'};font-weight:600">${c.aberto_ha_dias === 0 ? 'hoje' : `há ${c.aberto_ha_dias} dia${c.aberto_ha_dias > 1 ? 's' : ''}`}</span>
           ${c.dinheiro ? '<span style="font-size:10px;font-weight:700;color:#b45309">DINHEIRO</span>' : ''}
+          ${c.responsavel ? `<span style="font-size:10px;font-weight:700;color:${c.responsavel === 'Bárbara' ? '#b91c1c' : 'var(--text-sec)'}">COM ${csEsc(String(c.responsavel).toUpperCase())}</span>` : ''}
           <span style="margin-left:auto;display:flex;gap:6px">
             ${c.wa_id ? `<button class="btn-outline" style="font-size:11px;padding:3px 10px" onclick="csAbrirConversa('${String(c.wa_id).replace(/\D/g, '')}')">Abrir conversa</button>` : ''}
             <button class="btn-outline" style="font-size:11px;padding:3px 10px" onclick="csAbrirCaso(${c.caso_id})">Abrir no assistente</button>
