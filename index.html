@@ -366,7 +366,11 @@
           <div class="card">
             <div class="card-header card-header-tabela">
               <div class="card-title"><i class="ti ti-package"></i> ESTOQUE ATUAL</div>
-              <span id="est-updated" style="font-size:11px;font-weight:600;color:var(--text-sec)">Edite direto</span>
+              <span style="display:flex;align-items:center;gap:8px">
+                <span id="est-updated" style="font-size:11px;font-weight:600;color:var(--text-sec)">Edite direto</span>
+                <!-- Etiquetas de papel (nome + tamanho) para o porta-etiqueta da prateleira, 08/11/2026 -->
+                <button class="btn-outline" style="font-size:10px;padding:3px 8px" onclick="window.open('/etiquetas-pecas.html?modelo=' + encodeURIComponent(typeof modeloAtual === 'string' ? modeloAtual : ''), '_blank')" title="Imprimir etiquetas com o nome desta peça e os tamanhos, para recortar e pôr na prateleira"><i class="ti ti-printer"></i> etiquetas</button>
+              </span>
             </div>
             <table><thead id="est-thead"><tr><th>Cor</th><th>PP</th><th>P</th><th>M</th><th>G</th><th>GG</th><th>Tot</th></tr></thead>
             <tbody id="est-tbody"></tbody>
