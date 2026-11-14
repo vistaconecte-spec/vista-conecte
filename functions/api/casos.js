@@ -769,11 +769,13 @@ async function valorDoEstorno(env, casoId) {
   return { valor: v > 0 ? v : 0, pedido: o.name, origem: `total pago no pedido ${o.name}${estornado ? ` menos R$ ${estornado.toFixed(2).replace('.', ',')} já estornado` : ''}` };
 }
 // Uma conversa lida pela IA: a cliente ainda espera resposta ou ação da loja? (13/11/2026)
+// Haiku 5.5 pensa antes de responder: com 300 tokens só vinha o raciocínio e nenhum JSON (14/11/2026, a fila parou
+// de ler conversas desde 01h). Teto maior e esforço baixo nos dois juízes: a pergunta é simples.
 async function julgarEspera(env, msgs, caso, fatos) {
   const r = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: { 'x-api-key': env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
-    body: JSON.stringify({ model: MODELO, max_tokens: 300, system: JUIZ_FILA, messages: [{ role: 'user', content: conversaParaJuiz(msgs, caso, fatos) }] }),
+    body: JSON.stringify({ model: MODELO, max_tokens: 2500, output_config: { effort: 'low' }, system: JUIZ_FILA, messages: [{ role: 'user', content: conversaParaJuiz(msgs, caso, fatos) }] }),
   });
   if (!r.ok) return null;
   const j = await r.json().catch(() => null);
@@ -785,7 +787,7 @@ async function julgarConferir(env, msgs, caso, fatos) {
   const r = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: { 'x-api-key': env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
-    body: JSON.stringify({ model: MODELO, max_tokens: 300, system: JUIZ_CONFERIR, messages: [{ role: 'user', content: conversaParaJuiz(msgs, caso, fatos) }] }),
+    body: JSON.stringify({ model: MODELO, max_tokens: 2500, output_config: { effort: 'low' }, system: JUIZ_CONFERIR, messages: [{ role: 'user', content: conversaParaJuiz(msgs, caso, fatos) }] }),
   });
   if (!r.ok) { _erroConferir = 'IA ' + r.status + ' ' + (await r.text().catch(() => '')).slice(0, 120); return null; }
   const j = await r.json().catch(() => null);
