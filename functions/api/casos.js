@@ -590,7 +590,7 @@ export async function filaEquipe(env, agora = Date.now()) {
         const msgs = p.wa_id && porWa[p.wa_id];
         if (!msgs || !msgs.length) continue;
         p.fatos = fatosDoSistema(p.pedido, sistema);
-        p.chave = String(msgs[msgs.length - 1].created_at) + '|' + p.fatos.join(' ').length;
+        p.chave = 'v2|' + String(msgs[msgs.length - 1].created_at) + '|' + p.fatos.join(' ').length;   // v2: juiz mais estrito (14/11/2026)
       }
       const atualC = p => { const j = juizos['conf:' + p.card_id]; return j && j.ate === p.chave ? j : null; };
       const lerC = conferir.filter(p => p.chave && !atualC(p)).slice(0, env.ANTHROPIC_API_KEY ? 3 : 0);

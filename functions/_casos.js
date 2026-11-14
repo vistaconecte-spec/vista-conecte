@@ -395,8 +395,8 @@ export function lerJuizo(texto) {
 // alguma info pra cliente, já que a troca já está em andamento"). A IA lê a conversa e diz o que falta dizer a ela.
 export const JUIZ_CONFERIR = `Você lê a conversa de WhatsApp entre uma cliente da Vista Conecte (loja de roupas feitas sob encomenda) e o atendimento. VI é a assistente automática, EQUIPE são as pessoas da loja.
 A troca dela já está em andamento: a peça que ela devolveu já chegou na loja e falta a equipe conferir a peça e liberar o envio da troca. A "Situação no sistema" é o estado real e vale mais que a conversa.
-Diga se falta alguma informação para a cliente: pergunta dela que ficou sem resposta, promessa feita a ela que ainda não foi cumprida, ou ela ainda não sabe que a peça chegou e o que acontece agora. Se o que já disseram a ela cobre isso e ela não perguntou nada depois, não falta nada.
-Responda só com JSON, sem mais nada: {"falta": "o que falta dizer ou fazer pela cliente, em até 15 palavras, vazio se nada", "sabe": "o que ela já sabe da troca, em até 12 palavras"}`;
+A troca já está andando: quando a peça for conferida a equipe libera, e o rastreio da troca chega sozinho para a cliente quando for postado. Isso NÃO é pendência. Só falta alguma coisa em dois casos: a última fala da conversa é da cliente, com pergunta ou pedido que ninguém respondeu; ou a equipe ou a VI prometeu uma data a ela e essa data já passou. Assunto antigo que já foi respondido, ou que a cliente aceitou depois (ok, tá bom, obrigada), não conta. Não invente explicação que ninguém pediu. Na dúvida, não falta nada.
+Responda só com JSON, sem mais nada: {"falta": "a pergunta ou o prazo vencido que falta responder, em até 15 palavras, vazio se nada", "sabe": "o que ela já sabe da troca, em até 12 palavras"}`;
 export function lerConferir(texto) {
   const m = String(texto || '').match(/\{[\s\S]*\}/);
   if (!m) return null;
