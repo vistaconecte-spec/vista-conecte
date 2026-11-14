@@ -391,6 +391,22 @@ export function lerJuizo(texto) {
   } catch (_) { return null; }
 }
 
+// Peça para conferir com a conversa junto (Bárbara, 14/11/2026: "tem que dar de ver a conversa também pra ver se falta
+// alguma info pra cliente, já que a troca já está em andamento"). A IA lê a conversa e diz o que falta dizer a ela.
+export const JUIZ_CONFERIR = `Você lê a conversa de WhatsApp entre uma cliente da Vista Conecte (loja de roupas feitas sob encomenda) e o atendimento. VI é a assistente automática, EQUIPE são as pessoas da loja.
+A troca dela já está em andamento: a peça que ela devolveu já chegou na loja e falta a equipe conferir a peça e liberar o envio da troca. A "Situação no sistema" é o estado real e vale mais que a conversa.
+Diga se falta alguma informação para a cliente: pergunta dela que ficou sem resposta, promessa feita a ela que ainda não foi cumprida, ou ela ainda não sabe que a peça chegou e o que acontece agora. Se o que já disseram a ela cobre isso e ela não perguntou nada depois, não falta nada.
+Responda só com JSON, sem mais nada: {"falta": "o que falta dizer ou fazer pela cliente, em até 15 palavras, vazio se nada", "sabe": "o que ela já sabe da troca, em até 12 palavras"}`;
+export function lerConferir(texto) {
+  const m = String(texto || '').match(/\{[\s\S]*\}/);
+  if (!m) return null;
+  try {
+    const j = JSON.parse(m[0]);
+    if (typeof j.falta !== 'string') return null;
+    return { falta: j.falta.trim().slice(0, 140), sabe: String(j.sabe || '').trim().slice(0, 120) };
+  } catch (_) { return null; }
+}
+
 // Peça da troca que voltou e ninguém conferiu (13/11/2026). A Bárbara quer a conferência humana ("precisamos esperar
 // chegar a peça aqui, avaliar e liberar"), mas sem depender de alguém lembrar: o cartão entra na fila da equipe com
 // prazo de 1 dia útil e, vencido, sobe para ela. A Cris #9126 ficou 16 dias com as calças aqui e a troca travada.

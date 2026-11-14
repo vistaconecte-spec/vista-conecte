@@ -14069,10 +14069,10 @@ function filaRender() {
     <div style="display:flex;align-items:center;gap:10px;padding:4px 0;border-top:1px solid #fecaca">
       <div style="flex:1;min-width:0">${i.vencido ? '<b style="color:#b91c1c">●</b> ' : '○ '}<b>${quem(i)}</b>
         ${i.tipo === 'conferir'
-          ? `${csEsc(i.ultima || '')} <span style="opacity:.7">(há ${filaHoras(i.horas)} úteis)</span>`
+          ? `${csEsc(i.ultima || '')} <span style="opacity:.7">(há ${filaHoras(i.horas)} úteis)</span>${filaConversaConferir(i)}`
           : `<span style="opacity:.7">há ${filaHoras(i.horas)} úteis</span> · ${i.falta ? 'falta ' + csEsc(i.falta) : '"' + csEsc(String(i.ultima || '').slice(0, 90)) + '"'}`}</div>
       ${i.tipo === 'conferir'
-        ? `<button style="${btn}" onclick="abrirTrocas(null)">Abrir trocas</button>`
+        ? `${i.wa_id ? `<button style="${btn};background:#fff;color:#b91c1c;border:1px solid #fca5a5" onclick="filaAbrir('${String(i.wa_id).replace(/\D/g, '')}')">Abrir conversa</button>` : ''}<button style="${btn}" onclick="abrirTrocas(null)">Abrir trocas</button>`
         : `<button style="${btn}" onclick="filaAbrir('${String(i.wa_id).replace(/\D/g, '')}')">Abrir conversa</button>`}
     </div>`).join('');
   const nConf = itens.filter(i => i.tipo === 'conferir').length, nCli = itens.length - nConf;
@@ -14093,6 +14093,14 @@ function filaRender() {
   }
   el.style.cssText = 'position:relative;z-index:1;background:#fef2f2;color:#7f1d1d;border:1px solid #fecaca;padding:10px 14px;margin:0 0 12px;border-radius:8px';
   el.innerHTML = html;
+}
+// Peça para conferir: o que a IA leu na conversa (Bárbara, 14/11/2026: "ver se falta alguma info pra cliente já que a
+// troca já está em andamento").
+function filaConversaConferir(i) {
+  if (i.falta_cliente) return `<div style="margin-left:14px;color:#991b1b"><b>Pra cliente:</b> falta ${csEsc(i.falta_cliente)}</div>`;
+  if (i.conversa === 'lida') return `<div style="margin-left:14px;opacity:.75">Conversa em dia${i.cliente_sabe ? ': ' + csEsc(i.cliente_sabe) : ''}</div>`;
+  if (i.conversa === 'ainda não lida') return `<div style="margin-left:14px;opacity:.6">Conversa ainda não lida, volta em 5 min</div>`;
+  return `<div style="margin-left:14px;opacity:.6">Não achei conversa dela no WhatsApp</div>`;
 }
 function filaAbrir(wa) {
   if (modeloAtual !== '__atendimento__') abrirAtendimento(null);

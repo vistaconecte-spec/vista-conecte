@@ -382,6 +382,9 @@ ok('status vai num cartão fixo e a IA não repete', /cartão fixo da tela acima
   const pj = C.conversaParaJuiz(conv, { tipo: 'troca (tamanho)', pedido: '8981' });
   ok('a IA lê quem falou o quê, com o caso, sem o contexto interno', [/EQUIPE: vou solicitar a etiqueta/.test(pj), /CLIENTE: Obrigada!/.test(pj), /contexto interno/.test(pj), /pedido 8981/.test(pj)], [true, true, false, true]);
   ok('leitura da IA: JSON válido', C.lerJuizo('{"espera": true, "falta": "mandar a etiqueta da troca", "motivo": "a equipe prometeu e não mandou"}'), { espera: true, falta: 'mandar a etiqueta da troca', motivo: 'a equipe prometeu e não mandou' });
+  ok('peça para conferir: leitura da conversa', C.lerConferir('ok {"falta": "", "sabe": "peça chegou e troca virou o #9679"}'), { falta: '', sabe: 'peça chegou e troca virou o #9679' });
+  ok('peça para conferir: resposta estranha não vale', [C.lerConferir('nada'), C.lerConferir('{"falta": 3}')], [null, null]);
+  ok('peça para conferir: juiz fala da troca em andamento', /troca dela já está em andamento/.test(C.JUIZ_CONFERIR), true);
   ok('leitura da IA: resposta estranha não vale (fica na fila)', [C.lerJuizo('acho que sim'), C.lerJuizo('{"espera": "talvez"}')], [null, null]);
   ok('a instrução manda ler o contexto e, na dúvida, esperar', [/Leia a conversa inteira/.test(C.JUIZ_FILA), /Na dúvida, espera/.test(C.JUIZ_FILA), /—/.test(C.JUIZ_FILA)], [true, true, false]);
   const fat = C.fatosDoSistema('9269', {
