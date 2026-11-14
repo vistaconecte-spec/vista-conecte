@@ -602,9 +602,10 @@ export async function filaEquipe(env, agora = Date.now()) {
         const j = p.chave && atualC(p);
         p.conversa = !p.wa_id ? 'sem conversa' : j ? 'lida' : p.chave ? 'ainda não lida' : 'sem conversa';
         if (j) { p.falta_cliente = j.falta; p.cliente_sabe = j.sabe; }
+        if (!j && _erroConferir) p.leitura_erro = _erroConferir;
         delete p.caso; delete p.fatos; delete p.chave;
       }
-    } catch (_) {}
+    } catch (e) { for (const p of conferir) p.leitura_erro = String(e && e.message || e).slice(0, 160); }
   }
   if (mudou) {
     const vivos = new Set([...cand.map(x => x.c.wa_id), ...conferir.map(p => 'conf:' + p.card_id)]);
@@ -778,13 +779,14 @@ async function julgarEspera(env, msgs, caso, fatos) {
   return lerJuizo(((j && j.content) || []).filter(b => b.type === 'text').map(b => b.text).join(''));
 }
 
+let _erroConferir = null;
 async function julgarConferir(env, msgs, caso, fatos) {
   const r = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: { 'x-api-key': env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
     body: JSON.stringify({ model: MODELO, max_tokens: 300, system: JUIZ_CONFERIR, messages: [{ role: 'user', content: conversaParaJuiz(msgs, caso, fatos) }] }),
   });
-  if (!r.ok) return null;
+  if (!r.ok) { _erroConferir = 'IA ' + r.status + ' ' + (await r.text().catch(() => '')).slice(0, 120); return null; }
   const j = await r.json().catch(() => null);
   return lerConferir(((j && j.content) || []).filter(b => b.type === 'text').map(b => b.text).join(''));
 }
