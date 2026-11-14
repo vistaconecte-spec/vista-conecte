@@ -791,7 +791,7 @@ async function julgarConferir(env, msgs, caso, fatos) {
   const j = await r.json().catch(() => null);
   const txt = ((j && j.content) || []).filter(b => b.type === 'text').map(b => b.text).join('');
   const lido = lerConferir(txt);
-  if (!lido) _erroConferir = 'resposta da IA sem JSON: ' + txt.slice(0, 120);
+  if (!lido) _erroConferir = 'resposta da IA sem JSON: ' + txt.slice(0, 120) + ' | ' + JSON.stringify({ stop: j && j.stop_reason, tipos: ((j && j.content) || []).map(b => b.type), uso: j && j.usage && j.usage.output_tokens });
   return lido;
 }
 
