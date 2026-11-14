@@ -594,8 +594,9 @@ export async function filaEquipe(env, agora = Date.now()) {
       }
       const atualC = p => { const j = juizos['conf:' + p.card_id]; return j && j.ate === p.chave ? j : null; };
       const lerC = conferir.filter(p => p.chave && !atualC(p)).slice(0, env.ANTHROPIC_API_KEY ? 3 : 0);
+      if (!env.ANTHROPIC_API_KEY) _erroConferir = 'sem chave da IA';
       if (lerC.length) {
-        const lidos = await Promise.all(lerC.map(p => julgarConferir(env, porWa[p.wa_id], p.caso, p.fatos).catch(() => null)));
+        const lidos = await Promise.all(lerC.map(p => julgarConferir(env, porWa[p.wa_id], p.caso, p.fatos).catch(e => { _erroConferir = 'falhou: ' + String(e && e.message || e).slice(0, 120); return null; })));
         lerC.forEach((p, i) => { if (lidos[i]) { juizos['conf:' + p.card_id] = { ...lidos[i], ate: p.chave, lido_em: new Date(agora).toISOString() }; mudou = true; } });
       }
       for (const p of conferir) {
@@ -788,7 +789,10 @@ async function julgarConferir(env, msgs, caso, fatos) {
   });
   if (!r.ok) { _erroConferir = 'IA ' + r.status + ' ' + (await r.text().catch(() => '')).slice(0, 120); return null; }
   const j = await r.json().catch(() => null);
-  return lerConferir(((j && j.content) || []).filter(b => b.type === 'text').map(b => b.text).join(''));
+  const txt = ((j && j.content) || []).filter(b => b.type === 'text').map(b => b.text).join('');
+  const lido = lerConferir(txt);
+  if (!lido) _erroConferir = 'resposta da IA sem JSON: ' + txt.slice(0, 120);
+  return lido;
 }
 
 // ── Rota ────────────────────────────────────────────────────────────────────────
