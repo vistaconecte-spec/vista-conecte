@@ -225,7 +225,7 @@ if (new URLSearchParams(location.search).has('embed')) document.body.classList.a
 const MODO_APP = !new URLSearchParams(location.search).has('embed') && window.top === window;
 if (MODO_APP) {
   document.body.classList.add('modo-app');
-  if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw-atendimento.js', { scope: '/whatsapp.html' }).catch(() => {});
+  if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw-atendimento.js', { scope: '/whatsapp' }).catch(() => {});
 }
 const est = { conversas: new Map(), desdeLista: null, aberta: null, msgs: new Map(), desdeConversa: null, enviando: false, filtro: '', envio: false, avisoEnvio: '' };
 const $ = id => document.getElementById(id);

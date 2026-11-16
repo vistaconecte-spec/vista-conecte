@@ -64,13 +64,13 @@ ok('cookie do app com 30 dias', /Max-Age=2592000/.test(rl.headers.get('Set-Cooki
 console.log('\n3) A página vira app fora do painel e continua igual dentro dele');
 ok('manifesto e ícones', html.includes('rel="manifest" href="/atendimento.webmanifest"') && html.includes('apple-touch-icon'), true);
 const man = JSON.parse(readFileSync(join(raiz, 'atendimento.webmanifest'), 'utf8'));
-ok('manifesto abre direto nas conversas', [man.start_url, man.display, man.short_name], ['/whatsapp.html?app=1', 'standalone', 'Atendimento']);
+ok('manifesto abre direto nas conversas', [man.start_url, man.display, man.short_name], ['/whatsapp?app=1', 'standalone', 'Atendimento']);
 ok('ícones existem', man.icons.every(i => existsSync(join(raiz, i.src.slice(1)))), true);
 ok('modo app só fora do iframe', /const MODO_APP = !new URLSearchParams\(location\.search\)\.has\('embed'\) && window\.top === window/.test(html), true);
 ok('sem sessão: tela de senha no app, aviso do painel no iframe', (html.match(/throw semSessao\(\)/g) || []).length === 3 && html.includes("if (MODO_APP) { mostrarLogin();"), true);
 ok('atualização automática não apaga a senha sendo digitada', html.includes("if (!$('login').hidden) return;"), true);
-ok('painel manda o perfil do atendimento para o app', main.includes("if (perfil === 'atendimento') { location.replace('/whatsapp.html?app=1'); return; }"), true);
-ok('página do app nunca vem do cache', /\/whatsapp\.html\s+Cache-Control: no-store/.test(readFileSync(join(raiz, '_headers'), 'utf8')), true);
+ok('painel manda o perfil do atendimento para o app', main.includes("if (perfil === 'atendimento') { location.replace('/whatsapp?app=1'); return; }"), true);
+ok('página do app nunca vem do cache', /\/whatsapp\s+Cache-Control: no-store/.test(readFileSync(join(raiz, '_headers'), 'utf8')), true);
 
 console.log(`\n${total - falhas}/${total} passaram`);
 if (falhas) process.exit(1);

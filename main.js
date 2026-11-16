@@ -118,7 +118,7 @@ async function conferirSenha(senha) {
 
 function aplicarPerfil(perfil) {
   // A senha do atendimento só abre o app de conversas (16/11/2026); o painel não serve para ela.
-  if (perfil === 'atendimento') { location.replace('/whatsapp.html?app=1'); return; }
+  if (perfil === 'atendimento') { location.replace('/whatsapp?app=1'); return; }
   if (perfil === 'dona') ABAS_DA_DONA.forEach(k => sessionStorage.setItem(k, '1'));
   // A senha de entrada da modelista é a mesma da aba MODELAGEM: pedir de novo na porta
   // seguinte seria digitar duas vezes o mesmo segredo.
@@ -2360,7 +2360,7 @@ function atdShowSub(sub) {
     if (f && !f.getAttribute('src')) f.setAttribute('src', WHATS_FRAME_SRC);
   }
 }
-const WHATS_FRAME_SRC = '/whatsapp.html?embed=1&v=2026111601';
+const WHATS_FRAME_SRC = '/whatsapp.html?embed=1&v=2026111602';
 
 // ── Aviso de cliente esperando a equipe (Vi - atendimento) ──────────────────
 // Passo 1 da equipe sair da caixa do Wati (pedido da Bárbara em 21/10/2026): lá a mensagem nova só era vista

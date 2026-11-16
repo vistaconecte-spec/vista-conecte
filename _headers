@@ -9,6 +9,8 @@
 
 # App Vi Atendimento (16/11/2026): a página e o service worker nunca vêm do cache, senão o
 # celular continua com a versão velha do app depois de publicar.
+/whatsapp
+  Cache-Control: no-store
 /whatsapp.html
   Cache-Control: no-store
 /sw-atendimento.js
