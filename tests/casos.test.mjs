@@ -394,6 +394,15 @@ ok('status vai num cartão fixo e a IA não repete', /cartão fixo da tela acima
   ok('situação no sistema: troca com pedido de troca, código e devolução postada (Crischélida)', fat, ['Troca aberta com pedido de troca #9453, código de postagem 4769744757 ainda não enviado no WhatsApp, a cliente postou a devolução 06/11 e está a caminho.']);
   ok('situação no sistema vai junto da conversa para a IA', /Situação no sistema agora: Troca aberta/.test(C.conversaParaJuiz(conv, { tipo: 'troca', pedido: '9269' }, fat)), true);
   ok('a instrução manda usar a situação do sistema', /Situação no sistema/.test(C.JUIZ_FILA), true);
+  // Roberta #9118 (16/11/2026): respondida com "vou ver" continua na fila enquanto a IA disser que ela espera
+  const rob = [{ role: 'user', texto: 'e o vestido?', created_at: '2026-11-12T13:00:00Z' }, { role: 'operador', texto: 'vou ver e te falo', created_at: '2026-11-12T14:00:00Z' }];
+  const er = C.esperaRespondida(rob, { espera: true, falta: 'enviar o vestido', desde: '2026-11-12T13:00:00Z' }, agora);
+  ok('respondida: espera de ação continua, com o início original', [!!er, er && er.respondida, er && er.desde, er && er.ultima, er && er.ultima_em], [true, true, '2026-11-12T13:00:00Z', 'e o vestido?', '2026-11-12T14:00:00Z']);
+  ok('respondida: última leitura disse que não espera, sai', C.esperaRespondida(rob, { espera: false }, agora), null);
+  ok('respondida: sem leitura anterior, sai (como antes)', C.esperaRespondida(rob, null, agora), null);
+  ok('respondida: cliente falou por último, fica com a regra de sempre', C.esperaRespondida([...rob, { role: 'user', texto: 'ok', created_at: '2026-11-12T15:00:00Z' }], { espera: true }, agora), null);
+  ok('juiz: "vou ver" sem fazer continua espera, e sabe a hora de agora', [/vai ver/.test(C.JUIZ_FILA), /Agora: /.test(C.conversaParaJuiz(rob, null, [], agora)), /Agora: /.test(C.conversaParaJuiz(rob, null, []))], [true, true, false]);
+  ok('fila: respondida usa a leitura anterior da IA', /esperaRespondida\(porWa\[c\.wa_id\], juizos\[c\.wa_id\], agora\)/.test(apiTxt), true);
   ok('fila: sem leitura da IA a cliente fica (nunca some por engano)', /if \(j && !j\.espera\) continue;/.test(apiTxt), true);
   const conf = C.pecasParaConferir([
     { id: 'a', cliente: 'Cris Silva', pedido: '9126', status: 'pendente', data_chegada_reversa: '2026-11-12', pedido_troca: '#9411' },

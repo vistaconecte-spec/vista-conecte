@@ -14072,7 +14072,7 @@ function filaRender() {
       <div style="flex:1;min-width:0">${i.vencido ? '<b style="color:#b91c1c">●</b> ' : '○ '}<b>${quem(i)}</b>
         ${i.tipo === 'conferir'
           ? `${csEsc(i.ultima || '')} <span style="opacity:.7">(há ${filaHoras(i.horas)} úteis)</span>${filaConversaConferir(i)}`
-          : `<span style="opacity:.7">há ${filaHoras(i.horas)} úteis</span> · ${i.falta ? 'falta ' + csEsc(i.falta) : '"' + csEsc(String(i.ultima || '').slice(0, 90)) + '"'}`}</div>
+          : `<span style="opacity:.7">há ${filaHoras(i.horas)} úteis</span> · ${i.respondida ? '<span style="opacity:.7">já respondida, ainda</span> ' : ''}${i.falta ? 'falta ' + csEsc(i.falta) : '"' + csEsc(String(i.ultima || '').slice(0, 90)) + '"'}`}</div>
       ${i.tipo === 'conferir'
         ? `${i.wa_id ? `<button style="${btn};background:#fff;color:#b91c1c;border:1px solid #fca5a5" onclick="filaAbrir('${String(i.wa_id).replace(/\D/g, '')}')">Abrir conversa</button>` : ''}<button style="${btn}" onclick="abrirTrocas(null)">Abrir trocas</button>`
         : `<button style="${btn}" onclick="filaAbrir('${String(i.wa_id).replace(/\D/g, '')}')">Abrir conversa</button>`}

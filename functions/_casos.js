@@ -355,6 +355,7 @@ export const JUIZ_FILA = `Você lê a conversa de WhatsApp entre uma cliente da 
 Decida se, no fim da conversa, a cliente ainda espera alguma coisa da loja: resposta a uma pergunta, ou uma ação como envio, troca, etiqueta ou código de postagem, estorno, reembolso, correção de pedido, ou uma confirmação que foi prometida.
 Leia a conversa inteira. Agradecimento, "ok" ou emoji depois de uma promessa que ainda não foi cumprida continua sendo espera. Promessa da VI de que "a equipe vai ver" ou "o código chega por aqui" é espera até a coisa acontecer na conversa.
 Só responda que não espera quando o assunto foi resolvido de fato: a informação pedida foi dada, o que ela pediu foi feito, ou ela desistiu do pedido.
+Quando a última fala é da EQUIPE, veja se ela resolveu ou só respondeu: dizer que vai ver, que vai mandar, que vai verificar ou pedir um tempo sem fazer o que faltava continua sendo espera. A espera acaba quando a equipe faz e conta que fez (enviou, mandou o código, acertou o valor, corrigiu o pedido) ou responde de fato a pergunta. Se a equipe deu um prazo e ele ainda não chegou (veja a hora de agora), e não falta mais nada, ela não espera nada agora; se o prazo já passou sem a coisa acontecer, espera.
 Use também a "Situação no sistema", que é o estado real e vale mais que a conversa: se o código de postagem já foi enviado a ela, ou a devolução já foi postada e está a caminho, ou o pedido de troca já existe esperando a peça chegar, e ela não fez pergunta que ficou sem resposta, ela não espera nada da equipe agora, o sistema está cuidando. Se ela perguntou algo depois disso e ninguém respondeu, espera.
 Na dúvida, espera.
 Responda só com JSON, sem mais nada: {"espera": true ou false, "falta": "o que a loja ainda precisa fazer ou responder, em até 15 palavras, vazio se nada", "motivo": "por que, em até 20 palavras"}`;
@@ -373,13 +374,30 @@ export function fatosDoSistema(pedido, { retorno = [], estorno = [], rastreio = 
     out.push(`Devolução aberta (${t.forma || 'dinheiro'}${t.valor ? ', R$ ' + t.valor : ''})${daRev('estorno:' + t.id)}${daRast('estorno:' + t.id)}${t.chegou_em ? ', peça chegou ' + dia(t.chegou_em) : ''}.`);
   return out;
 }
-export function conversaParaJuiz(msgs, caso, fatos) {
+// Cliente que já foi respondida mas ainda espera uma ação (Bárbara, 16/11/2026: a Roberta #9118 esperava o vestido e
+// o acerto de R$80; um "vou ver" da equipe tirava ela da fila sem nada feito). Se a última leitura da IA disse que ela
+// espera, a conversa continua na fila e é relida a cada mensagem nova, até a IA ver que a coisa foi feita.
+export function esperaRespondida(msgs, prev, agora = Date.now()) {
+  if (!prev || !prev.espera) return null;
+  const lista = (msgs || []).filter(m => m.role === 'user' || m.role === 'operador');
+  if (!lista.length || lista[lista.length - 1].role !== 'operador') return null;
+  const clientes = lista.filter(m => m.role === 'user');
+  const todas = (msgs || []).filter(m => m && m.created_at);
+  const desde = prev.desde || prev.lido_em || (clientes.length ? clientes[clientes.length - 1].created_at : null);
+  if (!desde) return null;
+  const horas = horasUteis(desde, agora);
+  return { desde, horas, vencido: horas >= PRAZO_RESPOSTA_H, respondida: true,
+    ultima: clientes.length ? String(clientes[clientes.length - 1].texto || '').slice(0, 160) : '',
+    ultima_em: todas.length ? todas[todas.length - 1].created_at : desde };
+}
+export function conversaParaJuiz(msgs, caso, fatos, agora = null) {
   const quem = { user: 'CLIENTE', assistant: 'VI', operador: 'EQUIPE' };
   const linhas = (msgs || []).filter(m => quem[m.role] && String(m.texto || '').trim() && !/^\[contexto/.test(m.texto)).slice(-30)
     .map(m => `${brt(m.created_at)} ${quem[m.role]}: ${String(m.texto).replace(/\[contexto interno:[\s\S]*?\]/g, '').replace(/\s+/g, ' ').trim().slice(0, 400)}`);
   const cab = caso ? `Caso aberto: ${String(caso.tipo || '').slice(0, 120)}${caso.pedido ? ', pedido ' + caso.pedido : ''}\n` : '';
   const sis = fatos && fatos.length ? `Situação no sistema agora: ${fatos.join(' ')}\n` : '';
-  return cab + sis + '\n' + linhas.join('\n');
+  const hora = agora ? `Agora: ${brt(new Date(agora).toISOString())}\n` : '';
+  return cab + sis + hora + '\n' + linhas.join('\n');
 }
 export function lerJuizo(texto) {
   const m = String(texto || '').match(/\{[\s\S]*\}/);

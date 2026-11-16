@@ -21,7 +21,7 @@ import {
   soLeitura, MODELO, DOC_LOG, TEMPLATE_CONTINUIDADE, TEMPLATE_ALERTA, CATEGORIAS_DINHEIRO,
   SISTEMA, FERRAMENTAS, FERRAMENTAS_SERVIDOR, problemasDoTexto, prometeDinheiro, janelaAberta, revisarResposta,
   semResposta, promessasDaEquipe, pagoPorItem, numerosDePedido, pedidoEhDaCliente, emailsDoTexto, devolucoesDoPainel, codigosNaConversa, reversasDoPedido, prazoDoPedido, logVazio, podeFechar, podeFecharPelaConversa, casoDeDinheiro, semEscapeUnicode, aprovacaoLiberada, novoId,
-  primeiroNome, finalTel, resumoDoCaso, conversaParaAssistente, hojeTexto, brt, metaParaMsg, esperaDaEquipe, PRAZO_RESPOSTA_H, pecasParaConferir, esperaBruta, JUIZ_FILA, conversaParaJuiz, lerJuizo, fatosDoSistema, JUIZ_CONFERIR, lerConferir,
+  primeiroNome, finalTel, resumoDoCaso, conversaParaAssistente, hojeTexto, brt, metaParaMsg, esperaDaEquipe, PRAZO_RESPOSTA_H, pecasParaConferir, esperaBruta, esperaRespondida, JUIZ_FILA, conversaParaJuiz, lerJuizo, fatosDoSistema, JUIZ_CONFERIR, lerConferir,
 } from '../_casos.js';
 import { variantes, mesclar, enviarTextoDaLoja, enviarArquivoDaLoja, enviarModeloDaLoja } from '../_whatsapp.js';
 
@@ -540,7 +540,13 @@ export async function filaEquipe(env, agora = Date.now()) {
     for (const m of doPainel) { const w = porFim[fim8(m.telefone)]; if (w) (porWa[w] = porWa[w] || []).push({ role: 'operador', texto: m.texto || '', created_at: m.recebida_em }); }
   }
   for (const w of Object.keys(porWa)) porWa[w].sort((x, y) => String(x.created_at).localeCompare(String(y.created_at)));
-  // Quem escreveu depois da última fala da equipe é candidata; a IA lê a conversa e decide (13/11/2026)
+  // O que o sistema sabe de trocas e devoluções vai junto da conversa para a IA (e a mesma leitura serve às peças para conferir)
+  let docs = [];
+  try { docs = await sb(env, true).get('vc_modelos?id=in.(retorno,estorno,rastreio-trocas,reversas-resultado,fila-juizo)&select=id,dados'); } catch (_) {}
+  const doc = id => ((docs.find(d => d.id === id) || {}).dados || {});
+  let juizos = doc('fila-juizo').itens || {};
+  // Quem escreveu depois da última fala da equipe é candidata; a IA lê a conversa e decide (13/11/2026).
+  // Quem a equipe já respondeu continua candidata se a última leitura disse que ela ainda espera uma ação (16/11/2026).
   const vistos = new Set();
   const cand = [];
   for (const c of casos) {
@@ -548,24 +554,19 @@ export async function filaEquipe(env, agora = Date.now()) {
     vistos.add(c.wa_id);
     // Caso com a Bárbara (estorno) não é da fila da equipe: aparece no Aguardando Bárbara (13/11/2026)
     if (c.responsavel === 'Bárbara') continue;
-    const e = esperaBruta(porWa[c.wa_id], agora);
-    if (e) cand.push({ c, e });
+    const e = esperaBruta(porWa[c.wa_id], agora) || esperaRespondida(porWa[c.wa_id], juizos[c.wa_id], agora);
+    if (e) cand.push({ c, e, prev: juizos[c.wa_id] || null });
   }
-  // O que o sistema sabe de trocas e devoluções vai junto da conversa para a IA (e a mesma leitura serve às peças para conferir)
-  let docs = [];
-  try { docs = await sb(env, true).get('vc_modelos?id=in.(retorno,estorno,rastreio-trocas,reversas-resultado,fila-juizo)&select=id,dados'); } catch (_) {}
-  const doc = id => ((docs.find(d => d.id === id) || {}).dados || {});
   const sistema = { retorno: doc('retorno').itens || [], estorno: doc('estorno').itens || [], rastreio: doc('rastreio-trocas').itens || {}, reversas: doc('reversas-resultado').itens || {} };
   for (const x of cand) { x.fatos = fatosDoSistema(x.c.pedido, sistema); x.chave = x.e.ultima_em + '|' + x.fatos.join(' ').length + ':' + x.fatos.join(' ').slice(-40); }
-  let juizos = doc('fila-juizo').itens || {};
   const atual = x => { const j = juizos[x.c.wa_id]; return j && j.ate === x.chave ? j : null; };
   // Lê no máximo 8 conversas por vez (limite de chamadas do Cloudflare); as mais antigas primeiro. O resto entra na
   // fila como "ainda não lida" e é lido nas próximas consultas, de 5 em 5 minutos.
   const ler = cand.filter(x => !atual(x)).sort((a, b) => String(a.e.desde).localeCompare(String(b.e.desde))).slice(0, env.ANTHROPIC_API_KEY ? 8 : 0);
   let mudou = false;
   if (ler.length) {
-    const lidos = await Promise.all(ler.map(x => julgarEspera(env, porWa[x.c.wa_id], x.c, x.fatos).catch(() => null)));
-    ler.forEach((x, i) => { if (lidos[i]) { juizos[x.c.wa_id] = { ...lidos[i], ate: x.chave, lido_em: new Date(agora).toISOString() }; mudou = true; } });
+    const lidos = await Promise.all(ler.map(x => julgarEspera(env, porWa[x.c.wa_id], x.c, x.fatos, agora).catch(() => null)));
+    ler.forEach((x, i) => { if (lidos[i]) { juizos[x.c.wa_id] = { ...lidos[i], ate: x.chave, lido_em: new Date(agora).toISOString(), desde: x.e.desde }; mudou = true; } });
   }
   // Peça da troca que voltou e ninguém conferiu: prazo de 1 dia útil (13/11/2026). Junto vai a conversa da cliente,
   // lida pela IA, para a equipe ver se falta dizer alguma coisa a ela enquanto a troca anda (Bárbara, 14/11/2026).
@@ -620,7 +621,7 @@ export async function filaEquipe(env, agora = Date.now()) {
     const { c, e } = x;
     itens.push({ caso_id: c.id, cliente: primeiroNome(c.nome), pedido: c.pedido || null, wa_id: c.wa_id, responsavel: c.responsavel || 'Marcelly',
       tipo: String(c.tipo || '').split(' · ')[0].slice(0, 60), desde_brt: brt(e.desde), horas: e.horas, vencido: e.vencido, ultima: e.ultima,
-      falta: j ? j.falta : null, lido: !!j });
+      falta: j ? j.falta : (e.respondida && x.prev ? x.prev.falta : null), lido: !!j, respondida: !!e.respondida });
   }
   for (const p of conferir) itens.push({ ...p, responsavel: 'Marcelly', desde_brt: brt(p.desde) });
   itens.sort((a, b) => b.horas - a.horas);
@@ -771,11 +772,11 @@ async function valorDoEstorno(env, casoId) {
 // Uma conversa lida pela IA: a cliente ainda espera resposta ou ação da loja? (13/11/2026)
 // Haiku 5.5 pensa antes de responder: com 300 tokens só vinha o raciocínio e nenhum JSON (14/11/2026, a fila parou
 // de ler conversas desde 01h). Teto maior e esforço baixo nos dois juízes: a pergunta é simples.
-async function julgarEspera(env, msgs, caso, fatos) {
+async function julgarEspera(env, msgs, caso, fatos, agora = Date.now()) {
   const r = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: { 'x-api-key': env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
-    body: JSON.stringify({ model: MODELO, max_tokens: 2500, output_config: { effort: 'low' }, system: JUIZ_FILA, messages: [{ role: 'user', content: conversaParaJuiz(msgs, caso, fatos) }] }),
+    body: JSON.stringify({ model: MODELO, max_tokens: 2500, output_config: { effort: 'low' }, system: JUIZ_FILA, messages: [{ role: 'user', content: conversaParaJuiz(msgs, caso, fatos, agora) }] }),
   });
   if (!r.ok) return null;
   const j = await r.json().catch(() => null);
