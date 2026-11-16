@@ -410,6 +410,25 @@ function parseLineItemMulti(item, orderName, ignorados, usarQuantidadeTotal) {
     })).filter(p => p.sizeIdx >= 0);
   }
 
+  // Item digitado à mão com tamanho por peça: "Conjunto Cropped Canelado M + Calça Pantalona
+  // Nude P" (#9657, 16/11/2026). Tira os dois tamanhos, lê o título limpo como conjunto e dá
+  // a cada peça o seu tamanho. Só vale se o título limpo virar um conjunto de duas peças.
+  const vt = String(item.variant_title || '').trim();
+  if (!vt || vt.toUpperCase() === 'NULL') {
+    const sz = SIZES.join('|');
+    const m = normalizarTitulo(item.title).match(new RegExp(`^(.+?) (${sz}) ?\\+ ?(.+) (${sz})$`));
+    if (m) {
+      const limpo = { ...item, title: `${m[1]} + ${m[3]}`, variant_title: m[2] };
+      const pc = parseLineItem(limpo, orderName, [], usarQuantidadeTotal);
+      if (pc && pc.multi && pc.multi.length === 2) {
+        return pc.multi.map((key, i) => ({
+          modelKey: key, color: pc.color, sizeIdx: SIZES.indexOf(i === 0 ? m[2] : m[4]),
+          qty: pc.qty, via: 'conjunto-tamanho-por-peca',
+        }));
+      }
+    }
+  }
+
   const p = parseLineItem(item, orderName, ignorados, usarQuantidadeTotal);
   if (!p) return [];
   // Conjunto com título próprio: uma linha do pedido vira as duas peças, mesma cor e tamanho

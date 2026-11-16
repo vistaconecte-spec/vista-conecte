@@ -158,6 +158,19 @@ ok('o cropped é o Canelado Cinza M — tamanho DIFERENTE da calça',
 ok('caixa e espaço extra não quebram o mapa',
    multi('conjunto  calça pantalona bolso frontal cinza gg e cropped m ').length, 2);
 ok('item devolvido (nada a enviar) não vira peça', multi(TITULO_8719, 0).length, 0);
+
+// #9657 (16/11/2026): rascunho com tamanho por peça no título, sem cadastro manual
+const T9657 = 'Conjunto Cropped Canelado M + Calça Pantalona Nude P';
+ok('#9657 vira o cropped canelado Nude M',
+   multi(T9657)[0], { modelo: 'cropped-canelado', cor: 'Nude', tam: 2 });
+ok('#9657 vira a pantalona viscolycra Nude P',
+   multi(T9657)[1], { modelo: 'calca-pantalona-viscolycra', cor: 'Nude', tam: 1 });
+ok('tamanho por peça vale para outro conjunto por título (saia midi)',
+   multi('Conjunto Cropped Canelado G + Saia Midi Preto M'),
+   [{ modelo: 'cropped-canelado', cor: 'Preto', tam: 3 }, { modelo: 'saia-midi', cor: 'Preto', tam: 2 }]);
+ok('conjunto normal com variante continua igual',
+   parseLineItemMulti({ title: 'Conjunto Cropped Canelado + Calça Pantalona Nude', variant_title: 'M', fulfillable_quantity: 1 }, '#x', [])
+     .map(r => r.sizeIdx), [2, 2]);
 ok('item normal continua passando pelo parser de sempre',
    parseLineItemMulti({ title: 'Conjunto Peace', variant_title: 'Preto / M', fulfillable_quantity: 1 }, '#T', [])
      .map(r => ({ modelo: r.modelKey, cor: r.color, tam: r.sizeIdx })),
