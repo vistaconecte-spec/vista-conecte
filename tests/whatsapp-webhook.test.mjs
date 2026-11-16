@@ -356,7 +356,7 @@ ok('status sem texto nem mídia continua fora da conversa', W.mesclar([{ wamid: 
 
 r = await API.onRequest({ request: new Request('https://x/api/whatsapp?acao=midia&id=../x'), env: envE });
 ok('id de mídia inválido', r.status, 400);
-ok('rota da caixa NÃO é pública', mid.includes("'/api/whatsapp'"), false);
+ok('rota da caixa NÃO é pública', /PUBLICO = new Set\(\[[^\]]*'\/api\/whatsapp'/.test(mid), false);
 
 const html = readFileSync(join(raiz, 'whatsapp.html'), 'utf8');
 ok('tela sem travessão', /—/.test(html.replace(/<!--[\s\S]*?-->/g, '')), false);

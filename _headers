@@ -6,3 +6,13 @@
   Cache-Control: no-store
 /index.html
   Cache-Control: no-store
+
+# App Vi Atendimento (16/11/2026): a página e o service worker nunca vêm do cache, senão o
+# celular continua com a versão velha do app depois de publicar.
+/whatsapp.html
+  Cache-Control: no-store
+/sw-atendimento.js
+  Cache-Control: no-cache
+/atendimento.webmanifest
+  Content-Type: application/manifest+json
+  Cache-Control: no-cache

@@ -16,7 +16,13 @@ const chave = segredo => crypto.subtle.importKey(
   'raw', enc.encode(segredo), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign', 'verify']
 );
 
-export async function assinarSessao(perfil, segredo, horas = 12) {
+// Quanto dura a sessão de cada perfil. O app de atendimento (celular da Bárbara e da Marcelly,
+// 16/11/2026) fica 30 dias: pedir senha a cada 12 h num app de conversa faz a cliente esperar.
+// O perfil é restrito no _middleware.js (só conversas e casos), por isso o prazo maior é aceitável.
+const HORAS_SESSAO = { atendimento: 720 };
+export const horasDoPerfil = perfil => HORAS_SESSAO[perfil] || 12;
+
+export async function assinarSessao(perfil, segredo, horas = horasDoPerfil(perfil)) {
   const payload = b64url(enc.encode(JSON.stringify({ perfil, exp: Date.now() + horas * 3600e3 })));
   const sig = b64url(await crypto.subtle.sign('HMAC', await chave(segredo), enc.encode(payload)));
   return `${payload}.${sig}`;

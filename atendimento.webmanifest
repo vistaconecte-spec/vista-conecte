@@ -1,0 +1,17 @@
+{
+  "name": "Vi Atendimento · Vista Conecte",
+  "short_name": "Atendimento",
+  "description": "Conversas do WhatsApp da loja com a Vi, para a equipe de atendimento.",
+  "lang": "pt-BR",
+  "start_url": "/whatsapp.html?app=1",
+  "scope": "/whatsapp.html",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#FFFFFF",
+  "theme_color": "#008069",
+  "icons": [
+    { "src": "/atendimento-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/atendimento-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "/atendimento-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

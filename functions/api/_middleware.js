@@ -1,7 +1,7 @@
 // Cadeado único de /api/*. O Cloudflare Pages roda este middleware antes de
 // QUALQUER function em functions/api/, então os 85 endpoints ficam cobertos sem
 // editar nenhum deles — e um endpoint novo já nasce protegido.
-import { lerSessao, assinarSessao } from '../_sessao.js';
+import { lerSessao, assinarSessao, horasDoPerfil } from '../_sessao.js';
 
 // Sessão DESLIZANTE: o cookie vale 12h, mas quem está usando o app não pode ser posto para
 // fora no meio do dia. Quando falta menos que isto para vencer, a resposta já sai com um
@@ -71,11 +71,23 @@ const MODELAGEM_LIBERA = new Map([
   ['/api/molde', new Set(['GET'])],
 ]);
 
+// App de atendimento (perfil 'atendimento', 16/11/2026): a Bárbara e a Marcelly conversam com
+// as clientes pelo celular em /whatsapp.html. Alcança as conversas (/api/whatsapp) e os casos
+// (/api/casos: abrir caso, assistente, mensagem, anotar, fechar, pedir aprovação). Pedido,
+// estoque, financeiro e Shopify direto continuam fora, e aprovar dinheiro é da dona
+// (ATENDIMENTO_NEGA_ACOES).
+const ATENDIMENTO_LIBERA = new Map([
+  ['/api/whatsapp', new Set(['GET', 'POST'])],
+  ['/api/casos', new Set(['GET', 'POST'])],
+]);
+const ATENDIMENTO_NEGA_ACOES = new Set(['decidir']);
+
 // Perfis que só enxergam um pedaço do sistema. Quem não está aqui (hoje só a dona) passa direto.
 const RESTRITOS = new Map([
   ['corte', OFICINA_LIBERA],
   ['costura', OFICINA_LIBERA],
   ['modelagem', MODELAGEM_LIBERA],
+  ['atendimento', ATENDIMENTO_LIBERA],
 ]);
 
 // `/api/modelagem-projeto` é um endpoint só com várias ações no corpo, e uma delas apaga o
@@ -123,6 +135,11 @@ export async function onRequest(context) {
       const acao = await request.clone().json().then(b => b && b.acao).catch(() => null);
       if (MODELAGEM_NEGA_ACOES.has(acao)) return nega('Perfil sem acesso a esta ação', 403);
     }
+    if (sessao.perfil === 'atendimento' && pathname === '/api/casos' && request.method === 'POST'
+        && /json/i.test(request.headers.get('content-type') || '')) {
+      const acao = await request.clone().json().then(b => b && b.acao).catch(() => null);
+      if (ATENDIMENTO_NEGA_ACOES.has(acao)) return nega('Só a dona aprova ou recusa pedido de dinheiro', 403);
+    }
   }
   return renovarSeperto(await next(), sessao, env);
 }
@@ -130,12 +147,14 @@ export async function onRequest(context) {
 // Anexa o cookie renovado à resposta que a function já produziu. O `no-store` vai junto de
 // propósito: resposta com Set-Cookie não pode acabar num cache compartilhado.
 async function renovarSeperto(resp, sessao, env) {
-  if (!sessao || (sessao.exp - Date.now()) > RENOVA_QUANDO_FALTAR_MS) return resp;
+  // Sessão longa (app de atendimento, 30 dias) renova na metade; a de 12 h, faltando 6 h.
+  const renovaEm = Math.max(RENOVA_QUANDO_FALTAR_MS, horasDoPerfil(sessao && sessao.perfil) * 3600e3 / 2);
+  if (!sessao || (sessao.exp - Date.now()) > renovaEm) return resp;
   try {
     const token = await assinarSessao(sessao.perfil, env.SESSION_SECRET);
     const nova = new Response(resp.body, resp);
     nova.headers.append('Set-Cookie',
-      `vc_sessao=${token}; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=43200`);
+      `vc_sessao=${token}; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=${horasDoPerfil(sessao.perfil) * 3600}`);
     nova.headers.set('Cache-Control', 'no-store');
     return nova;
   } catch (_) { return resp; }   // renovar é conforto, não pode derrubar a resposta
