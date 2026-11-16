@@ -2360,7 +2360,7 @@ function atdShowSub(sub) {
     if (f && !f.getAttribute('src')) f.setAttribute('src', WHATS_FRAME_SRC);
   }
 }
-const WHATS_FRAME_SRC = '/whatsapp.html?embed=1&v=2026111602';
+const WHATS_FRAME_SRC = '/whatsapp.html?embed=1&v=2026111603';
 
 // ── Aviso de cliente esperando a equipe (Vi - atendimento) ──────────────────
 // Passo 1 da equipe sair da caixa do Wati (pedido da Bárbara em 21/10/2026): lá a mensagem nova só era vista

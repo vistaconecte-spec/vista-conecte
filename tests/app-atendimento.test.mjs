@@ -72,5 +72,30 @@ ok('atualização automática não apaga a senha sendo digitada', html.includes(
 ok('painel manda o perfil do atendimento para o app', main.includes("if (perfil === 'atendimento') { location.replace('/whatsapp?app=1'); return; }"), true);
 ok('página do app nunca vem do cache', /\/whatsapp\s+Cache-Control: no-store/.test(readFileSync(join(raiz, '_headers'), 'utf8')), true);
 
+console.log('\n4) Etapa 2: pedido ao lado da conversa');
+const cli = await import(pathToFileURL(join(raiz, 'functions', '_cliente.js')).href);
+ok('busca a cliente pelas duas grafias do celular', cli.buscaPorTelefone('5562993161442'), 'phone:+556293161442 OR phone:+5562993161442');
+const agora = Date.parse('2026-11-16T15:00:00Z');
+const pedido = (name, criado, fin, ful, extra = {}) => ({ name, createdAt: criado, processedAt: criado, cancelledAt: null, displayFinancialStatus: fin,
+  displayFulfillmentStatus: ful, tags: [], totalPriceSet: { shopMoney: { amount: '186.12' } }, lineItems: { nodes: [{ quantity: 1, title: 'Vestido', variantTitle: 'Preto / M' }] }, fulfillments: [], ...extra });
+const contas = [
+  { orders: { nodes: [pedido('#9525', '2026-11-05T12:00:00Z', 'PAID', 'UNFULFILLED'), pedido('#9001', '2026-10-01T12:00:00Z', 'PAID', 'UNFULFILLED')] } },
+  { orders: { nodes: [pedido('#9374', '2026-10-19T12:00:00Z', 'PAID', 'FULFILLED', { tags: ['troca-de-9100'],
+    fulfillments: [{ createdAt: '2026-11-03T12:00:00Z', trackingInfo: [{ number: 'AP690836759BR', company: 'Correios', url: 'https://rastreio/x' }] }] }),
+    pedido('#9525', '2026-11-05T12:00:00Z', 'PAID', 'UNFULFILLED')] } },
+];
+const lista = cli.resumirPedidos(contas, agora);
+ok('junta as contas, sem repetir, mais novo primeiro', lista.map(p => p.numero), ['#9525', '#9374', '#9001']);
+ok('não enviado mostra os dias úteis de 10', [lista[0].envio, lista[0].prazo], ['não enviado', { dias_uteis: 7, de: 10, atrasado: false }]);
+ok('atrasado marcado', lista[2].prazo.atrasado, true);
+ok('enviado mostra rastreio, prazo de saída e troca', [lista[1].envio, lista[1].rastreio[0].codigo, lista[1].prazo.no_prazo, lista[1].troca], ['enviado', 'AP690836759BR', true, true]);
+ok('pagamento e itens em português', [lista[0].pagamento, lista[0].itens[0], lista[0].data], ['pago', '1x Vestido (Preto / M)', '05/11/2026']);
+ok('no máximo 6 pedidos', cli.resumirPedidos([{ orders: { nodes: Array.from({ length: 9 }, (_, i) => pedido('#' + (9000 + i), `2026-11-0${i + 1}T12:00:00Z`, 'PAID', 'FULFILLED')) } }], agora).length, 6);
+const apiW = readFileSync(join(raiz, 'functions', 'api', 'whatsapp.js'), 'utf8');
+ok('rota ?acao=cliente na API das conversas (o perfil do atendimento alcança)', apiW.includes("if (acao === 'cliente')") && await chamar('atendimento', 'GET', '/api/whatsapp?acao=cliente&tel=5562993161442') === 'passa', true);
+ok('botão Pedido no topo da conversa', html.includes('data-acao="pedido"') && html.includes("b.dataset.acao === 'pedido' ? abrirPedido()"), true);
+ok('trocar de conversa fecha o painel', /abrirPedido\(\) : mudarVi\(b\.dataset\.acao\)\); \}\);\n  fecharPedido\(\);/.test(html), true);
+ok('resposta de outra conversa não entra no painel', html.includes('if (!est.aberta || est.aberta.chave !== c.chave) return;'), true);
+
 console.log(`\n${total - falhas}/${total} passaram`);
 if (falhas) process.exit(1);

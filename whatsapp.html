@@ -160,6 +160,28 @@
     .msgs { padding: 10px 14px 8px; }
   }
 
+  /* ── Painel Pedido (etapa 2 do app, 16/11/2026) ── */
+  .pp { position: fixed; top: 0; right: 0; bottom: 0; width: min(390px, 100%); z-index: 40; background: var(--cinza-barra); box-shadow: -2px 0 12px rgba(11,20,26,.18); display: flex; flex-direction: column; transform: translateX(105%); transition: transform .2s ease; }
+  .pp.on { transform: none; }
+  .pp-topo { display: flex; align-items: center; gap: 10px; padding: max(12px, env(safe-area-inset-top)) 14px 12px; background: #fff; border-bottom: 1px solid var(--linha); }
+  .pp-topo b { flex: 1; font-size: 15.5px; }
+  .pp-topo button { border: 0; background: none; cursor: pointer; font-size: 22px; line-height: 1; color: var(--icone); padding: 4px 8px; }
+  .pp-corpo { flex: 1; overflow-y: auto; padding: 10px 12px max(16px, env(safe-area-inset-bottom)); display: flex; flex-direction: column; gap: 10px; }
+  .pp-card { background: #fff; border-radius: 10px; padding: 11px 13px; box-shadow: 0 1px 0.5px rgba(11,20,26,.13); font-size: 13.5px; }
+  .pp-card.caso { background: #FFF6DA; }
+  .pp-num { display: flex; justify-content: space-between; gap: 8px; font-weight: 600; font-size: 14.5px; }
+  .pp-num span { font-weight: 400; color: var(--texto-sec); font-size: 13px; }
+  .pp-tags { display: flex; flex-wrap: wrap; gap: 6px; margin: 7px 0; }
+  .pp-tag { font-size: 12px; padding: 2px 9px; border-radius: 10px; background: var(--cinza-barra); color: var(--texto-sec); }
+  .pp-tag.verde { background: #D9FDD3; color: #0B6B3A; }
+  .pp-tag.azul { background: #DCEFFE; color: #0B5394; }
+  .pp-tag.laranja { background: #FFE7C2; color: #8A4B00; }
+  .pp-tag.vermelho { background: #FFDCE0; color: #A3001E; }
+  .pp-linha { color: var(--texto-sec); margin-top: 4px; }
+  .pp-linha a { color: var(--verde-esc); }
+  .pp-itens { margin: 6px 0 0; padding-left: 18px; color: var(--texto); }
+  .pp-vazio { text-align: center; color: var(--texto-sec); padding: 30px 10px; font-size: 13.5px; }
+
   /* ── App (fora do painel) ── */
   .modo-app { background: #fff; }
   .modo-app .app { height: 100vh; height: 100dvh; border-radius: 0; box-shadow: none; }
@@ -206,6 +228,10 @@
     </div>
   </section>
 </div>
+<aside class="pp" id="pp" aria-hidden="true">
+  <div class="pp-topo"><b id="pp-titulo">Pedidos</b><button id="pp-fechar" aria-label="Fechar">×</button></div>
+  <div class="pp-corpo" id="pp-corpo"></div>
+</aside>
 <div class="login" id="login" hidden>
   <form id="login-form" autocomplete="on">
     <img src="/atendimento-192.png" alt="">
@@ -417,7 +443,8 @@ function abrir(c) {
   });
   tirarAnexo();
   est.modelo = null;
-  $('c-acoes').addEventListener('click', e => { const b = e.target.closest('[data-acao]'); if (b && !b.disabled) mudarVi(b.dataset.acao); });
+  $('c-acoes').addEventListener('click', e => { const b = e.target.closest('[data-acao]'); if (b && !b.disabled) (b.dataset.acao === 'pedido' ? abrirPedido() : mudarVi(b.dataset.acao)); });
+  fecharPedido();
   $('c-janela').addEventListener('click', e => { if (e.target.closest('#abrir-modelo')) abrirModelos(); });
   $('descer').onclick = () => { const m = $('msgs'); m.scrollTop = m.scrollHeight; };
   $('msgs').addEventListener('scroll', () => { const m = $('msgs'); $('descer').classList.toggle('on', m.scrollHeight - m.scrollTop - m.clientHeight > 300); });
@@ -683,8 +710,50 @@ function desenharAcoes() {
   const c = est.aberta;
   if (!c || !$('c-acoes')) return;
   const comEquipe = pausada(c) || c.status_vi === 'handoff';
-  $('c-acoes').innerHTML = (comEquipe ? `<button class="acao vi" data-acao="devolver" title="A Vi volta a responder a partir da próxima mensagem da cliente">${ICONE_VI}<span class="rot">Devolver para a Vi</span></button>` : '')
+  $('c-acoes').innerHTML = `<button class="acao" data-acao="pedido" title="Pedidos da cliente na loja, pagamento, envio e rastreio">${ICONE_PEDIDO}<span class="rot">Pedido</span></button>`
+    + (comEquipe ? `<button class="acao vi" data-acao="devolver" title="A Vi volta a responder a partir da próxima mensagem da cliente">${ICONE_VI}<span class="rot">Devolver para a Vi</span></button>` : '')
     + (c.status_vi !== 'solved' ? `<button class="acao ok" data-acao="resolver" title="Tira a conversa da lista de esperando. Se a cliente escrever de novo, a Vi responde.">${ICONE_OK}<span class="rot">Resolvida</span></button>` : '');
+}
+// ── Painel Pedido (etapa 2 do app, 16/11/2026) ──────────────────────────────────
+// Pedidos da cliente na Shopify (achada pelo telefone da conversa) e o caso aberto dela no CRM,
+// sem sair da conversa. Só leitura. Busca ao abrir o painel; guarda por conversa até trocar.
+const ICONE_PEDIDO = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><path d="M3 6h18M16 10a4 4 0 0 1-8 0"/></svg>';
+const brl = v => Number(v || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+function fecharPedido() { $('pp').classList.remove('on'); $('pp').setAttribute('aria-hidden', 'true'); }
+$('pp-fechar').onclick = fecharPedido;
+async function abrirPedido() {
+  const c = est.aberta;
+  if (!c) return;
+  $('pp').classList.add('on'); $('pp').setAttribute('aria-hidden', 'false');
+  $('pp-titulo').textContent = 'Pedidos de ' + (c.nome || telBonito(c.telefone));
+  if (est.pedido && est.pedido.chave === c.chave) return desenharPedido(est.pedido.d);
+  $('pp-corpo').innerHTML = '<div class="pp-vazio">Buscando na loja...</div>';
+  try {
+    const d = await api({ acao: 'cliente', tel: c.telefone });
+    if (!est.aberta || est.aberta.chave !== c.chave) return; // trocou de conversa enquanto buscava
+    est.pedido = { chave: c.chave, d };
+    desenharPedido(d);
+  } catch (e) { $('pp-corpo').innerHTML = `<div class="pp-vazio">${esc(e.message)}</div>`; }
+}
+function linhaPrazo(p) {
+  if (!p.prazo) return '';
+  if (p.prazo.saiu_em_dias_uteis != null) return `Saiu em ${p.prazo.saiu_em_dias_uteis} dias úteis${p.prazo.no_prazo ? ', no prazo' : ', fora do prazo de 10'}`;
+  return p.prazo.atrasado ? `<b style="color:var(--erro)">Atrasado: ${p.prazo.dias_uteis} dias úteis desde o pagamento (prazo ${p.prazo.de})</b>`
+    : `${p.prazo.dias_uteis} de ${p.prazo.de} dias úteis desde o pagamento`;
+}
+function desenharPedido(d) {
+  const casos = (d.casos || []).map(k => `<div class="pp-card caso"><div class="pp-num">Caso ${k.id} aberto<span>${esc(k.aberto_em || '')}</span></div>
+    <div class="pp-linha">${esc(k.tipo)}${k.responsavel ? ' · com ' + esc(k.responsavel) : ''}</div>
+    ${k.resumo ? `<div class="pp-linha" style="color:var(--texto)">${esc(k.resumo)}</div>` : ''}</div>`).join('');
+  const cor = { pago: 'verde', enviado: 'azul', 'não enviado': 'laranja', cancelado: 'vermelho', estornado: 'vermelho', expirado: 'vermelho', 'aguardando pagamento': 'laranja' };
+  const pedidos = (d.pedidos || []).map(p => `<div class="pp-card">
+    <div class="pp-num">${esc(p.numero)} · ${brl(p.total)}<span>${esc(p.data || '')}</span></div>
+    <div class="pp-tags"><span class="pp-tag ${cor[p.pagamento] || ''}">${esc(p.pagamento)}</span><span class="pp-tag ${cor[p.envio] || ''}">${esc(p.envio)}</span>${p.troca ? '<span class="pp-tag">troca</span>' : ''}</div>
+    ${p.prazo ? `<div class="pp-linha">${linhaPrazo(p)}</div>` : ''}
+    ${(p.rastreio || []).map(r => `<div class="pp-linha">${esc(r.transportadora || 'Rastreio')} ${r.url ? `<a href="${esc(r.url)}" target="_blank" rel="noopener">${esc(r.codigo)}</a>` : esc(r.codigo)}${r.em ? ' · ' + esc(r.em) : ''}</div>`).join('')}
+    <ul class="pp-itens">${(p.itens || []).map(i => `<li>${esc(i)}</li>`).join('')}</ul></div>`).join('');
+  $('pp-corpo').innerHTML = casos + (pedidos
+    || `<div class="pp-vazio">${d.erro_shopify ? 'A loja não respondeu agora: ' + esc(d.erro_shopify) : 'Não achei pedido com este telefone na loja.<br>Se ela comprou com outro número, peça o número do pedido.'}</div>`);
 }
 async function mudarVi(acao) {
   const c = est.aberta;

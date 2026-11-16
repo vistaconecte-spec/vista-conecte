@@ -8,6 +8,7 @@
  * GET  ?acao=conversa&tel=[&desde=ISO]        mensagens de uma conversa
  * GET  ?acao=midia&id=                        foto/áudio/documento da cliente
  * GET  ?acao=modelos                          templates que a equipe pode mandar (aprovados na conta 925)
+ * GET  ?acao=cliente&tel=                    pedidos da cliente na Shopify + caso aberto (painel Pedido do app, 16/11/2026)
  * POST {acao:'enviar', tel, texto}            manda texto e pausa a Vi 24 h na conversa
  * POST {acao:'enviar-modelo', tel, modelo, valores}  manda template (com ou sem a janela de 24 h)
  * POST {acao:'devolver'|'resolver', tel}     Vi volta a responder | conversa resolvida (sai de esperando)
@@ -17,6 +18,7 @@
  * Env: SUPABASE_SERVICE_ROLE_KEY, META_ACCESS_TOKEN (System User api-vista, tem
  * whatsapp_business_messaging) ou WA_TOKEN.
  */
+import { painelCliente } from '../_cliente.js';
 import { json, listarConversas, lerConversa, enviarTexto, enviarMidia, enviarModelo, listarModelos, mudarVi, baixarMidia, envioLiberado, AVISO_ENVIO } from '../_whatsapp.js';
 
 const ISO = /^\d{4}-\d{2}-\d{2}T[\d:.]+(Z|[+-]\d{2}:?\d{2})$/;
@@ -37,6 +39,7 @@ export async function onRequest(context) {
       }
       if (acao === 'midia') return baixarMidia(env, q.get('id'));
       if (acao === 'modelos') return json({ modelos: await listarModelos(env) });
+      if (acao === 'cliente') { const { status, ...resto } = await painelCliente(env, q.get('tel')); return json(resto, status); }
       return json({ erro: 'ação desconhecida' }, 400);
     }
     if (request.method === 'POST' && q.get('acao') === 'enviar-midia') {
