@@ -11133,13 +11133,16 @@ function renderProntosParaEnvio() {
   //   2º PARCIAIS (já começaram a ser enviados)
   //   3º GRANDES (acima de 4 peças — senão ficam pra trás)
   //   → dentro de cada faixa, do mais antigo para o mais recente.
+  //   0º PEDIDO DE TROCA (16/11/2026, Bárbara): ele nasce novo, mas a cliente espera desde a compra
+  //      original e a peça antiga já voltou. A Aline #9679 (Macaquinho Marrom G, troca desde 08/10)
+  //      ficava atrás de 2 pedidos novos e o card dizia "não está na produção" com 2 G na arara.
   const GRANDE_MIN = 5; // "acima de 4 itens"
   const totPecas = p => (p.itens || []).reduce((s, it) => s + (it.qtd || 0), 0);
   const atraso = p => {
     const d = diasDesde(p.data);
     return d >= PARADO_CRITICO ? 8 : d >= PARADO_ATENCAO ? 4 : 0;
   };
-  const prioridade = p => atraso(p) + (p.parcial ? 2 : 0) + (totPecas(p) >= GRANDE_MIN ? 1 : 0);
+  const prioridade = p => (p.troca ? 16 : 0) + atraso(p) + (p.parcial ? 2 : 0) + (totPecas(p) >= GRANDE_MIN ? 1 : 0);
   const detalhados = (window._shopifyDetalhados || [])
     .filter(p => STATUS_PAGO.has(p.financial_status))
     .sort((a, b) => (prioridade(b) - prioridade(a)) || (new Date(a.data || 0) - new Date(b.data || 0)));

@@ -678,6 +678,8 @@ export async function onRequest(context) {
           // Pedido de troca de R$ 0 que nasceu antes da peça antiga voltar (19/10/2026): entra na
           // produção, mas não sai até o "conferido" da aba TROCAS (ver functions/_pedido-troca.js)
           aguarda_troca: String(order.tags || '').split(',').map(t => t.trim()).includes('troca-aguardando'),
+          // pedido de troca (16/11/2026): a cliente espera desde a compra original, então fura a fila do estoque
+          troca: String(order.tags || '').split(',').map(t => t.trim()).includes('troca'),
         });
       }
     }

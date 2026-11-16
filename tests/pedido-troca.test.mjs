@@ -105,6 +105,7 @@ console.log('\n4) Trava vista pelo painel e pelas etiquetas');
   const et = readFileSync(join(raiz, 'functions/api/etiquetas-dados.js'), 'utf8');
   ok('etiquetas marcam travado_troca', /travado_troca: \(o\.tags \|\| \[\]\)\.includes\('troca-aguardando'\)/.test(et), true);
   const main = readFileSync(join(raiz, 'main.js'), 'utf8');
+  ok('pedido de troca vem marcado e fura a fila do estoque (16/11)', [/troca: String\(order\.tags/.test(so), /const prioridade = p => \(p\.troca \? 16 : 0\)/.test(main)], [true, true]);
   ok('PRONTOS PARA ENVIO separa o pedido de troca', /if \(ped\.aguarda_troca\) \{ aguardandoTroca\.push\(ped\); continue; \}/.test(main), true);
   const a = main.indexOf('function portalPedidoTroca'), b = main.indexOf('// Acrescenta só o que ainda não está na lista');
   const { portalPedidoTroca, portalAtualizarPedidoTroca } = new Function(`${main.slice(a, b)}; return { portalPedidoTroca, portalAtualizarPedidoTroca };`)();
