@@ -125,7 +125,8 @@ export function ncmPorNome(nome) {
   if (tem('canguru')) return '6110.20.00';
   if (tem('peace') && tem('calca')) return '6104.69.00';
   if (tem('pantalona')) return '6104.69.00';
-  if (tem('blusa', 'cropped canelado')) return '6106.20.00';
+  // Cropped Peace sozinho é blusa de malha viscolycra (fibra artificial), mesma posição da blusa (16/11/2026, #9722)
+  if (tem('blusa', 'cropped canelado', 'cropped peace')) return '6106.20.00';
   if (tem('carneirinho', 'sherpa', 'casaco bear', 'pelego')) {
     if (tem('pelego') && tem('moletom')) return '6110.20.00';
     return '6102.30.00';
