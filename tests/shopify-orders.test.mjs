@@ -168,6 +168,23 @@ ok('#9657 vira a pantalona viscolycra Nude P',
 ok('tamanho por peça vale para outro conjunto por título (saia midi)',
    multi('Conjunto Cropped Canelado G + Saia Midi Preto M'),
    [{ modelo: 'cropped-canelado', cor: 'Preto', tam: 3 }, { modelo: 'saia-midi', cor: 'Preto', tam: 2 }]);
+// #9748 e #9741 (16/11/2026): "peça TAMANHO e peça TAMANHO" no título digitado
+ok('#9748 Peace Preto: calça PP e cropped M',
+   multi('CONJUNTO PEACE PRETO CALÇA PP E CROPPED M'),
+   [{ modelo: 'calca-peace', cor: 'Preto', tam: 0 }, { modelo: 'cropped-peace', cor: 'Preto', tam: 2 }]);
+ok('#9741 Cozy Marsala: calça P e moletom PP (ordem trocada no título)',
+   multi('CONJUNTO COZY MOLETOM PP E CALÇA P MARSALA'),
+   [{ modelo: 'calca-pantalona', cor: 'Marsala', tam: 1 }, { modelo: 'moletom-ziper-bolsos', cor: 'Marsala', tam: 0 }]);
+ok('peça avulsa digitada continua uma peça só',
+   multi('MINI SAIA CANELADA PRETA M'), [{ modelo: 'mini-saia-canelada', cor: 'Preto', tam: 2 }]);
+{
+  const mainSrc = readFileSync(join(raiz, 'main.js'), 'utf8');
+  const blocoMain = mainSrc.slice(mainSrc.indexOf('const CONJUNTO_PECAS = {'));
+  const copia = src.slice(src.indexOf('const PECAS_DO_CONJUNTO = {'), src.indexOf('const PECA_DE_BAIXO'));
+  const pares = [...copia.matchAll(/'([a-z0-9-]+)':\s*\['([a-z0-9-]+)',\s*'([a-z0-9-]+)'\]/g)];
+  ok('cópia das peças de cada conjunto bate com o CONJUNTO_PECAS do main.js',
+     pares.filter(([, k, a, b]) => !new RegExp(`'${k}':\\s*\\['${a}',\\s*'${b}'\\]`).test(blocoMain)).map(p => p[1]), []);
+}
 ok('conjunto normal com variante continua igual',
    parseLineItemMulti({ title: 'Conjunto Cropped Canelado + Calça Pantalona Nude', variant_title: 'M', fulfillable_quantity: 1 }, '#x', [])
      .map(r => r.sizeIdx), [2, 2]);

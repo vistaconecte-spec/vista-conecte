@@ -391,6 +391,62 @@ const CONJUNTOS_POR_TITULO = {
 };
 
 /**
+ * Peças de cada conjunto, só para ler item digitado com tamanho por peça (pecasPorTamanho).
+ * CÓPIA do CONJUNTO_PECAS do main.js (que é quem distribui os conjuntos no painel); o teste
+ * shopify-orders confere que as duas listas batem.
+ */
+const PECAS_DO_CONJUNTO = {
+  'conjunto-calca-pantalona-moletom': ['calca-pantalona', 'moletom-gola-alta'],
+  'conjunto-calca-pantalona-cropped': ['calca-pantalona', 'cropped-moletom'],
+  'conjunto-cropped-basica':          ['calca-basica-moletom', 'cropped-moletom'],
+  'conjunto-cozy':                    ['calca-pantalona', 'moletom-ziper-bolsos'],
+  'conjunto-mood':                    ['calca-basica-moletom', 'moletom-ziper-bolsos'],
+  'conjunto-wide':                    ['calca-pantalona', 'moletom-gola-alta'],
+  'conjunto-canelado':                ['blusa-canelada', 'calca-flare'],
+  'conjunto-boho':                    ['calca-boho', 'blusa-boho'],
+  'conjunto-pantalona-blusa':         ['calca-pantalona-viscolycra', 'blusa-canelada-simples'],
+  'conjunto-peace':                   ['calca-peace', 'cropped-peace'],
+  'conjunto-calca-flare-moletom':     ['calca-flare', 'moletom-gola-alta'],
+  'conjunto-calca-flare-camiseta':    ['calca-flare', 'camiseta-oversized'],
+  'conjunto-moletom-saia-midi':       ['moletom-gola-alta', 'saia-midi'],
+  'conjunto-moletom-short-bolso':     ['moletom-gola-alta', 'calca-bolso-frontal'],
+  'conjunto-saia-midi-oversized':     ['camiseta-oversized', 'saia-midi'],
+  'conjunto-regata-mini-saia':        ['regata-oversized', 'mini-saia-canelada'],
+  'conjunto-camiseta-mini-saia':      ['camiseta-oversized', 'mini-saia-canelada'],
+  'cropped-mini-saia':                ['cropped-canelado', 'mini-saia-canelada'],
+};
+const PECA_DE_BAIXO = key => /^(calca|saia|mini-saia|short|bermuda)/.test(key);
+const PALAVRA_DE_BAIXO = /^(CALÇA|CALCA|SAIA|SHORT|BERMUDA|PANTALONA)$/;
+
+function pecasPorTamanho(item, orderName, usarQuantidadeTotal) {
+  const tk = normalizarTitulo(item.title).split(' ');
+  const pares = [];
+  for (let i = 1; i < tk.length; i++) {
+    if (SIZES.includes(tk[i]) && !SIZES.includes(tk[i - 1]) && !/^(E|\+)$/.test(tk[i - 1])) {
+      pares.push({ i, tam: tk[i], baixo: PALAVRA_DE_BAIXO.test(tk[i - 1]) });
+    }
+  }
+  if (pares.length !== 2 || pares[0].baixo === pares[1].baixo) return null;
+  const fora = new Set(pares.flatMap(p => [p.i - 1, p.i]));
+  const resto = tk.filter((t, i) => !fora.has(i) && !/^(E|\+)$/.test(t)).join(' ');
+  const cima = pares.find(p => !p.baixo), baixo = pares.find(p => p.baixo);
+  const pc = parseLineItem({ ...item, title: resto, variant_title: cima.tam }, orderName, [], usarQuantidadeTotal);
+  if (!pc) return null;
+  const pecas = (pc.multi && pc.multi.length === 2) ? pc.multi : PECAS_DO_CONJUNTO[pc.modelKey];
+  if (!Array.isArray(pecas) || pecas.length !== 2 || pecas.some(k => typeof k !== 'string')) return null;
+  if (PECA_DE_BAIXO(pecas[0]) === PECA_DE_BAIXO(pecas[1])) return null;
+  // título todo em maiúsculas: "MARSALA" → "Marsala", como está no cadastro
+  const cor = pc.color === pc.color.toUpperCase()
+    ? normalizeColor(pc.color.toLowerCase().replace(/(^|\s)\S/g, s => s.toUpperCase()))
+    : pc.color;
+  return pecas.map(key => ({
+    modelKey: key, color: cor,
+    sizeIdx: SIZES.indexOf(PECA_DE_BAIXO(key) ? baixo.tam : cima.tam),
+    qty: pc.qty, via: 'conjunto-tamanho-por-peca',
+  }));
+}
+
+/**
  * Expande um line_item nas peças que a produção precisa fazer.
  * Devolve SEMPRE uma lista (vazia = item ignorado). Existe para dar conta dos itens
  * manuais com tamanho por peça; o resto continua passando pelo parseLineItem de sempre.
@@ -427,6 +483,15 @@ function parseLineItemMulti(item, orderName, ignorados, usarQuantidadeTotal) {
         }));
       }
     }
+  }
+
+  // Conjunto digitado à mão com "peça TAMANHO" para as duas peças, em qualquer ordem:
+  // "CONJUNTO PEACE PRETO CALÇA PP E CROPPED M" (#9748), "CONJUNTO COZY MOLETOM PP E CALÇA P
+  // MARSALA" (#9741). Tira os pares peça+tamanho, lê o resto como conjunto e manda cada
+  // tamanho para a peça certa (calça/saia/short = parte de baixo, o resto = parte de cima).
+  if (!vt || vt.toUpperCase() === 'NULL') {
+    const pp = pecasPorTamanho(item, orderName, usarQuantidadeTotal);
+    if (pp) return pp;
   }
 
   const p = parseLineItem(item, orderName, ignorados, usarQuantidadeTotal);
