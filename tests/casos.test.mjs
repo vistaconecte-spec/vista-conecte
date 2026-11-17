@@ -402,6 +402,9 @@ ok('status vai num cartão fixo e a IA não repete', /cartão fixo da tela acima
   ok('respondida: sem leitura anterior, sai (como antes)', C.esperaRespondida(rob, null, agora), null);
   ok('respondida: cliente falou por último, fica com a regra de sempre', C.esperaRespondida([...rob, { role: 'user', texto: 'ok', created_at: '2026-11-12T15:00:00Z' }], { espera: true }, agora), null);
   ok('juiz: "vou ver" sem fazer continua espera, e sabe a hora de agora', [/vai ver/.test(C.JUIZ_FILA), /Agora: /.test(C.conversaParaJuiz(rob, null, [], agora)), /Agora: /.test(C.conversaParaJuiz(rob, null, []))], [true, true, false]);
+  // 17/11/2026, Bárbara: "quero que fique na lista o que está pendente de ação da equipe"
+  ok('juiz: só ação da equipe, terceiros e assunto antigo não contam', [/o que a EQUIPE precisa fazer/.test(C.JUIZ_FILA), /Não é pendência da equipe/.test(C.JUIZ_FILA), /Assunto antigo/.test(C.JUIZ_FILA)], [true, true, true]);
+  ok('fila: critério novo relê todas as conversas (chave f2)', /x\.chave = 'f2\|'/.test(apiTxt), true);
   ok('fila: respondida usa a leitura anterior da IA', /esperaRespondida\(porWa\[c\.wa_id\], juizos\[c\.wa_id\], agora\)/.test(apiTxt), true);
   ok('fila: sem leitura da IA a cliente fica (nunca some por engano)', /if \(j && !j\.espera\) continue;/.test(apiTxt), true);
   const conf = C.pecasParaConferir([

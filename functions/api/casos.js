@@ -558,7 +558,7 @@ export async function filaEquipe(env, agora = Date.now()) {
     if (e) cand.push({ c, e, prev: juizos[c.wa_id] || null });
   }
   const sistema = { retorno: doc('retorno').itens || [], estorno: doc('estorno').itens || [], rastreio: doc('rastreio-trocas').itens || {}, reversas: doc('reversas-resultado').itens || {} };
-  for (const x of cand) { x.fatos = fatosDoSistema(x.c.pedido, sistema); x.chave = x.e.ultima_em + '|' + x.fatos.join(' ').length + ':' + x.fatos.join(' ').slice(-40); }
+  for (const x of cand) { x.fatos = fatosDoSistema(x.c.pedido, sistema); x.chave = 'f2|' + x.e.ultima_em + '|' + x.fatos.join(' ').length + ':' + x.fatos.join(' ').slice(-40); }
   const atual = x => { const j = juizos[x.c.wa_id]; return j && j.ate === x.chave ? j : null; };
   // Lê no máximo 8 conversas por vez (limite de chamadas do Cloudflare); as mais antigas primeiro. O resto entra na
   // fila como "ainda não lida" e é lido nas próximas consultas, de 5 em 5 minutos.
