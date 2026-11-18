@@ -558,7 +558,8 @@ export async function filaEquipe(env, agora = Date.now()) {
     if (e) cand.push({ c, e, prev: juizos[c.wa_id] || null });
   }
   const sistema = { retorno: doc('retorno').itens || [], estorno: doc('estorno').itens || [], rastreio: doc('rastreio-trocas').itens || {}, reversas: doc('reversas-resultado').itens || {} };
-  for (const x of cand) { x.fatos = fatosDoSistema(x.c.pedido, sistema); x.chave = 'f2|' + x.e.ultima_em + '|' + x.fatos.join(' ').length + ':' + x.fatos.join(' ').slice(-40); }
+  try { sistema.pedidos = await pedidosDaFila(env, cand.map(x => x.c.pedido)); } catch (_) {}
+  for (const x of cand) { x.fatos = fatosDoSistema(x.c.pedido, sistema, agora); x.chave = 'f3|' + x.e.ultima_em + '|' + x.fatos.join(' ').length + ':' + x.fatos.join(' ').slice(-40); }
   const atual = x => { const j = juizos[x.c.wa_id]; return j && j.ate === x.chave ? j : null; };
   // Lê no máximo 8 conversas por vez (limite de chamadas do Cloudflare); as mais antigas primeiro. O resto entra na
   // fila como "ainda não lida" e é lido nas próximas consultas, de 5 em 5 minutos.
@@ -772,6 +773,18 @@ async function valorDoEstorno(env, casoId) {
 // Uma conversa lida pela IA: a cliente ainda espera resposta ou ação da loja? (13/11/2026)
 // Haiku 5.5 pensa antes de responder: com 300 tokens só vinha o raciocínio e nenhum JSON (14/11/2026, a fila parou
 // de ler conversas desde 01h). Teto maior e esforço baixo nos dois juízes: a pergunta é simples.
+// Situação dos pedidos da fila na Shopify, numa consulta só (18/11/2026)
+async function pedidosDaFila(env, lista) {
+  const nums = [...new Set(lista.flatMap(p => String(p || '').match(/\d{4,6}/g) || []))].slice(0, 50);
+  if (!nums.length || !env.SHOPIFY_ADMIN_TOKEN) return {};
+  const q = `{ orders(first: 50, query: ${JSON.stringify(nums.map(n => 'name:' + n).join(' OR '))}) { nodes { name createdAt cancelledAt lineItems(first: 20) { nodes { title variantTitle unfulfilledQuantity } } fulfillments(first: 5) { createdAt status displayStatus deliveredAt trackingInfo(first: 1) { number } } } } }`;
+  const r = await shop(env, 'graphql.json', { method: 'POST', body: JSON.stringify({ query: q }) });
+  if (!r.ok) return {};
+  const j = await r.json().catch(() => null);
+  const out = {};
+  for (const o of (j && j.data && j.data.orders && j.data.orders.nodes) || []) out[String(o.name).replace(/\D/g, '')] = o;
+  return out;
+}
 async function julgarEspera(env, msgs, caso, fatos, agora = Date.now()) {
   const r = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',

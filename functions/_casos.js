@@ -357,14 +357,16 @@ Leia a conversa inteira, mas julgue o assunto que está em aberto no fim. Assunt
 Agradecimento, "ok" ou emoji depois de uma promessa que ainda não foi cumprida não encerra nada: a ação prometida continua pendente. Promessa da VI de que "a equipe vai ver" é pendência da equipe até a equipe responder de fato.
 Quando a última fala é da EQUIPE, veja se ela resolveu ou só respondeu: dizer que vai ver, que vai mandar, que vai verificar ou pedir um tempo sem fazer o que faltava continua pendente. Se a equipe prometeu um horário ou prazo e ele já passou (veja a hora de agora) sem a coisa acontecer, está pendente. Cumprimentar e parar no meio do atendimento também continua pendente.
 Não é pendência da equipe: o que só espera terceiros ou a própria cliente depois que a equipe fez a parte dela e avisou (chamado aberto com a transportadora, pedido postado com rastreio já enviado, a cliente ainda vai postar a devolução, a cliente ficou de mandar um dado ou comprovante), e prazo dado pela equipe que ainda não venceu.
+A roupa é feita sob encomenda e o código de rastreio vai sozinho para a cliente pelo WhatsApp quando o pedido é despachado. Por isso esperar a peça ficar pronta dentro do prazo NÃO é pendência da equipe, nem "mandar o rastreio quando despachar". Se o pedido já foi despachado com rastreio, ela já recebeu o código. Ainda em produção só vira pendência se ela fez uma pergunta que ninguém respondeu, ou se o prazo de envio já passou.
 Use também a "Situação no sistema", que é o estado real e vale mais que a conversa: se o código de postagem já foi enviado a ela, ou a devolução já foi postada e está a caminho, ou o pedido de troca já existe esperando a peça chegar, e ela não fez pergunta que ficou sem resposta, não há nada para a equipe fazer agora. Se ela perguntou algo depois disso e ninguém respondeu, está pendente.
 Na dúvida, espera.
 Responda só com JSON, sem mais nada: {"espera": true se a equipe tem algo a fazer agora, false se não, "falta": "o que a equipe precisa fazer agora, em até 15 palavras, vazio se nada", "motivo": "por que, em até 20 palavras"}`;
 // O que o sistema sabe da troca/devolução do pedido (13/11/2026, Bárbara: a Crischélida já tinha postado a devolução e
 // estava na fila). Vai junto da conversa para a IA não cobrar da equipe o que está só esperando a cliente ou o Correio.
-export function fatosDoSistema(pedido, { retorno = [], estorno = [], rastreio = {}, reversas = {} } = {}) {
+export function fatosDoSistema(pedido, { retorno = [], estorno = [], rastreio = {}, reversas = {}, pedidos = {} } = {}, agora = Date.now()) {
   const n = String(pedido || '').replace(/\D/g, '');
   if (!n) return [];
+  const doPedido = [...new Set(String(pedido).match(/\d{4,6}/g) || [])].map(k => fatoDoPedido(pedidos[k], agora)).filter(Boolean);
   const dia = s => s ? new Date(s).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit' }) : '';
   const out = [];
   const daRev = id => { const r = reversas[id]; if (!r) return ''; return r.codigo ? `, código de postagem ${r.codigo}${r.whatsapp_em ? ' enviado no WhatsApp ' + dia(r.whatsapp_em) : ' ainda não enviado no WhatsApp'}` : r.status === 'aguardando' ? ', o robô está gerando o código (a transportadora ainda não liberou)' : r.status === 'carrinho' ? ', etiqueta montada, falta pagar' : ''; };
@@ -376,7 +378,29 @@ export function fatosDoSistema(pedido, { retorno = [], estorno = [], rastreio = 
     out.push(`Crédito na loja de R$ ${t.credito_valor || t.valor} já lançado na conta dela em ${dia(t.credito_lancado_em)}, depois da peça conferida.`);
   for (const t of estorno) if (t && new RegExp('(#|pedido\\s+#?)\\s?' + n + '(?!\\d)').test(String(t.pecas || '')) && t.etapa !== 'concluido')
     out.push(`Devolução aberta (${t.forma || 'dinheiro'}${t.valor ? ', R$ ' + t.valor : ''})${daRev('estorno:' + t.id)}${daRast('estorno:' + t.id)}${t.chegou_em ? ', peça chegou ' + dia(t.chegou_em) : ''}.`);
-  return out;
+  return [...doPedido, ...out];
+}
+// Situação do pedido na Shopify para o juiz da fila (18/11/2026, Marcelly: "várias são esperando a peça, a equipe não
+// consegue fazer nada"; a Paula #9371 já tinha recebido o código e continuava na lista). Sem isso o juiz só via a conversa.
+export function somarDiasUteis(iso, n) { let d = diaLocal(iso), k = 0; while (k < n) { d++; if (ehUtil(d)) k++; } return d; }
+export function fatoDoPedido(o, agora = Date.now()) {
+  if (!o || !o.name) return '';
+  const dia = s => s ? new Date(s).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit' }) : '';
+  if (o.cancelledAt) return `Pedido ${o.name} cancelado em ${dia(o.cancelledAt)}.`;
+  const envios = (o.fulfillments || []).filter(f => f && f.status !== 'CANCELLED' && f.displayStatus !== 'CANCELED')
+    .sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt)));
+  const partes = envios.map(f => {
+    const cod = ((f.trackingInfo || [])[0] || {}).number;
+    return `despachado em ${dia(f.createdAt)}${cod ? ' com rastreio ' + cod : ''}${f.deliveredAt ? ', entregue em ' + dia(f.deliveredAt) : ''}`;
+  });
+  const faltam = (((o.lineItems || {}).nodes) || []).filter(l => l && l.unfulfilledQuantity > 0).map(l => l.title + (l.variantTitle ? ' ' + l.variantTitle : ''));
+  if (faltam.length) {
+    const p = somarDiasUteis(o.createdAt, 10);
+    const ate = new Date(p * DIA_MS).toISOString().slice(5, 10).split('-').reverse().join('/');
+    partes.push(`${envios.length ? 'falta despachar' : 'ainda em produção'}: ${faltam.join(', ')}, pedido feito em ${dia(o.createdAt)}, prazo de envio até ${ate}${diaLocal(agora) > p ? ' (prazo já passou)' : ''}`);
+  }
+  if (!partes.length) return '';
+  return `Pedido ${o.name}: ${partes.join('; ')}. O código de rastreio vai sozinho para a cliente pelo WhatsApp quando o envio é registrado.`;
 }
 // Cliente que já foi respondida mas ainda espera uma ação (Bárbara, 16/11/2026: a Roberta #9118 esperava o vestido e
 // o acerto de R$80; um "vou ver" da equipe tirava ela da fila sem nada feito). Se a última leitura da IA disse que ela

@@ -404,7 +404,7 @@ ok('status vai num cartão fixo e a IA não repete', /cartão fixo da tela acima
   ok('juiz: "vou ver" sem fazer continua espera, e sabe a hora de agora', [/vai ver/.test(C.JUIZ_FILA), /Agora: /.test(C.conversaParaJuiz(rob, null, [], agora)), /Agora: /.test(C.conversaParaJuiz(rob, null, []))], [true, true, false]);
   // 17/11/2026, Bárbara: "quero que fique na lista o que está pendente de ação da equipe"
   ok('juiz: só ação da equipe, terceiros e assunto antigo não contam', [/que a EQUIPE precisa fazer/.test(C.JUIZ_FILA), /Não é pendência da equipe/.test(C.JUIZ_FILA), /Assunto antigo/.test(C.JUIZ_FILA)], [true, true, true]);
-  ok('fila: critério novo relê todas as conversas (chave f2)', /x\.chave = 'f2\|'/.test(apiTxt), true);
+  ok('fila: critério novo relê todas as conversas (chave f3)', /x\.chave = 'f3\|'/.test(apiTxt), true);
   ok('fila: respondida usa a leitura anterior da IA', /esperaRespondida\(porWa\[c\.wa_id\], juizos\[c\.wa_id\], agora\)/.test(apiTxt), true);
   ok('fila: sem leitura da IA a cliente fica (nunca some por engano)', /if \(j && !j\.espera\) continue;/.test(apiTxt), true);
   // Poliana #9230 (18/11/2026): crédito lançado pela DEVOLUÇÃO tira o card duplicado da TROCAS da lista de conferir
@@ -486,6 +486,26 @@ ok('prompt: enviado em caso de prazo propõe anotar e fechar, sem mensagem', /PE
   ]), [{ quem: 'Cliente', em: '08/10 14:02', texto: 'vai chegar antes do dia 20?' }, { quem: 'Vi', em: '26/10 09:00', texto: 'template de continuidade' }]);
   ok('cliente sem resposta depois', ultimo([{ quem: 'equipe', em_brt: '07/10 10:00', texto: 'oi' }, { quem: 'cliente', em_brt: '08/10 14:02', texto: 'e aí?' }])[1].texto, 'ainda não respondeu depois disso');
   ok('a bolha guarda a última conversa para recarregar', /csBolha\(b\.quem, b\.texto, b\.acoes, b\.res, b\.status, b\.ultimo\)/.test(main) && /csCartaoStatus\(status, ultimo\)/.test(main), true);
+}
+
+console.log('\nFila 18/11/2026: o juiz vê o pedido na Shopify (Marcelly: "várias são esperando a peça")');
+{
+  const agora = Date.parse('2026-11-18T19:00:00Z');
+  const paula = { name: '#9371', createdAt: '2026-10-19T19:49:27Z', cancelledAt: null,
+    lineItems: { nodes: [{ title: 'Conjunto Urban Slit', variantTitle: 'Preta / M', unfulfilledQuantity: 0 }, { title: 'Saia Midi Fenda Frontal', variantTitle: 'Preto / M', unfulfilledQuantity: 1 }] },
+    fulfillments: [{ createdAt: '2026-11-14T01:44:36Z', status: 'SUCCESS', displayStatus: 'FULFILLED', trackingInfo: [{ number: 'LDI7XXFE' }] }] };
+  ok('parte despachada e saia que falta, com prazo vencido', C.fatoDoPedido(paula, agora),
+    'Pedido #9371: despachado em 13/11 com rastreio LDI7XXFE; falta despachar: Saia Midi Fenda Frontal Preto / M, pedido feito em 19/10, prazo de envio até 03/11 (prazo já passou). O código de rastreio vai sozinho para a cliente pelo WhatsApp quando o envio é registrado.');
+  const fadia = { name: '#9673', createdAt: '2026-11-13T12:00:00Z', lineItems: { nodes: [{ title: 'Vestido', variantTitle: 'P', unfulfilledQuantity: 1 }] }, fulfillments: [] };
+  ok('em produção dentro do prazo', C.fatoDoPedido(fadia, agora), 'Pedido #9673: ainda em produção: Vestido P, pedido feito em 13/11, prazo de envio até 30/11. O código de rastreio vai sozinho para a cliente pelo WhatsApp quando o envio é registrado.');
+  ok('cancelado', C.fatoDoPedido({ name: '#9001', createdAt: '2026-11-01T12:00:00Z', cancelledAt: '2026-11-05T15:00:00Z' }, agora), 'Pedido #9001 cancelado em 05/11.');
+  ok('envio cancelado não conta como despacho', C.fatoDoPedido({ name: '#9201', createdAt: '2026-09-30T19:00:00Z', lineItems: { nodes: [] },
+    fulfillments: [{ createdAt: '2026-10-16T18:29:12Z', status: 'CANCELLED', displayStatus: 'CANCELED', trackingInfo: [{ number: 'AP1BR' }] }, { createdAt: '2026-11-04T12:24:32Z', status: 'SUCCESS', displayStatus: 'FULFILLED', trackingInfo: [{ number: 'MJJ7UN56' }] }] }, agora),
+    'Pedido #9201: despachado em 04/11 com rastreio MJJ7UN56. O código de rastreio vai sozinho para a cliente pelo WhatsApp quando o envio é registrado.');
+  ok('fatosDoSistema põe o pedido primeiro', C.fatosDoSistema('#9673', { pedidos: { '9673': fadia } }, agora)[0].startsWith('Pedido #9673: ainda em produção'), true);
+  ok('juiz: esperar a peça dentro do prazo não é pendência', /esperar a peça ficar pronta dentro do prazo NÃO é pendência/.test(C.JUIZ_FILA), true);
+  const fonte = readFileSync(join(raiz, 'functions', 'api', 'casos.js'), 'utf8');
+  ok('fila consulta a Shopify e usa a chave f3', /sistema\.pedidos = await pedidosDaFila/.test(fonte) && /x\.chave = 'f3\|'/.test(fonte), true);
 }
 
 console.log('\nCaso 708 (30/10/2026): cartão sai mesmo quando a IA reaproveita o caso aberto antes');
