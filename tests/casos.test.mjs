@@ -407,6 +407,12 @@ ok('status vai num cartão fixo e a IA não repete', /cartão fixo da tela acima
   ok('fila: critério novo relê todas as conversas (chave f2)', /x\.chave = 'f2\|'/.test(apiTxt), true);
   ok('fila: respondida usa a leitura anterior da IA', /esperaRespondida\(porWa\[c\.wa_id\], juizos\[c\.wa_id\], agora\)/.test(apiTxt), true);
   ok('fila: sem leitura da IA a cliente fica (nunca some por engano)', /if \(j && !j\.espera\) continue;/.test(apiTxt), true);
+  // Poliana #9230 (18/11/2026): crédito lançado pela DEVOLUÇÃO tira o card duplicado da TROCAS da lista de conferir
+  const devPol = [{ id: 'p', pecas: '1× Calça Pantalona (Preto / P) — pedido #9230', forma: 'credito', valor: 137.71, etapa: 'concluido', conferido_em: '2026-11-17T11:12:36Z', credito_lancado_em: '2026-11-17T11:12:36Z', credito_valor: 137.71 }];
+  const retPol = [{ id: 'r', cliente: 'POLIANA DOS SANTOS', pedido: '9230', status: 'pendente', data_chegada_reversa: '2026-11-12' }];
+  ok('conferir: devolução já creditada não volta pela troca', C.pecasParaConferir(retPol, {}, Date.parse('2026-11-18T15:00:00Z'), devPol).length, 0);
+  ok('conferir: sem devolução creditada, o card da troca continua', C.pecasParaConferir(retPol, {}, Date.parse('2026-11-18T15:00:00Z'), []).length, 1);
+  ok('fatos: crédito lançado vai para a IA e a troca duplicada não aparece', C.fatosDoSistema('9230', { retorno: retPol, estorno: devPol }), ['Crédito na loja de R$ 137.71 já lançado na conta dela em 17/11, depois da peça conferida.']);
   const conf = C.pecasParaConferir([
     { id: 'a', cliente: 'Cris Silva', pedido: '9126', status: 'pendente', data_chegada_reversa: '2026-11-12', pedido_troca: '#9411' },
     { id: 'b', cliente: 'Ana', pedido: '9000', status: 'pendente', data_chegada_reversa: '2026-11-12', conferido_em: '2026-11-12T15:00:00Z' },

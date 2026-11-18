@@ -369,8 +369,11 @@ export function fatosDoSistema(pedido, { retorno = [], estorno = [], rastreio = 
   const out = [];
   const daRev = id => { const r = reversas[id]; if (!r) return ''; return r.codigo ? `, código de postagem ${r.codigo}${r.whatsapp_em ? ' enviado no WhatsApp ' + dia(r.whatsapp_em) : ' ainda não enviado no WhatsApp'}` : r.status === 'aguardando' ? ', o robô está gerando o código (a transportadora ainda não liberou)' : r.status === 'carrinho' ? ', etiqueta montada, falta pagar' : ''; };
   const daRast = id => { const t = rastreio[id]; if (!t) return ''; return t.entregue ? `, a devolução chegou na loja ${dia(t.entregue_em)}` : t.postado ? `, a cliente postou a devolução ${dia(t.postado_visto_em)} e está a caminho` : ', a devolução ainda não foi postada'; };
-  for (const t of retorno) if (t && String(t.pedido || '').replace(/\D/g, '') === n && t.status !== 'resolvido')
+  const jaConferidos = pedidosJaConferidos(estorno);
+  for (const t of retorno) if (t && String(t.pedido || '').replace(/\D/g, '') === n && t.status !== 'resolvido' && !jaConferidos.has(n))
     out.push(`Troca aberta${t.pedido_troca ? ' com pedido de troca ' + t.pedido_troca + (t.pedido_troca_enviado ? ' já enviado' : '') : ''}${daRev('retorno:' + t.id)}${daRast('retorno:' + t.id)}${t.conferido_em ? ', peça conferida e troca liberada' : ''}.`);
+  for (const t of estorno) if (t && t.credito_lancado_em && new RegExp('(#|pedido\\s+#?)\\s?' + n + '(?!\\d)').test(String(t.pecas || '')))
+    out.push(`Crédito na loja de R$ ${t.credito_valor || t.valor} já lançado na conta dela em ${dia(t.credito_lancado_em)}, depois da peça conferida.`);
   for (const t of estorno) if (t && new RegExp('(#|pedido\\s+#?)\\s?' + n + '(?!\\d)').test(String(t.pecas || '')) && t.etapa !== 'concluido')
     out.push(`Devolução aberta (${t.forma || 'dinheiro'}${t.valor ? ', R$ ' + t.valor : ''})${daRev('estorno:' + t.id)}${daRast('estorno:' + t.id)}${t.chegou_em ? ', peça chegou ' + dia(t.chegou_em) : ''}.`);
   return out;
@@ -431,10 +434,24 @@ export function lerConferir(texto) {
 // prazo de 1 dia útil e, vencido, sobe para ela. A Cris #9126 ficou 16 dias com as calças aqui e a troca travada.
 // retorno: itens da lista `retorno`; rastreio: `rastreio-trocas`.itens ({ 'retorno:<id>': { entregue, entregue_em } }).
 export const PRAZO_CONFERIR_H = 8;
-export function pecasParaConferir(retorno, rastreio, agora = Date.now()) {
+// A mesma devolução pode ter card na TROCAS (retorno) e na DEVOLUÇÃO (estorno). Conferida e com crédito lançado pela
+// devolução, o card da troca não é mais pendência (Poliana #9230, 18/11/2026: crédito lançado em 17/11 e a lista
+// vermelha seguia dizendo "falta conferir").
+export function pedidosJaConferidos(estorno = []) {
+  const out = new Set();
+  for (const t of estorno || []) {
+    if (!t || !(t.conferido_em || t.credito_lancado_em)) continue;
+    const m = String(t.pecas || '').match(/(?:#|pedido\s+#?)\s?(\d{4,})/i) || String(t.pedido || '').match(/(\d{4,})/);
+    if (m) out.add(m[1]);
+  }
+  return out;
+}
+export function pecasParaConferir(retorno, rastreio, agora = Date.now(), estorno = []) {
   const out = [];
+  const jaConferidos = pedidosJaConferidos(estorno);
   for (const t of retorno || []) {
     if (!t || t.status === 'resolvido' || t.conferido_em || t.recusada_em || t.pedido_troca_enviado || t.codigo_reenvio) continue;
+    if (jaConferidos.has(String(t.pedido || '').replace(/\D/g, ''))) continue;
     const r = (rastreio || {})['retorno:' + t.id];
     const chegou = t.data_chegada_reversa || (r && r.entregue && (r.entregue_em || r.visto_em));
     if (!chegou) continue;

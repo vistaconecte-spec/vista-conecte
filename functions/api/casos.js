@@ -571,7 +571,7 @@ export async function filaEquipe(env, agora = Date.now()) {
   // Peça da troca que voltou e ninguém conferiu: prazo de 1 dia útil (13/11/2026). Junto vai a conversa da cliente,
   // lida pela IA, para a equipe ver se falta dizer alguma coisa a ela enquanto a troca anda (Bárbara, 14/11/2026).
   let conferir = [];
-  try { conferir = pecasParaConferir(sistema.retorno, sistema.rastreio, agora); } catch (_) {}
+  try { conferir = pecasParaConferir(sistema.retorno, sistema.rastreio, agora, sistema.estorno); } catch (_) {}
   if (conferir.length) {
     try {
       const nums = [...new Set(conferir.map(p => String(p.pedido || '').replace(/\D/g, '')).filter(Boolean))];
