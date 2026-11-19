@@ -364,7 +364,8 @@ Responda só com JSON, sem mais nada: {"espera": true se a equipe tem algo a faz
 // O que o sistema sabe da troca/devolução do pedido (13/11/2026, Bárbara: a Crischélida já tinha postado a devolução e
 // estava na fila). Vai junto da conversa para a IA não cobrar da equipe o que está só esperando a cliente ou o Correio.
 export function fatosDoSistema(pedido, { retorno = [], estorno = [], rastreio = {}, reversas = {}, pedidos = {} } = {}, agora = Date.now()) {
-  const n = String(pedido || '').replace(/\D/g, '');
+  // Primeiro número do caso; os outros (pedido de reenvio, 19/11/2026) só entram na situação da Shopify
+  const n = (String(pedido || '').match(/\d{4,6}/) || [''])[0];
   if (!n) return [];
   const doPedido = [...new Set(String(pedido).match(/\d{4,6}/g) || [])].map(k => fatoDoPedido(pedidos[k], agora)).filter(Boolean);
   const dia = s => s ? new Date(s).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit' }) : '';
@@ -405,8 +406,13 @@ export function fatoDoPedido(o, agora = Date.now()) {
 // Cliente que já foi respondida mas ainda espera uma ação (Bárbara, 16/11/2026: a Roberta #9118 esperava o vestido e
 // o acerto de R$80; um "vou ver" da equipe tirava ela da fila sem nada feito). Se a última leitura da IA disse que ela
 // espera, a conversa continua na fila e é relida a cada mensagem nova, até a IA ver que a coisa foi feita.
+// Template de continuidade sem resposta (19/11/2026, Marcelly: Laís, Luiza, Priscilla, Magna e Carla ficavam na lista dela).
+// Com a janela de 24h fechada a equipe só consegue mandar esse modelo; até a cliente responder, quem deve é a cliente.
+export const EH_TEMPLATE_CONTINUIDADE = /Estamos dando continuidade [àa] sua solicita[çc][ãa]o/i;
 export function esperaRespondida(msgs, prev, agora = Date.now()) {
   if (!prev || !prev.espera) return null;
+  const ult = (msgs || []).filter(m => m && ['user', 'operador', 'assistant'].includes(m.role) && !/^\[contexto/.test(String(m.texto || ''))).slice(-1)[0];
+  if (ult && ult.role !== 'user' && EH_TEMPLATE_CONTINUIDADE.test(String(ult.texto || ''))) return null;
   const lista = (msgs || []).filter(m => m.role === 'user' || m.role === 'operador');
   if (!lista.length || lista[lista.length - 1].role !== 'operador') return null;
   const clientes = lista.filter(m => m.role === 'user');

@@ -508,6 +508,21 @@ console.log('\nFila 18/11/2026: o juiz vê o pedido na Shopify (Marcelly: "vári
   ok('fila consulta a Shopify e usa a chave f3', /sistema\.pedidos = await pedidosDaFila/.test(fonte) && /x\.chave = 'f3\|'/.test(fonte), true);
 }
 
+console.log('\nFila 19/11/2026: template sem resposta, conferência da Bárbara e pedido de reenvio');
+{
+  const prev = { espera: true, desde: '2026-11-13T19:11:00Z', falta: 'orientar a devolução' };
+  const tpl = [{ role: 'user', texto: 'Mas não tem telefone', created_at: '2026-11-13T19:11:00Z' },
+    { role: 'operador', texto: 'Olá, Laís! Estamos dando continuidade à sua solicitação: entrega.  Para seguirmos com o atendimento, é só responder esta mensagem.', created_at: '2026-11-18T14:50:00Z' }];
+  ok('template de continuidade sem resposta sai da fila', C.esperaRespondida(tpl, prev, Date.parse('2026-11-19T15:00:00Z')), null);
+  ok('cliente respondeu ao template: volta para a fila', C.esperaBruta([...tpl, { role: 'user', texto: 'sim', created_at: '2026-11-19T12:00:00Z' }], Date.parse('2026-11-19T15:00:00Z')) !== null, true);
+  ok('resposta comum da equipe continua na fila', C.esperaRespondida([tpl[0], { role: 'operador', texto: 'vou ver e te falo', created_at: '2026-11-18T14:50:00Z' }], prev, Date.parse('2026-11-19T15:00:00Z')) !== null, true);
+  const fonteApi = readFileSync(join(raiz, 'functions', 'api', 'casos.js'), 'utf8');
+  ok('peça para conferir sai como da Bárbara', /itens\.push\(\{ \.\.\.p, responsavel: 'Bárbara'/.test(fonteApi), true);
+  const fadia2 = { name: '#9741', createdAt: '2026-11-16T12:00:00Z', lineItems: { nodes: [{ title: 'Cozy', variantTitle: 'PP', unfulfilledQuantity: 1 }] }, fulfillments: [] };
+  const f = C.fatosDoSistema('9201 9741', { pedidos: { '9741': fadia2 }, estorno: [{ id: 'x', pecas: '1× Blusa — pedido #9201', credito_lancado_em: '2026-11-17T11:00:00Z', valor: 50 }] }, Date.parse('2026-11-19T15:00:00Z'));
+  ok('caso com pedido de reenvio: Shopify do reenvio e fatos do pedido original', [f.some(x => x.startsWith('Pedido #9741: ainda em produção')), f.some(x => /Crédito na loja de R\$ 50/.test(x))], [true, true]);
+}
+
 console.log('\nCaso 708 (30/10/2026): cartão sai mesmo quando a IA reaproveita o caso aberto antes');
 ok('prompt manda reabrir o caso', /chame abrir_caso de novo mesmo que ele já tenha sido aberto antes/.test(C.SISTEMA), true);
 ok('sem busca na vez, a tela busca o caso para o cartão antes de desenhar', /await csCartaoSemBusca\(inp\.acoes\);\s*csBolha\('assistente'/.test(main)

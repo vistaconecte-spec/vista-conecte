@@ -624,7 +624,8 @@ export async function filaEquipe(env, agora = Date.now()) {
       tipo: String(c.tipo || '').split(' · ')[0].slice(0, 60), desde_brt: brt(e.desde), horas: e.horas, vencido: e.vencido, ultima: e.ultima,
       falta: j ? j.falta : (e.respondida && x.prev ? x.prev.falta : null), lido: !!j, respondida: !!e.respondida });
   }
-  for (const p of conferir) itens.push({ ...p, responsavel: 'Marcelly', desde_brt: brt(p.desde) });
+  // Conferir a peça que voltou é da Bárbara, não da Marcelly (18/11/2026: "as conferências são comigo")
+  for (const p of conferir) itens.push({ ...p, responsavel: 'Bárbara', desde_brt: brt(p.desde) });
   itens.sort((a, b) => b.horas - a.horas);
   // Estornos que estão com a Bárbara: o que decidir vem da primeira linha "[dd/mm] Com a Bárbara ..." do resumo
   let comBarbara = [];
