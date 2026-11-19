@@ -426,8 +426,11 @@ export function esperaRespondida(msgs, prev, agora = Date.now()) {
 }
 export function conversaParaJuiz(msgs, caso, fatos, agora = null) {
   const quem = { user: 'CLIENTE', assistant: 'VI', operador: 'EQUIPE' };
-  const linhas = (msgs || []).filter(m => quem[m.role] && String(m.texto || '').trim() && !/^\[contexto/.test(m.texto)).slice(-30)
-    .map(m => `${brt(m.created_at)} ${quem[m.role]}: ${String(m.texto).replace(/\[contexto interno:[\s\S]*?\]/g, '').replace(/\s+/g, ' ').trim().slice(0, 400)}`);
+  // A confirmação automática de pedido novo entra como SISTEMA (19/11/2026: a Elis recebeu a do reenvio #9741 e o juiz não via)
+  const confirmacao = m => { const k = /^\[contexto/.test(String(m.texto || '')) && String(m.texto).match(/confirma[çc][ãa]o autom[áa]tica do pedido #(\d+)/i); return k ? k[1] : null; };
+  const linhas = (msgs || []).filter(m => quem[m.role] && String(m.texto || '').trim() && (!/^\[contexto/.test(m.texto) || confirmacao(m))).slice(-30)
+    .map(m => confirmacao(m) ? `${brt(m.created_at)} SISTEMA: a cliente recebeu a confirmação automática do pedido #${confirmacao(m)}, com o endereço`
+      : `${brt(m.created_at)} ${quem[m.role]}: ${String(m.texto).replace(/\[contexto interno:[\s\S]*?\]/g, '').replace(/\s+/g, ' ').trim().slice(0, 400)}`);
   const cab = caso ? `Caso aberto: ${String(caso.tipo || '').slice(0, 120)}${caso.pedido ? ', pedido ' + caso.pedido : ''}\n` : '';
   const sis = fatos && fatos.length ? `Situação no sistema agora: ${fatos.join(' ')}\n` : '';
   const hora = agora ? `Agora: ${brt(new Date(agora).toISOString())}\n` : '';

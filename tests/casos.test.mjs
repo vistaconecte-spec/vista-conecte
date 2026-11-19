@@ -404,7 +404,7 @@ ok('status vai num cartão fixo e a IA não repete', /cartão fixo da tela acima
   ok('juiz: "vou ver" sem fazer continua espera, e sabe a hora de agora', [/vai ver/.test(C.JUIZ_FILA), /Agora: /.test(C.conversaParaJuiz(rob, null, [], agora)), /Agora: /.test(C.conversaParaJuiz(rob, null, []))], [true, true, false]);
   // 17/11/2026, Bárbara: "quero que fique na lista o que está pendente de ação da equipe"
   ok('juiz: só ação da equipe, terceiros e assunto antigo não contam', [/que a EQUIPE precisa fazer/.test(C.JUIZ_FILA), /Não é pendência da equipe/.test(C.JUIZ_FILA), /Assunto antigo/.test(C.JUIZ_FILA)], [true, true, true]);
-  ok('fila: critério novo relê todas as conversas (chave f3)', /x\.chave = 'f3\|'/.test(apiTxt), true);
+  ok('fila: critério novo relê todas as conversas (chave f4)', /x\.chave = 'f4\|'/.test(apiTxt), true);
   ok('fila: respondida usa a leitura anterior da IA', /esperaRespondida\(porWa\[c\.wa_id\], juizos\[c\.wa_id\], agora\)/.test(apiTxt), true);
   ok('fila: sem leitura da IA a cliente fica (nunca some por engano)', /if \(j && !j\.espera\) continue;/.test(apiTxt), true);
   // Poliana #9230 (18/11/2026): crédito lançado pela DEVOLUÇÃO tira o card duplicado da TROCAS da lista de conferir
@@ -505,7 +505,7 @@ console.log('\nFila 18/11/2026: o juiz vê o pedido na Shopify (Marcelly: "vári
   ok('fatosDoSistema põe o pedido primeiro', C.fatosDoSistema('#9673', { pedidos: { '9673': fadia } }, agora)[0].startsWith('Pedido #9673: ainda em produção'), true);
   ok('juiz: esperar a peça dentro do prazo não é pendência', /esperar a peça ficar pronta dentro do prazo NÃO é pendência/.test(C.JUIZ_FILA), true);
   const fonte = readFileSync(join(raiz, 'functions', 'api', 'casos.js'), 'utf8');
-  ok('fila consulta a Shopify e usa a chave f3', /sistema\.pedidos = await pedidosDaFila/.test(fonte) && /x\.chave = 'f3\|'/.test(fonte), true);
+  ok('fila consulta a Shopify e usa a chave f3', /sistema\.pedidos = await pedidosDaFila/.test(fonte) && /x\.chave = 'f4\|'/.test(fonte), true);
 }
 
 console.log('\nFila 19/11/2026: template sem resposta, conferência da Bárbara e pedido de reenvio');
@@ -520,6 +520,8 @@ console.log('\nFila 19/11/2026: template sem resposta, conferência da Bárbara 
   ok('peça para conferir sai como da Bárbara', /itens\.push\(\{ \.\.\.p, responsavel: 'Bárbara'/.test(fonteApi), true);
   const fadia2 = { name: '#9741', createdAt: '2026-11-16T12:00:00Z', lineItems: { nodes: [{ title: 'Cozy', variantTitle: 'PP', unfulfilledQuantity: 1 }] }, fulfillments: [] };
   const f = C.fatosDoSistema('9201 9741', { pedidos: { '9741': fadia2 }, estorno: [{ id: 'x', pecas: '1× Blusa — pedido #9201', credito_lancado_em: '2026-11-17T11:00:00Z', valor: 50 }] }, Date.parse('2026-11-19T15:00:00Z'));
+  const conv = C.conversaParaJuiz([{ role: 'assistant', texto: '[contexto interno: enviei a confirmação automática do pedido #9741 (pago), com o endereço para conferência.]', created_at: '2026-11-16T12:25:00Z' }, { role: 'user', texto: 'Endereço certinho', created_at: '2026-11-16T12:59:00Z' }], null, []);
+  ok('juiz vê a confirmação automática do pedido de reenvio', [/SISTEMA: a cliente recebeu a confirmação automática do pedido #9741/.test(conv), /contexto interno/.test(conv)], [true, false]);
   ok('caso com pedido de reenvio: Shopify do reenvio e fatos do pedido original', [f.some(x => x.startsWith('Pedido #9741: ainda em produção')), f.some(x => /Crédito na loja de R\$ 50/.test(x))], [true, true]);
 }
 
