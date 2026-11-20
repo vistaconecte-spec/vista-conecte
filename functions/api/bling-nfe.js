@@ -122,6 +122,7 @@ async function diagnosticar(env, token, ref, ignorarNota = null) {
 export async function onRequestGet({ request, env }) {
   const q = new URL(request.url).searchParams;
   const acao = q.get('acao') || 'status';
+  if (acao === 'avulsa' || acao === 'avulsa-enviar') return notaAvulsa(env, q);
   try {
     if (acao === 'status') {
       return json({ secret_gravado: !!env.BLING_CLIENT_SECRET, token: await statusToken(env) });
@@ -484,16 +485,18 @@ async function registrarNota(env, idPedido, idNota, doc, saida, nota) {
 // ── nota avulsa (20/11/2026) ────────────────────────────────────────────────
 // Nota de venda que NÃO nasce de pedido da loja (caso que motivou: os kits de café do pai dela para o
 // Restaurante das Cucas, R$ 899,50, com data do dia anterior). POST em JSON, duas etapas de propósito:
-//   { acao:'avulsa', chave, confirmar:1, dataEmissao:'AAAA-MM-DD HH:MM:SS', contato:{...}, itens:[...] }
+// GET como o resto da rota (a suíte garante que bling-nfe não aceita POST), dados em JSON no parâmetro `dados`:
+//   ?acao=avulsa&dados={chave, dataEmissao:'AAAA-MM-DD HH:MM:SS', contato:{...}, itens:[...]}&confirmar=1
 //       → cria a nota PENDENTE no Bling e devolve como ela ficou (CFOP, valores, destinatário), sem enviar.
-//   { acao:'avulsa-enviar', chave, confirmar:1 } → manda à SEFAZ a nota criada com essa chave.
-// Sem confirmar:1 só mostra o corpo que iria pro Bling. A chave (doc bling-nfe:avulsa-<chave>) impede a
+//   ?acao=avulsa-enviar&dados={chave}&confirmar=1 → manda à SEFAZ a nota criada com essa chave.
+// Sem confirmar=1 só mostra o corpo que iria pro Bling. A chave (doc bling-nfe:avulsa-<chave>) impede a
 // mesma nota de nascer duas vezes.
 const CHAVE_AVULSA = /^[a-z0-9-]{3,60}$/;
 
-export async function onRequestPost({ request, env }) {
+async function notaAvulsa(env, q) {
   let b;
-  try { b = await request.json(); } catch { return json({ erro: 'corpo JSON inválido' }, 400); }
+  try { b = JSON.parse(q.get('dados') || '{}'); } catch { return json({ erro: 'dados não é JSON válido' }, 400); }
+  b.acao = q.get('acao'); b.confirmar = q.get('confirmar');
   const chave = String(b.chave || '');
   if (!CHAVE_AVULSA.test(chave)) return json({ erro: 'chave obrigatória (a-z, 0-9, hífen)' }, 400);
   const idTrava = 'avulsa-' + chave;
