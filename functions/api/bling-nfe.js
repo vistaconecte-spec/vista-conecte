@@ -122,7 +122,7 @@ async function diagnosticar(env, token, ref, ignorarNota = null) {
 export async function onRequestGet({ request, env }) {
   const q = new URL(request.url).searchParams;
   const acao = q.get('acao') || 'status';
-  if (acao === 'avulsa' || acao === 'avulsa-enviar') return notaAvulsa(env, q);
+  if (acao === 'avulsa' || acao === 'avulsa-ajustar' || acao === 'avulsa-enviar') return notaAvulsa(env, q);
   try {
     if (acao === 'status') {
       return json({ secret_gravado: !!env.BLING_CLIENT_SECRET, token: await statusToken(env) });
@@ -541,6 +541,26 @@ async function notaAvulsa(env, q) {
       return json({ criada: true, nota: idNota, situacao: nota && nota.situacao, detalhe: nota });
     }
 
+    if (b.acao === 'avulsa-ajustar') {
+      // Nota ainda PENDENTE: o POST ignorou data, CFOP e contribuinte (a natureza decide). PUT da nota inteira
+      // com só esses campos trocados: { chave, dataEmissao?, cfop?, contribuinte?, fretePorConta? }
+      if (b.confirmar !== 1 && b.confirmar !== '1') return json({ erro: 'precisa de confirmar=1' }, 400);
+      const anterior = await lerTrava(env, idTrava);
+      if (!anterior || !anterior.nota) return json({ erro: 'não há nota com esta chave', anterior }, 409);
+      const token = await tokenValido(env);
+      const nota = (await bling(env, `/nfe/${anterior.nota}`, { token })).data;
+      if (!nota || nota.situacao !== 1) return json({ erro: `nota na situação ${nota && nota.situacao}: só ajusto pendente (1)` }, 409);
+      const corpo = { ...nota };
+      if (b.dataEmissao) { corpo.dataEmissao = b.dataEmissao; corpo.dataOperacao = b.dataEmissao; }
+      if (b.cfop) corpo.itens = (nota.itens || []).map(it => ({ ...it, cfop: String(b.cfop) }));
+      if (b.contribuinte != null) corpo.contato = { ...nota.contato, contribuinte: Number(b.contribuinte) };
+      if (b.fretePorConta != null) corpo.transporte = { ...(nota.transporte || {}), fretePorConta: Number(b.fretePorConta), frete: Number(nota.valorFrete || 0) };
+      await esperar(PAUSA_MS);
+      await bling(env, `/nfe/${anterior.nota}`, { method: 'PUT', body: corpo, token });
+      await esperar(PAUSA_MS * 2);
+      return json({ ajustada: true, detalhe: (await bling(env, `/nfe/${anterior.nota}`, { token })).data });
+    }
+
     if (b.acao === 'avulsa-enviar') {
       if (b.confirmar !== 1 && b.confirmar !== '1') return json({ erro: 'precisa de confirmar:1' }, 400);
       const anterior = await lerTrava(env, idTrava);
@@ -549,7 +569,7 @@ async function notaAvulsa(env, q) {
       return json(await enviarNota(env, token, idTrava, anterior.nota, anterior, {}));
     }
 
-    return json({ erro: 'acao deve ser avulsa ou avulsa-enviar' }, 400);
+    return json({ erro: 'acao deve ser avulsa, avulsa-ajustar ou avulsa-enviar' }, 400);
   } catch (e) {
     return json({ erro: e.message, status: e.status || null }, e.status && e.status < 500 ? e.status : 500);
   }
