@@ -480,3 +480,74 @@ async function registrarNota(env, idPedido, idNota, doc, saida, nota) {
   await gravarTrava(env, idPedido, fim);
   return { ...saida, emitido: autorizada, nota: fim };
 }
+
+// ── nota avulsa (20/11/2026) ────────────────────────────────────────────────
+// Nota de venda que NÃO nasce de pedido da loja (caso que motivou: os kits de café do pai dela para o
+// Restaurante das Cucas, R$ 899,50, com data do dia anterior). POST em JSON, duas etapas de propósito:
+//   { acao:'avulsa', chave, confirmar:1, dataEmissao:'AAAA-MM-DD HH:MM:SS', contato:{...}, itens:[...] }
+//       → cria a nota PENDENTE no Bling e devolve como ela ficou (CFOP, valores, destinatário), sem enviar.
+//   { acao:'avulsa-enviar', chave, confirmar:1 } → manda à SEFAZ a nota criada com essa chave.
+// Sem confirmar:1 só mostra o corpo que iria pro Bling. A chave (doc bling-nfe:avulsa-<chave>) impede a
+// mesma nota de nascer duas vezes.
+const CHAVE_AVULSA = /^[a-z0-9-]{3,60}$/;
+
+export async function onRequestPost({ request, env }) {
+  let b;
+  try { b = await request.json(); } catch { return json({ erro: 'corpo JSON inválido' }, 400); }
+  const chave = String(b.chave || '');
+  if (!CHAVE_AVULSA.test(chave)) return json({ erro: 'chave obrigatória (a-z, 0-9, hífen)' }, 400);
+  const idTrava = 'avulsa-' + chave;
+  try {
+    if (b.acao === 'avulsa') {
+      const c = b.contato || {};
+      const itens = (b.itens || []).map(i => ({
+        codigo: i.codigo, descricao: i.descricao, unidade: i.unidade || 'UN', quantidade: Number(i.quantidade),
+        valor: Number(i.valor), tipo: 'P', classificacaoFiscal: i.ncm, origem: 0, ...(i.cfop ? { cfop: i.cfop } : {}),
+      }));
+      const erros = [];
+      if (!/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(String(b.dataEmissao || ''))) erros.push('dataEmissao AAAA-MM-DD HH:MM:SS');
+      if (!c.nome || !soDigitos(c.numeroDocumento)) erros.push('contato.nome e contato.numeroDocumento');
+      if (!itens.length) erros.push('itens');
+      for (const i of itens) if (!i.descricao || !(i.quantidade > 0) || !(i.valor > 0) || !i.classificacaoFiscal || !i.codigo) erros.push('item incompleto: ' + (i.descricao || '?'));
+      if (erros.length) return json({ erro: 'faltando: ' + erros.join('; ') }, 400);
+      const total = Math.round(itens.reduce((t, i) => t + i.valor * i.quantidade, 0) * 100) / 100;
+      const corpo = {
+        tipo: 1, finalidade: 1, dataOperacao: b.dataEmissao, dataEmissao: b.dataEmissao,
+        contato: c,
+        naturezaOperacao: { id: Number(b.naturezaOperacao) || 15105422348 },
+        itens,
+        parcelas: [{ data: b.dataEmissao.slice(0, 10), valor: total, formaPagamento: { id: Number(b.formaPagamento) || 6170772 } }],
+        transporte: { fretePorConta: b.fretePorConta != null ? Number(b.fretePorConta) : 9, frete: 0 },
+        ...(b.observacoes ? { observacoes: String(b.observacoes) } : {}),
+      };
+      if (b.confirmar !== 1 && b.confirmar !== '1') return json({ previa: true, total, corpo });
+      const doc = { avulsa: true, chave, total, status: 'travado', inicio: new Date().toISOString() };
+      if (!(await travar(env, idTrava, doc))) return json({ erro: 'já existe nota com esta chave', anterior: await lerTrava(env, idTrava) }, 409);
+      const token = await tokenValido(env);
+      let idNota;
+      try {
+        idNota = idDaResposta(await bling(env, '/nfe', { method: 'POST', body: corpo, token }));
+        if (!idNota) throw new Error('Bling não devolveu o id da nota');
+      } catch (e) {
+        await gravarTrava(env, idTrava, { ...doc, status: 'falhou-ao-gerar', erro: e.message });
+        return json({ erro: 'falhou ao criar a nota (conferir no Bling se nasceu pendente): ' + e.message, corpo }, 502);
+      }
+      await gravarTrava(env, idTrava, { ...doc, status: 'gerada-aguardando-envio', nota: idNota });
+      await esperar(PAUSA_MS * 2);
+      const nota = (await bling(env, `/nfe/${idNota}`, { token })).data;
+      return json({ criada: true, nota: idNota, situacao: nota && nota.situacao, detalhe: nota });
+    }
+
+    if (b.acao === 'avulsa-enviar') {
+      if (b.confirmar !== 1 && b.confirmar !== '1') return json({ erro: 'precisa de confirmar:1' }, 400);
+      const anterior = await lerTrava(env, idTrava);
+      if (!anterior || !anterior.nota || anterior.status !== 'gerada-aguardando-envio') return json({ erro: 'não há nota pendente com esta chave', anterior }, 409);
+      const token = await tokenValido(env);
+      return json(await enviarNota(env, token, idTrava, anterior.nota, anterior, {}));
+    }
+
+    return json({ erro: 'acao deve ser avulsa ou avulsa-enviar' }, 400);
+  } catch (e) {
+    return json({ erro: e.message, status: e.status || null }, e.status && e.status < 500 ? e.status : 500);
+  }
+}
