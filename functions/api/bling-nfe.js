@@ -549,9 +549,11 @@ async function notaAvulsa(env, q) {
       if (!anterior || !anterior.nota) return json({ erro: 'não há nota com esta chave', anterior }, 409);
       const token = await tokenValido(env);
       const nota = (await bling(env, `/nfe/${anterior.nota}`, { token })).data;
-      if (!nota || nota.situacao !== 1) return json({ erro: `nota na situação ${nota && nota.situacao}: só ajusto pendente (1)` }, 409);
+      if (!nota || ![1, 4].includes(nota.situacao)) return json({ erro: `nota na situação ${nota && nota.situacao}: só ajusto pendente (1) ou rejeitada (4)` }, 409);
       const corpo = { ...nota };
       if (b.dataEmissao) { corpo.dataEmissao = b.dataEmissao; corpo.dataOperacao = b.dataEmissao; }
+      // Rejeição 900 da SEFAZ: vencimento da parcela antes da emissão. O Bling carimba a emissão na hora do envio.
+      if (b.vencimento) corpo.parcelas = (nota.parcelas || []).map(pc => ({ ...pc, data: String(b.vencimento) }));
       if (b.cfop) corpo.itens = (nota.itens || []).map(it => ({ ...it, cfop: String(b.cfop) }));
       if (b.contribuinte != null) corpo.contato = { ...nota.contato, contribuinte: Number(b.contribuinte) };
       if (b.fretePorConta != null) corpo.transporte = { ...(nota.transporte || {}), fretePorConta: Number(b.fretePorConta), frete: Number(nota.valorFrete || 0) };
