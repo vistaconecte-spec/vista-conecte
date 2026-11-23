@@ -447,6 +447,23 @@ function pecasPorTamanho(item, orderName, usarQuantidadeTotal) {
 }
 
 /**
+ * Item SEGURADO na Shopify (fulfillment order em espera) vem com fulfillable_quantity 0, igual a
+ * item removido do pedido, e por isso sumia da produção. A Saia Midi Preta M da Paula (#9371),
+ * segurada em 13/11/2026 "até ficar pronta", nunca entrou numa leva: as pretas M que ficaram
+ * prontas foram para pedidos mais novos (#9467, #9600). Também afetava a troca segurada até a
+ * peça antiga voltar, que devia entrar na produção (aguarda_troca). O que separa os dois casos é
+ * current_quantity: item removido tem 0, item segurado continua com a quantidade.
+ * Só vale para linha sem nenhum envio (fulfillment_status vazio); linha parcial segue no fulfillable.
+ */
+function comItemSegurado(item) {
+  if (!item || item.fulfillment_status) return item;
+  const atual = Number(item.current_quantity);
+  const livre = Number(item.fulfillable_quantity) || 0;
+  if (!Number.isFinite(atual) || atual <= livre) return item;
+  return { ...item, fulfillable_quantity: atual };
+}
+
+/**
  * Expande um line_item nas peças que a produção precisa fazer.
  * Devolve SEMPRE uma lista (vazia = item ignorado). Existe para dar conta dos itens
  * manuais com tamanho por peça; o resto continua passando pelo parseLineItem de sempre.
@@ -712,7 +729,8 @@ export async function onRequest(context) {
 
     for (const order of orders) {
       const itensPedido = [];
-      for (const item of order.line_items || []) {
+      for (const item0 of order.line_items || []) {
+        const item = comItemSegurado(item0);
         // Multi: um item pode render mais de uma peça, cada uma no seu tamanho (item manual)
         for (const parsed of parseLineItemMulti(item, order.name, ignorados)) {
         const { modelKey, sizeIdx, qty } = parsed;
@@ -798,4 +816,4 @@ export async function onRequest(context) {
 
 // Usado por /api/previsao-pedido (posição do pedido para a Vi): o mesmo casamento título→modelo da produção.
 // /api/pronta-entrega (Vi responde pronta entrega pelo estoque real menos o que já é de pedido em aberto).
-export { parseLineItemMulti, findModelAndColor, fetchAllOrders, PRODUCT_MAP };
+export { parseLineItemMulti, findModelAndColor, fetchAllOrders, PRODUCT_MAP, comItemSegurado };

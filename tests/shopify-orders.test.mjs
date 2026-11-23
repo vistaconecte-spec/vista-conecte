@@ -266,5 +266,26 @@ ok('fetchProcessados continua filtrando só cancelado (baixa de estoque intacta)
 ok('pago e parcialmente reembolsado contam; pending/refunded/voided não',
    /STATUS_PAGO_PRODUCAO = new Set\(\['paid', 'partially_refunded'\]\)/.test(src), true);
 
+// ── item segurado na Shopify conta na produção (23/11/2026) ──────────────────
+// A saia da Paula (#9371) ficou segurada "até ficar pronta" e vinha com fulfillable 0, então
+// nunca entrou numa leva. Item removido do pedido (current_quantity 0) continua fora.
+console.log('\n📋 Item segurado entra na produção');
+const { comItemSegurado } = new Function(puro + '; return { comItemSegurado };')();
+const qtdAberta = it => { const r = parseLineItem(comItemSegurado(it), '#TESTE', []); return r ? r.qty : 0; };
+ok('saia segurada (current 1, fulfillable 0) conta 1',
+   qtdAberta({ title: 'Saia Midi Fenda Frontal', variant_title: 'Preto / M', quantity: 1, current_quantity: 1, fulfillable_quantity: 0, fulfillment_status: null }), 1);
+ok('conjunto removido do pedido (current 0) continua fora',
+   qtdAberta({ title: 'Conjunto Urban Slit', variant_title: 'Preta / M', quantity: 1, current_quantity: 0, fulfillable_quantity: 0, fulfillment_status: null }), 0);
+ok('peça já enviada continua fora',
+   qtdAberta({ title: 'Moletom Gola Alta', variant_title: 'Preto / M', quantity: 1, current_quantity: 1, fulfillable_quantity: 0, fulfillment_status: 'fulfilled' }), 0);
+ok('linha parcial segue no fulfillable',
+   qtdAberta({ title: 'Saia Midi Fenda Frontal', variant_title: 'Preto / M', quantity: 2, current_quantity: 2, fulfillable_quantity: 1, fulfillment_status: 'partial' }), 1);
+ok('item normal não muda',
+   qtdAberta({ title: 'Saia Midi Fenda Frontal', variant_title: 'Preto / M', quantity: 1, current_quantity: 1, fulfillable_quantity: 1, fulfillment_status: null }), 1);
+ok('pedido sem current_quantity (resposta antiga) não muda',
+   qtdAberta({ title: 'Saia Midi Fenda Frontal', variant_title: 'Preto / M', quantity: 1, fulfillable_quantity: 0, fulfillment_status: null }), 0);
+ok('o laço dos pedidos abertos passa por comItemSegurado',
+   /for \(const item0 of order\.line_items \|\| \[\]\) \{\s*const item = comItemSegurado\(item0\);/.test(src), true);
+
 console.log(`\n${falhas === 0 ? '✅ TODOS OS TESTES PASSARAM' : '❌ ' + falhas + ' FALHA(S)'} — ${total - falhas}/${total}\n`);
 process.exit(falhas === 0 ? 0 : 1);
