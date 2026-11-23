@@ -105,7 +105,9 @@ async function diagnosticar(env, token, ref, ignorarNota = null) {
   const [order, todas] = await Promise.all([pedidoShopify(env, pedido.numeroLoja), notasDaCliente(env, token, pedido)]);
   // &ignorar_nota=007658 (09/11/2026): nota da cliente que alguém CONFERIU e é de outro pedido (a 007658 do
   // #9404 barrava o #9405 da mesma cliente). Só vale para nota ligada a outro pedido da loja.
-  const notas = ignorarNota ? todas.filter(n => !(String(n.numero) === String(ignorarNota) && n.numeroPedidoLoja && String(n.numeroPedidoLoja) !== String(pedido.numeroLoja))) : todas;
+  // Aceita lista separada por vírgula (23/11/2026, #9827: a cliente tinha duas notas de outros pedidos).
+  const ignorar = new Set(String(ignorarNota || '').split(',').map(x => x.trim()).filter(Boolean));
+  const notas = ignorar.size ? todas.filter(n => !(ignorar.has(String(n.numero)) && n.numeroPedidoLoja && String(n.numeroPedidoLoja) !== String(pedido.numeroLoja))) : todas;
   return {
     pedido,
     order,
