@@ -286,11 +286,16 @@ export async function onRequestGet({ request, env }) {
       const IGNORA = /^(pedido tem reembolso|itens do pedido mudaram|total diferente)/;
       const motivos = d.decisao.motivos.filter(m => !IGNORA.test(m));
       const order = d.order;
+      // &enviadas=1 (23/11/2026, #9015): compra antiga que já saiu inteira sem nota e é a compra original de uma troca.
+      // Conta a peça já enviada, menos o que saiu do pedido por reembolso (troca de item sem dinheiro).
+      const incluirEnviadas = q.get('enviadas') === '1';
+      const reembolsada = id => (order && order.refunds || []).flatMap(r => r.refund_line_items || [])
+        .filter(x => String(x.line_item_id) === id).reduce((t, x) => t + (Number(x.quantity) || 0), 0);
       const itens = [];
       for (const id of linhas) {
         const l = order && (order.line_items || []).find(x => String(x.id) === id);
         if (!l) { motivos.push(`linha ${id} não está no pedido da Shopify`); continue; }
-        const qtd = Number(l.fulfillable_quantity) || 0;
+        const qtd = incluirEnviadas ? Math.max(0, (Number(l.quantity) || 0) - reembolsada(id)) : (Number(l.fulfillable_quantity) || 0);
         if (qtd <= 0) { motivos.push(`${l.title} já foi enviada ou saiu do pedido`); continue; }
         const descLinha = (l.discount_allocations || []).reduce((t, a) => t + parseFloat(a.amount || 0), 0) * qtd / (Number(l.quantity) || 1);
         const valor = Math.round((parseFloat(l.price) * qtd - descLinha) / qtd * 100) / 100;
