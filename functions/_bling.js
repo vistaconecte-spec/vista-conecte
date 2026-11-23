@@ -169,6 +169,32 @@ export async function tokenValido(env, { forcarRenovacao = false } = {}) {
   return novo.access_token;
 }
 
+// Renovação feita FORA da Cloudflare (23/11/2026). A Cloudflare do Bling barra com 429 "error code: 1015" o
+// endereço de saída do Pages (compartilhado com milhares de sites), às vezes por dias, e sem renovar nenhuma nota
+// sai. O GitHub Actions (scripts/bling-renovar.mjs, com o client secret no secret BLING_CLIENT_SECRET do repo)
+// pede o refresh_token aqui, fala com o Bling de outro endereço e devolve o par novo para cifrar e gravar.
+export async function refreshAtual(env) {
+  const row = await lerDocToken(env);
+  if (!row || !row.dados || !row.dados.cifrado) throw new Error('Bling não autorizado: abrir /api/bling-auth');
+  const tok = await decifrar(row.dados.cifrado, env.BLING_CLIENT_SECRET);
+  if (!tok) throw new Error('token do Bling ilegível');
+  return { refresh_token: tok.refresh_token, expira_em: new Date(tok.expira_em).toISOString(), client_id: clientId(env) };
+}
+
+export async function gravarRenovacaoExterna(env, d) {
+  if (!d || typeof d.access_token !== 'string' || typeof d.refresh_token !== 'string' || d.access_token.length < 20 || d.refresh_token.length < 20) {
+    throw new Error('resposta do Bling sem access_token/refresh_token');
+  }
+  const tok = {
+    access_token: d.access_token,
+    refresh_token: d.refresh_token,
+    expira_em: Date.now() + (parseInt(d.expires_in, 10) || 21600) * 1000,
+    escopo: d.scope || null,
+  };
+  await salvarToken(env, tok, 'renovacao-externa');
+  return { expira_em: new Date(tok.expira_em).toISOString() };
+}
+
 export async function statusToken(env) {
   const row = await lerDocToken(env);
   if (!row || !row.dados || !row.dados.cifrado) return { autorizado: false };

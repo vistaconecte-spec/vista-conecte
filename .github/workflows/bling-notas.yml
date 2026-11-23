@@ -24,3 +24,4 @@ jobs:
       - run: node scripts/bling-notas.mjs
         env:
           VC_API_TOKEN: ${{ secrets.VC_API_TOKEN }}
+          BLING_CLIENT_SECRET: ${{ secrets.BLING_CLIENT_SECRET }}

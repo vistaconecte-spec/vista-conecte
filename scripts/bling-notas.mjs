@@ -10,6 +10,8 @@
 // Precisa do secret VC_API_TOKEN no repositório (o mesmo API_TOKEN do Pages).
 //   node scripts/bling-notas.mjs
 
+import { renovar } from './bling-renovar.mjs';
+
 const BASE = 'https://vistaconecte.pages.dev';
 const MAX_POR_RODADA = 40;
 
@@ -65,6 +67,8 @@ export async function rodada(token) {
 if (process.argv[1] && process.argv[1].endsWith('bling-notas.mjs')) {
   const token = process.env.VC_API_TOKEN;
   if (!token) { console.error('falta VC_API_TOKEN'); process.exit(1); }
+  // Renova o Bling pelo GitHub antes (23/11/2026): o painel é barrado pela Cloudflare do Bling (1015).
+  if (process.env.BLING_CLIENT_SECRET) console.log('renovação:', JSON.stringify(await renovar({ token, segredo: process.env.BLING_CLIENT_SECRET })));
   const r = await rodada(token);
   console.log(JSON.stringify(r));
   if (r.erro_geral) process.exit(1); // o GitHub marca a execução em vermelho e manda e-mail
