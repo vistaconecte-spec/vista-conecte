@@ -141,6 +141,16 @@ console.log('\n3) Sem depender de ninguém (13/11/2026)');
   const j = await chamar({ renovado: true });
   ok('código renovado tem aviso próprio', [j.enviado, ch.some(c => c.metodo === 'POST' && /troca_codigo_retorno:p1_renovado/.test(c.corpo || ''))], [true, true]);
 }
+{
+  // 24/11/2026: troca renova até 30 dias; só o último código diz que é o último
+  const t = textoConversa({ nome: 'A', pedido: '#1', codigo: 'X', renovado: true, ultimo: false });
+  ok('troca renovada que não é a última: não diz que é o último', [/código é novo/.test(t), /é o último/.test(t)], [true, false]);
+  const ch = cenario({ ultima: new Date().toISOString(), jaEnviado: false });
+  const j = await chamar({ renovado: true, renovacoes: 2, ultimo: false });
+  ok('segunda renovação tem aviso próprio', [j.enviado, ch.some(c => c.metodo === 'POST' && /troca_codigo_retorno:p1_renovado2/.test(c.corpo || ''))], [true, true]);
+  const c30 = textoCancelado({ nome: 'Ana', pedido: '#2', codigo: 'Y', troca30: true });
+  ok('troca cancelada nos 30 dias fala de troca, não de devolução de 7 dias', [/30 dias/.test(c30), /troca/.test(c30), /7 dias/.test(c30)], [true, true, false]);
+}
 
 console.log('\n4) Prazo de 7 dias para postar (13/11/2026)');
 {

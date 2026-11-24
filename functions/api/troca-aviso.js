@@ -40,8 +40,9 @@ const ASSUNTO = {
   devolucao: p => `sua devolução do pedido ${p} está liberada`,
 };
 // comum (13/11/2026): etiqueta comum de devolução, quando a Frenet trava a reversa. Vai com o PDF na mesma
-// mensagem e a cliente imprime. renovado: o código anterior venceu sem postagem e o robô gerou outro, o último.
-export function textoConversa({ nome, pedido, codigo, validade, tipo = 'troca', comum = false, renovado = false }) {
+// mensagem e a cliente imprime. renovado: o código anterior venceu sem postagem e o robô gerou outro. ultimo: não vem
+// outro depois desse (devolução sempre; troca renova até 30 dias, Bárbara 24/11/2026).
+export function textoConversa({ nome, pedido, codigo, validade, tipo = 'troca', comum = false, renovado = false, ultimo = true }) {
   const primeiro = String(nome || '').trim().split(/\s+/)[0] || '';
   const dia = validade ? new Date(validade).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' }) : '';
   return `Oi${primeiro ? ' ' + primeiro : ''}, ${(ASSUNTO[tipo] || ASSUNTO.troca)(pedido)}. O código de postagem dos Correios é ${codigo}`
@@ -50,12 +51,14 @@ export function textoConversa({ nome, pedido, codigo, validade, tipo = 'troca', 
       ? '. A etiqueta está neste PDF, é só imprimir, colar no pacote e levar a uma agência dos Correios. O frete já está pago.'
       : '. É só levar a peça embalada a uma agência e informar esse código, não precisa imprimir etiqueta nem pagar frete.')
     + (dia ? ' Depois dessa data o código é cancelado.' : '')
-    + (renovado ? ' Esse código é novo, porque o anterior venceu sem a postagem, e é o último que conseguimos gerar para essa troca.' : '');
+    + (renovado ? ' Esse código é novo, porque o anterior venceu sem a postagem' + (ultimo ? ', e é o último que conseguimos gerar para essa troca.' : '.') : '');
 }
 
 // Prazo de 7 dias para postar (Bárbara, 13/11/2026: "elas têm 7 dias, depois disso precisamos automaticamente cancelar")
-export function textoCancelado({ nome, pedido, codigo }) {
+// troca30 (24/11/2026): troca que passou dos 30 dias com os códigos renovados e sem postagem
+export function textoCancelado({ nome, pedido, codigo, troca30 = false }) {
   const primeiro = String(nome || '').trim().split(/\s+/)[0] || '';
+  if (troca30) return `Oi${primeiro ? ' ' + primeiro : ''}, o prazo de 30 dias pra postar a troca do pedido ${pedido} terminou e o código ${codigo} foi cancelado. Se você ainda quiser trocar, é só me chamar por aqui.`;
   return `Oi${primeiro ? ' ' + primeiro : ''}, o prazo de 7 dias pra postar a devolução do pedido ${pedido} terminou e o código ${codigo} foi cancelado. Se você ainda quiser devolver, é só me chamar por aqui.`;
 }
 export async function quandoEnviado(env, codigo) {
@@ -129,7 +132,7 @@ export async function onRequestPost({ env, request }) {
   const sbH = { apikey: env.SUPABASE_SERVICE_ROLE_KEY, Authorization: 'Bearer ' + env.SUPABASE_SERVICE_ROLE_KEY, 'Content-Type': 'application/json' };
   // código renovado (o anterior venceu) é outro aviso do mesmo item: id próprio para não cair no "já mandado"
   const msgId = cancelado ? 'troca_cancelado_' + codigo.replace(/[^\w-]/g, '')
-    : 'troca_codigo_' + String(b.item_id).replace(/[^\w:-]/g, '') + (b.renovado ? '_renovado' : '');
+    : 'troca_codigo_' + String(b.item_id).replace(/[^\w:-]/g, '') + (b.renovado ? '_renovado' + (Number(b.renovacoes) > 1 ? Number(b.renovacoes) : '') : '');
 
   try {
     const ja = await (await fetch(`${SB_URL}/rest/v1/wati_ia_mensagens?msg_id=eq.${encodeURIComponent(msgId)}&select=msg_id,created_at`, { headers: sbH })).json();
@@ -153,8 +156,8 @@ export async function onRequestPost({ env, request }) {
     if (!vars.length) return json({ enviado: false, motivo: 'sem_telefone' });
     const nome = o.shippingAddress?.firstName || o.customer?.firstName || (o.shippingAddress?.name || '').split(' ')[0];
     const comum = !cancelado && !!b.comum;
-    const texto = cancelado ? textoCancelado({ nome, pedido: o.name, codigo })
-      : textoConversa({ nome, pedido: o.name, codigo, validade: b.validade, tipo: await tipoDoItem(b), comum, renovado: !!b.renovado });
+    const texto = cancelado ? textoCancelado({ nome, pedido: o.name, codigo, troca30: !!b.troca30 })
+      : textoConversa({ nome, pedido: o.name, codigo, validade: b.validade, tipo: await tipoDoItem(b), comum, renovado: !!b.renovado, ultimo: b.ultimo !== false });
     const pdf = comum ? pdfDoCorpo(b.pdf_b64, `etiqueta-devolucao-${num}.pdf`) : null;
     if (comum && !pdf) return json({ enviado: false, motivo: 'sem_pdf', mensagem: texto });
 
