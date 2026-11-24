@@ -5949,13 +5949,19 @@ async function cxPuxarDados(forcar) {
   if (!forcar && cx.api.em && Date.now() - cx.api.em < 3 * 60 * 1000) return;
   const hoje = cxHoje(), seg = cxSegunda(hoje);
   const pegar = async u => { try { const r = await fetch(u, { cache: 'no-store' }); return r.ok ? await r.json() : null; } catch (e) { return null; } };
-  const [saldo, mov, meta] = await Promise.all([
+  const [saldo, mov, meta, saidas] = await Promise.all([
     pegar('/api/mp-saldo'),
+    pegar('/api/mp-saidas?desde=' + cxSomaDias(hoje, -35) + '&ate=' + hoje),
     pegar('/api/mp-movimentos?desde=' + cxSomaDias(hoje, -28) + '&ate=' + hoje),
     pegar('/api/meta-cobrancas?dias=28'),
   ]);
   const api = { em: Date.now() };
   if (saldo && typeof saldo.disponivel === 'number') { api.saldo = saldo.disponivel; api.saldoRef = saldo.referencia || null; }
+  // Compras no cartão/conta (Shopify, Claude, Meta…) vêm direto da API do MP, sem depender de e-mail.
+  if (saidas && Array.isArray(saidas.itens)) {
+    api.cartao = saidas.itens.filter(x => x && x.valor > 0 && /approved|authorized/.test(String(x.status)))
+      .map(x => ({ id: 'pag-' + x.id, d: x.data, n: x.descricao || '', v: Math.round(Number(x.valor) * 100) / 100, k: 'store' }));
+  }
   // Vendas e Meta na MESMA janela (14 ou 28 dias), escolhendo a que deixa menos dinheiro por dia.
   // Misturar janelas exagera: em 24/11 a de 14 dias tinha a Meta da Black (R$ 1.773/dia) e a de
   // 28 as vendas fracas do começo do mês (R$ 4.608/dia), e a tela previa falta de R$ 9 mil.
@@ -5983,8 +5989,16 @@ async function cxPuxarDados(forcar) {
 // Lista do período já com a baixa automática do Mercado Pago aplicada.
 function cxTodas(de, ate) {
   const cx = window._cx;
-  const r = cxCasarMp(cxInstancias(cx.cfg, de, ate), cx.cfg.regras, cx.cfg.mp && cx.cfg.mp.itens);
+  const r = cxCasarMp(cxInstancias(cx.cfg, de, ate), cx.cfg.regras, cxJuntarSaidas((cx.cfg.mp && cx.cfg.mp.itens) || [], cx.api.cartao || []));
   return r;
+}
+
+// Saídas lidas dos e-mails/site + compras que a API do MP devolve. A mesma compra pode vir pelas
+// duas (ids diferentes): a da API só entra se não houver outra com o mesmo valor no mesmo dia.
+function cxJuntarSaidas(lidas, api) {
+  const chave = i => Math.round(Number(i.v) * 100) + '|' + cxIso(new Date(i.d));
+  const ja = new Set(lidas.map(chave));
+  return lidas.concat(api.filter(i => !ja.has(chave(i))));
 }
 
 // O saldo estimado do /api/mp-saldo não vê Pix enviado depois do último extrato (payout não aparece
@@ -6084,8 +6098,8 @@ function cxDesenharLista(insts, hoje) {
   const mpAt = cx.cfg.mp && cx.cfg.mp.at;
   const horas = mpAt ? (Date.now() - new Date(mpAt).getTime()) / 36e5 : null;
   const status = !mpAt
-    ? '<div class="cx-mp-status cx-mp-velho">A baixa automática começa quando o leitor do Mercado Pago rodar pela primeira vez.</div>'
-    : `<div class="cx-mp-status${horas > 4 ? ' cx-mp-velho' : ''}"><i class="ti ti-refresh-dot"></i> Pagamentos conferidos no Mercado Pago ${cxRotDia(cxIso(new Date(mpAt)))} às ${new Date(mpAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}${horas > 4 ? '. Faz tempo: o Mercado Pago pode ter deslogado no navegador do computador.' : ', baixa sozinha.'}</div>`;
+    ? '<div class="cx-mp-status cx-mp-velho">A baixa automática começa quando o leitor dos Pix (e-mails do Mercado Pago no Gmail) rodar pela primeira vez.</div>'
+    : `<div class="cx-mp-status${horas > 4 ? ' cx-mp-velho' : ''}"><i class="ti ti-refresh-dot"></i> Pix conferidos nos e-mails do Mercado Pago ${cxRotDia(cxIso(new Date(mpAt)))} às ${new Date(mpAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}${horas > 4 ? '. Faz tempo: o computador pode estar desligado ou o Gmail desconectou do Claude.' : ', baixa sozinha.'}</div>`;
   const domingo = cxSomaDias(cxSegunda(hoje), 6);
   const proxDomingo = cxSomaDias(domingo, 7);
   const fim = cxSomaDias(hoje, 30);

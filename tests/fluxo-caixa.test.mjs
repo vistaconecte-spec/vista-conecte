@@ -27,7 +27,7 @@ const ini = main.indexOf('const CX_AJUSTES_PADRAO =');
 const consts = main.slice(ini, main.indexOf('\n};', main.indexOf('const CX_CATS =', ini)) + 3);
 const iCh = main.indexOf('const CX_CHAVES_PADRAO =');
 const chaves = main.slice(iCh, main.indexOf('\n};', iCh) + 3);
-const nomes = ['cxIso', 'cxSomaDias', 'cxSegunda', 'cxOcorrencias', 'cxInstancias', 'cxProjecao', 'cxDivida', 'cxMesclar', 'cxSemente', 'cxNorm', 'cxChaves', 'cxDiasEntre', 'cxCasarMp', 'cxSaldoCorrigido'];
+const nomes = ['cxIso', 'cxSomaDias', 'cxSegunda', 'cxOcorrencias', 'cxInstancias', 'cxProjecao', 'cxDivida', 'cxMesclar', 'cxSemente', 'cxNorm', 'cxChaves', 'cxDiasEntre', 'cxCasarMp', 'cxSaldoCorrigido', 'cxJuntarSaidas'];
 const cx = new Function(`${consts}\n${chaves}\n${nomes.map(extrair).join('\n')}\nreturn { ${nomes.join(', ')} };`)();
 
 let falhas = 0, total = 0;
@@ -174,6 +174,8 @@ console.log('\n9) Baixa automática pelo Mercado Pago (Pix reais de novembro)');
   ok('saldo desconta só o Pix depois do extrato (o de 23/11 já estava nele)', cx.cxSaldoCorrigido(11522.42, '2026-11-24T15:54:40.000Z', itens.slice(0, 2)), 6522.42);
   ok('compra no cartão não é descontada de novo (o extrato já vê)', cx.cxSaldoCorrigido(1000, '2026-12-01T00:00:00.000Z', [itens[7]]), 1000);
   ok('saldo sem referência fica igual', cx.cxSaldoCorrigido(100, null, itens), 100);
+  const junt = cx.cxJuntarSaidas([{ id: 'mp_card-x', d: '2026-11-24T10:37:56.000Z', n: 'Facebook', v: 3418.79 }], [{ id: 'pag-1', d: '2026-11-24T06:37:56.000-04:00', n: 'Facebk *8wz', v: 3418.79 }, { id: 'pag-2', d: '2026-12-08T10:00:00.000-03:00', n: 'Shopify', v: 1184.33 }]);
+  ok('compra que veio pelo site e pela API conta uma vez só', junt.map(i => i.id), ['mp_card-x', 'pag-2']);
   ok('mesclar guarda o mp mais novo', cx.cxMesclar({ mp: { at: '2026-11-24T10:00:00Z', itens: [1] } }, { mp: { at: '2026-11-24T09:00:00Z', itens: [] } }).mp.itens.length, 1);
 }
 
