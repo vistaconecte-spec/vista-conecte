@@ -627,8 +627,10 @@ export async function filaEquipe(env, agora = Date.now()) {
   }
   // Conferir a peça que voltou é da Bárbara, não da Marcelly (18/11/2026: "as conferências são comigo")
   for (const p of conferir) itens.push({ ...p, responsavel: 'Bárbara', desde_brt: brt(p.desde) });
-  // Alerta (processo, Procon, Reclame Aqui, urgente) vem antes de tudo; dentro de cada grupo, quem espera há mais tempo
-  itens.sort((a, b) => (b.alerta ? 1 : 0) - (a.alerta ? 1 : 0) || b.horas - a.horas);
+  // Processo, Procon e Reclame Aqui vêm primeiro, depois o que a Vi marcou como urgente, depois o resto; dentro de cada
+  // grupo, quem espera há mais tempo (24/11/2026: a Vi marca muito caso como urgente e a ameaça ficava atrás deles)
+  const peso = i => !i.alerta ? 0 : i.alerta === 'urgente' ? 1 : 2;
+  itens.sort((a, b) => peso(b) - peso(a) || b.horas - a.horas);
   // Estornos que estão com a Bárbara: o que decidir vem da primeira linha "[dd/mm] Com a Bárbara ..." do resumo
   let comBarbara = [];
   try {

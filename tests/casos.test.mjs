@@ -550,7 +550,7 @@ console.log('\nFila: alerta de processo/Procon/urgente vai para o topo (Carol #9
   ok('caso registrado como urgente', C.alertaDaConversa([u('cadê meu pedido')], 'urgente · prazo'), 'urgente');
   ok('conversa comum', C.alertaDaConversa([u('qual o prazo?')], 'prazo de troca'), null);
   const apiTxt2 = readFileSync(join(raiz, 'functions', 'api', 'casos.js'), 'utf8');
-  ok('fila ordena alerta antes do tempo de espera', apiTxt2.includes('itens.sort((a, b) => (b.alerta ? 1 : 0) - (a.alerta ? 1 : 0) || b.horas - a.horas)'), true);
+  ok('fila: ameaça antes de urgente, urgente antes do resto', apiTxt2.includes("const peso = i => !i.alerta ? 0 : i.alerta === 'urgente' ? 1 : 2;") && apiTxt2.includes('itens.sort((a, b) => peso(b) - peso(a) || b.horas - a.horas)'), true);
   ok('faixa mostra o selo do alerta', main.includes('${i.alerta ? `<span') && main.includes('nAlerta'), true);
 }
 
