@@ -334,6 +334,24 @@ export function esperaDaEquipe(msgs, agora = Date.now()) {
     vencido: horasUteis(desde, agora) >= PRAZO_RESPOSTA_H, equipe_ja_falou: iEquipe >= 0 };
 }
 
+// Caso que não pode esperar a vez (Bárbara, 24/11/2026): a Carol #9905 ameaçou processar e ficou em 15º de 19 na
+// fila, que só ordenava pelo tempo de espera. Cliente que fala em processo, Procon, Reclame Aqui ou advogado, ou caso
+// que a Vi registrou como urgente, sobe para o topo com selo. Só conta o que a CLIENTE escreveu.
+const ALERTAS = [
+  ['ameaça de processo', /\bprocess(ar|ando|ei|aria|o judicial)\b|\badvogad|\bjuizado\b|pequenas causas|\ba[cç][aã]o judicial|\bna justi[cç]a\b|\bentrar na justi[cç]a/i],
+  ['Procon', /\bprocon\b/i],
+  ['Reclame Aqui', /reclame\s*aqui/i],
+  ['consumidor.gov', /consumidor\.gov/i],
+];
+export function alertaDaConversa(msgs, tipo = '') {
+  for (const m of msgs || []) {
+    if (!m || m.role !== 'user') continue;
+    const t = String(m.texto || '');
+    for (const [nome, re] of ALERTAS) if (re.test(t)) return nome;
+  }
+  return /urgente/i.test(String(tipo || '')) ? 'urgente' : null;
+}
+
 // ── Fila pela leitura da conversa (13/11/2026) ─────────────────────────────────────
 // Bárbara: "o robô precisa ler o contexto, e não ler a última palavra agradecimento e concluir". Palavra solta
 // ("obrigada", "blz", coração) não diz se a cliente ainda espera: agradecer uma promessa que não foi cumprida

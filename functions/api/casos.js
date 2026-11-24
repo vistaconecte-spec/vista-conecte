@@ -21,7 +21,7 @@ import {
   soLeitura, MODELO, DOC_LOG, TEMPLATE_CONTINUIDADE, TEMPLATE_ALERTA, CATEGORIAS_DINHEIRO,
   SISTEMA, FERRAMENTAS, FERRAMENTAS_SERVIDOR, problemasDoTexto, prometeDinheiro, janelaAberta, revisarResposta,
   semResposta, promessasDaEquipe, pagoPorItem, numerosDePedido, pedidoEhDaCliente, emailsDoTexto, devolucoesDoPainel, codigosNaConversa, reversasDoPedido, prazoDoPedido, logVazio, podeFechar, podeFecharPelaConversa, casoDeDinheiro, semEscapeUnicode, aprovacaoLiberada, novoId,
-  primeiroNome, finalTel, resumoDoCaso, conversaParaAssistente, hojeTexto, brt, metaParaMsg, esperaDaEquipe, PRAZO_RESPOSTA_H, pecasParaConferir, esperaBruta, esperaRespondida, JUIZ_FILA, conversaParaJuiz, lerJuizo, fatosDoSistema, JUIZ_CONFERIR, lerConferir,
+  primeiroNome, finalTel, resumoDoCaso, conversaParaAssistente, hojeTexto, brt, metaParaMsg, esperaDaEquipe, PRAZO_RESPOSTA_H, pecasParaConferir, esperaBruta, alertaDaConversa, esperaRespondida, JUIZ_FILA, conversaParaJuiz, lerJuizo, fatosDoSistema, JUIZ_CONFERIR, lerConferir,
 } from '../_casos.js';
 import { variantes, mesclar, enviarTextoDaLoja, enviarArquivoDaLoja, enviarModeloDaLoja } from '../_whatsapp.js';
 
@@ -622,11 +622,13 @@ export async function filaEquipe(env, agora = Date.now()) {
     const { c, e } = x;
     itens.push({ caso_id: c.id, cliente: primeiroNome(c.nome), pedido: c.pedido || null, wa_id: c.wa_id, responsavel: c.responsavel || 'Marcelly',
       tipo: String(c.tipo || '').split(' · ')[0].slice(0, 60), desde_brt: brt(e.desde), horas: e.horas, vencido: e.vencido, ultima: e.ultima,
-      falta: j ? j.falta : (e.respondida && x.prev ? x.prev.falta : null), lido: !!j, respondida: !!e.respondida });
+      falta: j ? j.falta : (e.respondida && x.prev ? x.prev.falta : null), lido: !!j, respondida: !!e.respondida,
+      alerta: alertaDaConversa(porWa[c.wa_id], c.tipo) });
   }
   // Conferir a peça que voltou é da Bárbara, não da Marcelly (18/11/2026: "as conferências são comigo")
   for (const p of conferir) itens.push({ ...p, responsavel: 'Bárbara', desde_brt: brt(p.desde) });
-  itens.sort((a, b) => b.horas - a.horas);
+  // Alerta (processo, Procon, Reclame Aqui, urgente) vem antes de tudo; dentro de cada grupo, quem espera há mais tempo
+  itens.sort((a, b) => (b.alerta ? 1 : 0) - (a.alerta ? 1 : 0) || b.horas - a.horas);
   // Estornos que estão com a Bárbara: o que decidir vem da primeira linha "[dd/mm] Com a Bárbara ..." do resumo
   let comBarbara = [];
   try {

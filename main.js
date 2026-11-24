@@ -14843,7 +14843,7 @@ function filaRender() {
   // Peça da troca que voltou sem conferência (13/11/2026): mesma faixa, prazo de 1 dia útil, botão para a aba Trocas
   const linhas = mostrar.map(i => `
     <div style="display:flex;align-items:center;gap:10px;padding:4px 0;border-top:1px solid #fecaca">
-      <div style="flex:1;min-width:0">${i.vencido ? '<b style="color:#b91c1c">●</b> ' : '○ '}<b>${quem(i)}</b>
+      <div style="flex:1;min-width:0">${i.vencido ? '<b style="color:#b91c1c">●</b> ' : '○ '}${i.alerta ? `<span style="background:#b91c1c;color:#fff;border-radius:4px;padding:0 6px;font-size:10.5px;font-weight:700;margin-right:4px"><i class="ti ti-alert-triangle"></i> ${csEsc(i.alerta)}</span>` : ''}<b>${quem(i)}</b>
         ${i.tipo === 'conferir'
           ? `${csEsc(i.ultima || '')} <span style="opacity:.7">(há ${filaHoras(i.horas)} úteis)</span>${filaConversaConferir(i)}`
           : `<span style="opacity:.7">há ${filaHoras(i.horas)} úteis</span> · ${i.respondida ? '<span style="opacity:.7">já respondida, ainda</span> ' : ''}${i.falta ? 'falta ' + csEsc(i.falta) : '"' + csEsc(String(i.ultima || '').slice(0, 90)) + '"'}`}</div>
@@ -14852,9 +14852,10 @@ function filaRender() {
         : `<button style="${btn}" onclick="filaAbrir('${String(i.wa_id).replace(/\D/g, '')}')">Abrir conversa</button>`}
     </div>`).join('');
   const nConf = itens.filter(i => i.tipo === 'conferir').length, nCli = itens.length - nConf;
+  const nAlerta = itens.filter(i => i.alerta).length; // processo, Procon, Reclame Aqui ou urgente (24/11/2026)
   const resto = itens.length - VISIVEIS;
   const html = `<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:6px">
-      <div style="flex:1;font-weight:700;color:#991b1b"><i class="ti ti-clock-exclamation"></i> Esperando a equipe: ${nCli} cliente${nCli === 1 ? '' : 's'} sem resposta${nConf ? `, ${nConf} peça${nConf === 1 ? '' : 's'} para conferir` : ''}${venc ? ` <span style="font-weight:600">· ${venc} fora do prazo</span>` : ''}</div>
+      <div style="flex:1;font-weight:700;color:#991b1b"><i class="ti ti-clock-exclamation"></i> Esperando a equipe: ${nCli} cliente${nCli === 1 ? '' : 's'} sem resposta${nConf ? `, ${nConf} peça${nConf === 1 ? '' : 's'} para conferir` : ''}${venc ? ` <span style="font-weight:600">· ${venc} fora do prazo</span>` : ''}${nAlerta ? ` <span style="font-weight:700;color:#b91c1c">· ${nAlerta} com alerta, responder primeiro</span>` : ''}</div>
       ${resto > 0 ? `<button onclick="_filaAberta=!_filaAberta;filaRender()" style="background:#fff;color:#991b1b;border:1px solid #fca5a5;border-radius:6px;padding:3px 12px;font-size:12px;font-weight:600;cursor:pointer">${_filaAberta ? 'Ver menos' : `Ver mais (${resto})`}</button>` : ''}
     </div>
     <div style="font-size:12px;line-height:1.5">${linhas}</div>

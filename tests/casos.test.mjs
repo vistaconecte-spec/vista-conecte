@@ -537,5 +537,22 @@ ok('tela converte texto e ações antes de mostrar', /const semEsc = s => typeof
 
 ok('rota fora do PUBLICO (exige sessão)', /PUBLICO = new Set\([^)]*casos/.test(mid), false);
 
+console.log('\nFila: alerta de processo/Procon/urgente vai para o topo (Carol #9905, 24/11/2026)');
+{
+  const u = t => ({ role: 'user', texto: t });
+  ok('ameaça de processo', C.alertaDaConversa([u('vocês precisam avisar antes. vou processar vocês')]), 'ameaça de processo');
+  ok('Procon', C.alertaDaConversa([u('vou abrir reclamação no PROCON')]), 'Procon');
+  ok('Reclame Aqui', C.alertaDaConversa([u('vou colocar no reclameaqui')]), 'Reclame Aqui');
+  ok('advogado', C.alertaDaConversa([u('meu advogado vai entrar em contato')]), 'ameaça de processo');
+  ok('fala da Vi não conta', C.alertaDaConversa([{ role: 'assistant', texto: 'não precisa ir ao Procon' }]), null);
+  ok('processo de troca não é ameaça', C.alertaDaConversa([u('como funciona o processo de troca?')]), null);
+  ok('pedido em processamento não é ameaça', C.alertaDaConversa([u('meu pedido está em processamento?')]), null);
+  ok('caso registrado como urgente', C.alertaDaConversa([u('cadê meu pedido')], 'urgente · prazo'), 'urgente');
+  ok('conversa comum', C.alertaDaConversa([u('qual o prazo?')], 'prazo de troca'), null);
+  const apiTxt2 = readFileSync(join(raiz, 'functions', 'api', 'casos.js'), 'utf8');
+  ok('fila ordena alerta antes do tempo de espera', apiTxt2.includes('itens.sort((a, b) => (b.alerta ? 1 : 0) - (a.alerta ? 1 : 0) || b.horas - a.horas)'), true);
+  ok('faixa mostra o selo do alerta', main.includes('${i.alerta ? `<span') && main.includes('nAlerta'), true);
+}
+
 console.log(`\n${total - falhas}/${total} passaram`);
 if (falhas) process.exit(1);
