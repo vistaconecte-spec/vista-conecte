@@ -5639,7 +5639,9 @@ const CX_KEY = 'caixa';
 const CX_FATOR_META = 1.13832; // imposto que a Meta põe por cima do gasto (medido nas faturas de nov/2026)
 // dasPct: o cofrinho DAS guarda sozinho 10% de cada venda (desde 28/09/2026), então esse dinheiro
 // nunca fica livre. outrosDia: devolução, Ju por dia, sistemas avulsos (~R$ 300/dia em nov/2026).
-const CX_AJUSTES_PADRAO = { piso: 3500, freteDia: 400, cofrinhoDia: 342, dasPct: 10, outrosDia: 300, alt: '' };
+// taxaPct: o que o Mercado Pago tira de cada venda até o dinheiro entrar (taxa a embutir de 4,5%,
+// medida em nov/2026). Converte a meta de ENTRADA no MP em meta de VENDA na loja.
+const CX_AJUSTES_PADRAO = { piso: 3500, freteDia: 400, cofrinhoDia: 342, dasPct: 10, outrosDia: 300, taxaPct: 4.5, alt: '' };
 const CX_CATS = {
   producao: { nome: 'Produção', cor: '#9A7A56', icone: 'ti-scissors' },
   equipe:   { nome: 'Equipe', cor: '#2563eb', icone: 'ti-users' },
@@ -5743,6 +5745,7 @@ function cxProjecao(p) {
     const data = cxSomaDias(p.hoje, d);
     if (d > 0) saldo += liquidoDia;
     while (ci < contas.length && contas[ci].data <= data) saldo -= Number(contas[ci++].valor) || 0;
+    if (d < (p.aPartirDe || 0)) continue;
     if (!pior || saldo < pior.saldo - 0.005) pior = { data, saldo: r(saldo), dias: d };
   }
   const n = pior.dias;
@@ -5762,11 +5765,13 @@ function cxProjecao(p) {
 // "não faz sentido montar esse quadro negativo, pra dar essa ansiedade toda"). É o quanto precisa
 // ENTRAR por dia no Mercado Pago (venda liberada, já sem taxa) pra pagar tudo da lista, a Meta, o
 // frete, os cofrinhos, o DAS e os gastos miúdos dos próximos 30 dias sem o saldo furar o piso.
+// Conta de amanhã em diante: o que vence hoje e já passa do saldo nenhuma venda futura resolve.
 function cxMetaVenda(base) {
-  const com = e => cxProjecao(Object.assign({}, base, { entradaDia: e }));
+  const com = e => cxProjecao(Object.assign({}, base, { entradaDia: e, aPartirDe: 1 }));
   const zero = com(0);
   if (zero.folga >= 0) return { porDia: 0, ate: zero.pior.data };
   let lo = 0, hi = 100000;
+  if (com(hi).folga < 0) return { porDia: null, ate: null };
   for (let k = 0; k < 40; k++) { const m = (lo + hi) / 2; if (com(m).folga >= 0) hi = m; else lo = m; }
   return { porDia: Math.ceil(hi / 10) * 10, ate: com(hi).pior.data };
 }
@@ -5970,11 +5975,12 @@ async function cxPuxarDados(forcar) {
   if (!forcar && cx.api.em && Date.now() - cx.api.em < 3 * 60 * 1000) return;
   const hoje = cxHoje(), seg = cxSegunda(hoje);
   const pegar = async u => { try { const r = await fetch(u, { cache: 'no-store' }); return r.ok ? await r.json() : null; } catch (e) { return null; } };
-  const [saldo, mov, meta, saidas] = await Promise.all([
+  const [saldo, saidas, mov, meta, painel] = await Promise.all([
     pegar('/api/mp-saldo'),
     pegar('/api/mp-saidas?desde=' + cxSomaDias(hoje, -35) + '&ate=' + hoje),
     pegar('/api/mp-movimentos?desde=' + cxSomaDias(hoje, -28) + '&ate=' + hoje),
     pegar('/api/meta-cobrancas?dias=28'),
+    pegar('/api/painel-diario?dias=8'),
   ]);
   const api = { em: Date.now() };
   if (saldo && typeof saldo.disponivel === 'number') { api.saldo = saldo.disponivel; api.saldoRef = saldo.referencia || null; }
@@ -5988,10 +5994,15 @@ async function cxPuxarDados(forcar) {
   // 28 as vendas fracas do começo do mês (R$ 4.608/dia), e a tela previa falta de R$ 9 mil.
   const pd = (mov && mov.entradas && mov.entradas.por_dia) || null;
   const cobr = (meta && Array.isArray(meta.cobrancas)) ? meta.cobrancas : null;
-  if (pd) {
-    api.ontem = Number(pd[cxSomaDias(hoje, -1)]) || 0;
-    let t7 = 0; for (let i = 1; i <= 7; i++) t7 += Number(pd[cxSomaDias(hoje, -i)]) || 0;
-    api.media7 = Math.round(t7 / 7 * 100) / 100;
+  // "Ontem vendeu" é venda da LOJA (Shopify, pedidos pagos), não o que o MP liberou no dia: em 24/11
+  // a tela disse "ontem entrou R$ 9.456" (cartão de dias anteriores caindo) e ela: "ontem vendeu 4k".
+  if (painel && Array.isArray(painel.linhas)) {
+    const porDia = Object.fromEntries(painel.linhas.map(l => [l.dia, Number(l.receita) || 0]));
+    const pedDia = Object.fromEntries(painel.linhas.map(l => [l.dia, Number(l.pedidos) || 0]));
+    const ontemD = cxSomaDias(hoje, -1);
+    if (ontemD in porDia) { api.ontem = porDia[ontemD]; api.ontemPedidos = pedDia[ontemD]; }
+    let t7 = 0, n7 = 0; for (let i = 1; i <= 7; i++) { const d = cxSomaDias(hoje, -i); if (d in porDia) { t7 += porDia[d]; n7++; } }
+    if (n7) api.media7 = Math.round(t7 / n7 * 100) / 100;
   }
   if (pd) api.semanaEntrou = Object.entries(pd).filter(([d]) => d >= seg && d <= hoje).reduce((s, [, v]) => s + (Number(v) || 0), 0);
   if (cobr) api.semanaMeta = cobr.filter(c => cxIso(new Date(c.quando)) >= seg).reduce((s, c) => s + (Number(c.valor) || 0) * CX_FATOR_META, 0);
@@ -6069,8 +6080,10 @@ function cxDesenhar() {
   };
   const livre = cxLivreHoje(saldoAgora, aj.piso, contas, hoje);
   const meta = cxMetaVenda(base);
+  // Meta em valor de VENDA na loja: o que precisa entrar no MP, mais a taxa que ele tira.
+  const metaVenda = meta.porDia == null ? null : Math.ceil(meta.porDia / (1 - (Number(aj.taxaPct) || 0) / 100) / 10) * 10;
   const ontem = cx.api.ontem, media7 = cx.api.media7;
-  const bateuMedia = typeof media7 === 'number' && media7 >= meta.porDia;
+  const bateuMedia = typeof media7 === 'number' && metaVenda != null && media7 >= metaVenda;
   const L = (rot, v, sinal) => `<div><span>${rot}</span><b>${sinal || ''}${cxR(v)}</b></div>`;
   const c = cxProjecao(Object.assign({}, base, { entradaDia: meta.porDia }));
   hero.className = 'cx-hero' + (temSaldo && (livre.livre <= 0 || !bateuMedia) ? ' cx-atencao' : '');
@@ -6082,7 +6095,7 @@ function cxDesenhar() {
       ? `Dá pra usar sem mexer no que vence até ${cxRotDia(livre.ate)} nem no piso de ${cxR(aj.piso)}.`
       : `Hoje não tem sobra: o saldo está segurando o que vence até ${cxRotDia(livre.ate)} e o piso.`;
     const ontemTxt = typeof ontem === 'number'
-      ? (ontem >= meta.porDia ? `Ontem entrou ${cxR(ontem)}, bateu a meta.` : `Ontem entrou ${cxR(ontem)}.`)
+      ? `Ontem a loja vendeu ${cxR(ontem)}${cx.api.ontemPedidos ? ' (' + cx.api.ontemPedidos + ' pedidos)' : ''}${metaVenda != null && ontem >= metaVenda ? ', bateu a meta' : ''}.`
       : '';
     const a = c.ate;
     hero.innerHTML = `
@@ -6091,8 +6104,8 @@ function cxDesenhar() {
       <div class="cx-hero-frase">${fraseLivre}</div>
       <div class="cx-meta">
         <div class="cx-meta-rot">Meta de venda</div>
-        <div class="cx-meta-valor">${cxR(meta.porDia)} <span>por dia</span></div>
-        <div class="cx-meta-sub">Pra pagar tudo da lista até ${cxRotDia(cxSomaDias(hoje, 30))} sem furar o piso. ${ontemTxt} Média dos últimos 7 dias ${cxR(media7 || 0)}${bateuMedia ? ', acima da meta.' : '.'}</div>
+        <div class="cx-meta-valor">${metaVenda == null ? '…' : cxR(metaVenda)} <span>por dia</span></div>
+        <div class="cx-meta-sub">Pra pagar tudo da lista até ${cxRotDia(cxSomaDias(hoje, 30))} sem furar o piso. ${ontemTxt} ${typeof media7 === 'number' ? 'Média dos últimos 7 dias ' + cxR(media7) + (bateuMedia ? ', acima da meta.' : '.') : ''}</div>
       </div>
       <details class="cx-como"><summary>Como calculei</summary>
         <div class="cx-hero-conta">
@@ -6100,7 +6113,7 @@ function cxDesenhar() {
           ${L('Vence até ' + cxRotDia(livre.ate), livre.vence, '− ')}
           ${L('Piso que fica no MP', aj.piso, '− ')}
         </div>
-        <div class="cx-hero-nota">A meta é o que precisa entrar por dia no Mercado Pago (venda liberada, já sem taxa) pra cobrir nos próximos 30 dias: ${cxR(contas.reduce((t, i) => t + i.valor, 0))} de pagamentos da lista, Meta ${cxR(cx.api.metaDia || 0)} por dia (média de ${cx.api.janela || 28} dias com imposto), frete ${cxR(aj.freteDia)}, cofrinhos ${cxR(aj.cofrinhoDia)} e gastos miúdos ${cxR(aj.outrosDia)} por dia, e o DAS de ${aj.dasPct}% de cada venda. Os valores por dia mudam em AJUSTES DA CONTA.${cx.api.mediaVelha ? ' Meta e vendas guardadas às ' + new Date(cx.api.mediaVelha).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) + ' porque o Mercado Pago não respondeu agora.' : ''}${cx.nuvemFalhou ? ' Sem conexão com a nuvem: mostrando a cópia deste aparelho.' : ''}</div>
+        <div class="cx-hero-nota">A meta é a venda por dia na loja (pedidos pagos na Shopify) que, depois da taxa de ${aj.taxaPct}% do Mercado Pago, cobre nos próximos 30 dias: ${cxR(contas.reduce((t, i) => t + i.valor, 0))} de pagamentos da lista, Meta ${cxR(cx.api.metaDia || 0)} por dia (média de ${cx.api.janela || 28} dias com imposto), frete ${cxR(aj.freteDia)}, cofrinhos ${cxR(aj.cofrinhoDia)} e gastos miúdos ${cxR(aj.outrosDia)} por dia, e o DAS de ${aj.dasPct}% de cada venda. Os valores por dia mudam em AJUSTES DA CONTA.${cx.api.mediaVelha ? ' Meta e vendas guardadas às ' + new Date(cx.api.mediaVelha).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) + ' porque o Mercado Pago não respondeu agora.' : ''}${cx.nuvemFalhou ? ' Sem conexão com a nuvem: mostrando a cópia deste aparelho.' : ''}</div>
       </details>`;
   }
   const at = document.getElementById('cx-atualizado');
@@ -6209,7 +6222,7 @@ function cxDesenharAjustes(aj) {
   const el = document.getElementById('cx-ajustes');
   if (!el || el.contains(document.activeElement)) return; // não troca o campo enquanto ela digita
   const C = (campo, rot) => `<div class="cx-ajuste"><span>${rot}</span><input type="number" step="1" min="0" value="${Number(aj[campo]) || 0}" onchange="cxMudarAjuste('${campo}', this.value)"></div>`;
-  el.innerHTML = C('piso', 'Piso que sempre fica no MP') + C('freteDia', 'Frete por dia') + C('cofrinhoDia', 'Cofrinhos por dia (acordo + Simples)') + C('dasPct', 'DAS automático, % de cada venda') + C('outrosDia', 'Gastos miúdos por dia (devolução, Ju, sistemas)') +
+  el.innerHTML = C('piso', 'Piso que sempre fica no MP') + C('freteDia', 'Frete por dia') + C('cofrinhoDia', 'Cofrinhos por dia (acordo + Simples)') + C('dasPct', 'DAS automático, % de cada venda') + C('outrosDia', 'Gastos miúdos por dia (devolução, Ju, sistemas)') + C('taxaPct', 'Taxa do Mercado Pago, % de cada venda') +
     '<div class="cx-ajuste-nota">O piso segura a Meta no Mercado Pago: abaixo de uns R$ 3.400 a cobrança cai no cartão do Álvaro. Os pagamentos marcados "sai do cofrinho" não entram na sobra, porque o dinheiro já foi guardado aos poucos.</div>';
 }
 

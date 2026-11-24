@@ -204,6 +204,15 @@ ok('portão de senha continua', html.includes('id="flx-gate"') && html.includes(
   ok('valor pago fica gravado na ocorrência (e vale sobre a leitura do MP)', /cxMudarEstado\(id, \{ pago: true, em: data, valor, manual: true \}\)/.test(conf), true);
   ok('sem valor digitado não marca', conf.includes("if (!(valor > 0))"), true);
 }
+{
+  // Em 24/11 a lista de buscas ganhou o /api/mp-saidas no meio e a desestruturação ficou na ordem
+  // antiga: a aba lia as compras no lugar das vendas, a conta rodava com venda zero (falta de R$ 79 mil).
+  const fn = extrair('cxPuxarDados');
+  const nomesVar = (fn.match(/const \[([^\]]+)\] = await Promise\.all/) || [])[1].split(',').map(x => x.trim());
+  const urls = [...fn.matchAll(/pegar\('\/api\/([a-z-]+)/g)].map(m => m[1]);
+  const esperado = { 'mp-saldo': 'saldo', 'mp-saidas': 'saidas', 'mp-movimentos': 'mov', 'meta-cobrancas': 'meta', 'painel-diario': 'painel' };
+  ok('cada busca cai na variável certa', urls.map((u, k) => esperado[u] === nomesVar[k]), urls.map(() => true));
+}
 ok('renderFluxo é a versão nova', /async function renderFluxo\(forcar\)/.test(main), true);
 
 console.log(`\n${total - falhas}/${total} ok`);
