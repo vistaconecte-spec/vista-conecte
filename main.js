@@ -5981,7 +5981,18 @@ async function cxPuxarDados(forcar) {
     const liq = j => j.entradaDia * (1 - das) - j.metaDia;
     const esc = liq(j14) <= liq(j28) ? j14 : j28;
     api.entradaDia = esc.entradaDia; api.metaDia = esc.metaDia; api.janela = esc.n;
+    try { localStorage.setItem('vc:caixa-medias', JSON.stringify({ entradaDia: api.entradaDia, metaDia: api.metaDia, janela: api.janela, em: Date.now() })); } catch (e) {}
+  } else {
+    // Vendas ou Meta não chegaram (MP gerando extrato, rede). Em 24/11 isso virou "vendas = 0" e a
+    // tela mostrou falta de R$ 79 mil. Usa a última média boa (até 3 dias) e tenta de novo em 1 min.
+    let ult = null;
+    try { ult = JSON.parse(localStorage.getItem('vc:caixa-medias') || 'null'); } catch (e) {}
+    if (ult && Date.now() - ult.em < 3 * 864e5) { api.entradaDia = ult.entradaDia; api.metaDia = ult.metaDia; api.janela = ult.janela; api.mediaVelha = ult.em; }
+    else { delete cx.api.entradaDia; delete cx.api.metaDia; }
+    clearTimeout(cx.retry);
+    cx.retry = setTimeout(() => { if (document.getElementById('cx-hero')) cxPuxarDados(true); }, 60 * 1000);
   }
+  if (pd && cobr) delete cx.api.mediaVelha;
   cx.api = Object.assign({}, cx.api, api);
   cxDesenhar();
 }
@@ -6022,7 +6033,8 @@ function cxDesenhar() {
   const insts = casadas.insts;
   cx.usados = casadas.usados;
   const aj = Object.assign({}, CX_AJUSTES_PADRAO, cx.cfg.ajustes || {});
-  const temSaldo = typeof cx.api.saldo === 'number';
+  // Só mostra número com saldo, vendas e Meta na mão: dado que não chegou nunca vira zero.
+  const temSaldo = typeof cx.api.saldo === 'number' && typeof cx.api.entradaDia === 'number' && typeof cx.api.metaDia === 'number';
   const saldoAgora = cxSaldoCorrigido(cx.api.saldo, cx.api.saldoRef, cx.cfg.mp && cx.cfg.mp.itens);
   const contas = insts.filter(i => !i.pago && !i.cofrinho && i.data <= cxSomaDias(hoje, 30));
   const base = {
@@ -6035,7 +6047,7 @@ function cxDesenhar() {
 
   // Topo: um número só.
   let classe = 'cx-hero', frase;
-  if (!temSaldo) frase = 'Puxando o saldo do Mercado Pago…';
+  if (!temSaldo) frase = cx.api.em ? 'O Mercado Pago não respondeu (vendas ou saldo). Tento de novo em 1 minuto.' : 'Puxando saldo, vendas e Meta…';
   else if (c.folga >= 1000) frase = `No dia mais apertado do mês (${rotPior}) ainda ficam ${cxR(c.folga)} acima do piso. É o máximo que dá pra gastar fora da lista.`;
   else if (c.folga >= 0) { classe += ' cx-atencao'; frase = `No dia mais apertado do mês (${rotPior}) o caixa encosta no piso. Nada de gasto fora da lista.`; }
   else {
@@ -6062,7 +6074,8 @@ function cxDesenhar() {
       ${L('Pagamentos até ' + rotPior, a.contas, '− ')}
       ${L('Piso que fica no MP', aj.piso, '− ')}
     </div>
-    <div class="cx-hero-nota">Olha os próximos 30 dias e mostra o dia em que o caixa fica mais baixo. Vendas ${cxR(cx.api.entradaDia || 0)} e Meta ${cxR(cx.api.metaDia || 0)} por dia, média dos últimos ${cx.api.janela || 28} dias (das duas janelas, a mais cautelosa). Se vender 30% menos, ${fraca.folga >= 0 ? 'a folga cai pra ' + cxR(fraca.folga) : 'faltam ' + cxR(-fraca.folga)} (${cxRotDia(fraca.pior.data)}).${cx.nuvemFalhou ? ' Sem conexão com a nuvem: mostrando a cópia deste aparelho.' : ''}</div>`;
+    <div class="cx-hero-nota">Olha os próximos 30 dias e mostra o dia em que o caixa fica mais baixo. Vendas ${cxR(cx.api.entradaDia || 0)} e Meta ${cxR(cx.api.metaDia || 0)} por dia, média dos últimos ${cx.api.janela || 28} dias (das duas janelas, a mais cautelosa)${cx.api.mediaVelha ? ', guardada às ' + new Date(cx.api.mediaVelha).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) + ' porque o Mercado Pago não respondeu agora' : ''}. Se vender 30% menos, ${fraca.folga >= 0 ? 'a folga cai pra ' + cxR(fraca.folga) : 'faltam ' + cxR(-fraca.folga)} (${cxRotDia(fraca.pior.data)}).${cx.nuvemFalhou ? ' Sem conexão com a nuvem: mostrando a cópia deste aparelho.' : ''}</div>`;
+  if (!temSaldo) hero.innerHTML = `<div class="cx-hero-rot">Folga do caixa</div><div class="cx-hero-valor">…</div><div class="cx-hero-frase">${frase}</div>`;
   const at = document.getElementById('cx-atualizado');
   if (at) at.textContent = cx.api.em ? 'atualizado às ' + new Date(cx.api.em).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '';
 
