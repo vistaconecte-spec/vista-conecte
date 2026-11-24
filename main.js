@@ -6078,7 +6078,7 @@ function cxAbrirForm(id) {
   };
   cxDesenharForm();
   document.getElementById('cx-modal').style.display = '';
-  setTimeout(() => { const f = document.getElementById('cx-f-desc'); if (f && !inst) f.focus(); }, 60);
+  const fDesc = document.getElementById('cx-f-desc'); if (fDesc && !inst) fDesc.focus();
 }
 function cxFecharForm() {
   document.getElementById('cx-modal').style.display = 'none';
@@ -6105,7 +6105,7 @@ function cxDesenharForm() {
   let acoes;
   if (!f.id) acoes = '<button class="btn-primary" onclick="cxSalvarForm(\'nova\')"><i class="ti ti-check"></i> Salvar</button>';
   else if (repete) acoes = `<button class="btn-primary" onclick="cxSalvarForm('so')">Mudar só esta</button>
-      <button class="btn-primary" onclick="cxSalvarForm('proximas')">Mudar esta e as próximas</button>
+      <button class="btn-primary" onclick="cxSalvarForm('proximas')">Mudar esta e as próximas</button></div><div class="cx-form-apagar">
       <button class="cx-btn-apagar" onclick="cxApagar('so')"><i class="ti ti-trash"></i> Apagar só esta</button>
       <button class="cx-btn-apagar" onclick="cxApagar('proximas')">Apagar esta e as próximas</button>`;
   else acoes = `<button class="btn-primary" onclick="cxSalvarForm('so')"><i class="ti ti-check"></i> Salvar</button>
