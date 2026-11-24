@@ -6181,32 +6181,28 @@ function cxDesenhar() {
   // Gasto fora da lista só aparece se sobrar no pior dia dos 30, vendendo como o ritmo mais fraco.
   const folga = cxProjecao(base).folga;
   const L = (rot, v, sinal) => `<div><span>${rot}</span><b>${sinal || ''}${cxR(v)}</b></div>`;
-  hero.className = 'cx-hero' + (temSaldo && !bateuMedia ? ' cx-atencao' : '');
+  // Faixa de 3 números (24/11/2026): o card verde gigante só com a meta do dia "não faz sentido"
+  // (ela). Agora é uma linha baixa e a lista de pagamentos fica em cima, à vista.
+  const cofR = cxSaldoCofrinho(cx.cfg.cofrinho);
+  const cofSaidas = insts.filter(i => i.cofrinho && !i.pago && i.data >= hoje && i.data <= cxSomaDias(hoje, 40)).sort((a, b) => a.data.localeCompare(b.data));
+  const cofProx = cofSaidas[0];
+  const T = (rot, valor, sub, cls) => `<div class="cx-tile${cls ? ' ' + cls : ''}"><div class="cx-tile-rot">${rot}</div><div class="cx-tile-valor">${valor}</div><div class="cx-tile-sub">${sub}</div></div>`;
+  hero.className = 'cx-resumo';
   if (!temSaldo) {
-    const frase = cx.api.em ? 'O Mercado Pago não respondeu (vendas ou saldo). Tento de novo em 1 minuto.' : 'Puxando saldo, vendas e Meta…';
-    hero.innerHTML = `<div class="cx-hero-rot">Meta de venda hoje</div><div class="cx-hero-valor">…</div><div class="cx-hero-frase">${frase}</div>`;
+    const frase = cx.api.em ? 'O Mercado Pago não respondeu. Tento de novo em 1 minuto.' : 'Puxando saldo, vendas e Meta…';
+    hero.innerHTML = T('Vendas hoje', '…', frase) + T('Próximos 7 dias', '…', '') + T('Cofrinho', cofR.conhecido ? cxR(cofR.saldo) : '…', '');
   } else {
-    const pctHoje = metaVenda ? Math.min(100, Math.round((vendaHoje || 0) / metaVenda * 100)) : 0;
-    const hojeTxt = typeof vendaHoje === 'number'
-      ? (metaVenda != null && vendaHoje >= metaVenda ? `Hoje a loja já vendeu ${cxR(vendaHoje)}, meta batida.` : `Hoje a loja já vendeu ${cxR(vendaHoje)}${cx.api.pedidosHoje ? ' (' + cx.api.pedidosHoje + ' pedidos)' : ''}.`)
-      : '';
-    const histTxt = [typeof ontem === 'number' ? 'Ontem ' + cxR(ontem) : '', typeof media7 === 'number' ? 'média dos últimos 7 dias ' + cxR(media7) + (bateuMedia ? ', acima da meta' : '') : ''].filter(Boolean).join(', ');
-    const foraTxt = folga >= 500
-      ? `Dá pra gastar até ${cxR(Math.floor(folga / 100) * 100)} fora da lista sem atrapalhar as contas dos próximos 30 dias.`
-      : 'Gasto fora da lista: nada por enquanto, o que entra já tem destino.';
+    const vendaTxt = typeof vendaHoje === 'number' ? cxR(vendaHoje) : '…';
+    const metaTxt = metaVenda == null ? '' : (typeof vendaHoje === 'number' && vendaHoje >= metaVenda ? 'bateu a meta de ' + cxR(metaVenda) + ' por dia' : 'meta ' + cxR(metaVenda) + ' por dia');
+    const semTxt = `saldo de hoje cobre ${pctCobre}%` + (folga >= 500 ? `, dá pra gastar até ${cxR(Math.floor(folga / 100) * 100)} fora da lista` : '');
+    const cofTxt = !cofR.conhecido ? 'esperando o saldo no WhatsApp'
+      : (cofProx ? (cofR.saldo >= cofProx.valor ? 'já tem a ' + cxEsc(cofProx.desc.split(',')[0]) + ' de ' + cxRotDia(cofProx.data) : 'falta ' + cxR(cofProx.valor - cofR.saldo) + ' pra ' + cxEsc(cofProx.desc.split(',')[0]) + ' de ' + cxRotDia(cofProx.data)) : 'nada vence nos próximos 40 dias');
     hero.innerHTML = `
-      <div class="cx-hero-rot">Meta de venda hoje</div>
-      <div class="cx-hero-valor">${metaVenda == null ? '…' : cxR(metaVenda)}</div>
-      <div class="cx-barra cx-barra-hero"><div style="width:${pctHoje}%"></div></div>
-      <div class="cx-hero-frase">${hojeTxt} <span class="cx-hero-hist">${histTxt}.</span></div>
-      <div class="cx-meta">
-        <div class="cx-meta-rot">Próximos 7 dias</div>
-        <div class="cx-meta-sub">Saem ${cxR(semana7)}: ${cxR(lista7)} de pagamentos da lista, uns ${cxR(meta7)} de Meta e ${cxR(diaADia7)} do dia a dia (frete, cofrinhos, miúdos). O saldo de hoje já cobre ${pctCobre}%, o resto vem das vendas da semana.</div>
-        <div class="cx-barra cx-barra-hero"><div style="width:${pctCobre}%"></div></div>
-        <div class="cx-meta-sub">${foraTxt}</div>
-      </div>
-      <details class="cx-como"><summary>Como calculei</summary>
-        <div class="cx-hero-nota">A meta é a venda por dia na loja (pedidos pagos na Shopify) que, depois da taxa de ${String(aj.taxaPct).replace('.', ',')}% do Mercado Pago, paga nos próximos 30 dias: ${cxR(contas.reduce((t, i) => t + i.valor, 0))} de pagamentos da lista, Meta ${cxR(cx.api.metaDia || 0)} por dia (média de ${cx.api.janela || 28} dias com imposto), frete ${cxR(aj.freteDia)}, cofrinhos ${cxR(aj.cofrinhoDia)} e gastos miúdos ${cxR(aj.outrosDia)} por dia, o DAS de ${aj.dasPct}% de cada venda, sem mexer na margem de ${cxR(aj.piso)} pra imprevisto. O saldo de hoje é ${cxR(saldoAgora || 0)}. Os valores por dia mudam em AJUSTES DA CONTA.${cx.api.mediaVelha ? ' Meta e vendas guardadas às ' + new Date(cx.api.mediaVelha).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) + ' porque o Mercado Pago não respondeu agora.' : ''}${cx.nuvemFalhou ? ' Sem conexão com a nuvem: mostrando a cópia deste aparelho.' : ''}</div>
+      ${T('Vendas hoje', vendaTxt, metaTxt + (typeof ontem === 'number' ? ' · ontem ' + cxR(ontem) : ''), typeof vendaHoje === 'number' && metaVenda != null && vendaHoje >= metaVenda ? 'cx-tile-ok' : '')}
+      ${T('Saem nos próximos 7 dias', cxR(semana7), semTxt)}
+      ${T('Cofrinho das parcelas', cofR.conhecido ? cxR(cofR.saldo) : '…', cofTxt)}
+      <details class="cx-como cx-como-resumo"><summary>Como calculei</summary>
+        <div class="cx-hero-nota">Meta de venda: o que a loja precisa vender por dia (pedidos pagos na Shopify) pra, depois da taxa de ${String(aj.taxaPct).replace('.', ',')}% do Mercado Pago, pagar nos próximos 30 dias ${cxR(contas.reduce((t, i) => t + i.valor, 0))} da lista, a Meta (${cxR(cx.api.metaDia || 0)} por dia), frete, cofrinho, gastos miúdos e o DAS de ${aj.dasPct}%, sem mexer na margem de ${cxR(aj.piso)}. Próximos 7 dias: ${cxR(lista7)} da lista, ${cxR(meta7)} de Meta e ${cxR(diaADia7)} do dia a dia; o saldo de hoje (${cxR(saldoAgora || 0)}) menos a margem cobre ${pctCobre}%.${cx.api.mediaVelha ? ' Médias guardadas porque o Mercado Pago não respondeu agora.' : ''}</div>
       </details>`;
   }
   const at = document.getElementById('cx-atualizado');

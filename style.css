@@ -1595,3 +1595,13 @@ table.est-tab td > div > input { min-width: 0; flex: 1 1 auto; }
 .cx-aviso { display:flex; align-items:flex-start; gap:10px; background:rgba(37,99,235,.08); color:#1e3a8a; border-radius:var(--radius-sm); padding:10px 14px; font-size:13px; font-weight:600; line-height:1.35; }
 .cx-aviso i { font-size:17px; margin-top:1px; }
 .cx-aviso.cx-aviso-alerta { background:rgba(194,138,44,.14); color:#7a4f0c; }
+/* faixa de 3 números no lugar do card verde (24/11) */
+.cx-resumo { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; margin-bottom:16px; }
+.cx-tile { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-sm); padding:12px 14px; }
+.cx-tile-rot { font-size:10px; font-weight:700; letter-spacing:.1em; text-transform:uppercase; color:var(--text-ter); }
+.cx-tile-valor { font-size:22px; font-weight:700; font-variant-numeric:tabular-nums; margin:3px 0 2px; color:var(--text); }
+.cx-tile-sub { font-size:11px; color:var(--text-sec); line-height:1.35; }
+.cx-tile.cx-tile-ok .cx-tile-valor { color:#2f6146; }
+.cx-como-resumo { grid-column:1 / -1; margin-top:0; color:var(--text-sec); }
+.cx-como-resumo .cx-hero-nota { color:var(--text-sec); opacity:1; }
+@media (max-width:700px) { .cx-resumo { grid-template-columns:1fr; gap:8px; } .cx-tile { padding:10px 12px; } .cx-tile-valor { font-size:19px; } }
