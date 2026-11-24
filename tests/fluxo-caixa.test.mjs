@@ -151,7 +151,7 @@ console.log('\n6) Celular e PC não se apagam');
   ok('pago marcado no PC fica', m.estado['a@2026-11-30'].pago, true);
   const apagou = cx.cxMesclar(m, { regras: { b: { id: 'b', apagado: true, alt: '2026-11-24T13:00:00Z' } } });
   ok('apagar (com data nova) vence a versão velha', apagou.regras.b.apagado, true);
-  ok('ajustes padrão quando ninguém mexeu', cx.cxMesclar({}).ajustes.piso, 3500);
+  ok('margem padrão de R$ 1.000 (a Meta tem linha própria, não precisa de piso de 3.500)', cx.cxMesclar({}).ajustes.piso, 1000);
   ok('mesclar nada não quebra', Object.keys(cx.cxMesclar(null, undefined).regras).length, 0);
 }
 

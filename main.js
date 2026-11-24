@@ -5641,7 +5641,10 @@ const CX_FATOR_META = 1.13832; // imposto que a Meta põe por cima do gasto (med
 // nunca fica livre. outrosDia: devolução, Ju por dia, sistemas avulsos (~R$ 300/dia em nov/2026).
 // taxaPct: o que o Mercado Pago tira de cada venda até o dinheiro entrar (taxa a embutir de 4,5%,
 // medida em nov/2026). Converte a meta de ENTRADA no MP em meta de VENDA na loja.
-const CX_AJUSTES_PADRAO = { piso: 3500, freteDia: 400, cofrinhoDia: 342, dasPct: 10, outrosDia: 300, taxaPct: 4.5, alt: '' };
+// piso: margem pra imprevisto (estorno, etiqueta a mais). Era R$ 3.500 pra segurar a cobrança da Meta,
+// mas desde 24/11 a Meta tem linha própria no livre hoje e a projeção já desconta a Meta dia a dia
+// (antes de a cobrança sair), então os R$ 3.500 contavam a Meta duas vezes. Ela: "porque esse piso?".
+const CX_AJUSTES_PADRAO = { piso: 1000, freteDia: 400, cofrinhoDia: 342, dasPct: 10, outrosDia: 300, taxaPct: 4.5, alt: '' };
 const CX_CATS = {
   producao: { nome: 'Produção', cor: '#9A7A56', icone: 'ti-scissors' },
   equipe:   { nome: 'Equipe', cor: '#2563eb', icone: 'ti-users' },
@@ -6115,8 +6118,8 @@ function cxDesenhar() {
     hero.innerHTML = `<div class="cx-hero-rot">Livre hoje</div><div class="cx-hero-valor">…</div><div class="cx-hero-frase">${frase}</div>`;
   } else {
     const fraseLivre = livre.livre > 0
-      ? `Dá pra usar sem mexer no que vence até ${cxRotDia(livre.ate)}${livre.meta ? ', na cobrança da Meta' : ''} nem no piso de ${cxR(aj.piso)}.`
-      : `Hoje não tem sobra: o saldo está segurando o que vence até ${cxRotDia(livre.ate)}${livre.meta ? ', a cobrança da Meta de ' + cxR(livre.meta) + ' (' + cxRotDia(proxMeta.data) + ')' : ''} e o piso.`;
+      ? `Dá pra usar sem mexer no que vence até ${cxRotDia(livre.ate)}${livre.meta ? ', na cobrança da Meta' : ''} nem na margem de ${cxR(aj.piso)} pra imprevisto.`
+      : `Hoje não tem sobra: o saldo está segurando o que vence até ${cxRotDia(livre.ate)}${livre.meta ? ', a cobrança da Meta de ' + cxR(livre.meta) + ' (' + cxRotDia(proxMeta.data) + ')' : ''} e a margem pra imprevisto.`;
     const ontemTxt = typeof ontem === 'number'
       ? `Ontem a loja vendeu ${cxR(ontem)}${cx.api.ontemPedidos ? ' (' + cx.api.ontemPedidos + ' pedidos)' : ''}${metaVenda != null && ontem >= metaVenda ? ', bateu a meta' : ''}.`
       : '';
@@ -6128,14 +6131,14 @@ function cxDesenhar() {
       <div class="cx-meta">
         <div class="cx-meta-rot">Meta de venda</div>
         <div class="cx-meta-valor">${metaVenda == null ? '…' : cxR(metaVenda)} <span>por dia</span></div>
-        <div class="cx-meta-sub">Pra pagar tudo da lista até ${cxRotDia(cxSomaDias(hoje, 30))} sem furar o piso. ${ontemTxt} ${typeof media7 === 'number' ? 'Média dos últimos 7 dias ' + cxR(media7) + (bateuMedia ? ', acima da meta.' : '.') : ''}</div>
+        <div class="cx-meta-sub">Pra pagar tudo da lista até ${cxRotDia(cxSomaDias(hoje, 30))} sem mexer na margem. ${ontemTxt} ${typeof media7 === 'number' ? 'Média dos últimos 7 dias ' + cxR(media7) + (bateuMedia ? ', acima da meta.' : '.') : ''}</div>
       </div>
       <details class="cx-como"><summary>Como calculei</summary>
         <div class="cx-hero-conta">
           ${L('Saldo no MP agora', saldoAgora || 0)}
           ${L('Vence até ' + cxRotDia(livre.ate), livre.vence, '− ')}
           ${livre.meta ? L('Meta, cobrança prevista ' + cxRotDia(proxMeta.data), livre.meta, '− ') : ''}
-          ${L('Piso que fica no MP', aj.piso, '− ')}
+          ${L('Margem pra imprevisto', aj.piso, '− ')}
         </div>
         <div class="cx-hero-nota">A meta é a venda por dia na loja (pedidos pagos na Shopify) que, depois da taxa de ${String(aj.taxaPct).replace('.', ',')}% do Mercado Pago, cobre nos próximos 30 dias: ${cxR(contas.reduce((t, i) => t + i.valor, 0))} de pagamentos da lista, Meta ${cxR(cx.api.metaDia || 0)} por dia (média de ${cx.api.janela || 28} dias com imposto), frete ${cxR(aj.freteDia)}, cofrinhos ${cxR(aj.cofrinhoDia)} e gastos miúdos ${cxR(aj.outrosDia)} por dia, e o DAS de ${aj.dasPct}% de cada venda. Os valores por dia mudam em AJUSTES DA CONTA.${cx.api.mediaVelha ? ' Meta e vendas guardadas às ' + new Date(cx.api.mediaVelha).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) + ' porque o Mercado Pago não respondeu agora.' : ''}${cx.nuvemFalhou ? ' Sem conexão com a nuvem: mostrando a cópia deste aparelho.' : ''}</div>
       </details>`;
@@ -6246,8 +6249,8 @@ function cxDesenharAjustes(aj) {
   const el = document.getElementById('cx-ajustes');
   if (!el || el.contains(document.activeElement)) return; // não troca o campo enquanto ela digita
   const C = (campo, rot) => `<div class="cx-ajuste"><span>${rot}</span><input type="number" step="1" min="0" value="${Number(aj[campo]) || 0}" onchange="cxMudarAjuste('${campo}', this.value)"></div>`;
-  el.innerHTML = C('piso', 'Piso que sempre fica no MP') + C('freteDia', 'Frete por dia') + C('cofrinhoDia', 'Cofrinhos por dia (acordo + Simples)') + C('dasPct', 'DAS automático, % de cada venda') + C('outrosDia', 'Gastos miúdos por dia (devolução, Ju, sistemas)') + C('taxaPct', 'Taxa do Mercado Pago, % de cada venda') +
-    '<div class="cx-ajuste-nota">O piso segura a Meta no Mercado Pago: abaixo de uns R$ 3.400 a cobrança cai no cartão do Álvaro. Os pagamentos marcados "sai do cofrinho" não entram na sobra, porque o dinheiro já foi guardado aos poucos.</div>';
+  el.innerHTML = C('piso', 'Margem pra imprevisto') + C('freteDia', 'Frete por dia') + C('cofrinhoDia', 'Cofrinhos por dia (acordo + Simples)') + C('dasPct', 'DAS automático, % de cada venda') + C('outrosDia', 'Gastos miúdos por dia (devolução, Ju, sistemas)') + C('taxaPct', 'Taxa do Mercado Pago, % de cada venda') +
+    '<div class="cx-ajuste-nota">A cobrança da Meta (R$ 3.000 + imposto) já é reservada na conta, no dia previsto: se o saldo não cobrir, ela cai no cartão do Álvaro. A margem é só pra imprevisto. Os pagamentos marcados "sai do cofrinho" não entram na sobra, porque o dinheiro já foi guardado aos poucos.</div>';
 }
 
 function cxMudarAjuste(campo, valor) {
