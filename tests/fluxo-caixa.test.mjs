@@ -27,7 +27,7 @@ const ini = main.indexOf('const CX_AJUSTES_PADRAO =');
 const consts = main.slice(ini, main.indexOf('\n};', main.indexOf('const CX_CATS =', ini)) + 3);
 const iCh = main.indexOf('const CX_CHAVES_PADRAO =');
 const chaves = main.slice(iCh, main.indexOf('\n};', iCh) + 3);
-const nomes = ['cxIso', 'cxSomaDias', 'cxSegunda', 'cxOcorrencias', 'cxInstancias', 'cxProjecao', 'cxDivida', 'cxMesclar', 'cxSemente', 'cxNorm', 'cxChaves', 'cxDiasEntre', 'cxCasarMp', 'cxSaldoCorrigido', 'cxJuntarSaidas', 'cxMetaVenda', 'cxLivreHoje'];
+const nomes = ['cxIso', 'cxSomaDias', 'cxSegunda', 'cxOcorrencias', 'cxInstancias', 'cxProjecao', 'cxDivida', 'cxMesclar', 'cxSemente', 'cxNorm', 'cxChaves', 'cxDiasEntre', 'cxCasarMp', 'cxSaldoCorrigido', 'cxJuntarSaidas', 'cxMetaVenda', 'cxLivreHoje', 'cxProximaMeta'];
 const cx = new Function(`${consts}\n${chaves}\n${nomes.map(extrair).join('\n')}\nreturn { ${nomes.join(', ')} };`)();
 
 let falhas = 0, total = 0;
@@ -109,6 +109,15 @@ console.log('\n4b) Livre hoje e meta de venda (no lugar da previsão negativa)')
   const l = cx.cxLivreHoje(base.saldo, base.piso, base.contas, base.hoje);
   ok('livre hoje = saldo − piso − o que vence até depois de amanhã', [l.livre, l.vence, l.ate], [6500 - 3500 - 630, 630, '2026-11-26']);
   ok('livre hoje nunca fica negativo', cx.cxLivreHoje(1000, 3500, [], '2026-11-24').livre, 0);
+  // 24/11: acumulado R$ 714,43, gasto ~R$ 1.550/dia → bate os R$ 3.000 em 2 dias (26/11).
+  const pm = cx.cxProximaMeta(714.43, 1550, '2026-11-24', 3000, 1.13832);
+  ok('próxima cobrança da Meta: 26/11, R$ 3.414,96 com imposto', pm, { data: '2026-11-26', valor: 3414.96 });
+  const lm = cx.cxLivreHoje(7516, 3500, [{ data: '2026-11-25', valor: 630 }], '2026-11-24', pm);
+  ok('livre hoje desconta a cobrança da Meta que cai até depois de amanhã', [lm.livre, lm.meta], [0, 3414.96]);
+  const longe = cx.cxLivreHoje(7516, 3500, [], '2026-11-24', { data: '2026-11-28', valor: 3414.96 });
+  ok('cobrança da Meta depois do prazo não entra', [longe.livre, longe.meta], [4016, 0]);
+  ok('acumulado acima do limite cobra hoje', cx.cxProximaMeta(3100, 1500, '2026-11-24', 3000, 1).data, '2026-11-24');
+  ok('sem ritmo não inventa cobrança', cx.cxProximaMeta(700, 0, '2026-11-24', 3000, 1), null);
   const m = cx.cxMetaVenda(base);
   const com = e => cx.cxProjecao(Object.assign({}, base, { entradaDia: e }));
   ok('com a meta o caixa não fura o piso', com(m.porDia).folga >= 0, true);

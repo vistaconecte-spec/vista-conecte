@@ -5778,10 +5778,26 @@ function cxMetaVenda(base) {
 
 // Livre hoje: o dinheiro que existe agora, tirando o piso e o que vence até depois de amanhã.
 // Nunca negativo: no pior caso é zero ("hoje não tem sobra").
-function cxLivreHoje(saldo, piso, contas, hoje) {
+// A Meta cobra quando o gasto acumulado chega a R$ 3.000 (R$ 3.415 com o imposto), a cada ~2 dias.
+// Dia previsto = hoje + o que falta pro limite ÷ ritmo de gasto por dia (sem imposto).
+function cxProximaMeta(acumulado, ritmoDia, hoje, limite, fator) {
+  if (typeof acumulado !== 'number' || !(ritmoDia > 0)) return null;
+  const lim = limite || 3000;
+  const dias = acumulado >= lim ? 0 : Math.ceil((lim - acumulado) / ritmoDia);
+  return { data: cxSomaDias(hoje, dias), valor: Math.round(lim * (fator || 1) * 100) / 100 };
+}
+
+// Livre hoje: o dinheiro que existe agora, tirando o piso, o que vence até depois de amanhã e a
+// cobrança da Meta se ela cair nesse prazo (24/11, ela: "você não colocou a meta no cálculo, pois
+// daqui 2 dias vai bater os 3k"). Nunca negativo: no pior caso é zero ("hoje não tem sobra").
+function cxLivreHoje(saldo, piso, contas, hoje, proxMeta) {
   const ate = cxSomaDias(hoje, 2);
   const vence = (contas || []).filter(i => i.data <= ate).reduce((t, i) => t + (Number(i.valor) || 0), 0);
-  return { livre: Math.max(0, Math.round(((Number(saldo) || 0) - (Number(piso) || 0) - vence) * 100) / 100), vence: Math.round(vence * 100) / 100, ate };
+  const meta = proxMeta && proxMeta.data <= ate ? Number(proxMeta.valor) || 0 : 0;
+  return {
+    livre: Math.max(0, Math.round(((Number(saldo) || 0) - (Number(piso) || 0) - vence - meta) * 100) / 100),
+    vence: Math.round(vence * 100) / 100, meta, ate,
+  };
 }
 
 // Quanto já foi e quanto falta de uma dívida, somando as parcelas marcadas como pagas.
@@ -6005,6 +6021,12 @@ async function cxPuxarDados(forcar) {
     if (n7) api.media7 = Math.round(t7 / n7 * 100) / 100;
   }
   if (pd) api.semanaEntrou = Object.entries(pd).filter(([d]) => d >= seg && d <= hoje).reduce((s, [, v]) => s + (Number(v) || 0), 0);
+  if (meta && typeof meta.saldo_acumulado_agora === 'number') api.metaAcum = meta.saldo_acumulado_agora;
+  if (cobr) {
+    // Ritmo pelo intervalo entre as cobranças da última semana (cada uma = R$ 3.000 de gasto).
+    const sem = cobr.map(c => new Date(c.quando).getTime()).filter(t => Date.now() - t < 8 * 864e5).sort((a, b) => a - b);
+    if (sem.length >= 2) api.metaRitmo = Math.round(3000 * (sem.length - 1) / ((sem[sem.length - 1] - sem[0]) / 864e5));
+  }
   if (cobr) api.semanaMeta = cobr.filter(c => cxIso(new Date(c.quando)) >= seg).reduce((s, c) => s + (Number(c.valor) || 0) * CX_FATOR_META, 0);
   if (pd && cobr) {
     const das = (Object.assign({}, CX_AJUSTES_PADRAO, (cx.cfg && cx.cfg.ajustes) || {}).dasPct || 0) / 100;
@@ -6078,7 +6100,8 @@ function cxDesenhar() {
     hoje, dias: 30, saldo: saldoAgora, piso: aj.piso, entradaDia: cx.api.entradaDia, dasPct: aj.dasPct,
     metaDia: cx.api.metaDia, freteDia: aj.freteDia, cofrinhoDia: aj.cofrinhoDia, outrosDia: aj.outrosDia, contas,
   };
-  const livre = cxLivreHoje(saldoAgora, aj.piso, contas, hoje);
+  const proxMeta = cxProximaMeta(cx.api.metaAcum, cx.api.metaRitmo || (cx.api.metaDia ? cx.api.metaDia / CX_FATOR_META : 0), hoje, 3000, CX_FATOR_META);
+  const livre = cxLivreHoje(saldoAgora, aj.piso, contas, hoje, proxMeta);
   const meta = cxMetaVenda(base);
   // Meta em valor de VENDA na loja: o que precisa entrar no MP, mais a taxa que ele tira.
   const metaVenda = meta.porDia == null ? null : Math.ceil(meta.porDia / (1 - (Number(aj.taxaPct) || 0) / 100) / 10) * 10;
@@ -6092,8 +6115,8 @@ function cxDesenhar() {
     hero.innerHTML = `<div class="cx-hero-rot">Livre hoje</div><div class="cx-hero-valor">…</div><div class="cx-hero-frase">${frase}</div>`;
   } else {
     const fraseLivre = livre.livre > 0
-      ? `Dá pra usar sem mexer no que vence até ${cxRotDia(livre.ate)} nem no piso de ${cxR(aj.piso)}.`
-      : `Hoje não tem sobra: o saldo está segurando o que vence até ${cxRotDia(livre.ate)} e o piso.`;
+      ? `Dá pra usar sem mexer no que vence até ${cxRotDia(livre.ate)}${livre.meta ? ', na cobrança da Meta' : ''} nem no piso de ${cxR(aj.piso)}.`
+      : `Hoje não tem sobra: o saldo está segurando o que vence até ${cxRotDia(livre.ate)}${livre.meta ? ', a cobrança da Meta de ' + cxR(livre.meta) + ' (' + cxRotDia(proxMeta.data) + ')' : ''} e o piso.`;
     const ontemTxt = typeof ontem === 'number'
       ? `Ontem a loja vendeu ${cxR(ontem)}${cx.api.ontemPedidos ? ' (' + cx.api.ontemPedidos + ' pedidos)' : ''}${metaVenda != null && ontem >= metaVenda ? ', bateu a meta' : ''}.`
       : '';
@@ -6111,9 +6134,10 @@ function cxDesenhar() {
         <div class="cx-hero-conta">
           ${L('Saldo no MP agora', saldoAgora || 0)}
           ${L('Vence até ' + cxRotDia(livre.ate), livre.vence, '− ')}
+          ${livre.meta ? L('Meta, cobrança prevista ' + cxRotDia(proxMeta.data), livre.meta, '− ') : ''}
           ${L('Piso que fica no MP', aj.piso, '− ')}
         </div>
-        <div class="cx-hero-nota">A meta é a venda por dia na loja (pedidos pagos na Shopify) que, depois da taxa de ${aj.taxaPct}% do Mercado Pago, cobre nos próximos 30 dias: ${cxR(contas.reduce((t, i) => t + i.valor, 0))} de pagamentos da lista, Meta ${cxR(cx.api.metaDia || 0)} por dia (média de ${cx.api.janela || 28} dias com imposto), frete ${cxR(aj.freteDia)}, cofrinhos ${cxR(aj.cofrinhoDia)} e gastos miúdos ${cxR(aj.outrosDia)} por dia, e o DAS de ${aj.dasPct}% de cada venda. Os valores por dia mudam em AJUSTES DA CONTA.${cx.api.mediaVelha ? ' Meta e vendas guardadas às ' + new Date(cx.api.mediaVelha).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) + ' porque o Mercado Pago não respondeu agora.' : ''}${cx.nuvemFalhou ? ' Sem conexão com a nuvem: mostrando a cópia deste aparelho.' : ''}</div>
+        <div class="cx-hero-nota">A meta é a venda por dia na loja (pedidos pagos na Shopify) que, depois da taxa de ${String(aj.taxaPct).replace('.', ',')}% do Mercado Pago, cobre nos próximos 30 dias: ${cxR(contas.reduce((t, i) => t + i.valor, 0))} de pagamentos da lista, Meta ${cxR(cx.api.metaDia || 0)} por dia (média de ${cx.api.janela || 28} dias com imposto), frete ${cxR(aj.freteDia)}, cofrinhos ${cxR(aj.cofrinhoDia)} e gastos miúdos ${cxR(aj.outrosDia)} por dia, e o DAS de ${aj.dasPct}% de cada venda. Os valores por dia mudam em AJUSTES DA CONTA.${cx.api.mediaVelha ? ' Meta e vendas guardadas às ' + new Date(cx.api.mediaVelha).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) + ' porque o Mercado Pago não respondeu agora.' : ''}${cx.nuvemFalhou ? ' Sem conexão com a nuvem: mostrando a cópia deste aparelho.' : ''}</div>
       </details>`;
   }
   const at = document.getElementById('cx-atualizado');
