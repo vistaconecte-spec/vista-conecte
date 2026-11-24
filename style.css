@@ -1588,3 +1588,6 @@ table.est-tab td > div > input { min-width: 0; flex: 1 1 auto; }
 .cx-como { margin-top:10px; font-size:12px; }
 .cx-como summary { cursor:pointer; opacity:.85; }
 .cx-como .cx-hero-conta { margin-top:8px; }
+.cx-barra.cx-barra-hero { background:rgba(255,255,255,.22); margin:8px 0 10px; }
+.cx-barra.cx-barra-hero div { background:#fff; }
+.cx-hero-hist { font-weight:400; opacity:.9; }
