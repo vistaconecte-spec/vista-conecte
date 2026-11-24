@@ -5637,7 +5637,9 @@ function flxRecompute() {
 // Mescla por item (o `alt` mais novo ganha): marcar pago no celular e editar no PC não se apagam.
 const CX_KEY = 'caixa';
 const CX_FATOR_META = 1.13832; // imposto que a Meta põe por cima do gasto (medido nas faturas de nov/2026)
-const CX_AJUSTES_PADRAO = { piso: 3500, freteDia: 400, cofrinhoDia: 342, alt: '' };
+// dasPct: o cofrinho DAS guarda sozinho 10% de cada venda (desde 28/09/2026), então esse dinheiro
+// nunca fica livre. outrosDia: devolução, Ju por dia, sistemas avulsos (~R$ 300/dia em nov/2026).
+const CX_AJUSTES_PADRAO = { piso: 3500, freteDia: 400, cofrinhoDia: 342, dasPct: 10, outrosDia: 300, alt: '' };
 const CX_CATS = {
   producao: { nome: 'Produção', cor: '#9A7A56', icone: 'ti-scissors' },
   equipe:   { nome: 'Equipe', cor: '#2563eb', icone: 'ti-users' },
@@ -5724,20 +5726,35 @@ function cxInstancias(cfg, de, ate) {
   return lst.sort((a, b) => a.data.localeCompare(b.data) || (b.valor - a.valor));
 }
 
-// A conta do topo. Tudo em reais de caixa; `compromissos` = o que vence em 7 dias e ainda não
-// foi pago (sem os que saem do cofrinho, que já foram guardados aos poucos).
-function cxSobraSemana(p) {
-  const dias = p.dias || 7;
+// A conta do topo, dia a dia: saldo de hoje + vendas − DAS automático − Meta − frete − cofrinhos −
+// gastos miúdos, e cada pagamento no seu dia. A folga é o PIOR dia dos próximos `dias` menos o piso.
+// A 1ª versão (24/11/2026) olhava só 7 dias: o Pix de R$ 6.500 ao Álvaro em 01/12 ficava fora da
+// janela de terça e a tela mostrava "sobra R$ 20 mil". A Bárbara: "isso aqui não tá correto".
+// `contas` = pagamentos não pagos e fora do cofrinho; os atrasados contam já no dia de hoje.
+function cxProjecao(p) {
+  const dias = p.dias || 30;
   const r = v => Math.round(v * 100) / 100;
-  const entradas = r((p.entradaDia || 0) * dias);
-  const meta = r((p.metaDia || 0) * dias);
-  const frete = r((p.freteDia || 0) * dias);
-  const cofrinhos = r((p.cofrinhoDia || 0) * dias);
-  const compromissos = r((p.compromissos || []).reduce((s, i) => s + (Number(i.valor) || 0), 0));
-  const saidas = r(meta + frete + cofrinhos + compromissos + (p.piso || 0));
-  const sobra = r((p.saldo || 0) + entradas - saidas);
-  const semVender = r((p.saldo || 0) - saidas);
-  return { entradas, meta, frete, cofrinhos, compromissos, sobra, semVender };
+  const ent = Number(p.entradaDia) || 0, das = (Number(p.dasPct) || 0) / 100;
+  const liquidoDia = ent * (1 - das) - (Number(p.metaDia) || 0) - (Number(p.freteDia) || 0) - (Number(p.cofrinhoDia) || 0) - (Number(p.outrosDia) || 0);
+  const contas = (p.contas || []).slice().sort((a, b) => a.data.localeCompare(b.data));
+  let saldo = Number(p.saldo) || 0, ci = 0, pior = null;
+  for (let d = 0; d <= dias; d++) {
+    const data = cxSomaDias(p.hoje, d);
+    if (d > 0) saldo += liquidoDia;
+    while (ci < contas.length && contas[ci].data <= data) saldo -= Number(contas[ci++].valor) || 0;
+    if (!pior || saldo < pior.saldo - 0.005) pior = { data, saldo: r(saldo), dias: d };
+  }
+  const n = pior.dias;
+  return {
+    pior,
+    folga: r(pior.saldo - (Number(p.piso) || 0)),
+    ate: {
+      entradas: r(ent * n), das: r(ent * n * das), meta: r((Number(p.metaDia) || 0) * n),
+      frete: r((Number(p.freteDia) || 0) * n), cofrinhos: r((Number(p.cofrinhoDia) || 0) * n),
+      outros: r((Number(p.outrosDia) || 0) * n),
+      contas: r(contas.filter(c => c.data <= pior.data).reduce((t, c) => t + (Number(c.valor) || 0), 0)),
+    },
+  };
 }
 
 // Quanto já foi e quanto falta de uma dívida, somando as parcelas marcadas como pagas.
@@ -5873,23 +5890,30 @@ async function cxPuxarDados(forcar) {
   const pegar = async u => { try { const r = await fetch(u, { cache: 'no-store' }); return r.ok ? await r.json() : null; } catch (e) { return null; } };
   const [saldo, mov, meta] = await Promise.all([
     pegar('/api/mp-saldo'),
-    pegar('/api/mp-movimentos?desde=' + cxSomaDias(hoje, -14) + '&ate=' + hoje),
-    pegar('/api/meta-cobrancas?dias=14'),
+    pegar('/api/mp-movimentos?desde=' + cxSomaDias(hoje, -28) + '&ate=' + hoje),
+    pegar('/api/meta-cobrancas?dias=28'),
   ]);
   const api = { em: Date.now() };
   if (saldo && typeof saldo.disponivel === 'number') api.saldo = saldo.disponivel;
-  if (mov && mov.entradas && mov.entradas.por_dia) {
-    const pd = mov.entradas.por_dia;
-    let soma = 0;
-    for (let i = 1; i <= 14; i++) soma += Number(pd[cxSomaDias(hoje, -i)]) || 0;
-    api.entradaDia = Math.round(soma / 14 * 100) / 100;
-    api.semanaEntrou = Object.entries(pd).filter(([d]) => d >= seg && d <= hoje).reduce((s, [, v]) => s + (Number(v) || 0), 0);
-  }
-  if (meta && Array.isArray(meta.cobrancas)) {
-    const lim = Date.now() - 14 * 864e5;
-    const soma = meta.cobrancas.filter(c => new Date(c.quando).getTime() >= lim).reduce((s, c) => s + (Number(c.valor) || 0), 0);
-    api.metaDia = Math.round(soma * CX_FATOR_META / 14 * 100) / 100;
-    api.semanaMeta = meta.cobrancas.filter(c => cxIso(new Date(c.quando)) >= seg).reduce((s, c) => s + (Number(c.valor) || 0) * CX_FATOR_META, 0);
+  // Vendas e Meta na MESMA janela (14 ou 28 dias), escolhendo a que deixa menos dinheiro por dia.
+  // Misturar janelas exagera: em 24/11 a de 14 dias tinha a Meta da Black (R$ 1.773/dia) e a de
+  // 28 as vendas fracas do começo do mês (R$ 4.608/dia), e a tela previa falta de R$ 9 mil.
+  const pd = (mov && mov.entradas && mov.entradas.por_dia) || null;
+  const cobr = (meta && Array.isArray(meta.cobrancas)) ? meta.cobrancas : null;
+  if (pd) api.semanaEntrou = Object.entries(pd).filter(([d]) => d >= seg && d <= hoje).reduce((s, [, v]) => s + (Number(v) || 0), 0);
+  if (cobr) api.semanaMeta = cobr.filter(c => cxIso(new Date(c.quando)) >= seg).reduce((s, c) => s + (Number(c.valor) || 0) * CX_FATOR_META, 0);
+  if (pd && cobr) {
+    const das = (Object.assign({}, CX_AJUSTES_PADRAO, (cx.cfg && cx.cfg.ajustes) || {}).dasPct || 0) / 100;
+    const janela = n => {
+      let ent = 0; for (let i = 1; i <= n; i++) ent += Number(pd[cxSomaDias(hoje, -i)]) || 0;
+      const lim = Date.now() - n * 864e5;
+      const met = cobr.filter(c => new Date(c.quando).getTime() >= lim).reduce((s, c) => s + (Number(c.valor) || 0), 0) * CX_FATOR_META;
+      return { n, entradaDia: Math.round(ent / n * 100) / 100, metaDia: Math.round(met / n * 100) / 100 };
+    };
+    const [j14, j28] = [janela(14), janela(28)];
+    const liq = j => j.entradaDia * (1 - das) - j.metaDia;
+    const esc = liq(j14) <= liq(j28) ? j14 : j28;
+    api.entradaDia = esc.entradaDia; api.metaDia = esc.metaDia; api.janela = esc.n;
   }
   cx.api = Object.assign({}, cx.api, api);
   cxDesenhar();
@@ -5900,43 +5924,49 @@ function cxDesenhar() {
   const hero = document.getElementById('cx-hero');
   if (!cx || !hero) return;
   if (!cx.cfg) { hero.className = 'cx-hero'; hero.innerHTML = '<div class="cx-hero-rot">Carregando…</div>'; return; }
-  const hoje = cxHoje(), fim7 = cxSomaDias(hoje, 6);
+  const hoje = cxHoje();
   const insts = cxInstancias(cx.cfg, cxSomaDias(hoje, -60), cxSomaDias(hoje, 35));
-  const aj = cx.cfg.ajustes || CX_AJUSTES_PADRAO;
-  const abertos7 = insts.filter(i => !i.pago && i.data <= fim7);
+  const aj = Object.assign({}, CX_AJUSTES_PADRAO, cx.cfg.ajustes || {});
   const temSaldo = typeof cx.api.saldo === 'number';
-  const c = cxSobraSemana({
-    saldo: cx.api.saldo, piso: aj.piso, entradaDia: cx.api.entradaDia, metaDia: cx.api.metaDia,
-    freteDia: aj.freteDia, cofrinhoDia: aj.cofrinhoDia, compromissos: abertos7.filter(i => !i.cofrinho),
-  });
+  const contas = insts.filter(i => !i.pago && !i.cofrinho && i.data <= cxSomaDias(hoje, 30));
+  const base = {
+    hoje, dias: 30, saldo: cx.api.saldo, piso: aj.piso, entradaDia: cx.api.entradaDia, dasPct: aj.dasPct,
+    metaDia: cx.api.metaDia, freteDia: aj.freteDia, cofrinhoDia: aj.cofrinhoDia, outrosDia: aj.outrosDia, contas,
+  };
+  const c = cxProjecao(base);
+  const fraca = cxProjecao(Object.assign({}, base, { entradaDia: (cx.api.entradaDia || 0) * 0.7 }));
+  const rotPior = cxRotDia(c.pior.data);
 
   // Topo: um número só.
-  const ate = cxRotDia(fim7);
   let classe = 'cx-hero', frase;
   if (!temSaldo) frase = 'Puxando o saldo do Mercado Pago…';
-  else if (c.sobra >= 1000) frase = `Dá pra pagar tudo até ${ate} e ainda sobra.`;
-  else if (c.sobra >= 0) { classe += ' cx-atencao'; frase = `Fecha a semana, mas no limite. Nada de gasto fora da lista.`; }
+  else if (c.folga >= 1000) frase = `No dia mais apertado do mês (${rotPior}) ainda ficam ${cxR(c.folga)} acima do piso. É o máximo que dá pra gastar fora da lista.`;
+  else if (c.folga >= 0) { classe += ' cx-atencao'; frase = `No dia mais apertado do mês (${rotPior}) o caixa encosta no piso. Nada de gasto fora da lista.`; }
   else {
     classe += ' cx-falta';
-    const adiavel = abertos7.filter(i => !i.cofrinho && i.cat !== 'divida').sort((a, b) => b.valor - a.valor)[0];
-    frase = `Faltam ${cxR(-c.sobra)} pra fechar até ${ate}.` + (adiavel ? ` O maior pagamento da semana é ${cxEsc(adiavel.desc)} (${cxR(adiavel.valor)}, ${cxRotDia(adiavel.data)}).` : '');
+    const adiavel = contas.filter(i => i.cat !== 'divida' && i.data <= c.pior.data).sort((a, b) => b.valor - a.valor)[0];
+    frase = `Em ${rotPior} faltam ${cxR(-c.folga)} pra manter o piso.` + (adiavel ? ` O maior pagamento até lá é ${cxEsc(adiavel.desc)} (${cxR(adiavel.valor)}, ${cxRotDia(adiavel.data)}).` : '');
   }
   const L = (rot, v, sinal) => `<div><span>${rot}</span><b>${sinal || ''}${cxR(v)}</b></div>`;
+  const a = c.ate, nd = c.pior.dias;
+  const ateTxt = nd ? `, ${nd} dia${nd > 1 ? 's' : ''}` : '';
   hero.className = classe;
   hero.innerHTML = `
-    <div class="cx-hero-rot">${!temSaldo || c.sobra >= 0 ? 'Sobra da semana' : 'Falta na semana'}</div>
-    <div class="cx-hero-valor">${temSaldo ? cxR(Math.abs(c.sobra)) : '…'}</div>
+    <div class="cx-hero-rot">${!temSaldo || c.folga >= 0 ? 'Folga do caixa' : 'Falta no caixa'}</div>
+    <div class="cx-hero-valor">${temSaldo ? cxR(Math.abs(c.folga)) : '…'}</div>
     <div class="cx-hero-frase">${frase}</div>
     <div class="cx-hero-conta">
       ${L('Saldo no MP agora', cx.api.saldo || 0)}
-      ${L('Vendas previstas, 7 dias', c.entradas, '+ ')}
-      ${L('Meta, 7 dias', c.meta, '− ')}
-      ${L('Frete, 7 dias', c.frete, '− ')}
-      ${L('Cofrinhos, 7 dias', c.cofrinhos, '− ')}
-      ${L('Pagamentos até ' + ate, c.compromissos, '− ')}
+      ${L('Vendas até ' + rotPior + ateTxt, a.entradas, '+ ')}
+      ${L('DAS automático (' + aj.dasPct + '%)', a.das, '− ')}
+      ${L('Meta', a.meta, '− ')}
+      ${L('Frete', a.frete, '− ')}
+      ${L('Cofrinhos (acordo e Simples)', a.cofrinhos, '− ')}
+      ${L('Gastos miúdos', a.outros, '− ')}
+      ${L('Pagamentos até ' + rotPior, a.contas, '− ')}
       ${L('Piso que fica no MP', aj.piso, '− ')}
     </div>
-    <div class="cx-hero-nota">Vendas previstas = média dos últimos 14 dias (${cxR(cx.api.entradaDia || 0)} por dia). Se não vender nada, ${c.semVender >= 0 ? 'ainda sobram ' + cxR(c.semVender) : 'faltam ' + cxR(-c.semVender)}.${cx.nuvemFalhou ? ' Sem conexão com a nuvem: mostrando a cópia deste aparelho.' : ''}</div>`;
+    <div class="cx-hero-nota">Olha os próximos 30 dias e mostra o dia em que o caixa fica mais baixo. Vendas ${cxR(cx.api.entradaDia || 0)} e Meta ${cxR(cx.api.metaDia || 0)} por dia, média dos últimos ${cx.api.janela || 28} dias (das duas janelas, a mais cautelosa). Se vender 30% menos, ${fraca.folga >= 0 ? 'a folga cai pra ' + cxR(fraca.folga) : 'faltam ' + cxR(-fraca.folga)} (${cxRotDia(fraca.pior.data)}).${cx.nuvemFalhou ? ' Sem conexão com a nuvem: mostrando a cópia deste aparelho.' : ''}</div>`;
   const at = document.getElementById('cx-atualizado');
   if (at) at.textContent = cx.api.em ? 'atualizado às ' + new Date(cx.api.em).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '';
 
@@ -6032,8 +6062,8 @@ function cxDesenharAjustes(aj) {
   const el = document.getElementById('cx-ajustes');
   if (!el || el.contains(document.activeElement)) return; // não troca o campo enquanto ela digita
   const C = (campo, rot) => `<div class="cx-ajuste"><span>${rot}</span><input type="number" step="1" min="0" value="${Number(aj[campo]) || 0}" onchange="cxMudarAjuste('${campo}', this.value)"></div>`;
-  el.innerHTML = C('piso', 'Piso que sempre fica no MP') + C('freteDia', 'Frete por dia') + C('cofrinhoDia', 'Cofrinhos por dia (acordo + Simples)') +
-    '<div class="cx-ajuste-nota">O piso segura a Meta no Mercado Pago: abaixo de uns R$ 3.400 a cobrança cai no cartão do Álvaro. Os pagamentos marcados "sai do cofrinho" não entram na sobra, porque o dinheiro já foi guardado aos poucos.</div>';
+  el.innerHTML = C('piso', 'Piso que sempre fica no MP') + C('freteDia', 'Frete por dia') + C('cofrinhoDia', 'Cofrinhos por dia (acordo + Simples)') + C('dasPct', 'DAS automático, % de cada venda') + C('outrosDia', 'Gastos miúdos por dia (devolução, Ju, sistemas)') +
+    '<div class="cx-ajuste-nota">Pagou e marcou na lista antes do Pix sair? A conta tira o pagamento da lista mas o saldo do MP ainda tem o dinheiro: marque só depois de pagar. O piso segura a Meta no Mercado Pago: abaixo de uns R$ 3.400 a cobrança cai no cartão do Álvaro. Os pagamentos marcados "sai do cofrinho" não entram na sobra, porque o dinheiro já foi guardado aos poucos.</div>';
 }
 
 function cxMudarAjuste(campo, valor) {

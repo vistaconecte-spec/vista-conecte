@@ -25,7 +25,7 @@ function extrair(nome) {
 // As duas constantes ficam juntas no main.js: do CX_AJUSTES_PADRAO até o fim do bloco CX_CATS.
 const ini = main.indexOf('const CX_AJUSTES_PADRAO =');
 const consts = main.slice(ini, main.indexOf('\n};', main.indexOf('const CX_CATS =', ini)) + 3);
-const nomes = ['cxIso', 'cxSomaDias', 'cxSegunda', 'cxOcorrencias', 'cxInstancias', 'cxSobraSemana', 'cxDivida', 'cxMesclar', 'cxSemente'];
+const nomes = ['cxIso', 'cxSomaDias', 'cxSegunda', 'cxOcorrencias', 'cxInstancias', 'cxProjecao', 'cxDivida', 'cxMesclar', 'cxSemente'];
 const cx = new Function(`${consts}\n${nomes.map(extrair).join('\n')}\nreturn { ${nomes.join(', ')} };`)();
 
 let falhas = 0, total = 0;
@@ -81,15 +81,23 @@ console.log('\n3) O que foi marcado e mudado vale na lista');
   ok('ocorrência puxada pra antes do período sai dele', empurrada.some(i => i.regra === 'alvaro'), false);
 }
 
-console.log('\n4) Sobra da semana');
+console.log('\n4) Folga do caixa: o pior dia dos próximos 30');
 {
-  const c = cx.cxSobraSemana({ saldo: 4656, piso: 3500, entradaDia: 5000, metaDia: 1590, freteDia: 400, cofrinhoDia: 342,
-    compromissos: [{ valor: 500 }, { valor: 4400 }, { valor: 6500 }] });
-  ok('vendas previstas = média × 7', c.entradas, 35000);
-  ok('pagamentos somados', c.compromissos, 11400);
-  ok('sobra = saldo + vendas − Meta − frete − cofrinhos − pagamentos − piso', c.sobra, 4656 + 35000 - 11130 - 2800 - 2394 - 11400 - 3500);
-  ok('sem vender nada', c.semVender, 4656 - 11130 - 2800 - 2394 - 11400 - 3500);
-  ok('sem dados não quebra', cx.cxSobraSemana({}).sobra, 0);
+  const base = { hoje: '2026-11-24', dias: 30, saldo: 4656, piso: 3500, entradaDia: 5000, dasPct: 10, metaDia: 1590, freteDia: 400, cofrinhoDia: 342, outrosDia: 300 };
+  // líquido por dia = 5000 − 500 de DAS − 1590 − 400 − 342 − 300 = 1868
+  const semConta = cx.cxProjecao(Object.assign({}, base, { contas: [] }));
+  ok('sem conta nenhuma o pior dia é hoje', [semConta.pior.data, semConta.folga], ['2026-11-24', 1156]);
+  const amanha = cx.cxProjecao(Object.assign({}, base, { contas: [{ data: '2026-11-25', valor: 10000 }] }));
+  ok('conta grande amanhã vira o pior dia', [amanha.pior.data, amanha.pior.saldo], ['2026-11-25', 4656 + 1868 - 10000]);
+  ok('falta aparece negativa', amanha.folga, 4656 + 1868 - 10000 - 3500);
+  ok('detalhe da conta até o pior dia', [amanha.ate.entradas, amanha.ate.das, amanha.ate.contas], [5000, 500, 10000]);
+  const dia8 = cx.cxProjecao(Object.assign({}, base, { saldo: 2000, entradaDia: 3000, contas: [{ data: '2026-12-02', valor: 6500 }] }));
+  ok('conta do 8º dia entra (a 1ª versão olhava só 7)', dia8.pior.data, '2026-12-02');
+  const atrasada = cx.cxProjecao(Object.assign({}, base, { contas: [{ data: '2026-11-20', valor: 3000 }] }));
+  ok('atrasada pesa já hoje', [atrasada.pior.data, atrasada.pior.saldo], ['2026-11-24', 1656]);
+  const caindo = cx.cxProjecao(Object.assign({}, base, { entradaDia: 1000, contas: [] }));
+  ok('vendendo pouco o pior dia é o último', caindo.pior.data, '2026-12-24');
+  ok('sem dados não quebra', cx.cxProjecao({ hoje: '2026-11-24' }).folga, 0);
 }
 
 console.log('\n5) Dívidas');
