@@ -1567,6 +1567,8 @@ table.est-tab td > div > input { min-width: 0; flex: 1 1 auto; }
 .cx-form-apagar { display:flex; gap:8px; margin-top:8px; flex-wrap:wrap; }
 .cx-form-apagar .cx-btn-apagar { flex:1 1 150px; }
 .cx-btn-apagar { background:none; border:1px solid rgba(194,69,61,.4); color:#c2453d; border-radius:10px; padding:9px 12px; font-size:12px; cursor:pointer; }
+.cx-pagar-desc { font-size:16px; font-weight:700; }
+.cx-pagar-prev { font-size:12px; color:var(--text-ter); margin:2px 0 14px; }
 .cx-check-linha { display:flex; align-items:center; gap:8px; font-size:13px; color:var(--text-sec); }
 @media (max-width:860px) {
   .cx-grid { grid-template-columns:1fr; }

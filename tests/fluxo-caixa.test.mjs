@@ -143,6 +143,13 @@ console.log('\n7) Combinado de 24/11 entra na primeira carga');
 console.log('\n8) Tela');
 ok('painel novo no index', ['cx-hero', 'cx-lista', 'cx-semana', 'cx-dividas', 'cx-ajustes', 'cx-modal'].every(id => html.includes(`id="${id}"`)), true);
 ok('portão de senha continua', html.includes('id="flx-gate"') && html.includes('id="flx-senha"'), true);
+{
+  const marcar = extrair('cxMarcarPago');
+  ok('marcar pago abre a pergunta do valor real (pedido de 24/11)', marcar.includes('cxAbrirPagar(id)'), true);
+  const conf = extrair('cxConfirmarPagar');
+  ok('valor pago fica gravado na ocorrência', /cxMudarEstado\(id, \{ pago: true, em: data, valor \}\)/.test(conf), true);
+  ok('sem valor digitado não marca', conf.includes("if (!(valor > 0))"), true);
+}
 ok('renderFluxo é a versão nova', /async function renderFluxo\(forcar\)/.test(main), true);
 
 console.log(`\n${total - falhas}/${total} ok`);

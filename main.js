@@ -6087,11 +6087,55 @@ function cxMudarEstado(id, mudanca) {
   cx.cfg.estado[id] = Object.assign({}, cx.cfg.estado[id] || {}, mudanca, { alt: cxAgora() });
 }
 
+// Bolinha da lista. Desmarcar é direto; marcar como pago SEMPRE pergunta quanto saiu de verdade
+// (pedido dela em 24/11/2026: "os valores precisam ser reais e não estimados quando eu clicar em
+// pago"). O valor digitado fica na ocorrência e tira a etiqueta "valor estimado".
 function cxMarcarPago(id) {
   const atual = (window._cx.cfg.estado || {})[id];
-  const pago = !(atual && atual.pago);
-  cxMudarEstado(id, { pago, em: pago ? cxHoje() : null });
-  cxGravar(); cxDesenhar();
+  if (atual && atual.pago) {
+    cxMudarEstado(id, { pago: false, em: null });
+    cxGravar(); cxDesenhar();
+    return;
+  }
+  cxAbrirPagar(id);
+}
+
+function cxAbrirPagar(id) {
+  const inst = cxAcharInstancia(id);
+  if (!inst) return;
+  window._cx.form = { pagar: id };
+  const repete = inst.freq !== 'unica';
+  document.getElementById('cx-modal-caixa').innerHTML = `
+    <div class="cx-form-tit"><span>Quanto você pagou?</span><button onclick="cxFecharForm()">×</button></div>
+    <div class="cx-pagar-desc">${cxEsc(inst.desc)}</div>
+    <div class="cx-pagar-prev">${inst.estimado ? 'Estimado em' : 'Previsto'} ${cxR(inst.valor, true)} pra ${cxRotDia(inst.data)}</div>
+    <div class="cx-linha2">
+      <div class="cx-campo"><label>VALOR PAGO (R$)</label><input id="cx-p-valor" type="number" step="0.01" inputmode="decimal" placeholder="${Number(inst.valor).toFixed(2)}" onkeydown="if(event.key==='Enter')cxConfirmarPagar()"></div>
+      <div class="cx-campo"><label>DIA QUE PAGOU</label><input id="cx-p-data" type="date" value="${cxHoje()}"></div>
+    </div>
+    ${repete ? '<label class="cx-check-linha"><input type="checkbox" id="cx-p-prox"> Usar esse valor nas próximas também</label>' : ''}
+    <div class="cx-ajuste-nota" id="cx-p-erro" style="color:#c2453d;min-height:14px"></div>
+    <div class="cx-form-acoes"><button class="btn-primary" onclick="cxConfirmarPagar()"><i class="ti ti-check"></i> Confirmar pagamento</button></div>`;
+  document.getElementById('cx-modal').style.display = '';
+  const v = document.getElementById('cx-p-valor'); if (v) v.focus();
+}
+
+function cxConfirmarPagar() {
+  const cx = window._cx;
+  const id = cx.form && cx.form.pagar;
+  const inst = id && cxAcharInstancia(id);
+  if (!inst) { cxFecharForm(); return; }
+  const bruto = String(document.getElementById('cx-p-valor').value || '').replace(',', '.');
+  const valor = Math.round((parseFloat(bruto) || 0) * 100) / 100;
+  if (!(valor > 0)) { document.getElementById('cx-p-erro').textContent = 'Digita o valor que saiu de verdade.'; return; }
+  const data = document.getElementById('cx-p-data').value || cxHoje();
+  cxMudarEstado(id, { pago: true, em: data, valor });
+  const prox = document.getElementById('cx-p-prox');
+  if (prox && prox.checked) {
+    const r = cx.cfg.regras[inst.regra];
+    cx.cfg.regras[r.id] = Object.assign({}, r, { valor, estimado: false, alt: cxAgora() });
+  }
+  cxFecharForm(); cxGravar(); cxDesenhar();
 }
 
 // ── Formulário (novo / editar) ────────────────────────────────────────────────
@@ -6153,7 +6197,7 @@ function cxDesenharForm() {
     <div class="cx-campo"><label>TIPO</label><div class="cx-chips">${Object.entries(CX_CATS).map(([k, c]) => chip('cat', k, c.nome)).join('')}</div></div>
     <label class="cx-check-linha"><input type="checkbox" id="cx-f-est" ${f.estimado ? 'checked' : ''}> Valor estimado (ainda vou confirmar)</label>
     <label class="cx-check-linha" style="margin-top:6px"><input type="checkbox" id="cx-f-cof" ${f.cofrinho ? 'checked' : ''}> Sai do cofrinho (já guardo aos poucos, não conta na sobra)</label>
-    ${f.id ? `<label class="cx-check-linha" style="margin-top:6px"><input type="checkbox" ${inst && inst.pago ? 'checked' : ''} onchange="cxMarcarPago('${cxEsc(f.id)}');cxFecharForm()"> Já paguei</label>` : ''}
+    ${f.id ? (inst && inst.pago ? `<div class="cx-ajuste-nota" style="margin-top:8px">Pago ${cxR(inst.valor, true)} em ${cxRotDia(inst.pagoEm || inst.data)}. <a href="#" onclick="event.preventDefault();cxMarcarPago('${cxEsc(f.id)}');cxFecharForm()">Desmarcar</a></div>` : `<button type="button" class="btn-outline" style="width:100%;margin-top:10px;padding:9px" onclick="cxAbrirPagar('${cxEsc(f.id)}')"><i class="ti ti-check"></i> Marcar como pago</button>`) : ''}
     <div class="cx-form-acoes">${acoes}</div>`;
 }
 
