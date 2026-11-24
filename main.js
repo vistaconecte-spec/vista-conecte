@@ -5798,8 +5798,9 @@ function cxDiasEntre(a, b) {
 // Baixa automática (pedido de 24/11/2026: "isso precisa ser tudo intuitivo, automático").
 // Cada saída do MP (nome + valor exato, lida do site pelo puxar-saidas-mp.js) procura o pagamento
 // da lista com a mesma palavra-chave e a data mais perto (até 3 dias nos semanais, 10 nos outros).
-// Valor fixo (sem "estimado") só casa se bater com folga de 15%: o Pix de R$ 2.500 do conserto do
-// carro ao Álvaro não pode dar baixa na parte de R$ 5.000 da fatura. Vários Pix na mesma ocorrência
+// Valor fixo (sem "estimado") só casa se bater com folga de 5%: o Pix de R$ 2.500 do conserto do
+// carro ao Álvaro não pode dar baixa na parte de R$ 5.000 da fatura, e o DAS de R$ 3.664,61 pago à
+// Receita em 23/11 não pode virar a parcela 2 do Simples (R$ 3.308,50), que também vai pra Receita. Vários Pix na mesma ocorrência
 // somam (tecido de 2 fornecedores). O que ela marcou ou desmarcou à mão (`manual`) não é tocado.
 function cxCasarMp(insts, regras, itens) {
   const out = insts.map(i => Object.assign({}, i));
@@ -5815,7 +5816,7 @@ function cxCasarMp(insts, regras, itens) {
       if (!ch.length || !ch.some(c => nome.includes(c))) continue;
       const dist = Math.abs(cxDiasEntre(i.data, data));
       if (dist > (i.freq === 'semanal' ? 3 : 10)) continue;
-      if (!r.estimado && Math.abs(it.v - i.valor) > Math.max(i.valor * 0.15, 30)) continue;
+      if (!r.estimado && Math.abs(it.v - i.valor) > Math.max(i.valor * 0.05, 30)) continue;
       if (!melhor || dist < melhor.dist) melhor = { i, dist };
     }
     if (!melhor) continue;

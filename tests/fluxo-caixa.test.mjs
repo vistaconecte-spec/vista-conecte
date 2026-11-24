@@ -162,6 +162,8 @@ console.log('\n9) Baixa automática pelo Mercado Pago (Pix reais de novembro)');
   ok('Pix de 2.500 do carro NÃO dá baixa em parte da fatura', r.usados.has('pix_transfer_mo_payout_movement-b'), false);
   ok('Pix de 500 pra você casa com o Nubank da sexta', v('nubank@2026-11-27'), [true, 500, true]);
   ok('Pix de 150 pra você fica de fora (é gasto pessoal)', r.usados.has('p4'), false);
+  const das = cx.cxCasarMp(insts, s.regras, [{ id: 'das', d: '2026-11-23T18:00:00.000Z', n: 'Receita Federal', v: 3664.61, k: 'pix' }]);
+  ok('DAS de 3.664,61 à Receita não vira a parcela 2 do Simples (3.308,50)', das.usados.has('das'), false);
   ok('tecido soma os dois fornecedores com o valor real', v('tecido@2026-11-30'), [true, 6177.92, true]);
   ok('Elizete com o valor que saiu, sem estimado', [v('costura@2026-11-29'), r.insts.find(x => x.id === 'costura@2026-11-29').estimado], [[true, 2650, true], false]);
   ok('Shopify com valor diferente do estimado casa (estimado aceita qualquer valor)', v('shopify@2026-12-08'), [true, 1184.33, true]);
