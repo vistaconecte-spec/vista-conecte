@@ -5880,6 +5880,57 @@ function cxCasarMp(insts, regras, itens) {
   return { insts: out, usados };
 }
 
+// ── Cofrinho das parcelas (24/11/2026) ─────────────────────────────────────────
+// Um cofrinho só pro acordo do MP e a parcela do Simples (o DAS segue no automático de 10%).
+// Quem alimenta é o robô do WhatsApp do cofrinho (número Business): ele manda lembretes ao longo
+// do dia e a RESPOSTA dela confirma que guardou ("quando eu responder é porque já reservei").
+// movs: {id → {d, tipo: 'saldo'|'guardou'|'tirou', v}}. 'saldo' é o valor que ela informou que
+// tinha no cofrinho naquela hora e zera a conta dali pra frente.
+function cxSaldoCofrinho(cof) {
+  const movs = Object.values((cof && cof.movs) || {}).filter(m => m && !m.apagado && m.d).sort((a, b) => String(a.d).localeCompare(String(b.d)));
+  let saldo = 0, conhecido = false, ultimo = null;
+  for (const m of movs) {
+    const v = Number(m.v) || 0;
+    if (m.tipo === 'saldo') { saldo = v; conhecido = true; }
+    else if (m.tipo === 'guardou') saldo += v;
+    else if (m.tipo === 'tirou') saldo -= v;
+    ultimo = m.d;
+  }
+  return { saldo: Math.round(saldo * 100) / 100, conhecido, ultimo };
+}
+
+// Quanto guardar por dia pra cobrir cada saída do cofrinho até a véspera: o maior ritmo entre as
+// datas (uma parcela perto pede mais que uma longe).
+function cxRitmoCofrinho(saldo, saidas, hoje) {
+  let acum = 0, ritmo = 0, aperto = null;
+  for (const sd of (saidas || []).slice().sort((a, b) => a.data.localeCompare(b.data))) {
+    acum += Number(sd.valor) || 0;
+    const dias = Math.max(1, cxDiasEntre(hoje, sd.data));
+    const r = Math.max(0, acum - (Number(saldo) || 0)) / dias;
+    if (r > ritmo) { ritmo = r; aperto = sd; }
+  }
+  return { porDia: Math.ceil(ritmo / 10) * 10, aperto };
+}
+
+// Avisos do topo: o que precisa acontecer até depois de amanhã.
+function cxAvisos(insts, cofSaldo, hoje) {
+  const ate = cxSomaDias(hoje, 2);
+  const out = [];
+  const doCof = insts.filter(i => i.cofrinho && !i.pago && i.data <= ate).sort((a, b) => a.data.localeCompare(b.data));
+  let resta = Number(cofSaldo) || 0;
+  for (const i of doCof) {
+    const quando = i.data < hoje ? 'Atrasado' : (i.data === hoje ? 'Hoje' : 'Até ' + cxRotDia(i.data));
+    const falta = Math.max(0, i.valor - resta);
+    resta = Math.max(0, resta - i.valor);
+    out.push({ tipo: falta > 0 ? 'alerta' : 'acao', texto: quando + ': tirar ' + cxR(i.valor, true) + ' do cofrinho e pagar ' + i.desc + (falta > 0 ? '. Faltam ' + cxR(falta) + ' no cofrinho' : '') + '.' });
+  }
+  const dia = Number(hoje.slice(8, 10));
+  if (dia >= 18 && dia <= 20) out.push({ tipo: 'acao', texto: 'Dia 20: tirar o valor da guia do DAS do cofrinho do DAS e pagar (fim de semana ou feriado passa pro dia útil seguinte).' });
+  const atrasadas = insts.filter(i => !i.pago && !i.cofrinho && i.data < hoje);
+  if (atrasadas.length) out.push({ tipo: 'alerta', texto: atrasadas.length + (atrasadas.length > 1 ? ' pagamentos atrasados' : ' pagamento atrasado') + ' na lista, somando ' + cxR(atrasadas.reduce((t, i) => t + i.valor, 0)) + '.' });
+  return out;
+}
+
 // Junta versões (nuvem, este aparelho, …): em cada item ganha o `alt` mais novo.
 function cxMesclar(...fontes) {
   const out = { versao: 2, regras: {}, estado: {}, dividas: {}, semanas: {}, ajustes: null };
@@ -5896,6 +5947,11 @@ function cxMesclar(...fontes) {
     junta(out.dividas, f.dividas); junta(out.semanas, f.semanas);
     if (f.ajustes && (!out.ajustes || String(f.ajustes.alt || '') > String(out.ajustes.alt || ''))) out.ajustes = f.ajustes;
     if (f.mp && (!out.mp || String(f.mp.at || '') > String(out.mp.at || ''))) out.mp = f.mp;
+    if (f.cofrinho && typeof f.cofrinho === 'object') {
+      const c = out.cofrinho || (out.cofrinho = { movs: {}, pedidos: {} });
+      junta(c.movs, f.cofrinho.movs); junta(c.pedidos, f.cofrinho.pedidos);
+      if (String(f.cofrinho.alt || '') >= String(c.alt || '')) { c.alt = f.cofrinho.alt; c.nome = f.cofrinho.nome; c.numero = f.cofrinho.numero; }
+    }
   }
   out.ajustes = Object.assign({}, CX_AJUSTES_PADRAO, out.ajustes || {});
   return out;
@@ -6100,9 +6156,12 @@ function cxDesenhar() {
   const temSaldo = typeof cx.api.saldo === 'number' && typeof cx.api.entradaDia === 'number' && typeof cx.api.metaDia === 'number';
   const saldoAgora = cxSaldoCorrigido(cx.api.saldo, cx.api.saldoRef, cx.cfg.mp && cx.cfg.mp.itens);
   const contas = insts.filter(i => !i.pago && !i.cofrinho && i.data <= cxSomaDias(hoje, 30));
+  // O que vai pro cofrinho por dia: o ritmo que o robô pede (pelo saldo real), ou o ajuste fixo enquanto ela não informou o saldo.
+  const cofAtual = cxSaldoCofrinho(cx.cfg.cofrinho);
+  const cofDia = cofAtual.conhecido ? cxRitmoCofrinho(cofAtual.saldo, insts.filter(i => i.cofrinho && !i.pago && i.data >= hoje && i.data <= cxSomaDias(hoje, 40)), hoje).porDia : aj.cofrinhoDia;
   const base = {
     hoje, dias: 30, saldo: saldoAgora, piso: aj.piso, entradaDia: cx.api.entradaDia, dasPct: aj.dasPct,
-    metaDia: cx.api.metaDia, freteDia: aj.freteDia, cofrinhoDia: aj.cofrinhoDia, outrosDia: aj.outrosDia, contas,
+    metaDia: cx.api.metaDia, freteDia: aj.freteDia, cofrinhoDia: cofDia, outrosDia: aj.outrosDia, contas,
   };
   // Topo (24/11/2026). Sem "livre hoje": ela, "não faz sentido esse saldo livre, sendo que semana que
   // vem tem outras mil contas". O saldo de hoje já tem destino (pagamentos dos próximos dias); o que
@@ -6153,6 +6212,8 @@ function cxDesenhar() {
   const at = document.getElementById('cx-atualizado');
   if (at) at.textContent = cx.api.em ? 'atualizado às ' + new Date(cx.api.em).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '';
 
+  cxDesenharAvisos(insts, hoje);
+  cxDesenharCofrinho(insts, hoje);
   cxDesenharLista(insts, hoje);
   cxDesenharSemana(insts, hoje);
   cxDesenharDividas();
@@ -6232,6 +6293,39 @@ function cxDesenharSemana(insts, hoje) {
     N('Pagamentos feitos', cxR(pagosSemana), 'baixados pelo Mercado Pago') +
     N('Pix pra você fora o Nubank', cx.cfg.mp ? cxR(pixVoceTot) : '—', cx.cfg.mp ? (pixVoce.length ? pixVoce.length + ' Pix esta semana (meta é zero)' : 'esta semana, meta é zero') : 'aparece quando o leitor do MP rodar') +
     N('Pessoal pela loja', sem ? cxR(sem.pessoal) : '—', sem ? 'semana passada, com mercado e farmácia' : 'sai na conferência de segunda');
+}
+
+function cxDesenharAvisos(insts, hoje) {
+  const el = document.getElementById('cx-avisos');
+  if (!el) return;
+  const cof = cxSaldoCofrinho(window._cx.cfg.cofrinho);
+  const lst = cxAvisos(insts, cof.saldo, hoje);
+  el.innerHTML = lst.map(a => `<div class="cx-aviso${a.tipo === 'alerta' ? ' cx-aviso-alerta' : ''}"><i class="ti ${a.tipo === 'alerta' ? 'ti-alert-triangle' : 'ti-bell'}"></i><span>${cxEsc(a.texto)}</span></div>`).join('');
+  el.style.display = lst.length ? '' : 'none';
+}
+
+function cxDesenharCofrinho(insts, hoje) {
+  const el = document.getElementById('cx-cofrinho');
+  if (!el) return;
+  const cfg = window._cx.cfg;
+  const cof = cxSaldoCofrinho(cfg.cofrinho);
+  const saidas = insts.filter(i => i.cofrinho && !i.pago && i.data >= hoje && i.data <= cxSomaDias(hoje, 40)).sort((a, b) => a.data.localeCompare(b.data));
+  if (!cfg.cofrinho || !cof.conhecido) {
+    el.innerHTML = '<div class="cx-vazio" style="text-align:left;padding:8px 0">O robô do WhatsApp do cofrinho vai perguntar quanto tem hoje. Depois disso o saldo aparece aqui sozinho, a cada resposta sua.</div>' +
+      saidas.map(i => `<div class="cx-num"><span>${cxEsc(i.desc)}<small>${cxRotDia(i.data)}</small></span><b>${cxR(i.valor)}</b></div>`).join('');
+    return;
+  }
+  const r = cxRitmoCofrinho(cof.saldo, saidas, hoje);
+  let resta = cof.saldo;
+  const linhas = saidas.map(i => {
+    const coberto = Math.min(i.valor, Math.max(0, resta)); resta -= i.valor;
+    const pct = Math.round(coberto / i.valor * 100);
+    return `<div class="cx-divida"><div class="cx-divida-cab"><span>${cxEsc(i.desc)}</span><span>${cxR(i.valor)}</span></div>
+      <div class="cx-barra"><div style="width:${pct}%"></div></div><div class="cx-divida-sub">${cxRotDia(i.data)} · ${pct >= 100 ? 'já está no cofrinho' : 'falta ' + cxR(i.valor - coberto)}</div></div>`;
+  }).join('');
+  el.innerHTML = `<div class="cx-num"><span>Tem no cofrinho<small>pela sua última resposta no WhatsApp${cof.ultimo ? ', ' + cxRotDia(cxIso(new Date(cof.ultimo))) : ''}</small></span><b>${cxR(cof.saldo, true)}</b></div>
+    ${r.porDia > 0 ? `<div class="cx-num"><span>Guardar por dia<small>até ${cxRotDia(r.aperto.data)}, pra ${cxEsc(r.aperto.desc)}</small></span><b>${cxR(r.porDia)}</b></div>` : '<div class="cx-num"><span>Guardar por dia<small>o que vence nos próximos 40 dias já está guardado</small></span><b>R$ 0</b></div>'}
+    ${linhas}`;
 }
 
 function cxDesenharDividas() {

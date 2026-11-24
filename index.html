@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Bodoni+Moda:ital,opsz,wght@0,6..96,700;0,6..96,900&family=Bebas+Neue&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css">
-<link rel="stylesheet" href="style.css?v=2026112406">
+<link rel="stylesheet" href="style.css?v=2026112407">
 </head>
 <body>
 
@@ -584,6 +584,7 @@
             <button class="btn-outline cx-btn-mini" onclick="renderFluxo(true)" title="Puxar saldo e vendas de novo"><i class="ti ti-refresh"></i></button>
             <button class="btn-outline cx-btn-mini" onclick="flxLock()" title="Fechar com senha"><i class="ti ti-lock"></i> Sair</button>
           </div>
+          <div id="cx-avisos" class="cx-avisos" style="display:none"></div>
           <div id="cx-hero" class="cx-hero"></div>
           <div class="cx-grid">
             <div class="card cx-card">
@@ -597,6 +598,10 @@
               <div class="card cx-card">
                 <div class="card-title"><i class="ti ti-calendar-week"></i> ESTA SEMANA</div>
                 <div id="cx-semana"></div>
+              </div>
+              <div class="card cx-card">
+                <div class="card-title"><i class="ti ti-pig-money"></i> COFRINHO DAS PARCELAS</div>
+                <div id="cx-cofrinho"></div>
               </div>
               <div class="card cx-card">
                 <div class="card-title"><i class="ti ti-building-bank"></i> DÍVIDAS</div>
@@ -1003,7 +1008,7 @@
   </div>
 </div>
 <script src="data.js?v=2026111101"></script>
-<script src="main.js?v=2026112414"></script>
+<script src="main.js?v=2026112415"></script>
 <script async src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js" onload="initSupabase()"></script>
 </body>
 </html>

@@ -27,7 +27,7 @@ const ini = main.indexOf('const CX_AJUSTES_PADRAO =');
 const consts = main.slice(ini, main.indexOf('\n};', main.indexOf('const CX_CATS =', ini)) + 3);
 const iCh = main.indexOf('const CX_CHAVES_PADRAO =');
 const chaves = main.slice(iCh, main.indexOf('\n};', iCh) + 3);
-const nomes = ['cxIso', 'cxSomaDias', 'cxSegunda', 'cxOcorrencias', 'cxInstancias', 'cxProjecao', 'cxDivida', 'cxMesclar', 'cxSemente', 'cxNorm', 'cxChaves', 'cxDiasEntre', 'cxCasarMp', 'cxSaldoCorrigido', 'cxJuntarSaidas', 'cxMetaVenda', 'cxLivreHoje', 'cxProximaMeta'];
+const nomes = ['cxIso', 'cxSomaDias', 'cxSegunda', 'cxOcorrencias', 'cxInstancias', 'cxProjecao', 'cxDivida', 'cxMesclar', 'cxSemente', 'cxNorm', 'cxChaves', 'cxDiasEntre', 'cxCasarMp', 'cxSaldoCorrigido', 'cxJuntarSaidas', 'cxMetaVenda', 'cxLivreHoje', 'cxProximaMeta', 'cxSaldoCofrinho', 'cxRitmoCofrinho', 'cxAvisos', 'cxR', 'cxRotDia', 'cxHoje'];
 const cx = new Function(`${consts}\n${chaves}\n${nomes.map(extrair).join('\n')}\nreturn { ${nomes.join(', ')} };`)();
 
 let falhas = 0, total = 0;
@@ -124,6 +124,35 @@ console.log('\n4b) Livre hoje e meta de venda (no lugar da previsão negativa)')
   ok('R$ 20 abaixo da meta já fura (a meta é a mínima)', com(m.porDia - 20).folga < 0, true);
   ok('meta arredondada de 10 em 10', m.porDia % 10, 0);
   ok('sem conta nenhuma e saldo sobrando a meta é zero', cx.cxMetaVenda(Object.assign({}, base, { saldo: 999999, contas: [] })).porDia, 0);
+}
+
+console.log('\n4c) Cofrinho das parcelas (robô do WhatsApp) e avisos');
+{
+  const cof = { movs: {
+    a: { d: '2026-11-24T21:00:00.000Z', tipo: 'saldo', v: 1500 },
+    b: { d: '2026-11-25T13:00:00.000Z', tipo: 'guardou', v: 300 },
+    c: { d: '2026-11-25T19:00:00.000Z', tipo: 'guardou', v: 200 },
+    x: { d: '2026-11-20T10:00:00.000Z', tipo: 'guardou', v: 999 },
+    z: { d: '2026-11-26T10:00:00.000Z', tipo: 'guardou', v: 50, apagado: true },
+  } };
+  const sc = cx.cxSaldoCofrinho(cof);
+  ok('saldo informado zera o que veio antes e soma as respostas depois', [sc.saldo, sc.conhecido], [2000, true]);
+  ok('sem saldo informado o cofrinho é desconhecido', cx.cxSaldoCofrinho({ movs: {} }).conhecido, false);
+  ok('tirou desconta', cx.cxSaldoCofrinho({ movs: { a: { d: '1', tipo: 'saldo', v: 4000 }, b: { d: '2', tipo: 'tirou', v: 3308.5 } } }).saldo, 691.5);
+  const saidas = [{ data: '2026-11-30', valor: 3308.5, desc: 'Simples' }, { data: '2026-12-07', valor: 3797.79, desc: 'Acordo' }];
+  const r = cx.cxRitmoCofrinho(2000, saidas, '2026-11-25');
+  // Simples sozinho pede (3.308,50 − 2.000) ÷ 5 = 262/dia, mas o acordo vem 7 dias depois e o cofrinho
+  // precisa das duas: (3.308,50 + 3.797,79 − 2.000) ÷ 12 = 426/dia. Vale o maior.
+  ok('ritmo cobre as duas parcelas (acordo logo depois do Simples)', [r.porDia, r.aperto.desc], [Math.ceil((3308.5 + 3797.79 - 2000) / 12 / 10) * 10, 'Acordo']);
+  ok('com tudo guardado o ritmo é zero', cx.cxRitmoCofrinho(99999, saidas, '2026-11-25').porDia, 0);
+  const insts = [{ cofrinho: true, pago: false, data: '2026-11-30', valor: 3308.5, desc: 'Simples, parcela 2' }, { cofrinho: false, pago: false, data: '2026-11-20', valor: 630, desc: 'Madalena' }];
+  const av = cx.cxAvisos(insts, 3000, '2026-11-28');
+  ok('aviso de tirar do cofrinho 2 dias antes, com o que falta', av[0].texto.includes('tirar R$') && av[0].texto.includes('Faltam R$') && av[0].tipo, 'alerta');
+  ok('aviso de pagamento atrasado na lista', av.some(a => a.texto.includes('pagamento atrasado')), true);
+  ok('sem nada perto não avisa', cx.cxAvisos(insts.slice(0, 1), 5000, '2026-11-24').length, 0);
+  ok('lembrete do DAS perto do dia 20', cx.cxAvisos([], 0, '2026-12-19').some(a => a.texto.includes('DAS')), true);
+  const m = cx.cxMesclar({ cofrinho: { alt: '2', movs: { a: { v: 1, alt: '1' } }, pedidos: {} } }, { cofrinho: { alt: '1', movs: { b: { v: 2, alt: '1' } }, pedidos: {} } });
+  ok('mesclar junta as respostas do robô e da tela', Object.keys(m.cofrinho.movs).sort(), ['a', 'b']);
 }
 
 console.log('\n5) Dívidas');

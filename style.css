@@ -1591,3 +1591,7 @@ table.est-tab td > div > input { min-width: 0; flex: 1 1 auto; }
 .cx-barra.cx-barra-hero { background:rgba(255,255,255,.22); margin:8px 0 10px; }
 .cx-barra.cx-barra-hero div { background:#fff; }
 .cx-hero-hist { font-weight:400; opacity:.9; }
+.cx-avisos { display:flex; flex-direction:column; gap:8px; margin-bottom:14px; }
+.cx-aviso { display:flex; align-items:flex-start; gap:10px; background:rgba(37,99,235,.08); color:#1e3a8a; border-radius:var(--radius-sm); padding:10px 14px; font-size:13px; font-weight:600; line-height:1.35; }
+.cx-aviso i { font-size:17px; margin-top:1px; }
+.cx-aviso.cx-aviso-alerta { background:rgba(194,138,44,.14); color:#7a4f0c; }
