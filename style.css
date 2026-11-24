@@ -1580,3 +1580,11 @@ table.est-tab td > div > input { min-width: 0; flex: 1 1 auto; }
 .cx-tag.cx-tag-mp { background:rgba(63,125,88,.13); color:#2f6146; }
 .cx-mp-status { font-size:11px; color:#2f6146; background:rgba(63,125,88,.08); border-radius:10px; padding:7px 10px; margin:6px 0 2px; }
 .cx-mp-status.cx-mp-velho { color:#8a5d12; background:rgba(194,138,44,.12); }
+.cx-meta { background:rgba(255,255,255,.14); border-radius:var(--radius-sm); padding:12px 14px; margin-top:4px; }
+.cx-meta-rot { font-size:11px; letter-spacing:.12em; text-transform:uppercase; opacity:.85; }
+.cx-meta-valor { font-family:'Bebas Neue','Arial Narrow',sans-serif; font-size:34px; line-height:1.1; letter-spacing:.02em; }
+.cx-meta-valor span { font-family:inherit; font-size:16px; opacity:.85; }
+.cx-meta-sub { font-size:12px; opacity:.92; line-height:1.4; }
+.cx-como { margin-top:10px; font-size:12px; }
+.cx-como summary { cursor:pointer; opacity:.85; }
+.cx-como .cx-hero-conta { margin-top:8px; }

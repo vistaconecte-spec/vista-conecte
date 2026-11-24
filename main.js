@@ -5758,6 +5758,27 @@ function cxProjecao(p) {
   };
 }
 
+// Meta de venda do dia (24/11/2026: ela pediu "livre hoje + meta" no lugar da previsão negativa,
+// "não faz sentido montar esse quadro negativo, pra dar essa ansiedade toda"). É o quanto precisa
+// ENTRAR por dia no Mercado Pago (venda liberada, já sem taxa) pra pagar tudo da lista, a Meta, o
+// frete, os cofrinhos, o DAS e os gastos miúdos dos próximos 30 dias sem o saldo furar o piso.
+function cxMetaVenda(base) {
+  const com = e => cxProjecao(Object.assign({}, base, { entradaDia: e }));
+  const zero = com(0);
+  if (zero.folga >= 0) return { porDia: 0, ate: zero.pior.data };
+  let lo = 0, hi = 100000;
+  for (let k = 0; k < 40; k++) { const m = (lo + hi) / 2; if (com(m).folga >= 0) hi = m; else lo = m; }
+  return { porDia: Math.ceil(hi / 10) * 10, ate: com(hi).pior.data };
+}
+
+// Livre hoje: o dinheiro que existe agora, tirando o piso e o que vence até depois de amanhã.
+// Nunca negativo: no pior caso é zero ("hoje não tem sobra").
+function cxLivreHoje(saldo, piso, contas, hoje) {
+  const ate = cxSomaDias(hoje, 2);
+  const vence = (contas || []).filter(i => i.data <= ate).reduce((t, i) => t + (Number(i.valor) || 0), 0);
+  return { livre: Math.max(0, Math.round(((Number(saldo) || 0) - (Number(piso) || 0) - vence) * 100) / 100), vence: Math.round(vence * 100) / 100, ate };
+}
+
 // Quanto já foi e quanto falta de uma dívida, somando as parcelas marcadas como pagas.
 function cxDivida(d, insts) {
   const doGrupo = (insts || []).filter(i => i.grupo === d.id);
@@ -5967,6 +5988,11 @@ async function cxPuxarDados(forcar) {
   // 28 as vendas fracas do começo do mês (R$ 4.608/dia), e a tela previa falta de R$ 9 mil.
   const pd = (mov && mov.entradas && mov.entradas.por_dia) || null;
   const cobr = (meta && Array.isArray(meta.cobrancas)) ? meta.cobrancas : null;
+  if (pd) {
+    api.ontem = Number(pd[cxSomaDias(hoje, -1)]) || 0;
+    let t7 = 0; for (let i = 1; i <= 7; i++) t7 += Number(pd[cxSomaDias(hoje, -i)]) || 0;
+    api.media7 = Math.round(t7 / 7 * 100) / 100;
+  }
   if (pd) api.semanaEntrou = Object.entries(pd).filter(([d]) => d >= seg && d <= hoje).reduce((s, [, v]) => s + (Number(v) || 0), 0);
   if (cobr) api.semanaMeta = cobr.filter(c => cxIso(new Date(c.quando)) >= seg).reduce((s, c) => s + (Number(c.valor) || 0) * CX_FATOR_META, 0);
   if (pd && cobr) {
@@ -6041,41 +6067,42 @@ function cxDesenhar() {
     hoje, dias: 30, saldo: saldoAgora, piso: aj.piso, entradaDia: cx.api.entradaDia, dasPct: aj.dasPct,
     metaDia: cx.api.metaDia, freteDia: aj.freteDia, cofrinhoDia: aj.cofrinhoDia, outrosDia: aj.outrosDia, contas,
   };
-  const c = cxProjecao(base);
-  const fraca = cxProjecao(Object.assign({}, base, { entradaDia: (cx.api.entradaDia || 0) * 0.7 }));
-  const rotPior = cxRotDia(c.pior.data);
-
-  // Topo: um número só.
-  let classe = 'cx-hero', frase;
-  if (!temSaldo) frase = cx.api.em ? 'O Mercado Pago não respondeu (vendas ou saldo). Tento de novo em 1 minuto.' : 'Puxando saldo, vendas e Meta…';
-  else if (c.folga >= 1000) frase = `No dia mais apertado do mês (${rotPior}) ainda ficam ${cxR(c.folga)} acima do piso. É o máximo que dá pra gastar fora da lista.`;
-  else if (c.folga >= 0) { classe += ' cx-atencao'; frase = `No dia mais apertado do mês (${rotPior}) o caixa encosta no piso. Nada de gasto fora da lista.`; }
-  else {
-    classe += ' cx-falta';
-    const adiavel = contas.filter(i => i.cat !== 'divida' && i.data <= c.pior.data).sort((a, b) => b.valor - a.valor)[0];
-    frase = `Em ${rotPior} faltam ${cxR(-c.folga)} pra manter o piso.` + (adiavel ? ` O maior pagamento até lá é ${cxEsc(adiavel.desc)} (${cxR(adiavel.valor)}, ${cxRotDia(adiavel.data)}).` : '');
-  }
+  const livre = cxLivreHoje(saldoAgora, aj.piso, contas, hoje);
+  const meta = cxMetaVenda(base);
+  const ontem = cx.api.ontem, media7 = cx.api.media7;
+  const bateuMedia = typeof media7 === 'number' && media7 >= meta.porDia;
   const L = (rot, v, sinal) => `<div><span>${rot}</span><b>${sinal || ''}${cxR(v)}</b></div>`;
-  const a = c.ate, nd = c.pior.dias;
-  const ateTxt = nd ? `, ${nd} dia${nd > 1 ? 's' : ''}` : '';
-  hero.className = classe;
-  hero.innerHTML = `
-    <div class="cx-hero-rot">${!temSaldo || c.folga >= 0 ? 'Folga do caixa' : 'Falta no caixa'}</div>
-    <div class="cx-hero-valor">${temSaldo ? cxR(Math.abs(c.folga)) : '…'}</div>
-    <div class="cx-hero-frase">${frase}</div>
-    <div class="cx-hero-conta">
-      ${L('Saldo no MP agora', saldoAgora || 0)}
-      ${L('Vendas até ' + rotPior + ateTxt, a.entradas, '+ ')}
-      ${L('DAS automático (' + aj.dasPct + '%)', a.das, '− ')}
-      ${L('Meta', a.meta, '− ')}
-      ${L('Frete', a.frete, '− ')}
-      ${L('Cofrinhos (acordo e Simples)', a.cofrinhos, '− ')}
-      ${L('Gastos miúdos', a.outros, '− ')}
-      ${L('Pagamentos até ' + rotPior, a.contas, '− ')}
-      ${L('Piso que fica no MP', aj.piso, '− ')}
-    </div>
-    <div class="cx-hero-nota">Olha os próximos 30 dias e mostra o dia em que o caixa fica mais baixo. Vendas ${cxR(cx.api.entradaDia || 0)} e Meta ${cxR(cx.api.metaDia || 0)} por dia, média dos últimos ${cx.api.janela || 28} dias (das duas janelas, a mais cautelosa)${cx.api.mediaVelha ? ', guardada às ' + new Date(cx.api.mediaVelha).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) + ' porque o Mercado Pago não respondeu agora' : ''}. Se vender 30% menos, ${fraca.folga >= 0 ? 'a folga cai pra ' + cxR(fraca.folga) : 'faltam ' + cxR(-fraca.folga)} (${cxRotDia(fraca.pior.data)}).${cx.nuvemFalhou ? ' Sem conexão com a nuvem: mostrando a cópia deste aparelho.' : ''}</div>`;
-  if (!temSaldo) hero.innerHTML = `<div class="cx-hero-rot">Folga do caixa</div><div class="cx-hero-valor">…</div><div class="cx-hero-frase">${frase}</div>`;
+  const c = cxProjecao(Object.assign({}, base, { entradaDia: meta.porDia }));
+  hero.className = 'cx-hero' + (temSaldo && (livre.livre <= 0 || !bateuMedia) ? ' cx-atencao' : '');
+  if (!temSaldo) {
+    const frase = cx.api.em ? 'O Mercado Pago não respondeu (vendas ou saldo). Tento de novo em 1 minuto.' : 'Puxando saldo, vendas e Meta…';
+    hero.innerHTML = `<div class="cx-hero-rot">Livre hoje</div><div class="cx-hero-valor">…</div><div class="cx-hero-frase">${frase}</div>`;
+  } else {
+    const fraseLivre = livre.livre > 0
+      ? `Dá pra usar sem mexer no que vence até ${cxRotDia(livre.ate)} nem no piso de ${cxR(aj.piso)}.`
+      : `Hoje não tem sobra: o saldo está segurando o que vence até ${cxRotDia(livre.ate)} e o piso.`;
+    const ontemTxt = typeof ontem === 'number'
+      ? (ontem >= meta.porDia ? `Ontem entrou ${cxR(ontem)}, bateu a meta.` : `Ontem entrou ${cxR(ontem)}.`)
+      : '';
+    const a = c.ate;
+    hero.innerHTML = `
+      <div class="cx-hero-rot">Livre hoje</div>
+      <div class="cx-hero-valor">${cxR(livre.livre)}</div>
+      <div class="cx-hero-frase">${fraseLivre}</div>
+      <div class="cx-meta">
+        <div class="cx-meta-rot">Meta de venda</div>
+        <div class="cx-meta-valor">${cxR(meta.porDia)} <span>por dia</span></div>
+        <div class="cx-meta-sub">Pra pagar tudo da lista até ${cxRotDia(cxSomaDias(hoje, 30))} sem furar o piso. ${ontemTxt} Média dos últimos 7 dias ${cxR(media7 || 0)}${bateuMedia ? ', acima da meta.' : '.'}</div>
+      </div>
+      <details class="cx-como"><summary>Como calculei</summary>
+        <div class="cx-hero-conta">
+          ${L('Saldo no MP agora', saldoAgora || 0)}
+          ${L('Vence até ' + cxRotDia(livre.ate), livre.vence, '− ')}
+          ${L('Piso que fica no MP', aj.piso, '− ')}
+        </div>
+        <div class="cx-hero-nota">A meta é o que precisa entrar por dia no Mercado Pago (venda liberada, já sem taxa) pra cobrir nos próximos 30 dias: ${cxR(contas.reduce((t, i) => t + i.valor, 0))} de pagamentos da lista, Meta ${cxR(cx.api.metaDia || 0)} por dia (média de ${cx.api.janela || 28} dias com imposto), frete ${cxR(aj.freteDia)}, cofrinhos ${cxR(aj.cofrinhoDia)} e gastos miúdos ${cxR(aj.outrosDia)} por dia, e o DAS de ${aj.dasPct}% de cada venda. Os valores por dia mudam em AJUSTES DA CONTA.${cx.api.mediaVelha ? ' Meta e vendas guardadas às ' + new Date(cx.api.mediaVelha).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) + ' porque o Mercado Pago não respondeu agora.' : ''}${cx.nuvemFalhou ? ' Sem conexão com a nuvem: mostrando a cópia deste aparelho.' : ''}</div>
+      </details>`;
+  }
   const at = document.getElementById('cx-atualizado');
   if (at) at.textContent = cx.api.em ? 'atualizado às ' + new Date(cx.api.em).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '';
 

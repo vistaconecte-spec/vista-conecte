@@ -27,7 +27,7 @@ const ini = main.indexOf('const CX_AJUSTES_PADRAO =');
 const consts = main.slice(ini, main.indexOf('\n};', main.indexOf('const CX_CATS =', ini)) + 3);
 const iCh = main.indexOf('const CX_CHAVES_PADRAO =');
 const chaves = main.slice(iCh, main.indexOf('\n};', iCh) + 3);
-const nomes = ['cxIso', 'cxSomaDias', 'cxSegunda', 'cxOcorrencias', 'cxInstancias', 'cxProjecao', 'cxDivida', 'cxMesclar', 'cxSemente', 'cxNorm', 'cxChaves', 'cxDiasEntre', 'cxCasarMp', 'cxSaldoCorrigido', 'cxJuntarSaidas'];
+const nomes = ['cxIso', 'cxSomaDias', 'cxSegunda', 'cxOcorrencias', 'cxInstancias', 'cxProjecao', 'cxDivida', 'cxMesclar', 'cxSemente', 'cxNorm', 'cxChaves', 'cxDiasEntre', 'cxCasarMp', 'cxSaldoCorrigido', 'cxJuntarSaidas', 'cxMetaVenda', 'cxLivreHoje'];
 const cx = new Function(`${consts}\n${chaves}\n${nomes.map(extrair).join('\n')}\nreturn { ${nomes.join(', ')} };`)();
 
 let falhas = 0, total = 0;
@@ -100,6 +100,21 @@ console.log('\n4) Folga do caixa: o pior dia dos próximos 30');
   const caindo = cx.cxProjecao(Object.assign({}, base, { entradaDia: 1000, contas: [] }));
   ok('vendendo pouco o pior dia é o último', caindo.pior.data, '2026-12-24');
   ok('sem dados não quebra', cx.cxProjecao({ hoje: '2026-11-24' }).folga, 0);
+}
+
+console.log('\n4b) Livre hoje e meta de venda (no lugar da previsão negativa)');
+{
+  const base = { hoje: '2026-11-24', dias: 30, saldo: 6500, piso: 3500, entradaDia: 4100, dasPct: 10, metaDia: 1253, freteDia: 400, cofrinhoDia: 342, outrosDia: 300,
+    contas: [{ data: '2026-11-25', valor: 630 }, { data: '2026-11-27', valor: 500 }, { data: '2026-12-01', valor: 6500 }, { data: '2026-12-11', valor: 6491.2 }] };
+  const l = cx.cxLivreHoje(base.saldo, base.piso, base.contas, base.hoje);
+  ok('livre hoje = saldo − piso − o que vence até depois de amanhã', [l.livre, l.vence, l.ate], [6500 - 3500 - 630, 630, '2026-11-26']);
+  ok('livre hoje nunca fica negativo', cx.cxLivreHoje(1000, 3500, [], '2026-11-24').livre, 0);
+  const m = cx.cxMetaVenda(base);
+  const com = e => cx.cxProjecao(Object.assign({}, base, { entradaDia: e }));
+  ok('com a meta o caixa não fura o piso', com(m.porDia).folga >= 0, true);
+  ok('R$ 20 abaixo da meta já fura (a meta é a mínima)', com(m.porDia - 20).folga < 0, true);
+  ok('meta arredondada de 10 em 10', m.porDia % 10, 0);
+  ok('sem conta nenhuma e saldo sobrando a meta é zero', cx.cxMetaVenda(Object.assign({}, base, { saldo: 999999, contas: [] })).porDia, 0);
 }
 
 console.log('\n5) Dívidas');
