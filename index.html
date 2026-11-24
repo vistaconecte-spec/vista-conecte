@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Bodoni+Moda:ital,opsz,wght@0,6..96,700;0,6..96,900&family=Bebas+Neue&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css">
-<link rel="stylesheet" href="style.css?v=2026111101">
+<link rel="stylesheet" href="style.css?v=2026112401">
 </head>
 <body>
 
@@ -578,88 +578,38 @@
           </div>
         </div>
         <div id="flx-content" style="display:none">
-          <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap">
-            <div style="font-weight:700;font-size:18px"><i class="ti ti-cash-banknote"></i> Fluxo de Caixa</div>
-            <select id="flx-mes" onchange="renderFluxo()" style="padding:7px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px"></select>
-            <span style="font-size:11px;color:var(--text-ter)">saldo em conta − contas a vencer (sem contar vendas futuras)</span>
-            <button class="btn-outline" style="margin-left:auto;font-size:11px;padding:5px 10px" onclick="flxLock()"><i class="ti ti-lock"></i> Sair</button>
+          <div class="cx-topo">
+            <div class="cx-titulo"><i class="ti ti-cash-banknote"></i> Fluxo de Caixa</div>
+            <span id="cx-atualizado" class="cx-atualizado"></span>
+            <button class="btn-outline cx-btn-mini" onclick="renderFluxo(true)" title="Puxar saldo e vendas de novo"><i class="ti ti-refresh"></i></button>
+            <button class="btn-outline cx-btn-mini" onclick="flxLock()" title="Fechar com senha"><i class="ti ti-lock"></i> Sair</button>
           </div>
-          <div class="metrics" id="flx-metrics"></div>
-          <div id="flx-banner" class="card" style="padding:0;margin-bottom:14px;display:none"></div>
-          <div class="flx-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px;align-items:start">
-            <div class="card">
-              <div class="card-header"><div class="card-title"><i class="ti ti-wallet"></i> SALDO NAS CONTAS</div>
-                <button class="btn-outline" style="font-size:10px;padding:4px 8px" onclick="flxAtualizarSaldos(false)"><i class="ti ti-refresh"></i> atualizar</button></div>
-              <div id="flx-saldos"></div>
-              <div id="flx-saldo-status" style="font-size:10px;color:var(--text-ter);margin-top:8px;min-height:12px"></div>
+          <div id="cx-hero" class="cx-hero"></div>
+          <div class="cx-grid">
+            <div class="card cx-card">
+              <div class="cx-card-cab">
+                <div class="card-title"><i class="ti ti-calendar-event"></i> PRÓXIMOS PAGAMENTOS</div>
+                <button class="btn-primary cx-btn-novo" onclick="cxAbrirForm()"><i class="ti ti-plus"></i> Novo</button>
+              </div>
+              <div id="cx-lista"></div>
             </div>
-            <div class="card">
-              <div class="card-header"><div class="card-title"><i class="ti ti-chart-pie"></i> A PAGAR POR CATEGORIA</div></div>
-              <div id="flx-chart"></div>
-            </div>
-            <div class="card" style="border-left:3px solid #009EE3">
-              <div class="card-header"><div class="card-title" style="color:#009EE3"><i class="ti ti-building-bank"></i> MERCADO PAGO — REAL (MÊS)</div>
-                <button class="btn-outline" style="font-size:10px;padding:4px 8px" onclick="mpRenderCard('flx-mp', document.getElementById('flx-mes').value)"><i class="ti ti-refresh"></i> atualizar</button></div>
-              <div id="flx-mp"></div>
-            </div>
-          </div>
-          <div class="card" style="border-left:3px solid #6b7280">
-            <div class="card-header"><div class="card-title" style="color:#6b7280"><i class="ti ti-circle-check"></i> REALIZADO — JÁ SAIU DO CAIXA</div><span id="flx-realizado-total" style="font-size:11px;font-weight:700;color:#6b7280"></span></div>
-            <div id="flx-realizado"></div>
-          </div>
-          <div class="card" style="padding:10px 14px">
-            <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
-              <span style="font-size:11px;font-weight:600;color:var(--text-ter);white-space:nowrap"><i class="ti ti-plus"></i> pagamento previsto:</span>
-              <input id="flx-proj-desc" placeholder="descrição (ex.: boleto tecido)" style="flex:1;min-width:150px;font-size:12px;padding:6px 8px;border:1px solid var(--border);border-radius:6px" onkeydown="if(event.key==='Enter')flxProjAdd()">
-              <select id="flx-proj-cat" style="font-size:11px;padding:6px;border:1px solid var(--border);border-radius:6px"></select>
-              <label style="font-size:11px;color:var(--text-ter);white-space:nowrap">dia <input id="flx-proj-dia" type="number" min="1" max="31" style="width:48px;text-align:center;font-size:12px;padding:6px 4px;border:1px solid var(--border);border-radius:6px" onkeydown="if(event.key==='Enter')flxProjAdd()"></label>
-              <input id="flx-proj-valor" type="number" step="0.01" placeholder="R$" style="width:92px;text-align:right;font-size:12px;padding:6px 8px;border:1px solid var(--border);border-radius:6px" onkeydown="if(event.key==='Enter')flxProjAdd()">
-              <button class="btn-primary" style="font-size:11px;padding:6px 12px" onclick="flxProjAdd()"><i class="ti ti-plus"></i> adicionar</button>
-              <span id="flx-proj-add-msg" style="font-size:10px;color:var(--text-ter);min-height:12px"></span>
-            </div>
-          </div>
-          <div class="card">
-            <div class="card-header"><div class="card-title"><i class="ti ti-calendar-due"></i> PROJETADO — A VENCER</div><span style="font-size:11px;color:var(--text-ter)">só dias com vencimento</span></div>
-            <div id="flx-proj"></div>
-          </div>
-          <div class="card" style="border-left:3px solid #1D9E75">
-            <div class="card-header"><div class="card-title" style="color:#1D9E75"><i class="ti ti-shopping-cart"></i> VENDAS × CUSTO DE PRODUÇÃO (Shopify, por semana)</div>
-              <button class="btn-outline" style="font-size:10px;padding:4px 8px" onclick="flxSincronizarVendas(false)"><i class="ti ti-refresh"></i> atualizar vendas</button>
-            </div>
-            <div id="flx-vendas-status" style="font-size:10px;color:var(--text-ter);margin-bottom:8px;min-height:12px"></div>
-            <div id="flx-vendas"></div>
-            <div style="font-size:10px;color:var(--text-ter);margin-top:8px">Cada peça vendida gera o custo de produzi-la (tecido+corte+costura da Precificação + frete do pedido), lançado como conta a pagar no domingo da semana. Custo 0 = ficha do modelo sem custo cadastrado.</div>
-          </div>
-          <div class="card">
-            <div class="card-header"><div class="card-title"><i class="ti ti-list-check"></i> CONTAS A PAGAR DO MÊS</div>
-              <div style="display:flex;gap:6px">
-                <button class="btn-outline" style="font-size:10px;padding:4px 8px" onclick="flxResetRecorrentes()" title="recarrega as recorrentes padrão"><i class="ti ti-reload"></i> recorrentes</button>
-                <button class="btn-primary" style="font-size:10px;padding:4px 8px" onclick="flxPagAdd()"><i class="ti ti-plus"></i> adicionar conta</button>
+            <div class="cx-coluna">
+              <div class="card cx-card">
+                <div class="card-title"><i class="ti ti-calendar-week"></i> ESTA SEMANA</div>
+                <div id="cx-semana"></div>
+              </div>
+              <div class="card cx-card">
+                <div class="card-title"><i class="ti ti-building-bank"></i> DÍVIDAS</div>
+                <div id="cx-dividas"></div>
+              </div>
+              <div class="card cx-card">
+                <div class="card-title"><i class="ti ti-adjustments"></i> AJUSTES DA CONTA</div>
+                <div id="cx-ajustes"></div>
               </div>
             </div>
-            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:11px;color:var(--text-sec);background:rgba(216,90,48,0.06);border:1px solid rgba(216,90,48,0.18);border-radius:8px;padding:8px 10px;margin-bottom:10px">
-              <i class="ti ti-brand-meta" style="color:#D85A30"></i>
-              <b>Tráfego Meta Ads (fracionado):</b>
-              <label>estimativa do mês R$ <input id="flx-trf-est" type="number" step="0.01" style="width:90px;text-align:right;padding:4px 6px;border:1px solid var(--border);border-radius:5px"></label>
-              <label>cobra a cada R$ <input id="flx-trf-lim" type="number" step="0.01" style="width:70px;text-align:right;padding:4px 6px;border:1px solid var(--border);border-radius:5px"></label>
-              <label>impostos <input id="flx-trf-imp" type="number" step="0.01" style="width:52px;text-align:right;padding:4px 6px;border:1px solid var(--border);border-radius:5px"> %</label>
-              <button class="btn-outline" style="font-size:10px;padding:4px 8px" onclick="flxRecalcTrafego()"><i class="ti ti-refresh"></i> recalcular tráfego</button>
-              <span style="color:var(--text-ter)">gera cobranças de R$ 3.000 distribuídas pelo mês (a Meta debita ao bater o limite)</span>
-            </div>
-            <div style="overflow-x:auto">
-              <table style="width:100%;font-size:12px;border-collapse:collapse">
-                <thead><tr style="color:var(--text-ter);font-size:11px">
-                  <th style="padding:4px;width:32px">pago</th>
-                  <th style="text-align:left;padding:4px 6px">Descrição</th>
-                  <th style="text-align:left;padding:4px 6px">Categoria</th>
-                  <th style="padding:4px 6px">Dia</th>
-                  <th style="text-align:right;padding:4px 6px">Valor</th>
-                  <th style="width:28px"></th>
-                </tr></thead>
-                <tbody id="flx-pag-tbody"></tbody>
-              </table>
-            </div>
-            <div id="flx-pag-rodape" style="font-size:12px;color:var(--text-sec);margin-top:10px;text-align:right"></div>
+          </div>
+          <div id="cx-modal" class="cx-modal" style="display:none" onclick="if(event.target===this)cxFecharForm()">
+            <div class="cx-modal-caixa" id="cx-modal-caixa"></div>
           </div>
         </div>
       </div>
@@ -1053,7 +1003,7 @@
   </div>
 </div>
 <script src="data.js?v=2026111101"></script>
-<script src="main.js?v=2026111605"></script>
+<script src="main.js?v=2026112401"></script>
 <script async src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js" onload="initSupabase()"></script>
 </body>
 </html>

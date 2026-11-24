@@ -4702,7 +4702,9 @@ function flxLock() {
   document.getElementById('flx-content').style.display = 'none';
 }
 
-async function renderFluxo() {
+// Versão de julho/2026, substituída em 24/11/2026 pela tela nova (cxDesenhar). Fica aqui porque
+// flxCustoModelo/flxPrecoCfg e o card do Mercado Pago do Financeiro ainda usam funções vizinhas.
+async function renderFluxoAntigo() {
   const cfg = flxGetConfig();
   const mes = document.getElementById('flx-mes').value;
   flxSeedMes(cfg, mes);
@@ -5617,6 +5619,587 @@ function flxRecompute() {
       </table>`;
     }
   }
+}
+
+// ─── FLUXO DE CAIXA renovado (24/11/2026, pedido da Bárbara: "quero uma aba mais intuitiva") ───
+// Pergunta que a tela responde de cara: "dá pra pagar tudo desta semana? Quanto sobra?"
+// A versão de julho comparava o saldo com TUDO o que vencia no mês sem contar venda nenhuma,
+// então sempre parecia faltar dinheiro e ninguém usava (última gravação 16/10/2026).
+// Aqui a conta é de 7 dias e assume que a loja vende como nas últimas 2 semanas:
+//   sobra = saldo MP + vendas previstas − Meta − frete − cofrinhos − pagamentos da semana − piso
+// Dados na linha `caixa` do vc_modelos (a antiga `fluxo_caixa` ficou intacta).
+//   regras:  { id → {id, desc, valor, cat, freq: unica|semanal|mensal, inicio, fim?, parcelas?,
+//             grupo?, cofrinho?, estimado?, apagado?, alt} }
+//   estado:  { "regraId@AAAA-MM-DD" → {pago, em, valor?, data?, desc?, apagado?, alt} }
+//   dividas: { id → {id, nome, total?, parcelas?, pagasAntes?, valorParcela?, apagado?, alt} }
+//   semanas: { segunda AAAA-MM-DD → {pessoal, detalhe, alt} } (gravado pela conferência de segunda)
+//   ajustes: {piso, freteDia, cofrinhoDia, alt}
+// Mescla por item (o `alt` mais novo ganha): marcar pago no celular e editar no PC não se apagam.
+const CX_KEY = 'caixa';
+const CX_FATOR_META = 1.13832; // imposto que a Meta põe por cima do gasto (medido nas faturas de nov/2026)
+const CX_AJUSTES_PADRAO = { piso: 3500, freteDia: 400, cofrinhoDia: 342, alt: '' };
+const CX_CATS = {
+  producao: { nome: 'Produção', cor: '#9A7A56', icone: 'ti-scissors' },
+  equipe:   { nome: 'Equipe', cor: '#2563eb', icone: 'ti-users' },
+  contas:   { nome: 'Contas e sistemas', cor: '#7c3aed', icone: 'ti-receipt' },
+  divida:   { nome: 'Dívida', cor: '#c2453d', icone: 'ti-building-bank' },
+  meta:     { nome: 'Anúncio', cor: '#0ea5e9', icone: 'ti-speakerphone' },
+  pessoal:  { nome: 'Pessoal', cor: '#db2777', icone: 'ti-user' },
+  outros:   { nome: 'Outros', cor: '#6b7280', icone: 'ti-dots' },
+};
+
+function cxIso(d) {
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+function cxSomaDias(iso, n) {
+  const [y, m, d] = iso.split('-').map(Number);
+  return cxIso(new Date(y, m - 1, d + n));
+}
+function cxHoje() { return cxIso(new Date()); }
+// Segunda-feira da semana de `iso` (semana de segunda a domingo, como a conferência).
+function cxSegunda(iso) {
+  const [y, m, d] = iso.split('-').map(Number);
+  const dow = new Date(y, m - 1, d).getDay();
+  return cxSomaDias(iso, -((dow + 6) % 7));
+}
+
+// Datas em que uma regra cai entre `de` e `ate` (inclusive). Mensal no dia 31 cai no último dia
+// de meses curtos. `n` = número da parcela (1, 2, …) quando a regra é mensal.
+function cxOcorrencias(r, de, ate) {
+  const out = [];
+  if (!r || r.apagado) return out;
+  const ini = r.inicio;
+  if (!ini || !/^\d{4}-\d{2}-\d{2}$/.test(ini)) return out;
+  const fim = r.fim || null;
+  if (r.freq === 'semanal') {
+    let d = ini, n = 1;
+    while (d <= ate && n <= 800) {
+      if (d >= de && (!fim || d <= fim)) out.push({ data: d, n });
+      d = cxSomaDias(d, 7); n++;
+    }
+  } else if (r.freq === 'mensal') {
+    const [y0, m0, d0] = ini.split('-').map(Number);
+    const total = r.parcelas || 600;
+    for (let k = 0; k < total; k++) {
+      const ultimo = new Date(y0, m0 + k, 0).getDate();
+      const iso = cxIso(new Date(y0, m0 - 1 + k, Math.min(d0, ultimo)));
+      if (iso > ate || (fim && iso > fim)) break;
+      if (iso >= de) out.push({ data: iso, n: k + 1 });
+    }
+  } else if (ini >= de && ini <= ate && (!fim || ini <= fim)) {
+    out.push({ data: ini, n: 1 });
+  }
+  return out;
+}
+
+// Lista cada pagamento (instância) entre `de` e `ate`, já com o que foi marcado ou mudado.
+function cxInstancias(cfg, de, ate) {
+  const lst = [];
+  const estado = (cfg && cfg.estado) || {};
+  for (const r of Object.values((cfg && cfg.regras) || {})) {
+    if (!r || r.apagado) continue;
+    // Janela larga: uma ocorrência pode ter sido empurrada pra dentro (ou pra fora) do período.
+    for (const o of cxOcorrencias(r, cxSomaDias(de, -45), cxSomaDias(ate, 45))) {
+      const id = r.id + '@' + o.data;
+      const e = estado[id] || {};
+      if (e.apagado) continue;
+      const data = e.data || o.data;
+      if (data < de || data > ate) continue;
+      const valorProprio = typeof e.valor === 'number';
+      lst.push({
+        id, regra: r.id, data, dataOriginal: o.data,
+        desc: e.desc || r.desc || '(sem nome)',
+        valor: valorProprio ? e.valor : (Number(r.valor) || 0),
+        cat: CX_CATS[r.cat] ? r.cat : 'outros',
+        estimado: !!r.estimado && !valorProprio,
+        cofrinho: !!r.cofrinho,
+        grupo: r.grupo || null,
+        freq: r.freq || 'unica',
+        parcela: r.freq === 'mensal' && r.parcelas ? o.n + '/' + r.parcelas : null,
+        pago: !!e.pago,
+        pagoEm: e.em || null,
+      });
+    }
+  }
+  return lst.sort((a, b) => a.data.localeCompare(b.data) || (b.valor - a.valor));
+}
+
+// A conta do topo. Tudo em reais de caixa; `compromissos` = o que vence em 7 dias e ainda não
+// foi pago (sem os que saem do cofrinho, que já foram guardados aos poucos).
+function cxSobraSemana(p) {
+  const dias = p.dias || 7;
+  const r = v => Math.round(v * 100) / 100;
+  const entradas = r((p.entradaDia || 0) * dias);
+  const meta = r((p.metaDia || 0) * dias);
+  const frete = r((p.freteDia || 0) * dias);
+  const cofrinhos = r((p.cofrinhoDia || 0) * dias);
+  const compromissos = r((p.compromissos || []).reduce((s, i) => s + (Number(i.valor) || 0), 0));
+  const saidas = r(meta + frete + cofrinhos + compromissos + (p.piso || 0));
+  const sobra = r((p.saldo || 0) + entradas - saidas);
+  const semVender = r((p.saldo || 0) - saidas);
+  return { entradas, meta, frete, cofrinhos, compromissos, sobra, semVender };
+}
+
+// Quanto já foi e quanto falta de uma dívida, somando as parcelas marcadas como pagas.
+function cxDivida(d, insts) {
+  const doGrupo = (insts || []).filter(i => i.grupo === d.id);
+  const pagas = doGrupo.filter(i => i.pago);
+  const vp = Number(d.valorParcela) || 0;
+  const total = Number(d.total) || (Number(d.parcelas) || 0) * vp;
+  const pago = Math.round(((Number(d.pagoAntes) || 0) + (Number(d.pagasAntes) || 0) * vp + pagas.reduce((s, i) => s + i.valor, 0)) * 100) / 100;
+  const falta = Math.max(0, Math.round((total - pago) * 100) / 100);
+  const proxima = doGrupo.filter(i => !i.pago).sort((a, b) => a.data.localeCompare(b.data))[0] || null;
+  return {
+    total, pago, falta,
+    pct: total > 0 ? Math.min(100, Math.round(pago / total * 100)) : 0,
+    pagasN: (Number(d.pagasAntes) || 0) + pagas.length,
+    parcelas: Number(d.parcelas) || null,
+    proxima: proxima ? { data: proxima.data, valor: proxima.valor } : null,
+  };
+}
+
+// Junta versões (nuvem, este aparelho, …): em cada item ganha o `alt` mais novo.
+function cxMesclar(...fontes) {
+  const out = { versao: 2, regras: {}, estado: {}, dividas: {}, semanas: {}, ajustes: null };
+  const junta = (alvo, mapa) => {
+    for (const [k, v] of Object.entries(mapa || {})) {
+      if (!v || typeof v !== 'object') continue;
+      const a = alvo[k];
+      if (!a || String(v.alt || '') > String(a.alt || '')) alvo[k] = v;
+    }
+  };
+  for (const f of fontes) {
+    if (!f || typeof f !== 'object') continue;
+    junta(out.regras, f.regras); junta(out.estado, f.estado);
+    junta(out.dividas, f.dividas); junta(out.semanas, f.semanas);
+    if (f.ajustes && (!out.ajustes || String(f.ajustes.alt || '') > String(out.ajustes.alt || ''))) out.ajustes = f.ajustes;
+  }
+  out.ajustes = Object.assign({}, CX_AJUSTES_PADRAO, out.ajustes || {});
+  return out;
+}
+
+// Primeira carga: o que estava combinado em 24/11/2026. Valores "estimado" são média de novembro.
+function cxSemente() {
+  const alt = '2026-11-24T00:00:00.000Z';
+  const R = (id, desc, valor, cat, freq, inicio, extra) => [id, Object.assign({ id, desc, valor, cat, freq, inicio, alt }, extra || {})];
+  const regras = Object.fromEntries([
+    R('alvaro-1', 'Álvaro, fatura do Itaú (1ª parte)', 5000, 'divida', 'unica', '2026-11-24', { grupo: 'alvaro' }),
+    R('alvaro-2', 'Álvaro, fatura do Itaú (2ª parte)', 6500, 'divida', 'unica', '2026-12-01', { grupo: 'alvaro' }),
+    R('alvaro-3', 'Álvaro, fatura do Itaú (última parte)', 6491.20, 'divida', 'unica', '2026-12-11', { grupo: 'alvaro' }),
+    R('simples-p2', 'Simples, parcela 2 (guia vale até 30/11)', 3308.50, 'divida', 'unica', '2026-11-30', { grupo: 'simples', cofrinho: true }),
+    R('acordo-mp', 'Acordo Mercado Pago', 3797.79, 'divida', 'mensal', '2026-12-07', { grupo: 'acordo-mp', parcelas: 12, cofrinho: true }),
+    R('nubank', 'Seu Pix pro Nubank', 500, 'pessoal', 'semanal', '2026-11-27'),
+    R('tecido', 'Tecido da semana', 4400, 'producao', 'semanal', '2026-11-30', { estimado: true }),
+    R('corte', 'Anselmo, corte', 1000, 'producao', 'semanal', '2026-12-01', { estimado: true }),
+    R('costura', 'Elizete, costura', 2700, 'producao', 'semanal', '2026-11-29', { estimado: true }),
+    R('marcelly', 'Marcelly, salário', 2000, 'equipe', 'mensal', '2026-12-05', { estimado: true }),
+    R('madalena', 'Madalena', 1540, 'equipe', 'mensal', '2026-12-05', { estimado: true }),
+    R('shopify', 'Shopify', 1156, 'contas', 'mensal', '2026-12-08', { estimado: true }),
+    R('confseg', 'Confseg, contabilidade', 760, 'contas', 'mensal', '2026-12-10', { estimado: true }),
+    R('anthropic', 'Anthropic (Claude)', 600, 'contas', 'mensal', '2026-12-20', { estimado: true }),
+  ]);
+  const dividas = {
+    alvaro: { id: 'alvaro', nome: 'Fatura do Itaú do Álvaro', total: 17991.20, alt },
+    'acordo-mp': { id: 'acordo-mp', nome: 'Acordo Mercado Pago (12x)', total: 45573.48, alt },
+    simples: { id: 'simples', nome: 'Parcelamento do Simples (60x)', parcelas: 60, pagasAntes: 1, valorParcela: 3308.50, alt },
+  };
+  return { versao: 2, regras, estado: {}, dividas, semanas: {}, ajustes: Object.assign({}, CX_AJUSTES_PADRAO, { alt }) };
+}
+
+// ── Tela ──────────────────────────────────────────────────────────────────────
+function cxR(v, centavos) {
+  const n = Number(v) || 0;
+  return 'R$ ' + n.toLocaleString('pt-BR', { minimumFractionDigits: centavos ? 2 : 0, maximumFractionDigits: centavos ? 2 : 0 });
+}
+function cxEsc(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+function cxRotDia(iso) {
+  const hoje = cxHoje();
+  if (iso === hoje) return 'hoje';
+  if (iso === cxSomaDias(hoje, 1)) return 'amanhã';
+  if (iso === cxSomaDias(hoje, -1)) return 'ontem';
+  const [y, m, d] = iso.split('-').map(Number);
+  const sem = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb'][new Date(y, m - 1, d).getDay()];
+  return sem + ' ' + String(d).padStart(2, '0') + '/' + String(m).padStart(2, '0');
+}
+function cxAgora() { return new Date().toISOString(); }
+
+async function renderFluxo(forcar) {
+  if (!window._cx) window._cx = { cfg: null, api: {}, verPagos: false };
+  const cx = window._cx;
+  if (!cx.cfg) {
+    const local = loadLocal('vc:' + CX_KEY);
+    if (local && local.regras) cx.cfg = cxMesclar(local);
+  }
+  cxDesenhar();
+  const nuvem = await carregarNuvem(CX_KEY);
+  if (nuvem === null) {
+    // Linha ainda não existe: nasce com o combinado de 24/11 (e o que este aparelho tiver).
+    cx.cfg = cxMesclar(cxSemente(), cx.cfg);
+    cxGravar();
+  } else if (nuvem) {
+    cx.cfg = cxMesclar(nuvem, cx.cfg);
+    saveLocal('vc:' + CX_KEY, cx.cfg);
+    cx.nuvemFalhou = false;
+  } else {
+    cx.nuvemFalhou = true; // leitura falhou: segue com a cópia deste aparelho
+    if (!cx.cfg) cx.cfg = cxMesclar(cxSemente());
+  }
+  cxDesenhar();
+  cxPuxarDados(forcar);
+}
+
+// Grava já neste aparelho e, logo depois, mescla com a nuvem antes de subir (nunca às cegas).
+function cxGravar() {
+  const cx = window._cx;
+  if (!cx || !cx.cfg) return;
+  saveLocal('vc:' + CX_KEY, cx.cfg);
+  clearTimeout(cx.timer);
+  cx.timer = setTimeout(async () => {
+    const nuvem = await carregarNuvem(CX_KEY);
+    if (nuvem !== undefined) cx.cfg = cxMesclar(nuvem, cx.cfg);
+    cx.cfg.updated_at = cxAgora();
+    saveLocal('vc:' + CX_KEY, cx.cfg);
+    await salvarNuvem(CX_KEY, cx.cfg);
+    cxDesenhar();
+  }, 500);
+}
+
+async function cxPuxarDados(forcar) {
+  const cx = window._cx;
+  if (!forcar && cx.api.em && Date.now() - cx.api.em < 3 * 60 * 1000) return;
+  const hoje = cxHoje(), seg = cxSegunda(hoje);
+  const pegar = async u => { try { const r = await fetch(u, { cache: 'no-store' }); return r.ok ? await r.json() : null; } catch (e) { return null; } };
+  const [saldo, mov, meta] = await Promise.all([
+    pegar('/api/mp-saldo'),
+    pegar('/api/mp-movimentos?desde=' + cxSomaDias(hoje, -14) + '&ate=' + hoje),
+    pegar('/api/meta-cobrancas?dias=14'),
+  ]);
+  const api = { em: Date.now() };
+  if (saldo && typeof saldo.disponivel === 'number') api.saldo = saldo.disponivel;
+  if (mov && mov.entradas && mov.entradas.por_dia) {
+    const pd = mov.entradas.por_dia;
+    let soma = 0;
+    for (let i = 1; i <= 14; i++) soma += Number(pd[cxSomaDias(hoje, -i)]) || 0;
+    api.entradaDia = Math.round(soma / 14 * 100) / 100;
+    api.semanaEntrou = Object.entries(pd).filter(([d]) => d >= seg && d <= hoje).reduce((s, [, v]) => s + (Number(v) || 0), 0);
+  }
+  if (meta && Array.isArray(meta.cobrancas)) {
+    const lim = Date.now() - 14 * 864e5;
+    const soma = meta.cobrancas.filter(c => new Date(c.quando).getTime() >= lim).reduce((s, c) => s + (Number(c.valor) || 0), 0);
+    api.metaDia = Math.round(soma * CX_FATOR_META / 14 * 100) / 100;
+    api.semanaMeta = meta.cobrancas.filter(c => cxIso(new Date(c.quando)) >= seg).reduce((s, c) => s + (Number(c.valor) || 0) * CX_FATOR_META, 0);
+  }
+  cx.api = Object.assign({}, cx.api, api);
+  cxDesenhar();
+}
+
+function cxDesenhar() {
+  const cx = window._cx;
+  const hero = document.getElementById('cx-hero');
+  if (!cx || !hero) return;
+  if (!cx.cfg) { hero.className = 'cx-hero'; hero.innerHTML = '<div class="cx-hero-rot">Carregando…</div>'; return; }
+  const hoje = cxHoje(), fim7 = cxSomaDias(hoje, 6);
+  const insts = cxInstancias(cx.cfg, cxSomaDias(hoje, -60), cxSomaDias(hoje, 35));
+  const aj = cx.cfg.ajustes || CX_AJUSTES_PADRAO;
+  const abertos7 = insts.filter(i => !i.pago && i.data <= fim7);
+  const temSaldo = typeof cx.api.saldo === 'number';
+  const c = cxSobraSemana({
+    saldo: cx.api.saldo, piso: aj.piso, entradaDia: cx.api.entradaDia, metaDia: cx.api.metaDia,
+    freteDia: aj.freteDia, cofrinhoDia: aj.cofrinhoDia, compromissos: abertos7.filter(i => !i.cofrinho),
+  });
+
+  // Topo: um número só.
+  const ate = cxRotDia(fim7);
+  let classe = 'cx-hero', frase;
+  if (!temSaldo) frase = 'Puxando o saldo do Mercado Pago…';
+  else if (c.sobra >= 1000) frase = `Dá pra pagar tudo até ${ate} e ainda sobra.`;
+  else if (c.sobra >= 0) { classe += ' cx-atencao'; frase = `Fecha a semana, mas no limite. Nada de gasto fora da lista.`; }
+  else {
+    classe += ' cx-falta';
+    const adiavel = abertos7.filter(i => !i.cofrinho && i.cat !== 'divida').sort((a, b) => b.valor - a.valor)[0];
+    frase = `Faltam ${cxR(-c.sobra)} pra fechar até ${ate}.` + (adiavel ? ` O maior pagamento da semana é ${cxEsc(adiavel.desc)} (${cxR(adiavel.valor)}, ${cxRotDia(adiavel.data)}).` : '');
+  }
+  const L = (rot, v, sinal) => `<div><span>${rot}</span><b>${sinal || ''}${cxR(v)}</b></div>`;
+  hero.className = classe;
+  hero.innerHTML = `
+    <div class="cx-hero-rot">${!temSaldo || c.sobra >= 0 ? 'Sobra da semana' : 'Falta na semana'}</div>
+    <div class="cx-hero-valor">${temSaldo ? cxR(Math.abs(c.sobra)) : '…'}</div>
+    <div class="cx-hero-frase">${frase}</div>
+    <div class="cx-hero-conta">
+      ${L('Saldo no MP agora', cx.api.saldo || 0)}
+      ${L('Vendas previstas, 7 dias', c.entradas, '+ ')}
+      ${L('Meta, 7 dias', c.meta, '− ')}
+      ${L('Frete, 7 dias', c.frete, '− ')}
+      ${L('Cofrinhos, 7 dias', c.cofrinhos, '− ')}
+      ${L('Pagamentos até ' + ate, c.compromissos, '− ')}
+      ${L('Piso que fica no MP', aj.piso, '− ')}
+    </div>
+    <div class="cx-hero-nota">Vendas previstas = média dos últimos 14 dias (${cxR(cx.api.entradaDia || 0)} por dia). Se não vender nada, ${c.semVender >= 0 ? 'ainda sobram ' + cxR(c.semVender) : 'faltam ' + cxR(-c.semVender)}.${cx.nuvemFalhou ? ' Sem conexão com a nuvem: mostrando a cópia deste aparelho.' : ''}</div>`;
+  const at = document.getElementById('cx-atualizado');
+  if (at) at.textContent = cx.api.em ? 'atualizado às ' + new Date(cx.api.em).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '';
+
+  cxDesenharLista(insts, hoje);
+  cxDesenharSemana(insts, hoje);
+  cxDesenharDividas();
+  cxDesenharAjustes(aj);
+}
+
+function cxLinha(i) {
+  const cat = CX_CATS[i.cat] || CX_CATS.outros;
+  const tags = [];
+  tags.push(`<span>${cxRotDia(i.data)}</span>`);
+  if (i.parcela) tags.push(`<span class="cx-tag">parcela ${i.parcela}</span>`);
+  else if (i.freq === 'semanal') tags.push('<span class="cx-tag">toda semana</span>');
+  else if (i.freq === 'mensal') tags.push('<span class="cx-tag">todo mês</span>');
+  if (i.estimado) tags.push('<span class="cx-tag cx-tag-est">valor estimado</span>');
+  if (i.cofrinho) tags.push('<span class="cx-tag cx-tag-cof">sai do cofrinho</span>');
+  const id = cxEsc(i.id);
+  return `<div class="cx-item${i.pago ? ' cx-pago' : ''}" onclick="cxAbrirForm('${id}')">
+    <button class="cx-check" title="${i.pago ? 'Desmarcar' : 'Marcar como pago'}" onclick="event.stopPropagation();cxMarcarPago('${id}')">${i.pago ? '<i class="ti ti-check"></i>' : ''}</button>
+    <div class="cx-icone" style="background:${cat.cor}1f;color:${cat.cor}"><i class="ti ${cat.icone}"></i></div>
+    <div class="cx-item-meio"><div class="cx-item-desc">${cxEsc(i.desc)}</div><div class="cx-item-sub">${tags.join('')}</div></div>
+    <div class="cx-item-valor">${cxR(i.valor, true)}</div>
+  </div>`;
+}
+
+function cxDesenharLista(insts, hoje) {
+  const el = document.getElementById('cx-lista');
+  if (!el) return;
+  const cx = window._cx;
+  const domingo = cxSomaDias(cxSegunda(hoje), 6);
+  const proxDomingo = cxSomaDias(domingo, 7);
+  const fim = cxSomaDias(hoje, 30);
+  const abertos = insts.filter(i => !i.pago);
+  const grupos = [
+    ['Atrasados', abertos.filter(i => i.data < hoje), true],
+    ['Hoje', abertos.filter(i => i.data === hoje)],
+    ['Esta semana', abertos.filter(i => i.data > hoje && i.data <= domingo)],
+    ['Semana que vem', abertos.filter(i => i.data > domingo && i.data <= proxDomingo)],
+    ['Até ' + cxRotDia(fim).split(' ').pop(), abertos.filter(i => i.data > proxDomingo && i.data <= fim)],
+  ];
+  let html = '';
+  for (const [nome, lst, vermelho] of grupos) {
+    if (!lst.length) continue;
+    const soma = lst.reduce((s, i) => s + i.valor, 0);
+    html += `<div class="cx-grupo"><div class="cx-grupo-cab${vermelho ? ' cx-vermelho' : ''}"><span>${nome}</span><span>${cxR(soma)}</span></div>${lst.map(cxLinha).join('')}</div>`;
+  }
+  if (!html) html = '<div class="cx-vazio">Nenhum pagamento nos próximos 30 dias. Toque em <b>Novo</b> pra lançar.</div>';
+  const pagos = insts.filter(i => i.pago && (i.pagoEm || i.data) >= cxSomaDias(hoje, -7)).sort((a, b) => String(b.pagoEm || b.data).localeCompare(String(a.pagoEm || a.data)));
+  if (pagos.length) {
+    html += `<button class="cx-ver-pagos" onclick="window._cx.verPagos=!window._cx.verPagos;cxDesenhar()">${cx.verPagos ? 'Esconder' : 'Ver'} os pagos dos últimos 7 dias (${pagos.length})</button>`;
+    if (cx.verPagos) html += `<div class="cx-grupo">${pagos.map(cxLinha).join('')}</div>`;
+  }
+  el.innerHTML = html;
+}
+
+function cxDesenharSemana(insts, hoje) {
+  const el = document.getElementById('cx-semana');
+  if (!el) return;
+  const cx = window._cx;
+  const seg = cxSegunda(hoje);
+  const segPassada = cxSomaDias(seg, -7);
+  const pagosSemana = insts.filter(i => i.pago && (i.pagoEm || i.data) >= seg).reduce((s, i) => s + i.valor, 0);
+  const sem = (cx.cfg.semanas || {})[segPassada];
+  const N = (rot, v, sub) => `<div class="cx-num"><span>${rot}${sub ? `<small>${sub}</small>` : ''}</span><b>${v}</b></div>`;
+  el.innerHTML =
+    N('Entrou de vendas', typeof cx.api.semanaEntrou === 'number' ? cxR(cx.api.semanaEntrou) : '…', 'desde segunda ' + seg.slice(8, 10) + '/' + seg.slice(5, 7)) +
+    N('Meta cobrou', typeof cx.api.semanaMeta === 'number' ? cxR(cx.api.semanaMeta) : '…', 'com o imposto') +
+    N('Pagamentos feitos', cxR(pagosSemana), 'os marcados na lista') +
+    N('Pessoal pela loja', sem ? cxR(sem.pessoal) : '—', sem ? 'semana passada, fora o Pix do Nubank (meta é zero)' : 'sai na conferência de segunda');
+}
+
+function cxDesenharDividas() {
+  const el = document.getElementById('cx-dividas');
+  if (!el) return;
+  const cx = window._cx;
+  const todas = cxInstancias(cx.cfg, '2000-01-01', '2100-12-31');
+  const lst = Object.values(cx.cfg.dividas || {}).filter(d => d && !d.apagado);
+  if (!lst.length) { el.innerHTML = '<div class="cx-vazio">Nenhuma dívida lançada.</div>'; return; }
+  el.innerHTML = lst.map(d => {
+    const r = cxDivida(d, todas);
+    const sub = [];
+    if (r.parcelas) sub.push(`${r.pagasN} de ${r.parcelas} parcelas`);
+    sub.push(`pago ${cxR(r.pago)} de ${cxR(r.total)}`);
+    if (r.proxima) sub.push(`próxima ${cxR(r.proxima.valor)} ${cxRotDia(r.proxima.data)}`);
+    return `<div class="cx-divida"><div class="cx-divida-cab"><span>${cxEsc(d.nome)}</span><span>falta ${cxR(r.falta)}</span></div>
+      <div class="cx-barra"><div style="width:${r.pct}%"></div></div><div class="cx-divida-sub">${sub.join(' · ')}</div></div>`;
+  }).join('');
+}
+
+function cxDesenharAjustes(aj) {
+  const el = document.getElementById('cx-ajustes');
+  if (!el || el.contains(document.activeElement)) return; // não troca o campo enquanto ela digita
+  const C = (campo, rot) => `<div class="cx-ajuste"><span>${rot}</span><input type="number" step="1" min="0" value="${Number(aj[campo]) || 0}" onchange="cxMudarAjuste('${campo}', this.value)"></div>`;
+  el.innerHTML = C('piso', 'Piso que sempre fica no MP') + C('freteDia', 'Frete por dia') + C('cofrinhoDia', 'Cofrinhos por dia (acordo + Simples)') +
+    '<div class="cx-ajuste-nota">O piso segura a Meta no Mercado Pago: abaixo de uns R$ 3.400 a cobrança cai no cartão do Álvaro. Os pagamentos marcados "sai do cofrinho" não entram na sobra, porque o dinheiro já foi guardado aos poucos.</div>';
+}
+
+function cxMudarAjuste(campo, valor) {
+  const cx = window._cx;
+  cx.cfg.ajustes = Object.assign({}, cx.cfg.ajustes, { [campo]: Math.max(0, Number(valor) || 0), alt: cxAgora() });
+  cxGravar(); cxDesenhar();
+}
+
+function cxAcharInstancia(id) {
+  const [regraId, data] = String(id).split('@');
+  const r = window._cx.cfg.regras[regraId];
+  if (!r) return null;
+  const e = (window._cx.cfg.estado || {})[id];
+  const lst = cxInstancias(window._cx.cfg, cxSomaDias((e && e.data) || data, -1), cxSomaDias((e && e.data) || data, 1));
+  return lst.find(i => i.id === id) || null;
+}
+
+function cxMudarEstado(id, mudanca) {
+  const cx = window._cx;
+  cx.cfg.estado = cx.cfg.estado || {};
+  cx.cfg.estado[id] = Object.assign({}, cx.cfg.estado[id] || {}, mudanca, { alt: cxAgora() });
+}
+
+function cxMarcarPago(id) {
+  const atual = (window._cx.cfg.estado || {})[id];
+  const pago = !(atual && atual.pago);
+  cxMudarEstado(id, { pago, em: pago ? cxHoje() : null });
+  cxGravar(); cxDesenhar();
+}
+
+// ── Formulário (novo / editar) ────────────────────────────────────────────────
+function cxAbrirForm(id) {
+  const cx = window._cx;
+  const inst = id ? cxAcharInstancia(id) : null;
+  const r = inst ? cx.cfg.regras[inst.regra] : null;
+  cx.form = {
+    id: inst ? inst.id : null,
+    desc: inst ? inst.desc : '', valor: inst ? inst.valor : '', data: inst ? inst.data : cxHoje(),
+    freq: r ? (r.freq === 'mensal' && r.parcelas ? 'parcelado' : (r.freq || 'unica')) : 'unica',
+    parcelas: r && r.parcelas ? r.parcelas : 3,
+    cat: inst ? inst.cat : 'producao', cofrinho: r ? !!r.cofrinho : false, estimado: r ? !!r.estimado : false,
+  };
+  cxDesenharForm();
+  document.getElementById('cx-modal').style.display = '';
+  setTimeout(() => { const f = document.getElementById('cx-f-desc'); if (f && !inst) f.focus(); }, 60);
+}
+function cxFecharForm() {
+  document.getElementById('cx-modal').style.display = 'none';
+  window._cx.form = null;
+}
+function cxLerForm() {
+  const f = window._cx.form;
+  const v = id => (document.getElementById(id) || {}).value;
+  f.desc = (v('cx-f-desc') || '').trim();
+  f.valor = v('cx-f-valor');
+  f.data = v('cx-f-data') || f.data;
+  if (document.getElementById('cx-f-parcelas')) f.parcelas = Math.max(2, parseInt(v('cx-f-parcelas'), 10) || 2);
+  const cof = document.getElementById('cx-f-cof'); if (cof) f.cofrinho = cof.checked;
+  const est = document.getElementById('cx-f-est'); if (est) f.estimado = est.checked;
+  return f;
+}
+function cxFormEscolher(campo, valor) { cxLerForm(); window._cx.form[campo] = valor; cxDesenharForm(); }
+
+function cxDesenharForm() {
+  const f = window._cx.form;
+  const inst = f.id ? cxAcharInstancia(f.id) : null;
+  const repete = inst && inst.freq !== 'unica';
+  const chip = (campo, val, rot) => `<button type="button" class="${f[campo] === val ? 'cx-on' : ''}" onclick="cxFormEscolher('${campo}','${val}')">${rot}</button>`;
+  let acoes;
+  if (!f.id) acoes = '<button class="btn-primary" onclick="cxSalvarForm(\'nova\')"><i class="ti ti-check"></i> Salvar</button>';
+  else if (repete) acoes = `<button class="btn-primary" onclick="cxSalvarForm('so')">Mudar só esta</button>
+      <button class="btn-primary" onclick="cxSalvarForm('proximas')">Mudar esta e as próximas</button>
+      <button class="cx-btn-apagar" onclick="cxApagar('so')"><i class="ti ti-trash"></i> Apagar só esta</button>
+      <button class="cx-btn-apagar" onclick="cxApagar('proximas')">Apagar esta e as próximas</button>`;
+  else acoes = `<button class="btn-primary" onclick="cxSalvarForm('so')"><i class="ti ti-check"></i> Salvar</button>
+      <button class="cx-btn-apagar" onclick="cxApagar('so')"><i class="ti ti-trash"></i> Apagar</button>`;
+  document.getElementById('cx-modal-caixa').innerHTML = `
+    <div class="cx-form-tit"><span>${f.id ? 'Editar pagamento' : 'Novo pagamento'}</span><button onclick="cxFecharForm()">×</button></div>
+    <div class="cx-campo"><label>O QUE É</label><input id="cx-f-desc" value="${cxEsc(f.desc)}" placeholder="ex.: Tecido Costa Rica"></div>
+    <div class="cx-linha2">
+      <div class="cx-campo"><label>VALOR (R$)</label><input id="cx-f-valor" type="number" step="0.01" inputmode="decimal" value="${f.valor === '' ? '' : Number(f.valor)}"></div>
+      <div class="cx-campo"><label>${f.freq === 'unica' || f.id ? 'DIA' : 'PRIMEIRO DIA'}</label><input id="cx-f-data" type="date" value="${f.data}"></div>
+    </div>
+    ${f.id ? (repete ? `<div class="cx-ajuste-nota" style="margin:-4px 0 12px">${inst.parcela ? 'Parcela ' + inst.parcela + '.' : (inst.freq === 'semanal' ? 'Se repete toda semana.' : 'Se repete todo mês.')}</div>` : '') : `
+    <div class="cx-campo"><label>REPETE?</label><div class="cx-chips">${chip('freq', 'unica', 'Só uma vez')}${chip('freq', 'semanal', 'Toda semana')}${chip('freq', 'mensal', 'Todo mês')}${chip('freq', 'parcelado', 'Parcelado')}</div></div>
+    ${f.freq === 'parcelado' ? `<div class="cx-campo"><label>QUANTAS PARCELAS (todo mês)</label><input id="cx-f-parcelas" type="number" min="2" value="${f.parcelas}"></div>` : ''}`}
+    <div class="cx-campo"><label>TIPO</label><div class="cx-chips">${Object.entries(CX_CATS).map(([k, c]) => chip('cat', k, c.nome)).join('')}</div></div>
+    <label class="cx-check-linha"><input type="checkbox" id="cx-f-est" ${f.estimado ? 'checked' : ''}> Valor estimado (ainda vou confirmar)</label>
+    <label class="cx-check-linha" style="margin-top:6px"><input type="checkbox" id="cx-f-cof" ${f.cofrinho ? 'checked' : ''}> Sai do cofrinho (já guardo aos poucos, não conta na sobra)</label>
+    ${f.id ? `<label class="cx-check-linha" style="margin-top:6px"><input type="checkbox" ${inst && inst.pago ? 'checked' : ''} onchange="cxMarcarPago('${cxEsc(f.id)}');cxFecharForm()"> Já paguei</label>` : ''}
+    <div class="cx-form-acoes">${acoes}</div>`;
+}
+
+function cxSalvarForm(modo) {
+  const cx = window._cx;
+  const f = cxLerForm();
+  const valor = Math.round((parseFloat(String(f.valor).replace(',', '.')) || 0) * 100) / 100;
+  if (!f.desc) { alert('Escreve o que é o pagamento.'); return; }
+  if (!(valor > 0)) { alert('Coloca o valor.'); return; }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(f.data)) { alert('Escolhe o dia.'); return; }
+  const alt = cxAgora();
+  if (modo === 'nova') {
+    const id = 'r' + Date.now().toString(36);
+    const freq = f.freq === 'parcelado' ? 'mensal' : f.freq;
+    const regra = { id, desc: f.desc, valor, cat: f.cat, freq, inicio: f.data, cofrinho: !!f.cofrinho, estimado: !!f.estimado, alt };
+    if (f.freq === 'parcelado') {
+      regra.parcelas = f.parcelas;
+      regra.grupo = id; // parcelado vira um cartão em DÍVIDAS
+      cx.cfg.dividas = cx.cfg.dividas || {};
+      cx.cfg.dividas[id] = { id, nome: f.desc + ' (' + f.parcelas + 'x)', total: Math.round(valor * f.parcelas * 100) / 100, alt };
+    }
+    cx.cfg.regras[id] = regra;
+  } else {
+    const inst = cxAcharInstancia(f.id);
+    if (!inst) { cxFecharForm(); return; }
+    const r = cx.cfg.regras[inst.regra];
+    const mesmo = (r.freq || 'unica') === 'unica' || (modo === 'proximas' && inst.dataOriginal === r.inicio);
+    if (mesmo) {
+      // Pagamento único, ou a mudança vale desde a primeira: edita a própria regra.
+      const novaData = (r.freq || 'unica') === 'unica' ? f.data : (f.data || r.inicio);
+      cx.cfg.regras[r.id] = Object.assign({}, r, { desc: f.desc, valor, cat: f.cat, inicio: novaData, cofrinho: !!f.cofrinho, estimado: !!f.estimado, alt });
+      // O que estava marcado nesta ocorrência continua valendo na data nova.
+      const velho = cx.cfg.estado[inst.id];
+      const novoId = r.id + '@' + novaData;
+      if (novoId !== inst.id) {
+        cx.cfg.estado[novoId] = Object.assign({}, velho || {}, { valor: undefined, data: undefined, desc: undefined, alt });
+        cx.cfg.estado[inst.id] = { apagado: true, alt };
+      } else if (velho) cx.cfg.estado[inst.id] = Object.assign({}, velho, { valor: undefined, data: undefined, desc: undefined, alt });
+    } else if (modo === 'so') {
+      cxMudarEstado(inst.id, { valor, data: f.data, desc: f.desc !== r.desc ? f.desc : undefined });
+      if (!!f.cofrinho !== !!r.cofrinho || f.cat !== r.cat || !!f.estimado !== !!r.estimado) {
+        // tipo/cofrinho valem pra regra toda: muda a regra também
+        cx.cfg.regras[r.id] = Object.assign({}, r, { cat: f.cat, cofrinho: !!f.cofrinho, estimado: !!f.estimado, alt });
+      }
+    } else {
+      // Daqui pra frente: fecha a regra antiga na véspera e abre uma nova a partir desta.
+      cx.cfg.regras[r.id] = Object.assign({}, r, { fim: cxSomaDias(inst.dataOriginal, -1), alt });
+      const id = r.id + '-' + Date.now().toString(36);
+      const nova = Object.assign({}, r, { id, desc: f.desc, valor, cat: f.cat, inicio: f.data, fim: undefined, cofrinho: !!f.cofrinho, estimado: !!f.estimado, alt });
+      if (r.parcelas) {
+        const feitas = cxOcorrencias(r, r.inicio, cxSomaDias(inst.dataOriginal, -1)).length;
+        nova.parcelas = Math.max(1, r.parcelas - feitas);
+      }
+      cx.cfg.regras[id] = nova;
+    }
+  }
+  cxFecharForm(); cxGravar(); cxDesenhar();
+}
+
+function cxApagar(modo) {
+  const cx = window._cx;
+  const inst = cxAcharInstancia(cx.form && cx.form.id);
+  if (!inst) { cxFecharForm(); return; }
+  const r = cx.cfg.regras[inst.regra];
+  const alt = cxAgora();
+  if ((r.freq || 'unica') === 'unica' || (modo === 'proximas' && inst.dataOriginal <= r.inicio)) {
+    if (!confirm(`Apagar "${inst.desc}"${(r.freq || 'unica') === 'unica' ? '' : ' e todas as próximas'}?`)) return;
+    cx.cfg.regras[r.id] = Object.assign({}, r, { apagado: true, alt });
+  } else if (modo === 'so') {
+    if (!confirm(`Apagar só o pagamento de ${cxRotDia(inst.data)}?`)) return;
+    cxMudarEstado(inst.id, { apagado: true });
+  } else {
+    if (!confirm(`Apagar "${inst.desc}" de ${cxRotDia(inst.data)} em diante?`)) return;
+    cx.cfg.regras[r.id] = Object.assign({}, r, { fim: cxSomaDias(inst.dataOriginal, -1), alt });
+  }
+  cxFecharForm(); cxGravar(); cxDesenhar();
 }
 
 // ─── ABA PRECIFICAÇÃO ────────────────────────────────────────────────────────
