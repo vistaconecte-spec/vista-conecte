@@ -25,8 +25,10 @@ function extrair(nome) {
 // As duas constantes ficam juntas no main.js: do CX_AJUSTES_PADRAO até o fim do bloco CX_CATS.
 const ini = main.indexOf('const CX_AJUSTES_PADRAO =');
 const consts = main.slice(ini, main.indexOf('\n};', main.indexOf('const CX_CATS =', ini)) + 3);
-const nomes = ['cxIso', 'cxSomaDias', 'cxSegunda', 'cxOcorrencias', 'cxInstancias', 'cxProjecao', 'cxDivida', 'cxMesclar', 'cxSemente'];
-const cx = new Function(`${consts}\n${nomes.map(extrair).join('\n')}\nreturn { ${nomes.join(', ')} };`)();
+const iCh = main.indexOf('const CX_CHAVES_PADRAO =');
+const chaves = main.slice(iCh, main.indexOf('\n};', iCh) + 3);
+const nomes = ['cxIso', 'cxSomaDias', 'cxSegunda', 'cxOcorrencias', 'cxInstancias', 'cxProjecao', 'cxDivida', 'cxMesclar', 'cxSemente', 'cxNorm', 'cxChaves', 'cxDiasEntre', 'cxCasarMp', 'cxSaldoCorrigido'];
+const cx = new Function(`${consts}\n${chaves}\n${nomes.map(extrair).join('\n')}\nreturn { ${nomes.join(', ')} };`)();
 
 let falhas = 0, total = 0;
 function ok(nome, real, esperado) {
@@ -140,6 +142,39 @@ console.log('\n7) Combinado de 24/11 entra na primeira carga');
   ok('fatura do Álvaro soma 17.991,20', Math.round(l.filter(i => i.grupo === 'alvaro').reduce((t, i) => t + i.valor, 0) * 100) / 100, 17991.2);
 }
 
+console.log('\n9) Baixa automática pelo Mercado Pago (Pix reais de novembro)');
+{
+  const s = cx.cxSemente();
+  const insts = cx.cxInstancias(s, '2026-11-01', '2026-12-31');
+  const itens = [
+    { id: 'pix_transfer_mo_payout_movement-a', d: '2026-11-24T16:05:15.000Z', n: 'Alvaro Alves', v: 5000, k: 'pix_trf_out' },
+    { id: 'pix_transfer_mo_payout_movement-b', d: '2026-11-23T20:32:19.000Z', n: 'Alvaro Alves', v: 2500, k: 'pix_trf_out' },
+    { id: 'p3', d: '2026-11-27T15:00:00.000Z', n: 'Barbara Schmitt E Silva', v: 500, k: 'pix_trf_out' },
+    { id: 'p4', d: '2026-11-26T15:00:00.000Z', n: 'Barbara Schmitt E Silva', v: 150, k: 'pix_trf_out' },
+    { id: 'p5', d: '2026-11-30T13:00:00.000Z', n: 'Costa Rica Malhas E Confeccoes Ltda', v: 5365.52, k: 'pix' },
+    { id: 'p6', d: '2026-11-30T15:00:00.000Z', n: 'Tecidos Porto Alegre', v: 812.4, k: 'pix' },
+    { id: 'p7', d: '2026-11-29T22:00:00.000Z', n: 'Maria Elizete Da Silva', v: 2650, k: 'pix_trf_out' },
+    { id: 'p8', d: '2026-12-08T12:00:00.000Z', n: 'Shopify', v: 1184.33, k: 'store' },
+  ];
+  const r = cx.cxCasarMp(insts, s.regras, itens);
+  const v = id => { const i = r.insts.find(x => x.id === id); return i ? [i.pago, i.valor, !!i.auto] : null; };
+  ok('Pix de 5.000 dá baixa na 1ª parte do Álvaro', v('alvaro-1@2026-11-24'), [true, 5000, true]);
+  ok('Pix de 2.500 do carro NÃO dá baixa em parte da fatura', r.usados.has('pix_transfer_mo_payout_movement-b'), false);
+  ok('Pix de 500 pra você casa com o Nubank da sexta', v('nubank@2026-11-27'), [true, 500, true]);
+  ok('Pix de 150 pra você fica de fora (é gasto pessoal)', r.usados.has('p4'), false);
+  ok('tecido soma os dois fornecedores com o valor real', v('tecido@2026-11-30'), [true, 6177.92, true]);
+  ok('Elizete com o valor que saiu, sem estimado', [v('costura@2026-11-29'), r.insts.find(x => x.id === 'costura@2026-11-29').estimado], [[true, 2650, true], false]);
+  ok('Shopify com valor diferente do estimado casa (estimado aceita qualquer valor)', v('shopify@2026-12-08'), [true, 1184.33, true]);
+  ok('semana seguinte do tecido continua em aberto', v('tecido@2026-12-07'), [false, 4400, false]);
+  const desm = cx.cxCasarMp(insts.map(i => i.id === 'nubank@2026-11-27' ? Object.assign({}, i, { manual: true, pago: false }) : i), s.regras, itens);
+  ok('desmarcado à mão não volta a ser pago', desm.insts.find(x => x.id === 'nubank@2026-11-27').pago, false);
+  ok('nome com acento e maiúscula casa', cx.cxNorm('ÁLVARO Alves'), 'alvaro alves');
+  ok('saldo desconta só o Pix depois do extrato (o de 23/11 já estava nele)', cx.cxSaldoCorrigido(11522.42, '2026-11-24T15:54:40.000Z', itens.slice(0, 2)), 6522.42);
+  ok('compra no cartão não é descontada de novo (o extrato já vê)', cx.cxSaldoCorrigido(1000, '2026-12-01T00:00:00.000Z', [itens[7]]), 1000);
+  ok('saldo sem referência fica igual', cx.cxSaldoCorrigido(100, null, itens), 100);
+  ok('mesclar guarda o mp mais novo', cx.cxMesclar({ mp: { at: '2026-11-24T10:00:00Z', itens: [1] } }, { mp: { at: '2026-11-24T09:00:00Z', itens: [] } }).mp.itens.length, 1);
+}
+
 console.log('\n8) Tela');
 ok('painel novo no index', ['cx-hero', 'cx-lista', 'cx-semana', 'cx-dividas', 'cx-ajustes', 'cx-modal'].every(id => html.includes(`id="${id}"`)), true);
 ok('portão de senha continua', html.includes('id="flx-gate"') && html.includes('id="flx-senha"'), true);
@@ -147,7 +182,7 @@ ok('portão de senha continua', html.includes('id="flx-gate"') && html.includes(
   const marcar = extrair('cxMarcarPago');
   ok('marcar pago abre a pergunta do valor real (pedido de 24/11)', marcar.includes('cxAbrirPagar(id)'), true);
   const conf = extrair('cxConfirmarPagar');
-  ok('valor pago fica gravado na ocorrência', /cxMudarEstado\(id, \{ pago: true, em: data, valor \}\)/.test(conf), true);
+  ok('valor pago fica gravado na ocorrência (e vale sobre a leitura do MP)', /cxMudarEstado\(id, \{ pago: true, em: data, valor, manual: true \}\)/.test(conf), true);
   ok('sem valor digitado não marca', conf.includes("if (!(valor > 0))"), true);
 }
 ok('renderFluxo é a versão nova', /async function renderFluxo\(forcar\)/.test(main), true);

@@ -1577,3 +1577,6 @@ table.est-tab td > div > input { min-width: 0; flex: 1 1 auto; }
   .cx-item-desc { white-space:normal; line-height:1.25; }
   .cx-ajuste input { font-size:14px !important; padding:6px 8px !important; }
 }
+.cx-tag.cx-tag-mp { background:rgba(63,125,88,.13); color:#2f6146; }
+.cx-mp-status { font-size:11px; color:#2f6146; background:rgba(63,125,88,.08); border-radius:10px; padding:7px 10px; margin:6px 0 2px; }
+.cx-mp-status.cx-mp-velho { color:#8a5d12; background:rgba(194,138,44,.12); }

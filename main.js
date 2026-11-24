@@ -5720,6 +5720,7 @@ function cxInstancias(cfg, de, ate) {
         parcela: r.freq === 'mensal' && r.parcelas ? o.n + '/' + r.parcelas : null,
         pago: !!e.pago,
         pagoEm: e.em || null,
+        manual: !!e.manual,
       });
     }
   }
@@ -5775,6 +5776,64 @@ function cxDivida(d, insts) {
   };
 }
 
+// Como cada pagamento aparece no Mercado Pago (nome de quem recebeu ou da loja), em minúsculas e
+// sem acento. Regra criada na tela usa o campo "Como aparece no Mercado Pago" (regra.chaves).
+const CX_CHAVES_PADRAO = {
+  'alvaro-1': ['alvaro'], 'alvaro-2': ['alvaro'], 'alvaro-3': ['alvaro'],
+  nubank: ['barbara schmitt'], madalena: ['madalena'], marcelly: ['marcelly'],
+  tecido: ['costa rica', 'porto alegre', 'makro'], corte: ['anselmo'], costura: ['elizete'],
+  shopify: ['shopify'], confseg: ['confseg'], anthropic: ['claude ai', 'anthropic'],
+  'simples-p2': ['receita federal', 'simples nacional'],
+};
+function cxNorm(s) { return String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim(); }
+function cxChaves(r) {
+  const lst = Array.isArray(r && r.chaves) ? r.chaves : (CX_CHAVES_PADRAO[r && r.id] || CX_CHAVES_PADRAO[String(r && r.id).split('-')[0]] || []);
+  return lst.map(cxNorm).filter(c => c.length >= 3);
+}
+function cxDiasEntre(a, b) {
+  const [y1, m1, d1] = a.split('-').map(Number), [y2, m2, d2] = b.split('-').map(Number);
+  return Math.round((new Date(y2, m2 - 1, d2) - new Date(y1, m1 - 1, d1)) / 864e5);
+}
+
+// Baixa automática (pedido de 24/11/2026: "isso precisa ser tudo intuitivo, automático").
+// Cada saída do MP (nome + valor exato, lida do site pelo puxar-saidas-mp.js) procura o pagamento
+// da lista com a mesma palavra-chave e a data mais perto (até 3 dias nos semanais, 10 nos outros).
+// Valor fixo (sem "estimado") só casa se bater com folga de 15%: o Pix de R$ 2.500 do conserto do
+// carro ao Álvaro não pode dar baixa na parte de R$ 5.000 da fatura. Vários Pix na mesma ocorrência
+// somam (tecido de 2 fornecedores). O que ela marcou ou desmarcou à mão (`manual`) não é tocado.
+function cxCasarMp(insts, regras, itens) {
+  const out = insts.map(i => Object.assign({}, i));
+  const porInst = new Map(), usados = new Set();
+  const lst = (itens || []).filter(it => it && it.id && it.d && it.v > 0).slice().sort((a, b) => String(a.d).localeCompare(String(b.d)));
+  for (const it of lst) {
+    const nome = cxNorm(it.n), data = cxIso(new Date(it.d));
+    let melhor = null;
+    for (const i of out) {
+      if (i.manual) continue;
+      const r = (regras || {})[i.regra];
+      const ch = cxChaves(r);
+      if (!ch.length || !ch.some(c => nome.includes(c))) continue;
+      const dist = Math.abs(cxDiasEntre(i.data, data));
+      if (dist > (i.freq === 'semanal' ? 3 : 10)) continue;
+      if (!r.estimado && Math.abs(it.v - i.valor) > Math.max(i.valor * 0.15, 30)) continue;
+      if (!melhor || dist < melhor.dist) melhor = { i, dist };
+    }
+    if (!melhor) continue;
+    if (!porInst.has(melhor.i.id)) porInst.set(melhor.i.id, []);
+    porInst.get(melhor.i.id).push(it);
+    usados.add(it.id);
+  }
+  for (const i of out) {
+    const m = porInst.get(i.id);
+    if (!m) continue;
+    i.pago = true; i.auto = true; i.estimado = false;
+    i.valor = Math.round(m.reduce((t, x) => t + x.v, 0) * 100) / 100;
+    i.pagoEm = cxIso(new Date(m[m.length - 1].d));
+    i.mp = m.map(x => x.n + ' ' + x.v);
+  }
+  return { insts: out, usados };
+}
+
 // Junta versões (nuvem, este aparelho, …): em cada item ganha o `alt` mais novo.
 function cxMesclar(...fontes) {
   const out = { versao: 2, regras: {}, estado: {}, dividas: {}, semanas: {}, ajustes: null };
@@ -5790,6 +5849,7 @@ function cxMesclar(...fontes) {
     junta(out.regras, f.regras); junta(out.estado, f.estado);
     junta(out.dividas, f.dividas); junta(out.semanas, f.semanas);
     if (f.ajustes && (!out.ajustes || String(f.ajustes.alt || '') > String(out.ajustes.alt || ''))) out.ajustes = f.ajustes;
+    if (f.mp && (!out.mp || String(f.mp.at || '') > String(out.mp.at || ''))) out.mp = f.mp;
   }
   out.ajustes = Object.assign({}, CX_AJUSTES_PADRAO, out.ajustes || {});
   return out;
@@ -5894,7 +5954,7 @@ async function cxPuxarDados(forcar) {
     pegar('/api/meta-cobrancas?dias=28'),
   ]);
   const api = { em: Date.now() };
-  if (saldo && typeof saldo.disponivel === 'number') api.saldo = saldo.disponivel;
+  if (saldo && typeof saldo.disponivel === 'number') { api.saldo = saldo.disponivel; api.saldoRef = saldo.referencia || null; }
   // Vendas e Meta na MESMA janela (14 ou 28 dias), escolhendo a que deixa menos dinheiro por dia.
   // Misturar janelas exagera: em 24/11 a de 14 dias tinha a Meta da Black (R$ 1.773/dia) e a de
   // 28 as vendas fracas do começo do mês (R$ 4.608/dia), e a tela previa falta de R$ 9 mil.
@@ -5919,18 +5979,39 @@ async function cxPuxarDados(forcar) {
   cxDesenhar();
 }
 
+// Lista do período já com a baixa automática do Mercado Pago aplicada.
+function cxTodas(de, ate) {
+  const cx = window._cx;
+  const r = cxCasarMp(cxInstancias(cx.cfg, de, ate), cx.cfg.regras, cx.cfg.mp && cx.cfg.mp.itens);
+  return r;
+}
+
+// O saldo estimado do /api/mp-saldo não vê Pix enviado depois do último extrato (payout não aparece
+// no payments/search). Em 24/11 o Pix de R$ 5.000 ao Álvaro (13h05) ficou fora e a tela inflou.
+// Desconta os Pix e transferências que o leitor do site viu depois da referência do extrato.
+function cxSaldoCorrigido(saldo, ref, itens) {
+  if (typeof saldo !== 'number') return saldo;
+  if (!ref) return saldo;
+  const t0 = new Date(ref).getTime();
+  const pix = (itens || []).filter(i => i && (i.k === 'pix_trf_out' || /^(pix_transfer|transfer|payout)/.test(String(i.id))) && new Date(i.d).getTime() > t0);
+  return Math.round((saldo - pix.reduce((t, i) => t + (Number(i.v) || 0), 0)) * 100) / 100;
+}
+
 function cxDesenhar() {
   const cx = window._cx;
   const hero = document.getElementById('cx-hero');
   if (!cx || !hero) return;
   if (!cx.cfg) { hero.className = 'cx-hero'; hero.innerHTML = '<div class="cx-hero-rot">Carregando…</div>'; return; }
   const hoje = cxHoje();
-  const insts = cxInstancias(cx.cfg, cxSomaDias(hoje, -60), cxSomaDias(hoje, 35));
+  const casadas = cxTodas(cxSomaDias(hoje, -60), cxSomaDias(hoje, 35));
+  const insts = casadas.insts;
+  cx.usados = casadas.usados;
   const aj = Object.assign({}, CX_AJUSTES_PADRAO, cx.cfg.ajustes || {});
   const temSaldo = typeof cx.api.saldo === 'number';
+  const saldoAgora = cxSaldoCorrigido(cx.api.saldo, cx.api.saldoRef, cx.cfg.mp && cx.cfg.mp.itens);
   const contas = insts.filter(i => !i.pago && !i.cofrinho && i.data <= cxSomaDias(hoje, 30));
   const base = {
-    hoje, dias: 30, saldo: cx.api.saldo, piso: aj.piso, entradaDia: cx.api.entradaDia, dasPct: aj.dasPct,
+    hoje, dias: 30, saldo: saldoAgora, piso: aj.piso, entradaDia: cx.api.entradaDia, dasPct: aj.dasPct,
     metaDia: cx.api.metaDia, freteDia: aj.freteDia, cofrinhoDia: aj.cofrinhoDia, outrosDia: aj.outrosDia, contas,
   };
   const c = cxProjecao(base);
@@ -5956,7 +6037,7 @@ function cxDesenhar() {
     <div class="cx-hero-valor">${temSaldo ? cxR(Math.abs(c.folga)) : '…'}</div>
     <div class="cx-hero-frase">${frase}</div>
     <div class="cx-hero-conta">
-      ${L('Saldo no MP agora', cx.api.saldo || 0)}
+      ${L('Saldo no MP agora', saldoAgora || 0)}
       ${L('Vendas até ' + rotPior + ateTxt, a.entradas, '+ ')}
       ${L('DAS automático (' + aj.dasPct + '%)', a.das, '− ')}
       ${L('Meta', a.meta, '− ')}
@@ -5985,6 +6066,7 @@ function cxLinha(i) {
   else if (i.freq === 'mensal') tags.push('<span class="cx-tag">todo mês</span>');
   if (i.estimado) tags.push('<span class="cx-tag cx-tag-est">valor estimado</span>');
   if (i.cofrinho) tags.push('<span class="cx-tag cx-tag-cof">sai do cofrinho</span>');
+  if (i.auto) tags.push(`<span class="cx-tag cx-tag-mp" title="${cxEsc((i.mp || []).join(' + '))}">visto no Mercado Pago</span>`);
   const id = cxEsc(i.id);
   return `<div class="cx-item${i.pago ? ' cx-pago' : ''}" onclick="cxAbrirForm('${id}')">
     <button class="cx-check" title="${i.pago ? 'Desmarcar' : 'Marcar como pago'}" onclick="event.stopPropagation();cxMarcarPago('${id}')">${i.pago ? '<i class="ti ti-check"></i>' : ''}</button>
@@ -5998,6 +6080,11 @@ function cxDesenharLista(insts, hoje) {
   const el = document.getElementById('cx-lista');
   if (!el) return;
   const cx = window._cx;
+  const mpAt = cx.cfg.mp && cx.cfg.mp.at;
+  const horas = mpAt ? (Date.now() - new Date(mpAt).getTime()) / 36e5 : null;
+  const status = !mpAt
+    ? '<div class="cx-mp-status cx-mp-velho">A baixa automática começa quando o leitor do Mercado Pago rodar pela primeira vez.</div>'
+    : `<div class="cx-mp-status${horas > 4 ? ' cx-mp-velho' : ''}"><i class="ti ti-refresh-dot"></i> Pagamentos conferidos no Mercado Pago ${cxRotDia(cxIso(new Date(mpAt)))} às ${new Date(mpAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}${horas > 4 ? '. Faz tempo: o Mercado Pago pode ter deslogado no navegador do computador.' : ', baixa sozinha.'}</div>`;
   const domingo = cxSomaDias(cxSegunda(hoje), 6);
   const proxDomingo = cxSomaDias(domingo, 7);
   const fim = cxSomaDias(hoje, 30);
@@ -6016,6 +6103,7 @@ function cxDesenharLista(insts, hoje) {
     html += `<div class="cx-grupo"><div class="cx-grupo-cab${vermelho ? ' cx-vermelho' : ''}"><span>${nome}</span><span>${cxR(soma)}</span></div>${lst.map(cxLinha).join('')}</div>`;
   }
   if (!html) html = '<div class="cx-vazio">Nenhum pagamento nos próximos 30 dias. Toque em <b>Novo</b> pra lançar.</div>';
+  html = status + html;
   const pagos = insts.filter(i => i.pago && (i.pagoEm || i.data) >= cxSomaDias(hoje, -7)).sort((a, b) => String(b.pagoEm || b.data).localeCompare(String(a.pagoEm || a.data)));
   if (pagos.length) {
     html += `<button class="cx-ver-pagos" onclick="window._cx.verPagos=!window._cx.verPagos;cxDesenhar()">${cx.verPagos ? 'Esconder' : 'Ver'} os pagos dos últimos 7 dias (${pagos.length})</button>`;
@@ -6032,19 +6120,23 @@ function cxDesenharSemana(insts, hoje) {
   const segPassada = cxSomaDias(seg, -7);
   const pagosSemana = insts.filter(i => i.pago && (i.pagoEm || i.data) >= seg).reduce((s, i) => s + i.valor, 0);
   const sem = (cx.cfg.semanas || {})[segPassada];
+  // Pix pra ela mesma que não foram o Pix fixo do Nubank (esses já casaram com a regra e estão em usados).
+  const pixVoce = ((cx.cfg.mp && cx.cfg.mp.itens) || []).filter(i => cxNorm(i.n).includes('barbara schmitt') && !(cx.usados || new Set()).has(i.id) && cxIso(new Date(i.d)) >= seg);
+  const pixVoceTot = pixVoce.reduce((t, i) => t + i.v, 0);
   const N = (rot, v, sub) => `<div class="cx-num"><span>${rot}${sub ? `<small>${sub}</small>` : ''}</span><b>${v}</b></div>`;
   el.innerHTML =
     N('Entrou de vendas', typeof cx.api.semanaEntrou === 'number' ? cxR(cx.api.semanaEntrou) : '…', 'desde segunda ' + seg.slice(8, 10) + '/' + seg.slice(5, 7)) +
     N('Meta cobrou', typeof cx.api.semanaMeta === 'number' ? cxR(cx.api.semanaMeta) : '…', 'com o imposto') +
-    N('Pagamentos feitos', cxR(pagosSemana), 'os marcados na lista') +
-    N('Pessoal pela loja', sem ? cxR(sem.pessoal) : '—', sem ? 'semana passada, fora o Pix do Nubank (meta é zero)' : 'sai na conferência de segunda');
+    N('Pagamentos feitos', cxR(pagosSemana), 'baixados pelo Mercado Pago') +
+    N('Pix pra você fora o Nubank', cx.cfg.mp ? cxR(pixVoceTot) : '—', cx.cfg.mp ? (pixVoce.length ? pixVoce.length + ' Pix esta semana (meta é zero)' : 'esta semana, meta é zero') : 'aparece quando o leitor do MP rodar') +
+    N('Pessoal pela loja', sem ? cxR(sem.pessoal) : '—', sem ? 'semana passada, com mercado e farmácia' : 'sai na conferência de segunda');
 }
 
 function cxDesenharDividas() {
   const el = document.getElementById('cx-dividas');
   if (!el) return;
   const cx = window._cx;
-  const todas = cxInstancias(cx.cfg, '2000-01-01', '2100-12-31');
+  const todas = cxTodas('2000-01-01', '2100-12-31').insts;
   const lst = Object.values(cx.cfg.dividas || {}).filter(d => d && !d.apagado);
   if (!lst.length) { el.innerHTML = '<div class="cx-vazio">Nenhuma dívida lançada.</div>'; return; }
   el.innerHTML = lst.map(d => {
@@ -6063,7 +6155,7 @@ function cxDesenharAjustes(aj) {
   if (!el || el.contains(document.activeElement)) return; // não troca o campo enquanto ela digita
   const C = (campo, rot) => `<div class="cx-ajuste"><span>${rot}</span><input type="number" step="1" min="0" value="${Number(aj[campo]) || 0}" onchange="cxMudarAjuste('${campo}', this.value)"></div>`;
   el.innerHTML = C('piso', 'Piso que sempre fica no MP') + C('freteDia', 'Frete por dia') + C('cofrinhoDia', 'Cofrinhos por dia (acordo + Simples)') + C('dasPct', 'DAS automático, % de cada venda') + C('outrosDia', 'Gastos miúdos por dia (devolução, Ju, sistemas)') +
-    '<div class="cx-ajuste-nota">Pagou e marcou na lista antes do Pix sair? A conta tira o pagamento da lista mas o saldo do MP ainda tem o dinheiro: marque só depois de pagar. O piso segura a Meta no Mercado Pago: abaixo de uns R$ 3.400 a cobrança cai no cartão do Álvaro. Os pagamentos marcados "sai do cofrinho" não entram na sobra, porque o dinheiro já foi guardado aos poucos.</div>';
+    '<div class="cx-ajuste-nota">O piso segura a Meta no Mercado Pago: abaixo de uns R$ 3.400 a cobrança cai no cartão do Álvaro. Os pagamentos marcados "sai do cofrinho" não entram na sobra, porque o dinheiro já foi guardado aos poucos.</div>';
 }
 
 function cxMudarAjuste(campo, valor) {
@@ -6077,7 +6169,7 @@ function cxAcharInstancia(id) {
   const r = window._cx.cfg.regras[regraId];
   if (!r) return null;
   const e = (window._cx.cfg.estado || {})[id];
-  const lst = cxInstancias(window._cx.cfg, cxSomaDias((e && e.data) || data, -1), cxSomaDias((e && e.data) || data, 1));
+  const lst = cxTodas(cxSomaDias((e && e.data) || data, -15), cxSomaDias((e && e.data) || data, 15)).insts;
   return lst.find(i => i.id === id) || null;
 }
 
@@ -6090,10 +6182,12 @@ function cxMudarEstado(id, mudanca) {
 // Bolinha da lista. Desmarcar é direto; marcar como pago SEMPRE pergunta quanto saiu de verdade
 // (pedido dela em 24/11/2026: "os valores precisam ser reais e não estimados quando eu clicar em
 // pago"). O valor digitado fica na ocorrência e tira a etiqueta "valor estimado".
+// Desde a baixa automática, a bolinha é só exceção (pagamento em dinheiro, ou baixa errada):
+// desmarcar grava `manual` pra leitura do MP não marcar de novo aquela ocorrência.
 function cxMarcarPago(id) {
-  const atual = (window._cx.cfg.estado || {})[id];
-  if (atual && atual.pago) {
-    cxMudarEstado(id, { pago: false, em: null });
+  const inst = cxAcharInstancia(id);
+  if (inst && inst.pago) {
+    cxMudarEstado(id, { pago: false, em: null, valor: undefined, manual: true });
     cxGravar(); cxDesenhar();
     return;
   }
@@ -6129,7 +6223,7 @@ function cxConfirmarPagar() {
   const valor = Math.round((parseFloat(bruto) || 0) * 100) / 100;
   if (!(valor > 0)) { document.getElementById('cx-p-erro').textContent = 'Digita o valor que saiu de verdade.'; return; }
   const data = document.getElementById('cx-p-data').value || cxHoje();
-  cxMudarEstado(id, { pago: true, em: data, valor });
+  cxMudarEstado(id, { pago: true, em: data, valor, manual: true });
   const prox = document.getElementById('cx-p-prox');
   if (prox && prox.checked) {
     const r = cx.cfg.regras[inst.regra];
@@ -6149,6 +6243,7 @@ function cxAbrirForm(id) {
     freq: r ? (r.freq === 'mensal' && r.parcelas ? 'parcelado' : (r.freq || 'unica')) : 'unica',
     parcelas: r && r.parcelas ? r.parcelas : 3,
     cat: inst ? inst.cat : 'producao', cofrinho: r ? !!r.cofrinho : false, estimado: r ? !!r.estimado : false,
+    chaves: r ? cxChaves(r).join(', ') : '',
   };
   cxDesenharForm();
   document.getElementById('cx-modal').style.display = '';
@@ -6162,6 +6257,7 @@ function cxLerForm() {
   const f = window._cx.form;
   const v = id => (document.getElementById(id) || {}).value;
   f.desc = (v('cx-f-desc') || '').trim();
+  if (document.getElementById('cx-f-chaves')) f.chaves = v('cx-f-chaves') || '';
   f.valor = v('cx-f-valor');
   f.data = v('cx-f-data') || f.data;
   if (document.getElementById('cx-f-parcelas')) f.parcelas = Math.max(2, parseInt(v('cx-f-parcelas'), 10) || 2);
@@ -6194,12 +6290,15 @@ function cxDesenharForm() {
     ${f.id ? (repete ? `<div class="cx-ajuste-nota" style="margin:-4px 0 12px">${inst.parcela ? 'Parcela ' + inst.parcela + '.' : (inst.freq === 'semanal' ? 'Se repete toda semana.' : 'Se repete todo mês.')}</div>` : '') : `
     <div class="cx-campo"><label>REPETE?</label><div class="cx-chips">${chip('freq', 'unica', 'Só uma vez')}${chip('freq', 'semanal', 'Toda semana')}${chip('freq', 'mensal', 'Todo mês')}${chip('freq', 'parcelado', 'Parcelado')}</div></div>
     ${f.freq === 'parcelado' ? `<div class="cx-campo"><label>QUANTAS PARCELAS (todo mês)</label><input id="cx-f-parcelas" type="number" min="2" value="${f.parcelas}"></div>` : ''}`}
+    <div class="cx-campo"><label>COMO APARECE NO MERCADO PAGO</label><input id="cx-f-chaves" value="${cxEsc(f.chaves || '')}" placeholder="nome de quem recebe, ex.: elizete"><div class="cx-ajuste-nota" style="margin-top:4px">Com isso a baixa é sozinha: quando sair um Pix ou pagamento com esse nome perto do dia, ele fica pago com o valor real.</div></div>
     <div class="cx-campo"><label>TIPO</label><div class="cx-chips">${Object.entries(CX_CATS).map(([k, c]) => chip('cat', k, c.nome)).join('')}</div></div>
     <label class="cx-check-linha"><input type="checkbox" id="cx-f-est" ${f.estimado ? 'checked' : ''}> Valor estimado (ainda vou confirmar)</label>
     <label class="cx-check-linha" style="margin-top:6px"><input type="checkbox" id="cx-f-cof" ${f.cofrinho ? 'checked' : ''}> Sai do cofrinho (já guardo aos poucos, não conta na sobra)</label>
     ${f.id ? (inst && inst.pago ? `<div class="cx-ajuste-nota" style="margin-top:8px">Pago ${cxR(inst.valor, true)} em ${cxRotDia(inst.pagoEm || inst.data)}. <a href="#" onclick="event.preventDefault();cxMarcarPago('${cxEsc(f.id)}');cxFecharForm()">Desmarcar</a></div>` : `<button type="button" class="btn-outline" style="width:100%;margin-top:10px;padding:9px" onclick="cxAbrirPagar('${cxEsc(f.id)}')"><i class="ti ti-check"></i> Marcar como pago</button>`) : ''}
     <div class="cx-form-acoes">${acoes}</div>`;
 }
+
+function cxListaChaves(txt) { return String(txt || '').split(',').map(cxNorm).filter(c => c.length >= 3); }
 
 function cxSalvarForm(modo) {
   const cx = window._cx;
@@ -6212,7 +6311,7 @@ function cxSalvarForm(modo) {
   if (modo === 'nova') {
     const id = 'r' + Date.now().toString(36);
     const freq = f.freq === 'parcelado' ? 'mensal' : f.freq;
-    const regra = { id, desc: f.desc, valor, cat: f.cat, freq, inicio: f.data, cofrinho: !!f.cofrinho, estimado: !!f.estimado, alt };
+    const regra = { id, desc: f.desc, valor, cat: f.cat, freq, inicio: f.data, cofrinho: !!f.cofrinho, estimado: !!f.estimado, chaves: cxListaChaves(f.chaves), alt };
     if (f.freq === 'parcelado') {
       regra.parcelas = f.parcelas;
       regra.grupo = id; // parcelado vira um cartão em DÍVIDAS
@@ -6228,7 +6327,7 @@ function cxSalvarForm(modo) {
     if (mesmo) {
       // Pagamento único, ou a mudança vale desde a primeira: edita a própria regra.
       const novaData = (r.freq || 'unica') === 'unica' ? f.data : (f.data || r.inicio);
-      cx.cfg.regras[r.id] = Object.assign({}, r, { desc: f.desc, valor, cat: f.cat, inicio: novaData, cofrinho: !!f.cofrinho, estimado: !!f.estimado, alt });
+      cx.cfg.regras[r.id] = Object.assign({}, r, { desc: f.desc, valor, cat: f.cat, inicio: novaData, cofrinho: !!f.cofrinho, estimado: !!f.estimado, chaves: cxListaChaves(f.chaves), alt });
       // O que estava marcado nesta ocorrência continua valendo na data nova.
       const velho = cx.cfg.estado[inst.id];
       const novoId = r.id + '@' + novaData;
@@ -6238,15 +6337,15 @@ function cxSalvarForm(modo) {
       } else if (velho) cx.cfg.estado[inst.id] = Object.assign({}, velho, { valor: undefined, data: undefined, desc: undefined, alt });
     } else if (modo === 'so') {
       cxMudarEstado(inst.id, { valor, data: f.data, desc: f.desc !== r.desc ? f.desc : undefined });
-      if (!!f.cofrinho !== !!r.cofrinho || f.cat !== r.cat || !!f.estimado !== !!r.estimado) {
+      if (!!f.cofrinho !== !!r.cofrinho || f.cat !== r.cat || !!f.estimado !== !!r.estimado || cxListaChaves(f.chaves).join() !== cxChaves(r).join()) {
         // tipo/cofrinho valem pra regra toda: muda a regra também
-        cx.cfg.regras[r.id] = Object.assign({}, r, { cat: f.cat, cofrinho: !!f.cofrinho, estimado: !!f.estimado, alt });
+        cx.cfg.regras[r.id] = Object.assign({}, r, { cat: f.cat, cofrinho: !!f.cofrinho, estimado: !!f.estimado, chaves: cxListaChaves(f.chaves), alt });
       }
     } else {
       // Daqui pra frente: fecha a regra antiga na véspera e abre uma nova a partir desta.
       cx.cfg.regras[r.id] = Object.assign({}, r, { fim: cxSomaDias(inst.dataOriginal, -1), alt });
       const id = r.id + '-' + Date.now().toString(36);
-      const nova = Object.assign({}, r, { id, desc: f.desc, valor, cat: f.cat, inicio: f.data, fim: undefined, cofrinho: !!f.cofrinho, estimado: !!f.estimado, alt });
+      const nova = Object.assign({}, r, { id, desc: f.desc, valor, cat: f.cat, inicio: f.data, fim: undefined, cofrinho: !!f.cofrinho, estimado: !!f.estimado, chaves: cxListaChaves(f.chaves), alt });
       if (r.parcelas) {
         const feitas = cxOcorrencias(r, r.inicio, cxSomaDias(inst.dataOriginal, -1)).length;
         nova.parcelas = Math.max(1, r.parcelas - feitas);
