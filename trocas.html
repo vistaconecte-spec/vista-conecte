@@ -122,8 +122,9 @@
         <div class="dica">Está no e-mail de confirmação da compra, depois do #.</div>
       </div>
       <div class="grupo">
-        <label class="campo" for="email">E-mail da compra</label>
-        <input id="email" class="txt" type="email" inputmode="email" autocomplete="email" placeholder="seuemail@exemplo.com" required>
+        <label class="campo" for="email">E-mail da compra ou CEP da entrega</label>
+        <input id="email" class="txt" type="text" autocomplete="email" autocapitalize="off" spellcheck="false" placeholder="seuemail@exemplo.com ou 00000-000" required>
+        <div class="dica">Se não lembrar o e-mail usado na compra, coloque o CEP do endereço de entrega.</div>
       </div>
       <button class="btn" id="btn-buscar" type="submit">Buscar meu pedido</button>
       <div id="erro-busca" class="erro" hidden></div>
@@ -199,7 +200,7 @@
     var pedido = $('pedido').value.replace(/\D/g, '');
     var email = $('email').value.trim();
     mostrarErro($('erro-busca'), '');
-    if (!pedido || !email) { mostrarErro($('erro-busca'), 'Preencha o número do pedido e o e-mail da compra.'); return; }
+    if (!pedido || !email) { mostrarErro($('erro-busca'), 'Preencha o número do pedido e o e-mail da compra ou o CEP da entrega.'); return; }
     var b = $('btn-buscar'); b.disabled = true; b.textContent = 'Buscando...';
     try {
       var d = await chamar({ acao: 'consultar', pedido: pedido, email: email });

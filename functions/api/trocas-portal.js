@@ -8,7 +8,10 @@
  * POST { acao: 'consultar', pedido, email }          → peças, preço pago e prazos
  * POST { acao: 'enviar', pedido, email, itens: [...] } → grava a solicitação
  *
- * Segurança: público como o previsao-pedido, mas só responde a quem acerta número E e-mail, e a
+ * 24/11/2026: no lugar do e-mail a cliente pode pôr o CEP de entrega (Fran #9685 não achou o pedido porque
+ * o e-mail da compra era outro). O campo continua se chamando `email` no corpo; sem @ é tratado como CEP.
+ *
+ * Segurança: público como o previsao-pedido, mas só responde a quem acerta número E e-mail (ou CEP), e a
  * resposta é a mesma para "pedido não existe" e "e-mail não confere" (não dá para descobrir
  * pedidos chutando número). Não devolve endereço, telefone nem CPF. No envio, tudo é relido da
  * Shopify: preço, prazo e opções de troca nunca vêm da página.
@@ -25,14 +28,24 @@ import { criarPedidoTroca, gqlDe } from '../_pedido-troca.js';
 const API_VERSION = '2026-04';
 const SB_URL = 'https://hckzsblwyabmhzbjdjgx.supabase.co';
 const SB_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imhja3pzYmx3eWFibWh6Ympkamd4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkxNTEyOTIsImV4cCI6MjA5NDcyNzI5Mn0.guif8jtidWmfqykhgDgPJiaRbWLoEEDMp1usTlAs1dQ';
-const NAO_ACHOU = 'Não encontramos um pedido com esse número e esse e-mail. Confira os dois (o e-mail é o mesmo usado na compra).';
+const NAO_ACHOU = 'Não encontramos um pedido com esse número e esse e-mail ou CEP. Confira os dois (o e-mail é o usado na compra e o CEP é o da entrega).';
+const soDigitos = v => String(v || '').replace(/\D/g, '');
+// A chave da cliente confere com o pedido: e-mail da compra, ou CEP (8 dígitos) da entrega ou da cobrança
+export function chaveConfere(order, chave) {
+  if (!order || !chave) return false;
+  if (chave.includes('@')) return normalizarEmail(order.email) === chave;
+  const cep = soDigitos(chave);
+  if (cep.length !== 8) return false;
+  return [order.shippingAddress && order.shippingAddress.zip, order.billingAddress && order.billingAddress.zip].some(z => soDigitos(z) === cep);
+}
 
 const QUERY = `query($q: String!) {
   orders(first: 1, query: $q) {
     nodes {
       name email cancelledAt
       customer { firstName }
-      shippingAddress { firstName name }
+      shippingAddress { firstName name zip }
+      billingAddress { zip }
       fulfillments(first: 10) { createdAt deliveredAt status }
       returns(first: 10) {
         nodes {
@@ -115,11 +128,12 @@ export async function onRequestPost(context) {
   try { body = await request.json(); } catch { return json({ erro: 'Pedido inválido.' }, 400); }
   const numero = normalizarPedido(body.pedido);
   const email = normalizarEmail(body.email);
-  if (!numero || !email || email.length > 120 || !email.includes('@')) return json({ erro: 'Preencha o número do pedido e o e-mail da compra.' }, 400);
+  const valido = email.includes('@') || soDigitos(email).length === 8;
+  if (!numero || !email || email.length > 120 || !valido) return json({ erro: 'Preencha o número do pedido e o e-mail da compra ou o CEP da entrega.' }, 400);
 
   try {
     const order = await lerPedido(env, numero);
-    if (!order || normalizarEmail(order.email) !== email) return json({ erro: NAO_ACHOU }, 404);
+    if (!chaveConfere(order, email)) return json({ erro: NAO_ACHOU }, 404);
     await completarAvulsos(env, order);
     const docs = await lerSolicitacoes(env, numero);
     const pub = pedidoPublico(order, docs);

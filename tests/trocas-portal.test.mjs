@@ -30,7 +30,7 @@ const DIA = 86400000;
 const enviadoEm = '2026-10-08T13:26:24Z';
 const pedido = (extra = {}) => ({
   name: '#9250', email: 'Lais@Exemplo.com', cancelledAt: null,
-  customer: { firstName: 'Lais' }, shippingAddress: { firstName: 'Lais', name: 'Lais Jarilho' },
+  customer: { firstName: 'Lais' }, shippingAddress: { firstName: 'Lais', name: 'Lais Jarilho', zip: '88015-200' }, billingAddress: { zip: '01310100' },
   fulfillments: [{ createdAt: enviadoEm, deliveredAt: null, status: 'SUCCESS' }],
   lineItems: { nodes: [
     { id: 'gid://shopify/LineItem/1', title: 'Calça Pantalona', variantTitle: 'Uva / G', quantity: 1, currentQuantity: 1,
@@ -142,6 +142,16 @@ console.log('\n4) Endpoint (Shopify e Supabase simulados)');
   ok('e-mail errado e pedido inexistente respondem igual', [errado.status, errado.j.erro], [naoExiste.status, naoExiste.j.erro]);
   const certo = await chamar({ acao: 'consultar', pedido: '#9250', email: ' LAIS@exemplo.com ' });
   ok('e-mail sem diferença de maiúscula/espaço abre o pedido', [certo.status, certo.j.itens?.length], [200, 2]);
+  // 24/11/2026: CEP no lugar do e-mail (Fran #9685)
+  const porCep = await chamar({ acao: 'consultar', pedido: '9250', email: '88015200' });
+  const porCepTraco = await chamar({ acao: 'consultar', pedido: '9250', email: ' 88015-200 ' });
+  const porCepCobranca = await chamar({ acao: 'consultar', pedido: '9250', email: '01310-100' });
+  ok('CEP da entrega (com ou sem traço) ou da cobrança abre o pedido', [porCep.status, porCepTraco.status, porCepCobranca.status], [200, 200, 200]);
+  const cepErrado = await chamar({ acao: 'consultar', pedido: '9250', email: '88015201' });
+  ok('CEP errado responde igual a pedido inexistente', [cepErrado.status, cepErrado.j.erro], [naoExiste.status, naoExiste.j.erro]);
+  const curto = await chamar({ acao: 'consultar', pedido: '9250', email: '8801' });
+  ok('nem e-mail nem CEP: pede para preencher', curto.status, 400);
+  ok('a resposta não devolve CEP', /88015|01310/.test(JSON.stringify(porCep.j)), false);
   const env1 = await chamar({ acao: 'enviar', pedido: '9250', email: 'lais@exemplo.com', itens: [{ line_id: 'gid://shopify/LineItem/1', tipo: 'troca', nova_variante_id: 'v-nude-g', motivo: 'Cor diferente do esperado' }] });
   ok('envio grava uma linha troca-portal:9250-*', [env1.status, gravados.length, /^troca-portal:9250-/.test(gravados[0]?.id)], [200, 1, true]);
   const txt = JSON.stringify(gravados[0]);
