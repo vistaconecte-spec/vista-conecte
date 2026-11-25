@@ -1995,7 +1995,7 @@ async function trcAtualizar() {
   try { await estSincronizarShopify(); } catch (e) {}
   if (st) st.textContent = 'conferindo os pedidos de troca na Shopify...';
   try { await trcConferirShopify(); } catch (e) { console.warn('[trocas] conferência na Shopify falhou', e); }
-  trcRender(); devRender();
+  trcRender(); devRender(); cancRender();
   if (st) st.textContent = 'atualizado ' + new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 }
 // ── Quadro da Devolução (20/10/2026, pedido da Bárbara) ──────────────────────────
@@ -2013,15 +2013,107 @@ const DEV_ETAPAS = [
 ];
 let _trcSecao = 'trocas';
 function trcSecao(secao) {
-  _trcSecao = secao === 'dev' ? 'dev' : 'trocas';
-  const t = document.getElementById('trc-sec-trocas'), d = document.getElementById('trc-sec-dev');
-  if (t) t.style.display = _trcSecao === 'trocas' ? '' : 'none';
-  if (d) d.style.display = _trcSecao === 'dev' ? '' : 'none';
-  document.getElementById('trc-pill-trocas')?.classList.toggle('active', _trcSecao === 'trocas');
-  document.getElementById('trc-pill-dev')?.classList.toggle('active', _trcSecao === 'dev');
+  _trcSecao = ['dev', 'canc'].includes(secao) ? secao : 'trocas';
+  for (const s of ['trocas', 'dev', 'canc']) {
+    const el = document.getElementById('trc-sec-' + s);
+    if (el) el.style.display = _trcSecao === s ? '' : 'none';
+    document.getElementById('trc-pill-' + s)?.classList.toggle('active', _trcSecao === s);
+  }
   const resumo = document.getElementById('trc-resumo'); // contagem das trocas, ao lado do título
   if (resumo) resumo.style.display = _trcSecao === 'trocas' ? '' : 'none';
-  if (_trcSecao === 'dev') devRender(); else trcRender();
+  if (_trcSecao === 'dev') devRender(); else if (_trcSecao === 'canc') cancRender(); else trcRender();
+}
+
+// ── Cancelamentos (Bárbara, 25/11/2026: "temos que ter uma aba de cancelamentos em estornos") ──────
+// Pedido que a cliente desistiu ANTES de sair (Renata #9832): não tem peça voltando, então não cabe no quadro
+// de devoluções. Mora na mesma lista "estorno" com forma 'cancelamento' (mesma mesclagem e tombstones), e o
+// quadro de devoluções ignora esses itens. Duas etapas: cancelar o pedido na Shopify e fazer o estorno.
+const CANC_ETAPAS = [
+  ['cancelar', 'Cancelar na Shopify', 'cancelar o pedido e tirar da expedição', '#b91c1c'],
+  ['estornar', 'Fazer o estorno', 'devolver o valor na forma combinada', '#c99a3c'],
+];
+function cancEhCancelamento(t) { return !!t && t.forma === 'cancelamento'; }
+function cancEtapa(t) { return estConcluida(t) ? 'feito' : t.cancelado_em ? 'estornar' : 'cancelar'; }
+// "02/12" ou "02/12/2026" -> meio-dia BRT desse dia; vazio ou inválido -> null
+function cancPrazoMs(txt, agora = Date.now()) {
+  const m = String(txt || '').trim().match(/^(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?$/);
+  if (!m) return null;
+  let ano = m[3] ? Number(m[3].length === 2 ? '20' + m[3] : m[3]) : new Date(agora).getFullYear();
+  let ms = Date.parse(`${ano}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}T12:00:00-03:00`);
+  if (!m[3] && ms < agora - 180 * 86400000) ms = Date.parse(`${ano + 1}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}T12:00:00-03:00`);
+  return Number.isFinite(ms) ? ms : null;
+}
+function cancCartaoHtml(t) {
+  const esc = v => String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+  const reais = v => 'R$ ' + (Number(v) || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 });
+  const etapa = cancEtapa(t), prazo = cancPrazoMs(t.prometido);
+  const dias = prazo == null ? null : Math.ceil((prazo - Date.now()) / 86400000);
+  const venceu = etapa !== 'feito' && dias != null && dias <= 1;
+  const prazoTxt = t.prometido ? `estorno combinado até <b>${esc(t.prometido)}</b>${etapa !== 'feito' && dias != null ? (dias < 0 ? ' · <b style="color:#b91c1c">passou do prazo</b>' : dias <= 1 ? ' · <b style="color:#b91c1c">vence amanhã</b>' : ` · faltam ${dias} dias`) : ''}` : 'sem data combinada com a cliente';
+  const btn = (fn, ico, txt) => `<button class="trc-btn" onclick="${fn}"><i class="ti ${ico}"></i> ${txt}</button>`;
+  const acao = etapa === 'cancelar' ? btn(`cancMarcar('${t.id}','cancelado_em')`, 'ti-circle-x', 'cancelei na Shopify')
+    : etapa === 'estornar' ? btn(`cancMarcar('${t.id}','estorno_feito_em')`, 'ti-cash', 'estorno feito')
+    : `<div class="trc-aviso">estorno feito em ${esc(new Date(t.estorno_feito_em || t.etapa_em || Date.now()).toLocaleDateString('pt-BR'))}</div>`;
+  return `<div class="trc-card${etapa === 'feito' ? ' trc-fechada' : ''}${venceu ? ' trc-alerta' : ''}" style="border-left-color:${venceu ? '#dc2626' : etapa === 'estornar' ? '#c99a3c' : '#b91c1c'}">
+    <div style="display:flex;justify-content:space-between;gap:8px;align-items:baseline"><b>${esc(t.cliente)}</b><span>${t.pedido ? '#' + esc(String(t.pedido).replace('#', '')) : ''}</span></div>
+    <div style="font-size:12px;margin:4px 0">${reais(t.valor)}${t.pagamento ? ' · ' + esc(t.pagamento) : ''}</div>
+    <div style="font-size:11.5px;color:var(--text-sec);margin-bottom:4px">${prazoTxt}</div>
+    ${t.motivo ? `<div style="font-size:11.5px;color:var(--text-sec);margin-bottom:6px">${esc(t.motivo)}</div>` : ''}
+    ${acao}
+    ${etapa !== 'feito' ? `<button class="trc-btn trc-btn-sec" onclick="cancExcluir('${t.id}')"><i class="ti ti-trash"></i> excluir</button>` : ''}
+  </div>`;
+}
+function cancRender() {
+  const board = document.getElementById('canc-board');
+  if (!board) return;
+  const todos = estGetConfig().itens.filter(t => cancEhCancelamento(t) && !t.arquivada);
+  const abertos = todos.filter(t => cancEtapa(t) !== 'feito');
+  board.innerHTML = CANC_ETAPAS.map(([k, rotulo, passo, cor]) => {
+    const da = abertos.filter(t => cancEtapa(t) === k).sort((a, b) => (cancPrazoMs(a.prometido) || Infinity) - (cancPrazoMs(b.prometido) || Infinity));
+    return `<div class="trc-col">
+      <div class="trc-col-topo" style="border-top-color:${cor}"><span>${rotulo}</span><b>${da.length}</b></div>
+      <div class="trc-col-passo">${passo}</div>
+      ${da.map(cancCartaoHtml).join('') || '<div class="trc-vazio">nada aqui</div>'}
+    </div>`;
+  }).join('');
+  const feitos = todos.filter(t => cancEtapa(t) === 'feito').sort((a, b) => String(b.estorno_feito_em || '').localeCompare(String(a.estorno_feito_em || '')));
+  const box = document.getElementById('canc-feitos');
+  if (box) {
+    box.style.display = feitos.length ? '' : 'none';
+    box.innerHTML = `<summary>Estornados (${feitos.length})</summary><div class="trc-board" style="margin-top:8px">${feitos.slice(0, 30).map(cancCartaoHtml).join('')}</div>`;
+  }
+  const total = abertos.reduce((s, t) => s + (Number(t.valor) || 0), 0);
+  const el = document.getElementById('canc-resumo');
+  if (el) el.textContent = abertos.length ? `${abertos.length} em aberto · ${total.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} para estornar` : 'nenhum cancelamento em aberto';
+}
+function cancAdd() {
+  const v = id => (document.getElementById(id).value || '').trim();
+  const pedido = v('canc-pedido').replace(/\D/g, ''), cliente = v('canc-cliente');
+  if (!pedido || !cliente) { alert('Preencha ao menos o pedido e a cliente.'); return; }
+  const valor = parseFloat(v('canc-valor').replace(',', '.')) || 0;
+  const cfg = estGetConfig();
+  const hoje = new Date().toLocaleDateString('pt-BR');
+  cfg.itens.push(carimbarItem({ id: 'canc' + Date.now(), forma: 'cancelamento', pedido, cliente, valor, pagamento: v('canc-pagamento'),
+    prometido: v('canc-prometido'), motivo: v('canc-motivo'), pecas: 'Cancelamento do pedido #' + pedido, data: hoje, criado_em: new Date().toISOString() }));
+  estSalvar(cfg);
+  ['canc-pedido', 'canc-cliente', 'canc-valor', 'canc-pagamento', 'canc-prometido', 'canc-motivo'].forEach(id => document.getElementById(id).value = '');
+  cancRender();
+}
+function cancMarcar(id, campo) {
+  const cfg = estGetConfig();
+  const t = cfg.itens.find(x => x.id === id); if (!t) return;
+  if (campo === 'estorno_feito_em' && !confirm(`Confirmar que o estorno de ${(Number(t.valor) || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} para ${t.cliente} já foi feito?`)) return;
+  const agora = new Date().toISOString();
+  t[campo] = agora;
+  if (campo === 'estorno_feito_em') { t.etapa = 'concluido'; t.etapa_em = agora; }
+  carimbarItem(t);
+  estSalvar(cfg);
+  cancRender();
+}
+function cancExcluir(id) {
+  if (!confirm('Excluir esse cancelamento da lista?')) return;
+  estDel(id, true);
+  cancRender();
 }
 function devEtapa(t) {
   if (estConcluida(t)) return 'concluida';
@@ -2035,7 +2127,7 @@ function devEtapa(t) {
 // que ninguém fechou: estorno já feito, virou troca ou antiga sem registro). Sai do quadro e fica na lista de baixo.
 // 29/10/2026 (Bárbara): concluída não ocupa coluna, fica atrás do botão "concluídas", junto das arquivadas
 function devNoQuadro(t) {
-  return !t.arquivada && !estConcluida(t);
+  return !t.arquivada && !estConcluida(t) && t.forma !== 'cancelamento'; // cancelamento tem aba própria (25/11/2026)
 }
 // 11/11/2026: igual às trocas, as peças da mesma solicitação na mesma etapa viram um cartão só; no
 // crédito, um saldo só com a soma (valeCredito) e um aviso só para a cliente.
@@ -3655,7 +3747,7 @@ function estSalvar(cfg) {
   clearTimeout(window._estSaveTimer);
   window._estSaveTimer = setTimeout(() => {
     salvarListaCompartilhada('estorno', 'itens', cfg)
-      .then(final => { if (final) estRender(); })
+      .then(final => { if (final) { estRender(); if (document.getElementById('canc-board')) cancRender(); } })
       .catch(() => {});
   }, 900);
 }
@@ -4221,6 +4313,7 @@ function atdSyncViews() {
   try { if (document.getElementById('ret-tbody')) retRender(); } catch (e) {}
   try { if (document.getElementById('trc-board')) trcRender(); } catch (e) {}
   try { if (document.getElementById('dev-board')) devRender(); } catch (e) {}
+  try { if (document.getElementById('canc-board')) cancRender(); } catch (e) {}
   try { if (document.getElementById('atd-est-tbody')) estRender(); } catch (e) {}
 }
 

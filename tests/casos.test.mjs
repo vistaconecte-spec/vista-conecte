@@ -554,5 +554,17 @@ console.log('\nFila: alerta de processo/Procon/urgente vai para o topo (Carol #9
   ok('faixa mostra o selo do alerta', main.includes('${i.alerta ? `<span') && main.includes('nAlerta'), true);
 }
 
+console.log('\nCancelamento tem aba própria e não vira "devolução não postada" (Renata #9832, 25/11/2026)');
+{
+  const canc = { id: 'canc1', forma: 'cancelamento', pecas: 'Cancelamento do pedido #9832', valor: 185.68, prometido: '02/12' };
+  const f1 = C.fatosDoSistema('9832', { estorno: [canc] });
+  ok('cancelamento aberto aparece como cancelamento', f1.some(x => /^Cancelamento aberto \(R\$ 185\.68\): falta cancelar/.test(x) && /até 02\/12/.test(x)), true);
+  ok('cancelamento não vira devolução', f1.some(x => /Devolução aberta/.test(x)), false);
+  const f2 = C.fatosDoSistema('9832', { estorno: [{ ...canc, cancelado_em: '2026-11-25T12:00:00Z' }] });
+  ok('cancelado na Shopify: estorno pendente', f2.some(x => /pedido já cancelado, estorno pendente/.test(x)), true);
+  ok('quadro de devoluções ignora cancelamento', main.includes("t.forma !== 'cancelamento'; // cancelamento tem aba própria"), true);
+  ok('aba Cancelamentos com as duas etapas', main.includes("['cancelar', 'Cancelar na Shopify'") && main.includes("['estornar', 'Fazer o estorno'") && html.includes('id="trc-pill-canc"'), true);
+}
+
 console.log(`\n${total - falhas}/${total} passaram`);
 if (falhas) process.exit(1);

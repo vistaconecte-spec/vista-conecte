@@ -395,7 +395,11 @@ export function fatosDoSistema(pedido, { retorno = [], estorno = [], rastreio = 
     out.push(`Troca aberta${t.pedido_troca ? ' com pedido de troca ' + t.pedido_troca + (t.pedido_troca_enviado ? ' já enviado' : '') : ''}${daRev('retorno:' + t.id)}${daRast('retorno:' + t.id)}${t.conferido_em ? ', peça conferida e troca liberada' : ''}.`);
   for (const t of estorno) if (t && t.credito_lancado_em && new RegExp('(#|pedido\\s+#?)\\s?' + n + '(?!\\d)').test(String(t.pecas || '')))
     out.push(`Crédito na loja de R$ ${t.credito_valor || t.valor} já lançado na conta dela em ${dia(t.credito_lancado_em)}, depois da peça conferida.`);
-  for (const t of estorno) if (t && new RegExp('(#|pedido\\s+#?)\\s?' + n + '(?!\\d)').test(String(t.pecas || '')) && t.etapa !== 'concluido')
+  // Cancelamento (aba própria desde 25/11/2026): não tem peça voltando, então não é "devolução ainda não postada"
+  for (const t of estorno) if (t && t.forma === 'cancelamento' && new RegExp('(#|pedido\\s+#?)\\s?' + n + '(?!\\d)').test(String(t.pecas || '')))
+    out.push(t.etapa === 'concluido' ? `Pedido cancelado e estorno${t.valor ? ' de R$ ' + t.valor : ''} já feito em ${dia(t.estorno_feito_em || t.etapa_em)}.`
+      : `Cancelamento aberto${t.valor ? ' (R$ ' + t.valor + ')' : ''}: ${t.cancelado_em ? 'pedido já cancelado, estorno pendente com a Bárbara' : 'falta cancelar o pedido e fazer o estorno, com a Bárbara'}${t.prometido ? ', estorno combinado com a cliente até ' + t.prometido : ''}.`);
+  for (const t of estorno) if (t && t.forma !== 'cancelamento' && new RegExp('(#|pedido\\s+#?)\\s?' + n + '(?!\\d)').test(String(t.pecas || '')) && t.etapa !== 'concluido')
     out.push(`Devolução aberta (${t.forma || 'dinheiro'}${t.valor ? ', R$ ' + t.valor : ''})${daRev('estorno:' + t.id)}${daRast('estorno:' + t.id)}${t.chegou_em ? ', peça chegou ' + dia(t.chegou_em) : ''}.`);
   return [...doPedido, ...out];
 }
