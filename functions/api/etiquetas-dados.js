@@ -21,6 +21,8 @@
  * "complemento, ⁠Bairro" em address2, com um WORD JOINER (U+2060) depois da vírgula que
  * separa as partes. Conferido em 25 pedidos de 06-07/10/2026.
  */
+import { bling, SB_URL } from '../_bling.js';
+
 const API_VERSION = '2024-04';
 const WJ = '⁠';
 
@@ -193,6 +195,18 @@ const QUERY = `query($q: String) {
   }
 }`;
 
+// CPF da nota autorizada deste pedido (linha bling-nfe:<id> no Supabase, só o id da nota; o CPF vem do Bling)
+async function cpfDaNota(env, numero) {
+  const k = env.SUPABASE_ANON_KEY || env.SUPABASE_SERVICE_ROLE_KEY || '';
+  const r = await fetch(`${SB_URL}/rest/v1/vc_modelos?id=like.${encodeURIComponent('bling-nfe:*')}&dados->>shopify=eq.${encodeURIComponent(numero)}&select=dados`, { headers: { apikey: k, Authorization: 'Bearer ' + k } });
+  if (!r.ok) return null;
+  const nota = (await r.json()).map(x => x.dados).find(d => d && d.status === 'enviada' && d.nota);
+  if (!nota) return null;
+  const n = (await bling(env, `/nfe/${nota.nota}`)).data;
+  const doc = String((n && n.contato && n.contato.numeroDocumento) || '').replace(/\D/g, '');
+  return doc.length === 11 ? fmtCpf(doc) : null;
+}
+
 export function lerNumeros(param) {
   return [...new Set(String(param || '').split(/[,\s]+/).map(s => s.replace(/\D/g, '')).filter(Boolean))].slice(0, 50);
 }
@@ -215,6 +229,11 @@ export async function onRequestGet(context) {
     const j = await r.json();
     if (j.errors) throw new Error('GraphQL: ' + JSON.stringify(j.errors));
     const pedidos = j.data.orders.edges.map(e => normalizar(e.node)).filter(p => numeros.includes(p.numero.replace(/\D/g, '')));
+    // Pedido lançado à mão sem CPF na Shopify (25/11/2026, #9526 da Zevania, pago pelo link do Mercado Pago):
+    // a nota já saiu com o CPF do cadastro do Bling, então o CPF da etiqueta vem da própria nota.
+    for (const p of pedidos.filter(x => !x.cpf).slice(0, 5)) {
+      try { p.cpf = await cpfDaNota(env, p.numero); } catch { /* sem CPF: o robô recusa como antes */ }
+    }
     const achados = new Set(pedidos.map(p => p.numero.replace(/\D/g, '')));
     return new Response(JSON.stringify({ pedidos, faltando: numeros.filter(n => !achados.has(n)).map(n => '#' + n) }), { headers });
   } catch (err) {
