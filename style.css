@@ -1523,6 +1523,8 @@ table.est-tab td > div > input { min-width: 0; flex: 1 1 auto; }
 .cx-item { display:flex; align-items:center; gap:12px; padding:10px 2px; border-bottom:1px solid var(--border); cursor:pointer; }
 .cx-item:hover { background:rgba(196,168,130,.08); }
 .cx-item.cx-pago .cx-item-desc, .cx-item.cx-pago .cx-item-valor { text-decoration:line-through; color:var(--text-ter); }
+.cx-item-atrasado .cx-item-desc, .cx-item-atrasado .cx-item-valor { color:#c2453d; }
+.cx-item-atrasado .cx-check { border-color:#c2453d; }
 .cx-check { flex:0 0 26px; width:26px; height:26px; border-radius:50%; border:2px solid var(--border-strong); background:var(--surface);
   display:flex; align-items:center; justify-content:center; color:#fff; font-size:15px; cursor:pointer; padding:0; }
 .cx-check:hover { border-color:#3f7d58; }

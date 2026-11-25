@@ -27,7 +27,7 @@ const ini = main.indexOf('const CX_AJUSTES_PADRAO =');
 const consts = main.slice(ini, main.indexOf('\n};', main.indexOf('const CX_CATS =', ini)) + 3);
 const iCh = main.indexOf('const CX_CHAVES_PADRAO =');
 const chaves = main.slice(iCh, main.indexOf('\n};', iCh) + 3);
-const nomes = ['cxIso', 'cxSomaDias', 'cxSegunda', 'cxOcorrencias', 'cxInstancias', 'cxProjecao', 'cxDivida', 'cxMesclar', 'cxSemente', 'cxNorm', 'cxChaves', 'cxDiasEntre', 'cxCasarMp', 'cxSaldoCorrigido', 'cxJuntarSaidas', 'cxMetaVenda', 'cxLivreHoje', 'cxProximaMeta', 'cxSaldoCofrinho', 'cxRitmoCofrinho', 'cxAvisos', 'cxR', 'cxRotDia', 'cxHoje'];
+const nomes = ['cxIso', 'cxSomaDias', 'cxSegunda', 'cxOcorrencias', 'cxInstancias', 'cxProjecao', 'cxDivida', 'cxMesclar', 'cxSemente', 'cxNorm', 'cxChaves', 'cxDiasEntre', 'cxCasarMp', 'cxSaldoCorrigido', 'cxJuntarSaidas', 'cxMetaVenda', 'cxLivreHoje', 'cxProximaMeta', 'cxSaldoCofrinho', 'cxRitmoCofrinho', 'cxAvisos', 'cxR', 'cxRotDia', 'cxHoje', 'cxGruposSemana'];
 const cx = new Function(`${consts}\n${chaves}\n${nomes.map(extrair).join('\n')}\nreturn { ${nomes.join(', ')} };`)();
 
 let falhas = 0, total = 0;
@@ -250,6 +250,22 @@ ok('portão de senha continua', html.includes('id="flx-gate"') && html.includes(
   const urls = [...fn.matchAll(/pegar\('\/api\/([a-z-]+)/g)].map(m => m[1]);
   const esperado = { 'mp-saldo': 'saldo', 'mp-saidas': 'saidas', 'mp-movimentos': 'mov', 'meta-cobrancas': 'meta', 'painel-diario': 'painel' };
   ok('cada busca cai na variável certa', urls.map((u, k) => esperado[u] === nomesVar[k]), urls.map(() => true));
+}
+{
+  // 25/11: a Bárbara viu a lista da semana sem a Ju (terça, já paga) e a Manu (segunda). A semana
+  // tem que mostrar segunda a domingo inteira, os pagos junto, e dizer quanto ainda falta.
+  const regras = {
+    manu: { id: 'manu', desc: 'Manu', valor: 120, freq: 'semanal', inicio: '2026-11-23', cat: 'equipe' },
+    ju: { id: 'ju', desc: 'Ju', valor: 150, freq: 'semanal', inicio: '2026-11-24', cat: 'equipe' },
+    mada: { id: 'mada', desc: 'Madalena', valor: 510, freq: 'semanal', inicio: '2026-11-26', cat: 'equipe' },
+  };
+  const estado = { 'ju@2026-11-24': { pago: true, em: '2026-11-24' } };
+  const insts = cx.cxInstancias({ regras, estado }, '2026-10-01', '2026-12-31');
+  const s = cx.cxGruposSemana(insts, '2026-11-25');
+  ok('semana mostra Manu, Ju e Madalena', s.lst.map(i => i.desc), ['Manu', 'Ju', 'Madalena']);
+  ok('Ju paga continua na semana', s.lst[1].pago, true);
+  ok('total da semana', s.total, 780);
+  ok('falta da semana não conta a paga', s.falta, 630);
 }
 ok('renderFluxo é a versão nova', /async function renderFluxo\(forcar\)/.test(main), true);
 

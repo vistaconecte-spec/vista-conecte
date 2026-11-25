@@ -6235,6 +6235,16 @@ function cxLinha(i) {
   </div>`;
 }
 
+// Semana de segunda a domingo com tudo, pago ou não. `falta` = o que ainda não saiu.
+function cxGruposSemana(insts, hoje) {
+  const seg = cxSegunda(hoje);
+  const dom = cxSomaDias(seg, 6);
+  const lst = insts.filter(i => i.data >= seg && i.data <= dom).sort((a, b) => a.data.localeCompare(b.data) || (b.valor - a.valor));
+  const total = lst.reduce((s, i) => s + i.valor, 0);
+  const falta = lst.filter(i => !i.pago).reduce((s, i) => s + i.valor, 0);
+  return { lst, total, falta };
+}
+
 function cxDesenharLista(insts, hoje) {
   const el = document.getElementById('cx-lista');
   if (!el) return;
@@ -6247,19 +6257,24 @@ function cxDesenharLista(insts, hoje) {
   const domingo = cxSomaDias(cxSegunda(hoje), 6);
   const proxDomingo = cxSomaDias(domingo, 7);
   const fim = cxSomaDias(hoje, 30);
+  const seg = cxSegunda(hoje);
   const abertos = insts.filter(i => !i.pago);
+  // "Esta semana" = segunda a domingo inteira, pagos riscados junto (25/11/2026). Antes só mostrava
+  // o que ainda ia vencer: Manu (segunda) e Ju (terça, já paga) sumiam e ela achou que faltavam.
+  const semana = cxGruposSemana(insts, hoje);
   const grupos = [
-    ['Atrasados', abertos.filter(i => i.data < hoje), true],
-    ['Hoje', abertos.filter(i => i.data === hoje)],
-    ['Esta semana', abertos.filter(i => i.data > hoje && i.data <= domingo)],
+    ['Atrasados', abertos.filter(i => i.data < seg), true],
+    ['Esta semana · ' + seg.slice(8, 10) + '/' + seg.slice(5, 7) + ' a ' + domingo.slice(8, 10) + '/' + domingo.slice(5, 7), semana.lst, false, semana],
     ['Semana que vem', abertos.filter(i => i.data > domingo && i.data <= proxDomingo)],
     ['Até ' + cxRotDia(fim).split(' ').pop(), abertos.filter(i => i.data > proxDomingo && i.data <= fim)],
   ];
   let html = '';
-  for (const [nome, lst, vermelho] of grupos) {
+  for (const [nome, lst, vermelho, sem] of grupos) {
     if (!lst.length) continue;
     const soma = lst.reduce((s, i) => s + i.valor, 0);
-    html += `<div class="cx-grupo"><div class="cx-grupo-cab${vermelho ? ' cx-vermelho' : ''}"><span>${nome}</span><span>${cxR(soma)}</span></div>${lst.map(cxLinha).join('')}</div>`;
+    const dir = sem ? (sem.falta > 0 ? 'falta ' + cxR(sem.falta) + ' de ' + cxR(sem.total) : 'tudo pago, ' + cxR(sem.total)) : cxR(soma);
+    const linhas = lst.map(i => sem && !i.pago && i.data < hoje ? cxLinha(i).replace('class="cx-item"', 'class="cx-item cx-item-atrasado"') : cxLinha(i)).join('');
+    html += `<div class="cx-grupo"><div class="cx-grupo-cab${vermelho ? ' cx-vermelho' : ''}"><span>${nome}</span><span>${dir}</span></div>${linhas}</div>`;
   }
   if (!html) html = '<div class="cx-vazio">Nenhum pagamento nos próximos 30 dias. Toque em <b>Novo</b> pra lançar.</div>';
   html = status + html;
