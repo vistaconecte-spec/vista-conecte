@@ -9,10 +9,10 @@
    moldura. Tokens de vidro: --glass (painel), --glass-strong (o que precisa ler bem, ex.
    modal), --glass-border (fio branco na borda que dá o brilho), --blur. */
 :root {
-  --sidebar-bg: rgba(18, 16, 26, 0.72);
+  --sidebar-bg: rgba(18, 16, 26, 0.90);  /* 0.72 deixava o menu cinza e apagado sobre o fundo claro (Álvaro, 25/11/2026) */
   --sidebar-hover: rgba(255,255,255,0.08);
-  --sidebar-active: rgba(255,255,255,0.14);
-  --sidebar-border: rgba(255,255,255,0.10);
+  --sidebar-active: rgba(255,255,255,0.18);
+  --sidebar-border: rgba(255,255,255,0.16);
   --gold: #C4A882;
   --gold-dark: #9A7A56;
   --bg: rgba(255,255,255,0.38);      /* "fundo" de bloco interno: um vidro mais leve */
@@ -75,9 +75,9 @@ body::before {
   background: var(--sidebar-bg);
   backdrop-filter: var(--blur);
   -webkit-backdrop-filter: var(--blur);
-  border: 1px solid rgba(255,255,255,0.14);
+  border: 1px solid rgba(255,255,255,0.24);
   border-radius: 28px;
-  box-shadow: 0 12px 40px rgba(30,20,60,0.22), inset 0 1px 0 rgba(255,255,255,0.12);
+  box-shadow: 0 12px 40px rgba(30,20,60,0.30), inset 0 1px 0 rgba(255,255,255,0.16);
   display: flex;
   flex-direction: column;
   position: sticky;
@@ -145,7 +145,7 @@ body::before {
   padding: 7px 12px;
   font-size: 12px;
   cursor: pointer;
-  color: rgba(255,255,255,0.62);
+  color: rgba(255,255,255,0.88);
   border-radius: 12px;
   margin: 1px 0;
   transition: background 0.15s, color 0.15s;
@@ -153,7 +153,7 @@ body::before {
   border-left: 0;
 }
 
-.nav-item:hover { background: var(--sidebar-hover); color: rgba(255,255,255,0.9); }
+.nav-item:hover { background: var(--sidebar-hover); color: #FFFFFF; }
 
 .nav-item.active {
   background: var(--sidebar-active);
