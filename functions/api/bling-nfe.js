@@ -286,8 +286,28 @@ export async function onRequestGet({ request, env }) {
       if (!d.pedido) return json({ erro: 'pedido não encontrado no Bling' }, 404);
       // Continuam valendo todas as travas, menos as três que a nota parcial existe pra contornar
       const IGNORA = /^(pedido tem reembolso|itens do pedido mudaram|total diferente)/;
-      const motivos = d.decisao.motivos.filter(m => !IGNORA.test(m));
+      let motivos = d.decisao.motivos.filter(m => !IGNORA.test(m));
       const order = d.order;
+      // &contato=ID_DO_CONTATO_NO_BLING (25/11/2026, #9526 da Zevania): pedido lançado à mão sem CPF, e a cliente já
+      // tem cadastro com documento de compras antigas. A nota sai nesse cadastro; o CPF nunca passa pela URL.
+      let contatoId = d.pedido.contato.id;
+      const outroContato = q.get('contato');
+      if (outroContato) {
+        await esperar(PAUSA_MS);
+        const c = (await bling(env, `/contatos/${encodeURIComponent(outroContato)}`, { token })).data;
+        const primeiro = s => String(s || '').trim().split(/\s+/)[0].toLowerCase();
+        if (!c || !soDigitos(c.numeroDocumento)) motivos.push('o contato indicado não tem CPF/CNPJ no Bling');
+        else if (primeiro(c.nome) !== primeiro(d.pedido.contato.nome)) motivos.push(`o contato indicado é de outra pessoa (${c.nome})`);
+        else {
+          motivos = motivos.filter(m => !/^cliente sem CPF/.test(m));
+          const notas = await notasDaCliente(env, token, { contato: c, data: d.pedido.data });
+          const desta = notas.filter(n => n.numeroPedidoLoja && String(n.numeroPedidoLoja) === String(d.pedido.numeroLoja));
+          if (desta.length) motivos.push(`já existe nota deste pedido: ${desta.map(n => n.numero).join(', ')}`);
+          contatoId = c.id;
+        }
+      }
+      // &manual=1: venda de verdade lançada por app (link do Mercado Pago) em vez da loja ou de rascunho.
+      if (q.get('manual') === '1') motivos = motivos.filter(m => !/^pedido não é da loja online/.test(m));
       // &enviadas=1 (23/11/2026, #9015): compra antiga que já saiu inteira sem nota e é a compra original de uma troca.
       // Conta a peça já enviada, menos o que saiu do pedido por reembolso (troca de item sem dinheiro).
       const incluirEnviadas = q.get('enviadas') === '1';
@@ -322,7 +342,7 @@ export async function onRequestGet({ request, env }) {
       const parcela = (d.pedido.parcelas || [])[0];
       const corpo = {
         tipo: 1, finalidade: 1, dataOperacao: agoraSP,
-        contato: { id: d.pedido.contato.id },
+        contato: { id: contatoId },
         naturezaOperacao: { id: 15105422348 }, // a mesma das notas automáticas e das manuais
         loja: { id: LOJA_SHOPIFY_BLING },
         numeroPedidoLoja: String(d.pedido.numeroLoja),
